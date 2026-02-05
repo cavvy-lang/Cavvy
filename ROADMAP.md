@@ -1,7 +1,13 @@
 # EOL 语言开发路线图 (Roadmap)
 
 ## 项目概述
-EOL (Ethernos Object Language) 是一个编译为 Windows 可执行文件的静态类型编程语言，语法设计目标与 Java 高度兼容。
+EOL (Ethernos Object Language) 是一个始终编译为原生机器码的静态类型编程语言。
+
+**核心定位：**
+- 编译为原生可执行文件（Windows EXE / Linux ELF / macOS Mach-O）
+- 无运行时依赖，无 VM，无 GC
+- Java 语法风格，C++ 级别性能
+- 显式内存管理（Arena、栈分配、手动堆分配）
 
 **当前版本：0.2.0.x**
 
@@ -11,10 +17,10 @@ EOL (Ethernos Object Language) 是一个编译为 Windows 可执行文件的静�
 
 | 位置 | 名称 | 含义 | 示例 |
 |------|------|------|------|
-| **0** | Generation | 架构代际 | 0=LLVM后端, 1=自托管, 2=内存安全 |
-| **B** | Big | 功能域里程碑 | 0.1=原型, 0.2=当前, 0.3=控制流完善... |
-| **M** | Middle | 特性集群 | 0.3.1.x=循环家族 |
-| **P** | Patch | 每日构建修复 | 0.3.1.0→0.3.1.1 |
+| 0 | Generation | 架构代际 | 0=LLVM后端, 1=自托管, 2=内存安全 |
+| B | Big | 功能域里程碑 | 0.1=原型, 0.2=当前, 0.3=控制流完善... |
+| M | Middle | 特性集群 | 0.3.1.x=循环家族 |
+| P | Patch | 每日构建修复 | 0.3.1.0->0.3.1.1 |
 
 ---
 
@@ -89,32 +95,36 @@ EOL (Ethernos Object Language) 是一个编译为 Windows 可执行文件的静�
 - [ ] **内部类** - 成员内部类、静态内部类
 - [ ] **匿名类** - `new Interface() { ... }`
 
-### 0.4.4.x 泛型编程
+### 0.4.4.x 泛型编程（单态化）
 - [ ] **泛型类** - `class Container<T>`
 - [ ] **泛型方法** - `<T> T max(T a, T b)`
 - [ ] **类型边界** - `<T extends Number>`
 - [ ] **通配符** - `?`, `? extends T`, `? super T`
-- [ ] **泛型擦除** - 编译时类型处理
+- [ ] **单态化（Monomorphization）** - `List<int>` 生成专用代码，无装箱，非擦除
+
+**设计决策**：EOL 采用单态化而非 Java 的擦除，保留类型信息，零开销抽象
 
 ---
 
 ## 阶段三：标准库建设 (0.5.x.x)
 
-### 0.5.1.x 核心库 (java.lang 等效)
-- [ ] **System 类** - `System.out.println()`, `System.currentTimeMillis()`
+### 0.5.1.x 核心库
 - [ ] **Math 类** - `Math.sin()`, `Math.sqrt()`, `Math.pow()`
-- [ ] **Object 类** - 所有类的根类，`toString()`, `equals()`, `hashCode()`
-- [ ] **包装类** - `Integer`, `Double`, `Boolean` 等
+- [ ] **包装类** - `Integer`, `Double`, `Boolean` 等（值类型，非对象）
 - [ ] **String 类** - 不可变字符串，完整方法集
 - [ ] **StringBuilder/StringBuffer** - 可变字符串
 
-### 0.5.2.x 集合框架 (java.util 等效)
+**注意**：无 Object 根类（避免强制堆分配），无 System 类（无运行时）
+
+### 0.5.2.x 集合框架（显式分配器）
 - [ ] **List 接口** - `ArrayList<T>`, `LinkedList<T>`
 - [ ] **Set 接口** - `HashSet<T>`, `TreeSet<T>`
 - [ ] **Map 接口** - `HashMap<K,V>`, `TreeMap<K,V>`
-- [ ] **Queue/Deque** - `ArrayDeque<T>`, `PriorityQueue<T>`
+- [ ] **显式分配器模式** - `new ArrayList<>(arena)` 或 `new ArrayList<>(heap)`
 - [ ] **Iterator** - `iterator()`, `hasNext()`, `next()`
 - [ ] **Collections 工具** - `sort()`, `binarySearch()`, `shuffle()`
+
+**设计决策**：所有集合需显式指定分配器（arena/stack/heap），无隐式 GC
 
 ### 0.5.3.x 实用工具
 - [ ] **Arrays 类** - `Arrays.sort()`, `Arrays.toString()`
@@ -135,33 +145,36 @@ EOL (Ethernos Object Language) 是一个编译为 Windows 可执行文件的静�
 
 ## 阶段四：高级特性 (0.6.x.x)
 
-### 0.6.1.x 异常处理
+### 0.6.1.x 异常处理（无受检异常）
 - [ ] **异常类层次** - `Throwable` > `Exception` > `RuntimeException`
 - [ ] **try-catch-finally** - 完整异常处理
 - [ ] **多重 catch** - `catch (A | B e)`
 - [ ] **try-with-resources** - 自动资源管理
-- [ ] **throw/throws** - 异常抛出声明
+- [ ] **throw 语句** - 抛出异常
 - [ ] **自定义异常** - 继承 `Exception` 或 `RuntimeException`
+
+**设计决策**：保留异常语法，但取消 Java 的受检异常声明（throws），类似 C#
 
 ### 0.6.2.x 注解与反射
 - [ ] **注解定义** - `@interface`
 - [ ] **元注解** - `@Retention`, `@Target`
 - [ ] **常用注解** - `@Override`, `@Deprecated`, `@SuppressWarnings`
-- [ ] **反射 API** - `Class<?>`, `Method`, `Field`, `Constructor`
+- [ ] **编译期反射** - 宏/编译期获取类型信息（无运行时反射开销）
 
 ### 0.6.3.x 枚举与记录
 - [ ] **枚举类型** - `enum Status { ACTIVE, INACTIVE }`
 - [ ] **枚举方法** - 构造函数、字段、方法
 - [ ] **记录类** - `record Point(int x, int y)`
 
-### 0.6.4.x 并发编程 (java.util.concurrent 等效)
+### 0.6.4.x 并发编程（显式同步）
 - [ ] **Thread 类** - 线程创建和启动
 - [ ] **Runnable/Callable** - 任务接口
-- [ ] **同步机制** - `synchronized`, `Lock`, `ReentrantLock`
+- [ ] **显式锁** - `std.sync.Mutex`, `std.sync.RwLock`（非 synchronized）
+- [ ] **原子操作** - `AtomicInteger`, `AtomicBoolean`（编译为无锁指令）
 - [ ] **线程池** - `ExecutorService`, `ThreadPoolExecutor`
 - [ ] **并发集合** - `ConcurrentHashMap`, `CopyOnWriteArrayList`
-- [ ] **原子类** - `AtomicInteger`, `AtomicBoolean`
-- [ ] **CompletableFuture** - 异步编程
+
+**设计决策**：无 synchronized 关键字（需要运行时 monitor），使用显式锁或原子操作
 
 ---
 
@@ -189,7 +202,9 @@ EOL (Ethernos Object Language) 是一个编译为 Windows 可执行文件的静�
 ### 0.7.4.x 跨平台支持
 - [ ] **Linux 后端** - ELF 可执行文件
 - [ ] **macOS 支持** - Mach-O 格式
-- [ ] **JVM 后端** - 可选编译为 JVM 字节码
+- [ ] **交叉编译** - 从任意平台编译到目标平台
+
+**注意**：无 JVM 后端（与"原生代码"定位矛盾）
 
 ---
 
@@ -202,10 +217,14 @@ EOL (Ethernos Object Language) 是一个编译为 Windows 可执行文件的静�
 - [ ] **死代码消除** - 移除未使用代码
 - [ ] **SIMD 向量化** - 自动使用 SIMD 指令
 
-### 0.8.2.x 运行时优化
-- [ ] **JIT 编译** - 热点代码即时编译
-- [ ] **GC 可选** - 垃圾回收器（可选启用）
-- [ ] **AOT 编译** - 预编译为原生代码
+### 0.8.2.x 内存管理库
+- [ ] **Arena 分配器** - 快速批量分配/释放
+- [ ] **栈分配** - `Stack<T>` 自动作用域管理
+- [ ] **手动堆分配** - `heap.alloc()`, `heap.free()`
+- [ ] **内存池** - 对象池复用
+- [ ] **智能指针（可选）** - `UniquePtr<T>`, `SharedPtr<T>`（引用计数）
+
+**设计决策**：无 GC，提供显式内存管理工具，类似 Zig 的 `std.heap`
 
 ---
 
@@ -244,7 +263,7 @@ EOL (Ethernos Object Language) 是一个编译为 Windows 可执行文件的静�
 - [ ] **解构声明** - `val (x, y) = point;`
 - [ ] **数组解构** - `val [a, b, ...rest] = arr;`
 - [ ] **when 表达式** - 增强 switch，支持模式匹配
-  ```eol
+  ```
   when (obj) {
       is Point(int x, int y) -> println("$x, $y");
       is String s && s.length > 5 -> println("long string");
@@ -269,8 +288,8 @@ EOL (Ethernos Object Language) 是一个编译为 Windows 可执行文件的静�
 - [ ] **条件编译** - `#if DEBUG` 编译期条件
 - [ ] **编译期反射** - 在编译时获取类型信息
 
-### 7.7 内存与安全
-- [ ] **所有权系统 (可选)** - 编译期内存安全（可选启用）
+### 7.7 内存与安全（可选）
+- [ ] **所有权系统（可选）** - 编译期内存安全（可选启用）
 - [ ] **借用检查** - `&T`, `&mut T` 借用语义
 - [ ] **智能指针** - `Box<T>`, `Rc<T>`, `Arc<T>`
 - [ ] **生命周期** - 显式生命周期标注
@@ -299,9 +318,9 @@ EOL (Ethernos Object Language) 是一个编译为 Windows 可执行文件的静�
 - [ ] **空合并链** - `a ?? b ?? c ?? default`
 - [ ] **提前返回** - `return if condition;` 守卫语句
 
-### 7.11 与其他语言互操作
-- [ ] **FFI 外部函数** - `extern "C"` 调用 C 库
-- [ ] **JNI 兼容** - 与 Java 代码互操作
+### 7.11 FFI 互操作
+- [ ] **C 外部函数** - `extern "C"` 调用 C 库
+- [ ] **Windows API** - 直接调用 Win32 API
 - [ ] **WebAssembly** - 编译为 WASM 在浏览器运行
 - [ ] **Python 绑定** - 调用 Python 库
 
@@ -311,9 +330,18 @@ EOL (Ethernos Object Language) 是一个编译为 Windows 可执行文件的静�
 
 | 代际 | 版本 | 目标 |
 |------|------|------|
-| **G0** | 0.x.x.x | LLVM 后端 + Java 兼容（当前） |
-| **G1** | 1.x.x.x | 自托管编译器（用 EOL 写 EOL） |
-| **G2** | 2.x.x.x | 所有权系统（内存安全纪元） |
+| G0 | 0.x.x.x | LLVM 后端 + Java 兼容（当前） |
+| G1 | 1.x.x.x | 自托管编译器（用 EOL 写 EOL） |
+| G2 | 2.x.x.x | 所有权系统（内存安全纪元） |
+
+---
+
+## 核心设计原则
+
+1. **始终编译为原生代码** - 无 VM，无字节码，无解释器
+2. **无隐式控制流** - 无 GC，无隐式内存分配，无运行时异常处理
+3. **显式优于隐式** - 内存管理、错误处理、并发都需显式声明
+4. **Java 语法，C++ 性能** - 熟悉的语法，零开销抽象
 
 ---
 
