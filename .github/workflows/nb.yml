@@ -3,9 +3,8 @@ name: EOL Nightly Build
 on:
   schedule:
     # 每天 UTC 02:00 运行（北京时间 10:00）
-    # 如果只想每隔几天测试，可以改为 '0 2 */3 * *'（每3天）
     - cron: '0 2 * * *'
-  workflow_dispatch:  # 手动触发
+  workflow_dispatch:
     inputs:
       skip_tests:
         description: 'Skip cargo test (for emergency build)'
@@ -14,18 +13,19 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-A warnings"  # 允许所有警告，灵魂保留
 
 jobs:
   build-and-release:
     runs-on: windows-latest
     permissions:
-      contents: write  # 创建 release 所需权限
+      contents: write
     
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0  # 获取完整历史以读取 tag
+        fetch-depth: 0
 
     - name: Setup Rust toolchain
       uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -39,7 +39,6 @@ jobs:
       run: |
         $ErrorActionPreference = "Stop"
         
-        # 获取最新 tag，如果没有则使用 v0.0.0+commit
         $tag = git describe --tags --abbrev=0 2>$null
         if (-not $tag) {
           $shortSha = $env:GITHUB_SHA.Substring(0,7)
@@ -49,10 +48,7 @@ jobs:
           Write-Host "Found tag: $tag"
         }
         
-        # 获取日期 YYYYMMDD
         $date = Get-Date -Format "yyyyMMdd"
-        
-        # 构建基础名称
         $baseName = "eol-$tag-build$date"
         
         "TAG=$tag" >> $env:GITHUB_OUTPUT
@@ -67,6 +63,7 @@ jobs:
       run: cargo build --release --verbose
 
     - name: Package artifacts
+      id: package
       shell: pwsh
       run: |
         $ErrorActionPreference = "Stop"
@@ -75,8 +72,8 @@ jobs:
         # 确定构建目录（优先 release）
         $buildDir = "target/release"
         if (-not (Test-Path "$buildDir/eolc.exe")) {
-          $buildDir = "target/debug"
-          Write-Host "Warning: Using debug build"
+          Write-Host "Error: Release build not found"
+          exit 1
         }
         
         Write-Host "Packaging from: $buildDir"
@@ -110,24 +107,34 @@ jobs:
         Write-Host "Created: $fullName"
         Write-Host "Created: $coreName"
         
-        # 设置输出供后续步骤使用
         "FULL_ZIP=$fullName" >> $env:GITHUB_OUTPUT
         "CORE_ZIP=$coreName" >> $env:GITHUB_OUTPUT
+
+    - name: Delete previous nightly tag (if exists)
+      shell: pwsh
+      run: |
+        git tag -d nightly-latest 2>$null
+        git push origin :refs/tags/nightly-latest 2>$null
+        Write-Host "Cleaned up old nightly tag"
 
     - name: Create Pre-Release
       uses: softprops/action-gh-release@v1
       with:
-        tag_name: nightly-${{ steps.version.outputs.DATE }}
+        tag_name: nightly-latest
         name: "EOL Nightly ${{ steps.version.outputs.TAG }} (${{ steps.version.outputs.DATE }})"
         body: |
-          自动构建的每日预发布版本
-          - Tag: ${{ steps.version.outputs.TAG }}
-          - Date: ${{ steps.version.outputs.DATE }}
-          - Commit: ${{ github.sha }}
+          **预发布版本** | Pre-release Build
+          
+          - 版本: `${{ steps.version.outputs.TAG }}`
+          - 日期: `${{ steps.version.outputs.DATE }}`
+          - 提交: `${{ github.sha }}`
           
           ## 文件说明
-          - `*-win86-64-mingw64-llvm21.zip`: 完整版（含 lib, mingw-minimal, llvm-minimal）
-          - `*-win86-64-core.zip`: 核心版（仅编译器可执行文件）
+          | 文件名 | 说明 |
+          |--------|------|
+          | `*-win86-64-mingw64-llvm21.zip` | **完整版**：含 lib, mingw-minimal, llvm-minimal 工具链 |
+          | `*-win86-64-core.zip` | **核心版**：仅 eolc.exe, eolll.exe, ir2exe.exe |
+          
         files: |
           eol-*.zip
         prerelease: true
