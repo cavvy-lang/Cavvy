@@ -42,3 +42,11 @@
 lib/** binary
 mingw-minimal/** binary
 llvm-minimal/** binary
+
+mingw-minimal/** linguist-vendored=true
+llvm-minimal/** linguist-vendored=true
+
+lib/** linguist-vendored=true
+
+*.rs linguist-language=Rust
+Cargo.toml linguist-language=Rust
