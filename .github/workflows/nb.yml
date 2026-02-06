@@ -1,0 +1,136 @@
+name: EOL Nightly Build
+
+on:
+  schedule:
+    # 每天 UTC 02:00 运行（北京时间 10:00）
+    # 如果只想每隔几天测试，可以改为 '0 2 */3 * *'（每3天）
+    - cron: '0 2 * * *'
+  workflow_dispatch:  # 手动触发
+    inputs:
+      skip_tests:
+        description: 'Skip cargo test (for emergency build)'
+        required: false
+        default: 'false'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    permissions:
+      contents: write  # 创建 release 所需权限
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # 获取完整历史以读取 tag
+
+    - name: Setup Rust toolchain
+      uses: actions-rust-lang/setup-rust-toolchain@v1
+      with:
+        toolchain: stable
+        target: x86_64-pc-windows-gnu
+
+    - name: Extract version and date
+      id: version
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = "Stop"
+        
+        # 获取最新 tag，如果没有则使用 v0.0.0+commit
+        $tag = git describe --tags --abbrev=0 2>$null
+        if (-not $tag) {
+          $shortSha = $env:GITHUB_SHA.Substring(0,7)
+          $tag = "v0.0.0+$shortSha"
+          Write-Host "No tags found, using: $tag"
+        } else {
+          Write-Host "Found tag: $tag"
+        }
+        
+        # 获取日期 YYYYMMDD
+        $date = Get-Date -Format "yyyyMMdd"
+        
+        # 构建基础名称
+        $baseName = "eol-$tag-build$date"
+        
+        "TAG=$tag" >> $env:GITHUB_OUTPUT
+        "DATE=$date" >> $env:GITHUB_OUTPUT
+        "BASENAME=$baseName" >> $env:GITHUB_OUTPUT
+
+    - name: Run cargo test
+      if: github.event.inputs.skip_tests != 'true'
+      run: cargo test --release --verbose
+
+    - name: Build Release
+      run: cargo build --release --verbose
+
+    - name: Package artifacts
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = "Stop"
+        $baseName = "${{ steps.version.outputs.BASENAME }}"
+        
+        # 确定构建目录（优先 release）
+        $buildDir = "target/release"
+        if (-not (Test-Path "$buildDir/eolc.exe")) {
+          $buildDir = "target/debug"
+          Write-Host "Warning: Using debug build"
+        }
+        
+        Write-Host "Packaging from: $buildDir"
+        
+        # 创建临时目录结构
+        New-Item -ItemType Directory -Force -Path "packaging/full/lib"
+        New-Item -ItemType Directory -Force -Path "packaging/full/mingw-minimal"
+        New-Item -ItemType Directory -Force -Path "packaging/full/llvm-minimal"
+        New-Item -ItemType Directory -Force -Path "packaging/core"
+        
+        # 复制完整版内容
+        Copy-Item -Path "lib/*" -Destination "packaging/full/lib/" -Recurse -Force
+        Copy-Item -Path "mingw-minimal/*" -Destination "packaging/full/mingw-minimal/" -Recurse -Force
+        Copy-Item -Path "llvm-minimal/*" -Destination "packaging/full/llvm-minimal/" -Recurse -Force
+        Copy-Item -Path "$buildDir/eolc.exe" -Destination "packaging/full/" -Force
+        Copy-Item -Path "$buildDir/eolll.exe" -Destination "packaging/full/" -Force
+        Copy-Item -Path "$buildDir/ir2exe.exe" -Destination "packaging/full/" -Force
+        
+        # 复制核心版内容（仅 exe）
+        Copy-Item -Path "$buildDir/eolc.exe" -Destination "packaging/core/" -Force
+        Copy-Item -Path "$buildDir/eolll.exe" -Destination "packaging/core/" -Force
+        Copy-Item -Path "$buildDir/ir2exe.exe" -Destination "packaging/core/" -Force
+        
+        # 创建 zip 文件
+        $fullName = "${baseName}-win86-64-mingw64-llvm21.zip"
+        $coreName = "${baseName}-win86-64-core.zip"
+        
+        Compress-Archive -Path "packaging/full/*" -DestinationPath $fullName -Force
+        Compress-Archive -Path "packaging/core/*" -DestinationPath $coreName -Force
+        
+        Write-Host "Created: $fullName"
+        Write-Host "Created: $coreName"
+        
+        # 设置输出供后续步骤使用
+        "FULL_ZIP=$fullName" >> $env:GITHUB_OUTPUT
+        "CORE_ZIP=$coreName" >> $env:GITHUB_OUTPUT
+
+    - name: Create Pre-Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: nightly-${{ steps.version.outputs.DATE }}
+        name: "EOL Nightly ${{ steps.version.outputs.TAG }} (${{ steps.version.outputs.DATE }})"
+        body: |
+          自动构建的每日预发布版本
+          - Tag: ${{ steps.version.outputs.TAG }}
+          - Date: ${{ steps.version.outputs.DATE }}
+          - Commit: ${{ github.sha }}
+          
+          ## 文件说明
+          - `*-win86-64-mingw64-llvm21.zip`: 完整版（含 lib, mingw-minimal, llvm-minimal）
+          - `*-win86-64-core.zip`: 核心版（仅编译器可执行文件）
+        files: |
+          eol-*.zip
+        prerelease: true
+        fail_on_unmatched_files: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
