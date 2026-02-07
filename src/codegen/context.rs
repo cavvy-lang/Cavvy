@@ -17,7 +17,10 @@ pub struct IRGenerator {
     pub global_strings: HashMap<String, String>,
     pub global_counter: usize,
     pub current_function: String,
+    pub current_class: String,
+    pub current_return_type: String,   // 当前函数的返回类型
     pub var_types: HashMap<String, String>,
+    pub var_class_map: HashMap<String, String>,
     pub loop_stack: Vec<LoopContext>,  // 循环上下文栈
 }
 
@@ -31,7 +34,10 @@ impl IRGenerator {
             global_strings: HashMap::new(),
             global_counter: 0,
             current_function: String::new(),
+            current_class: String::new(),
+            current_return_type: String::new(),
             var_types: HashMap::new(),
+            var_class_map: HashMap::new(),
             loop_stack: Vec::new(),
         }
     }

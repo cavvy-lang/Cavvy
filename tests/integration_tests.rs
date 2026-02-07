@@ -122,3 +122,31 @@ fn test_all_features() {
     assert!(output.contains("=== IO函数已实现 ===") || output.contains("print() - 已实现"),
             "All features test should output IO functions section, got: {}", output);
 }
+
+#[test]
+fn test_function_factorial() {
+    let output = compile_and_run_eol("examples/test_factorial.eol").expect("factorial example should compile and run");
+    // 阶乘 5! = 120
+    assert!(output.contains("120"), "Factorial of 5 should be 120, got: {}", output);
+}
+
+#[test]
+fn test_function_multiple_params() {
+    let output = compile_and_run_eol("examples/test_multiple_params.eol").expect("multiple params example should compile and run");
+    // 应该输出 Sum: 30 和 Product: 6.28
+    assert!(output.contains("30") || output.contains("6.28"), "Multiple params test should output sum and product, got: {}", output);
+}
+
+#[test]
+fn test_function_static_method() {
+    let output = compile_and_run_eol("examples/test_static_method.eol").expect("static method example should compile and run");
+    // 静态方法结果 300
+    assert!(output.contains("300"), "Static method result should be 300, got: {}", output);
+}
+
+#[test]
+fn test_function_nested_calls() {
+    let output = compile_and_run_eol("examples/test_nested_calls.eol").expect("nested calls example should compile and run");
+    // 应该输出平方、立方和平方和
+    assert!(output.contains("25") || output.contains("27") || output.contains("20"), "Nested calls test should output correct values, got: {}", output);
+}

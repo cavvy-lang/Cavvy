@@ -36,6 +36,8 @@ impl IRGenerator {
             self.emit_raw("; C entry point");
             self.emit_raw(&format!("define i32 @main() {{"));
             self.emit_raw("entry:");
+            // 添加这行：强制设置 UTF-8 代码页
+            self.emit_raw("  call void @SetConsoleOutputCP(i32 65001)");
             self.emit_raw(&format!("  call void @{}.{:}()", class_name, "main"));
             self.emit_raw("  ret i32 0");
             self.emit_raw("}");
@@ -78,6 +80,8 @@ impl IRGenerator {
     fn generate_method(&mut self, class_name: &str, method: &MethodDecl) -> EolResult<()> {
         let fn_name = format!("{}.{}", class_name, method.name);
         self.current_function = fn_name.clone();
+        self.current_class = class_name.to_string();
+        self.current_return_type = self.type_to_llvm(&method.return_type);
 
         // 重置临时变量计数器
         self.temp_counter = 0;
@@ -87,7 +91,7 @@ impl IRGenerator {
         self.loop_stack.clear();
 
         // 函数签名
-        let ret_type = self.type_to_llvm(&method.return_type);
+        let ret_type = self.current_return_type.clone();
         let params: Vec<String> = method.params.iter()
             .map(|p| format!("{} %{}.{}", self.type_to_llvm(&p.param_type), class_name, p.name))
             .collect();

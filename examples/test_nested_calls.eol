@@ -1,0 +1,26 @@
+public class NestedCalls {
+    public long square(long x) {
+        return x * x;
+    }
+    
+    public long cube(long x) {
+        return x * square(x);
+    }
+    
+    public long sumOfSquares(long a, long b) {
+        return square(a) + square(b);
+    }
+    
+    public static void main() {
+        NestedCalls nc = new NestedCalls();
+        long s = nc.square(5);
+        long c = nc.cube(3);
+        long sos = nc.sumOfSquares(2, 4);
+        print("Square of 5: ");
+        println(s);
+        print("Cube of 3: ");
+        println(c);
+        print("Sum of squares 2 and 4: ");
+        println(sos);
+    }
+}

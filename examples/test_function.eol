@@ -1,0 +1,8 @@
+public class TestFunction {
+    public long test(long a, long b) {
+        return a + b;
+    }
+    public static void main() {
+        print(test(1, 2));
+    }
+}

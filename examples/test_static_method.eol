@@ -1,0 +1,11 @@
+public class StaticMethod {
+    public static long staticAdd(long a, long b) {
+        return a + b;
+    }
+    
+    public static void main() {
+        long result = staticAdd(100, 200);
+        print("Static method result: ");
+        println(result);
+    }
+}

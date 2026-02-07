@@ -10,6 +10,8 @@ impl IRGenerator {
         
         // 声明外部函数 (printf 和标准C库函数)
         self.emit_raw("declare i32 @printf(i8*, ...)");
+        self.emit_raw("declare i32 @scanf(i8*, ...)");
+        self.emit_raw("declare void @SetConsoleOutputCP(i32)");
         self.emit_raw("declare i64 @strlen(i8*)");
         self.emit_raw("declare i8* @malloc(i64)");
         self.emit_raw("declare void @llvm.memcpy.p0i8.p0i8.i64(i8* noalias nocapture writeonly, i8* noalias nocapture readonly, i64, i1 immarg)");

@@ -488,12 +488,11 @@ pub fn parse_primary(parser: &mut Parser) -> EolResult<Expr> {
 fn parse_new_expression(parser: &mut Parser, loc: crate::error::SourceLocation) -> EolResult<Expr> {
     // 首先尝试解析类型
     if is_type_token(parser) {
-        // 解析基本类型（不包含数组维度）
+        // 解析基本类型或类名（不包含数组维度）
         let element_type = parse_base_type(parser)?;
-        
-        // 检查是否是数组创建: new Type[size]
+
+        // 如果接下来是 '[' 则为数组创建: new Type[size]
         if parser.match_token(&crate::lexer::Token::LBracket) {
-            // 解析数组大小表达式
             let size = parse_expression(parser)?;
             parser.consume(&crate::lexer::Token::RBracket, "Expected ']' after array size")?;
             return Ok(Expr::ArrayCreation(ArrayCreationExpr {
@@ -502,10 +501,24 @@ fn parse_new_expression(parser: &mut Parser, loc: crate::error::SourceLocation) 
                 loc,
             }));
         }
-        
-        // 不是数组，回退作为普通类创建（但类型已经消耗了，需要特殊处理）
-        // 这里 Type 不能作为类名，所以我们需要报错
-        return Err(parser.error("Expected '[' after type in array creation, or use 'new ClassName()' for object creation"));
+
+        // 如果接下来是 '(' 则为对象创建: new ClassName(...)
+        if parser.match_token(&crate::lexer::Token::LParen) {
+            // element_type should be Type::Object(name)
+            match element_type {
+                crate::types::Type::Object(name) => {
+                    let args = parse_arguments(parser)?;
+                    parser.consume(&crate::lexer::Token::RParen, "Expected ')' after arguments")?;
+                    return Ok(Expr::New(NewExpr { class_name: name, args, loc }));
+                }
+                _ => {
+                    return Err(parser.error("Only object types can be constructed with 'new Type()'"));
+                }
+            }
+        }
+
+        // 否则既不是数组也不是对象构造，报错
+        return Err(parser.error("Expected '[' for array creation or '(' for object creation after type"));
     }
     
     // 普通类创建: new ClassName()

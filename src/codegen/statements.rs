@@ -24,6 +24,10 @@ impl IRGenerator {
                 self.emit_line(&format!("  %{} = alloca {}", var.name, var_type));
                 // 存储变量类型信息
                 self.var_types.insert(var.name.clone(), var_type.clone());
+                // 如果变量类型是对象，记录其类名以便后续方法调用解析
+                if let Type::Object(class_name) = &var.var_type {
+                    self.var_class_map.insert(var.name.clone(), class_name.clone());
+                }
 
                 if let Some(init) = var.initializer.as_ref() {
                     let value = self.generate_expression(init)?;
@@ -73,7 +77,49 @@ impl IRGenerator {
             Stmt::Return(expr) => {
                 if let Some(e) = expr.as_ref() {
                     let value = self.generate_expression(e)?;
-                    self.emit_line(&format!("  ret {}", value));
+                    let (value_type, val) = self.parse_typed_value(&value);
+                    let ret_type = self.current_return_type.clone();
+                    
+                    // 如果返回类型是 void，但表达式非空，这是错误（但由语义分析处理）
+                    if ret_type == "void" {
+                        self.emit_line("  ret void");
+                    } else if value_type != ret_type {
+                        // 需要类型转换
+                        let temp = self.new_temp();
+                        
+                        // 浮点类型转换
+                        if value_type == "double" && ret_type == "float" {
+                            // double -> float 转换
+                            self.emit_line(&format!("  {} = fptrunc double {} to float", temp, val));
+                            self.emit_line(&format!("  ret float {}", temp));
+                        } else if value_type == "float" && ret_type == "double" {
+                            // float -> double 转换
+                            self.emit_line(&format!("  {} = fpext float {} to double", temp, val));
+                            self.emit_line(&format!("  ret double {}", temp));
+                        }
+                        // 整数类型转换
+                        else if value_type.starts_with("i") && ret_type.starts_with("i") {
+                            let from_bits: u32 = value_type.trim_start_matches('i').parse().unwrap_or(64);
+                            let to_bits: u32 = ret_type.trim_start_matches('i').parse().unwrap_or(64);
+                            
+                            if to_bits > from_bits {
+                                // 符号扩展
+                                self.emit_line(&format!("  {} = sext {} {} to {}",
+                                    temp, value_type, val, ret_type));
+                            } else {
+                                // 截断
+                                self.emit_line(&format!("  {} = trunc {} {} to {}",
+                                    temp, value_type, val, ret_type));
+                            }
+                            self.emit_line(&format!("  ret {} {}", ret_type, temp));
+                        } else {
+                            // 类型不兼容，直接返回（可能会出错）
+                            self.emit_line(&format!("  ret {}", value));
+                        }
+                    } else {
+                        // 类型匹配，直接返回
+                        self.emit_line(&format!("  ret {}", value));
+                    }
                 } else {
                     self.emit_line("  ret void");
                 }
@@ -117,7 +163,9 @@ impl IRGenerator {
         let cond_reg = self.new_temp();
         self.emit_line(&format!("  {} = icmp ne i1 {}, 0", cond_reg, cond_val));
 
-        if if_stmt.else_branch.is_some() {
+        let has_else = if_stmt.else_branch.is_some();
+
+        if has_else {
             self.emit_line(&format!("  br i1 {}, label %{}, label %{}",
                 cond_reg, then_label, else_label));
         } else {
@@ -127,18 +175,71 @@ impl IRGenerator {
 
         // then块
         self.emit_line(&format!("{}:", then_label));
+        let then_output_before = self.output.len();
         self.generate_statement(&if_stmt.then_branch)?;
-        self.emit_line(&format!("  br label %{}", merge_label));
+        let then_output_after = self.output.len();
+        
+        // 检查 then 块是否以终止指令结束
+        let mut then_terminates = false;
+        if then_output_after > then_output_before {
+            let then_output = &self.output[then_output_before..then_output_after];
+            let then_lines: Vec<&str> = then_output.trim().lines().collect();
+            if let Some(last_line) = then_lines.last() {
+                let trimmed = last_line.trim();
+                if trimmed.starts_with("ret") || trimmed.starts_with("br") || trimmed.starts_with("switch") || trimmed.starts_with("unreachable") {
+                    then_terminates = true;
+                } else {
+                    self.emit_line(&format!("  br label %{}", merge_label));
+                }
+            } else {
+                self.emit_line(&format!("  br label %{}", merge_label));
+            }
+        } else {
+            self.emit_line(&format!("  br label %{}", merge_label));
+        }
 
         // else块
+        let mut else_terminates = false;
         if let Some(else_branch) = if_stmt.else_branch.as_ref() {
             self.emit_line(&format!("{}:", else_label));
+            let else_output_before = self.output.len();
             self.generate_statement(else_branch)?;
-            self.emit_line(&format!("  br label %{}", merge_label));
+            let else_output_after = self.output.len();
+            
+            // 检查 else 块是否以终止指令结束
+            if else_output_after > else_output_before {
+                let else_output = &self.output[else_output_before..else_output_after];
+                let else_lines: Vec<&str> = else_output.trim().lines().collect();
+                if let Some(last_line) = else_lines.last() {
+                    let trimmed = last_line.trim();
+                    if trimmed.starts_with("ret") || trimmed.starts_with("br") || trimmed.starts_with("switch") || trimmed.starts_with("unreachable") {
+                        else_terminates = true;
+                    } else {
+                        self.emit_line(&format!("  br label %{}", merge_label));
+                    }
+                } else {
+                    self.emit_line(&format!("  br label %{}", merge_label));
+                }
+            } else {
+                self.emit_line(&format!("  br label %{}", merge_label));
+            }
         }
 
         // merge块
         self.emit_line(&format!("{}:", merge_label));
+
+        // 只有当两个分支都以终止指令结束时，merge 才不可达
+        // 特殊情况：如果没有 else，false 分支直接 fall-through 到 merge，所以 merge 一定可达
+        let merge_is_unreachable = if has_else {
+            then_terminates && else_terminates
+        } else {
+            false  // 无 else 时，merge 总是可达的
+        };
+
+        if merge_is_unreachable {
+            self.emit_line("  unreachable");
+        }
+        // 否则，后续代码会在这个块中继续生成（不要加 unreachable）
 
         Ok(())
     }

@@ -1,0 +1,18 @@
+public class MultipleParams {
+    public static long add(long a, long b) {
+        return a + b;
+    }
+    
+    public static double multiply(double x, double y) {
+        return x * y;
+    }
+    
+    public static void main() {
+        long sum = add(10, 20);
+        double product = multiply(3.14, 2.0);
+        print("Sum: ");
+        println(sum);
+        print("Product: ");
+        println(product);
+    }
+}

@@ -44,12 +44,27 @@ pub fn parse_statement(parser: &mut Parser) -> EolResult<Stmt> {
             Ok(Stmt::Continue)
         }
         _ => {
-            // 检查是否是变量声明（只能是原始类型关键字，不能是任意标识符）
-            if is_primitive_type_token(parser) || parser.check(&crate::lexer::Token::Final) {
-                parse_var_decl(parser)
-            } else {
-                parse_expression_statement(parser)
+            // 检查是否是变量声明：支持任意类型标识（类名或原始类型），
+            // 但要确保接下来的 token 是变量名（Identifier），以避免将函数调用等标识误判为类型。
+            if parser.check(&crate::lexer::Token::Final) {
+                return parse_var_decl(parser);
             }
+
+            if super::types::is_type_token(parser) {
+                // 尝试解析类型（不消耗最终位置）以判断是否紧跟变量名。
+                let checkpoint = parser.pos;
+                if super::types::parse_type(parser).is_ok() {
+                    // 如果解析类型后当前token是标识符，则认为是变量声明
+                    if let crate::lexer::Token::Identifier(_) = parser.current_token() {
+                        parser.pos = checkpoint; // 回退到类型前位置
+                        return parse_var_decl(parser);
+                    }
+                }
+                // 回退到初始位置，继续解析为表达式语句
+                parser.pos = checkpoint;
+            }
+
+            parse_expression_statement(parser)
         }
     }
 }

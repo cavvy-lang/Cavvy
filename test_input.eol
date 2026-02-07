@@ -1,0 +1,17 @@
+public class TestInput {
+    public static void main() {
+        print("请输入一个整数:");
+        int a = readInt();
+        print("请输入另一个整数:");
+        int b = readInt();
+        print("两个整数的和是: ");
+        println(a + b);
+
+        print("请输入一个浮点数:");
+        float x = readFloat();
+        print("请输入另一个浮点数:");
+        float y = readFloat();
+        print("两个浮点数的积是: ");
+        println(x * y);
+    }
+}

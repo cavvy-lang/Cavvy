@@ -354,14 +354,89 @@ impl SemanticAnalyzer {
                 }
             }
             Expr::Call(call) => {
-                // 特殊处理 print 函数
+                // 特殊处理内置函数
                 if let Expr::Identifier(name) = call.callee.as_ref() {
-                    if name == "print" {
-                        return Ok(Type::Void);
+                    // 在这里添加内置输入函数的类型推断
+                    match name.as_str() {
+                        "print" | "println" => return Ok(Type::Void),
+                        "readInt" => return Ok(Type::Int32),
+                        "readLong" => return Ok(Type::Int64),
+                        "readFloat" => return Ok(Type::Float32),
+                        "readDouble" => return Ok(Type::Float64),
+                        "readLine" => return Ok(Type::String),
+                        "readChar" => return Ok(Type::Char),
+                        "readBool" => return Ok(Type::Bool),
+                        _ => {}
+                    }
+
+                    // 尝试查找当前类的方法（无对象调用）
+                    if let Some(current_class) = &self.current_class {
+                        if let Some(method_info) = self.type_registry.get_method(current_class, name) {
+                            if call.args.len() != method_info.params.len() {
+                                return Err(semantic_error(
+                                    call.loc.line,
+                                    call.loc.column,
+                                    format!("Method '{}' expects {} arguments, got {}",
+                                        name, method_info.params.len(), call.args.len())
+                                ));
+                            }
+
+                            for (i, (arg, param)) in call.args.iter().zip(method_info.params.iter()).enumerate() {
+                                let arg_type = self.infer_expr_type(arg)?;
+                                if !self.types_compatible(&arg_type, &param.param_type) {
+                                    return Err(semantic_error(
+                                        call.loc.line,
+                                        call.loc.column,
+                                        format!("Argument {} type mismatch: expected {}, got {}",
+                                            i + 1, param.param_type, arg_type)
+                                    ));
+                                }
+                            }
+
+                            return Ok(method_info.return_type.clone());
+                        }
                     }
                 }
-                
-                // TODO: 检查其他函数调用
+
+                // 支持成员调用: obj.method(...)
+                if let Expr::MemberAccess(member) = call.callee.as_ref() {
+                    // 推断对象类型
+                    let obj_type = self.infer_expr_type(&member.object)?;
+                    if let Type::Object(class_name) = obj_type {
+                        if let Some(method_info) = self.type_registry.get_method(&class_name, &member.member) {
+                            if call.args.len() != method_info.params.len() {
+                                return Err(semantic_error(
+                                    call.loc.line,
+                                    call.loc.column,
+                                    format!("Method '{}' expects {} arguments, got {}",
+                                        member.member, method_info.params.len(), call.args.len())
+                                ));
+                            }
+
+                            for (i, (arg, param)) in call.args.iter().zip(method_info.params.iter()).enumerate() {
+                                let arg_type = self.infer_expr_type(arg)?;
+                                if !self.types_compatible(&arg_type, &param.param_type) {
+                                    return Err(semantic_error(
+                                        call.loc.line,
+                                        call.loc.column,
+                                        format!("Argument {} type mismatch: expected {}, got {}",
+                                            i + 1, param.param_type, arg_type)
+                                    ));
+                                }
+                            }
+
+                            return Ok(method_info.return_type.clone());
+                        } else {
+                            return Err(semantic_error(
+                                call.loc.line,
+                                call.loc.column,
+                                format!("Unknown method '{}' for class {}", member.member, class_name)
+                            ));
+                        }
+                    }
+                }
+
+                // 如果找不到任何合适的方法，返回 Void（保持向后兼容）
                 Ok(Type::Void)
             }
             Expr::MemberAccess(_) => {
