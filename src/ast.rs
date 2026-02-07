@@ -140,6 +140,8 @@ pub enum Expr {
     New(NewExpr),
     Assignment(AssignmentExpr),
     Cast(CastExpr),
+    ArrayCreation(ArrayCreationExpr),
+    ArrayAccess(ArrayAccessExpr),
 }
 
 #[derive(Debug, Clone)]
@@ -246,6 +248,22 @@ pub enum AssignOp {
 pub struct CastExpr {
     pub expr: Box<Expr>,
     pub target_type: Type,
+    pub loc: SourceLocation,
+}
+
+/// 数组创建表达式: new Type[size]
+#[derive(Debug, Clone)]
+pub struct ArrayCreationExpr {
+    pub element_type: Type,
+    pub size: Box<Expr>,
+    pub loc: SourceLocation,
+}
+
+/// 数组访问表达式: arr[index]
+#[derive(Debug, Clone)]
+pub struct ArrayAccessExpr {
+    pub array: Box<Expr>,
+    pub index: Box<Expr>,
     pub loc: SourceLocation,
 }
 

@@ -2,6 +2,7 @@
 
 use crate::ast::*;
 use crate::error::EolResult;
+use crate::types::Type;
 use super::Parser;
 use super::types::{parse_type, is_type_token};
 
@@ -397,10 +398,14 @@ pub fn parse_postfix(parser: &mut Parser) -> EolResult<Expr> {
                 loc,
             });
         } else if parser.match_token(&crate::lexer::Token::LBracket) {
-            // 数组索引
-            let _index = parse_expression(parser)?;
+            // 数组索引访问: arr[index]
+            let index = parse_expression(parser)?;
             parser.consume(&crate::lexer::Token::RBracket, "Expected ']' after index")?;
-            // TODO: 数组索引作为特殊的成员访问
+            expr = Expr::ArrayAccess(ArrayAccessExpr {
+                array: Box::new(expr),
+                index: Box::new(index),
+                loc,
+            });
         } else {
             break;
         }
@@ -467,15 +472,7 @@ pub fn parse_primary(parser: &mut Parser) -> EolResult<Expr> {
         }
         crate::lexer::Token::New => {
             parser.advance();
-            let class_name = parser.consume_identifier("Expected class name after 'new'")?;
-            parser.consume(&crate::lexer::Token::LParen, "Expected '(' after class name")?;
-            let args = parse_arguments(parser)?;
-            parser.consume(&crate::lexer::Token::RParen, "Expected ')' after arguments")?;
-            Ok(Expr::New(NewExpr {
-                class_name,
-                args,
-                loc,
-            }))
+            parse_new_expression(parser, loc)
         }
         crate::lexer::Token::LParen => {
             parser.advance();
@@ -484,6 +481,61 @@ pub fn parse_primary(parser: &mut Parser) -> EolResult<Expr> {
             Ok(expr)
         }
         _ => Err(parser.error("Expected expression")),
+    }
+}
+
+/// 解析 new 表达式（支持类创建和数组创建）
+fn parse_new_expression(parser: &mut Parser, loc: crate::error::SourceLocation) -> EolResult<Expr> {
+    // 首先尝试解析类型
+    if is_type_token(parser) {
+        // 解析基本类型（不包含数组维度）
+        let element_type = parse_base_type(parser)?;
+        
+        // 检查是否是数组创建: new Type[size]
+        if parser.match_token(&crate::lexer::Token::LBracket) {
+            // 解析数组大小表达式
+            let size = parse_expression(parser)?;
+            parser.consume(&crate::lexer::Token::RBracket, "Expected ']' after array size")?;
+            return Ok(Expr::ArrayCreation(ArrayCreationExpr {
+                element_type,
+                size: Box::new(size),
+                loc,
+            }));
+        }
+        
+        // 不是数组，回退作为普通类创建（但类型已经消耗了，需要特殊处理）
+        // 这里 Type 不能作为类名，所以我们需要报错
+        return Err(parser.error("Expected '[' after type in array creation, or use 'new ClassName()' for object creation"));
+    }
+    
+    // 普通类创建: new ClassName()
+    let class_name = parser.consume_identifier("Expected class name or type after 'new'")?;
+    parser.consume(&crate::lexer::Token::LParen, "Expected '(' after class name")?;
+    let args = parse_arguments(parser)?;
+    parser.consume(&crate::lexer::Token::RParen, "Expected ')' after arguments")?;
+    Ok(Expr::New(NewExpr {
+        class_name,
+        args,
+        loc,
+    }))
+}
+
+/// 解析基本类型（不包含数组维度）
+fn parse_base_type(parser: &mut Parser) -> EolResult<Type> {
+    match parser.current_token() {
+        crate::lexer::Token::Int => { parser.advance(); Ok(Type::Int32) }
+        crate::lexer::Token::Long => { parser.advance(); Ok(Type::Int64) }
+        crate::lexer::Token::Float => { parser.advance(); Ok(Type::Float32) }
+        crate::lexer::Token::Double => { parser.advance(); Ok(Type::Float64) }
+        crate::lexer::Token::Bool => { parser.advance(); Ok(Type::Bool) }
+        crate::lexer::Token::String => { parser.advance(); Ok(Type::String) }
+        crate::lexer::Token::Char => { parser.advance(); Ok(Type::Char) }
+        crate::lexer::Token::Identifier(name) => {
+            let name = name.clone();
+            parser.advance();
+            Ok(Type::Object(name))
+        }
+        _ => Err(parser.error("Expected type")),
     }
 }
 

@@ -1,6 +1,7 @@
 //! 表达式代码生成
 use crate::codegen::context::IRGenerator;
 use crate::ast::*;
+use crate::types::Type;
 use crate::error::{EolResult, codegen_error};
 
 impl IRGenerator {
@@ -23,6 +24,8 @@ impl IRGenerator {
             Expr::Cast(cast) => self.generate_cast_expression(cast),
             Expr::MemberAccess(member) => self.generate_member_access(member),
             Expr::New(new_expr) => self.generate_new_expression(new_expr),
+            Expr::ArrayCreation(arr) => self.generate_array_creation(arr),
+            Expr::ArrayAccess(arr) => self.generate_array_access(arr),
         }
     }
 
@@ -213,79 +216,68 @@ impl IRGenerator {
                     self.emit_line(&format!("  {} = srem {} {}, {}",
                         temp, promoted_type, promoted_left, promoted_right));
                     return Ok(format!("{} {}", promoted_type, temp));
-                } else if (left_type == "float" || left_type == "double") && (right_type == "float" || right_type == "double") {
-                    // 浮点数取模，需要类型提升
-                    let (promoted_type, promoted_left, promoted_right) = self.promote_float_operands(&left_type, &left_val, &right_type, &right_val);
-                    self.emit_line(&format!("  {} = frem {} {}, {}",
-                        temp, promoted_type, promoted_left, promoted_right));
-                    return Ok(format!("{} {}", promoted_type, temp));
                 } else {
                     return Err(codegen_error(format!("Unsupported modulo types: {} and {}", left_type, right_type)));
                 }
             }
             BinaryOp::Eq => {
-                if left_type.starts_with("i") && right_type.starts_with("i") {
-                    // 整数相等比较，需要类型提升
+                if left_type == "i8*" && right_type == "i8*" {
+                    // 字符串比较
+                    self.emit_line(&format!("  {} = icmp eq i8* {}, {}", temp, left_val, right_val));
+                    return Ok(format!("i1 {}", temp));
+                } else if left_type.starts_with("i") && right_type.starts_with("i") {
                     let (promoted_type, promoted_left, promoted_right) = self.promote_integer_operands(&left_type, &left_val, &right_type, &right_val);
-                    self.emit_line(&format!("  {} = icmp eq {} {}, {}",
-                        temp, promoted_type, promoted_left, promoted_right));
+                    self.emit_line(&format!("  {} = icmp eq {} {}, {}", temp, promoted_type, promoted_left, promoted_right));
+                    return Ok(format!("i1 {}", temp));
                 } else if (left_type == "float" || left_type == "double") && (right_type == "float" || right_type == "double") {
-                    // 浮点数相等比较，需要类型提升
                     let (promoted_type, promoted_left, promoted_right) = self.promote_float_operands(&left_type, &left_val, &right_type, &right_val);
-                    self.emit_line(&format!("  {} = fcmp oeq {} {}, {}",
-                        temp, promoted_type, promoted_left, promoted_right));
+                    self.emit_line(&format!("  {} = fcmp oeq {} {}, {}", temp, promoted_type, promoted_left, promoted_right));
+                    return Ok(format!("i1 {}", temp));
                 } else {
                     return Err(codegen_error(format!("Unsupported equality comparison types: {} and {}", left_type, right_type)));
                 }
-                return Ok(format!("i1 {}", temp));
             }
             BinaryOp::Ne => {
-                if left_type.starts_with("i") && right_type.starts_with("i") {
-                    // 整数不相等比较，需要类型提升
+                if left_type == "i8*" && right_type == "i8*" {
+                    self.emit_line(&format!("  {} = icmp ne i8* {}, {}", temp, left_val, right_val));
+                    return Ok(format!("i1 {}", temp));
+                } else if left_type.starts_with("i") && right_type.starts_with("i") {
                     let (promoted_type, promoted_left, promoted_right) = self.promote_integer_operands(&left_type, &left_val, &right_type, &right_val);
-                    self.emit_line(&format!("  {} = icmp ne {} {}, {}",
-                        temp, promoted_type, promoted_left, promoted_right));
+                    self.emit_line(&format!("  {} = icmp ne {} {}, {}", temp, promoted_type, promoted_left, promoted_right));
+                    return Ok(format!("i1 {}", temp));
                 } else if (left_type == "float" || left_type == "double") && (right_type == "float" || right_type == "double") {
-                    // 浮点数不相等比较，需要类型提升
                     let (promoted_type, promoted_left, promoted_right) = self.promote_float_operands(&left_type, &left_val, &right_type, &right_val);
-                    self.emit_line(&format!("  {} = fcmp one {} {}, {}",
-                        temp, promoted_type, promoted_left, promoted_right));
+                    self.emit_line(&format!("  {} = fcmp one {} {}, {}", temp, promoted_type, promoted_left, promoted_right));
+                    return Ok(format!("i1 {}", temp));
                 } else {
                     return Err(codegen_error(format!("Unsupported inequality comparison types: {} and {}", left_type, right_type)));
                 }
-                return Ok(format!("i1 {}", temp));
             }
             BinaryOp::Lt => {
                 if left_type.starts_with("i") && right_type.starts_with("i") {
-                    // 整数小于比较，需要类型提升
                     let (promoted_type, promoted_left, promoted_right) = self.promote_integer_operands(&left_type, &left_val, &right_type, &right_val);
-                    self.emit_line(&format!("  {} = icmp slt {} {}, {}",
-                        temp, promoted_type, promoted_left, promoted_right));
+                    self.emit_line(&format!("  {} = icmp slt {} {}, {}", temp, promoted_type, promoted_left, promoted_right));
+                    return Ok(format!("i1 {}", temp));
                 } else if (left_type == "float" || left_type == "double") && (right_type == "float" || right_type == "double") {
-                    // 浮点数小于比较，需要类型提升
                     let (promoted_type, promoted_left, promoted_right) = self.promote_float_operands(&left_type, &left_val, &right_type, &right_val);
-                    self.emit_line(&format!("  {} = fcmp olt {} {}, {}",
-                        temp, promoted_type, promoted_left, promoted_right));
+                    self.emit_line(&format!("  {} = fcmp olt {} {}, {}", temp, promoted_type, promoted_left, promoted_right));
+                    return Ok(format!("i1 {}", temp));
                 } else {
                     return Err(codegen_error(format!("Unsupported less-than comparison types: {} and {}", left_type, right_type)));
                 }
-                return Ok(format!("i1 {}", temp));
             }
             BinaryOp::Le => {
                 if left_type.starts_with("i") && right_type.starts_with("i") {
-                    // 整数小于等于比较，需要类型提升
                     let (promoted_type, promoted_left, promoted_right) = self.promote_integer_operands(&left_type, &left_val, &right_type, &right_val);
-                    self.emit_line(&format!("  {} = icmp sle {} {}, {}",
-                        temp, promoted_type, promoted_left, promoted_right));
+                    self.emit_line(&format!("  {} = icmp sle {} {}, {}", temp, promoted_type, promoted_left, promoted_right));
+                    return Ok(format!("i1 {}", temp));
                 } else if (left_type == "float" || left_type == "double") && (right_type == "float" || right_type == "double") {
-                    // 浮点数小于等于比较，需要类型提升
                     let (promoted_type, promoted_left, promoted_right) = self.promote_float_operands(&left_type, &left_val, &right_type, &right_val);
-                    self.emit_line(&format!("  {} = fcmp ole {} {}, {}",
-                        temp, promoted_type, promoted_left, promoted_right));
+                    self.emit_line(&format!("  {} = fcmp ole {} {}, {}", temp, promoted_type, promoted_left, promoted_right));
+                    return Ok(format!("i1 {}", temp));
                 } else {
-                    return Err(codegen_error(format!("Unsupported less-than-or-equal comparison types: {} and {}", left_type, right_type)));
+                    return Err(codegen_error(format!("Unsupported less-or-equal comparison types: {} and {}", left_type, right_type)));
                 }
-                return Ok(format!("i1 {}", temp));
             }
             BinaryOp::Gt => {
                 if left_type.starts_with("i") && right_type.starts_with("i") {
@@ -488,6 +480,15 @@ impl IRGenerator {
             if name == "println" {
                 return self.generate_print_call(&call.args, true);
             }
+            if name == "readInt" {
+                return self.generate_read_int_call(&call.args);
+            }
+            if name == "readFloat" {
+                return self.generate_read_float_call(&call.args);
+            }
+            if name == "readLine" {
+                return self.generate_read_line_call(&call.args);
+            }
         }
         
         // 处理普通函数调用
@@ -508,7 +509,7 @@ impl IRGenerator {
             .collect::<EolResult<Vec<_>>>()?;
         
         let temp = self.new_temp();
-        self.emit_line(&format!("  {} = call i64 @{}({})", 
+        self.emit_line(&format!("  {} = call i64 @{}({})",
             temp, fn_name, args.join(", ")));
         
         Ok(format!("i64 {}", temp))
@@ -649,6 +650,106 @@ impl IRGenerator {
         Ok("i64 0".to_string())
     }
 
+    /// 生成 readInt 调用代码
+    fn generate_read_int_call(&mut self, args: &[Expr]) -> EolResult<String> {
+        // readInt 应该没有参数
+        if !args.is_empty() {
+            return Err(codegen_error("readInt() takes no arguments".to_string()));
+        }
+        
+        // 为输入缓冲区分配空间
+        let buffer_size = 32; // 足够存储整数
+        let buffer_temp = self.new_temp();
+        self.emit_line(&format!("  {} = alloca [{} x i8], align 1", buffer_temp, buffer_size));
+        
+        // 获取缓冲区指针
+        let buffer_ptr = self.new_temp();
+        self.emit_line(&format!("  {} = getelementptr [{} x i8], [{} x i8]* {}, i64 0, i64 0",
+            buffer_ptr, buffer_size, buffer_size, buffer_temp));
+        
+        // 调用 scanf 读取整数
+        let fmt_str = "%ld";
+        let fmt_name = self.get_or_create_string_constant(fmt_str);
+        let fmt_len = fmt_str.len() + 1;
+        let fmt_ptr = self.new_temp();
+        self.emit_line(&format!("  {} = getelementptr [{} x i8], [{} x i8]* {}, i64 0, i64 0",
+            fmt_ptr, fmt_len, fmt_len, fmt_name));
+        
+        // 为整数结果分配空间
+        let int_temp = self.new_temp();
+        self.emit_line(&format!("  {} = alloca i64, align 8", int_temp));
+        
+        // 调用 scanf
+        self.emit_line(&format!("  call i32 (i8*, ...) @scanf(i8* {}, i64* {})",
+            fmt_ptr, int_temp));
+        
+        // 加载读取的整数值
+        let result_temp = self.new_temp();
+        self.emit_line(&format!("  {} = load i64, i64* {}, align 8", result_temp, int_temp));
+        
+        Ok(format!("i64 {}", result_temp))
+    }
+
+    /// 生成 readFloat 调用代码
+    fn generate_read_float_call(&mut self, args: &[Expr]) -> EolResult<String> {
+        // readFloat 应该没有参数
+        if !args.is_empty() {
+            return Err(codegen_error("readFloat() takes no arguments".to_string()));
+        }
+        
+        // 为浮点数结果分配空间
+        let float_temp = self.new_temp();
+        self.emit_line(&format!("  {} = alloca double, align 8", float_temp));
+        
+        // 调用 scanf 读取浮点数
+        let fmt_str = "%lf";
+        let fmt_name = self.get_or_create_string_constant(fmt_str);
+        let fmt_len = fmt_str.len() + 1;
+        let fmt_ptr = self.new_temp();
+        self.emit_line(&format!("  {} = getelementptr [{} x i8], [{} x i8]* {}, i64 0, i64 0",
+            fmt_ptr, fmt_len, fmt_len, fmt_name));
+        
+        // 调用 scanf
+        self.emit_line(&format!("  call i32 (i8*, ...) @scanf(i8* {}, double* {})",
+            fmt_ptr, float_temp));
+        
+        // 加载读取的浮点数值
+        let result_temp = self.new_temp();
+        self.emit_line(&format!("  {} = load double, double* {}, align 8", result_temp, float_temp));
+        
+        Ok(format!("double {}", result_temp))
+    }
+
+    /// 生成 readLine 调用代码
+    fn generate_read_line_call(&mut self, args: &[Expr]) -> EolResult<String> {
+        // readLine 应该没有参数
+        if !args.is_empty() {
+            return Err(codegen_error("readLine() takes no arguments".to_string()));
+        }
+        
+        // 为输入缓冲区分配空间（假设最大256字符）
+        let buffer_size = 256;
+        let buffer_temp = self.new_temp();
+        self.emit_line(&format!("  {} = alloca [{} x i8], align 1", buffer_temp, buffer_size));
+        
+        // 获取缓冲区指针
+        let buffer_ptr = self.new_temp();
+        self.emit_line(&format!("  {} = getelementptr [{} x i8], [{} x i8]* {}, i64 0, i64 0",
+            buffer_ptr, buffer_size, buffer_size, buffer_temp));
+        
+        // 调用 fgets 读取一行
+        let stdin_name = self.get_or_create_string_constant("stdin");
+        let stdin_ptr = self.new_temp();
+        self.emit_line(&format!("  {} = load i8*, i8** {}, align 8", stdin_ptr, stdin_name));
+        
+        self.emit_line(&format!("  call i8* @fgets(i8* {}, i32 {}, i8* {})",
+            buffer_ptr, buffer_size, stdin_ptr));
+        
+        // 移除换行符（如果需要）
+        // 这里我们直接返回缓冲区指针
+        Ok(format!("i8* {}", buffer_ptr))
+    }
+
     /// 生成赋值表达式代码
     fn generate_assignment(&mut self, assign: &AssignmentExpr) -> EolResult<String> {
         let value = self.generate_expression(&assign.value)?;
@@ -698,6 +799,49 @@ impl IRGenerator {
                 
                 // 类型匹配，直接存储
                 self.emit_line(&format!("  store {} {}, {}* %{}", var_type, val, var_type, name));
+                Ok(value)
+            }
+            Expr::ArrayAccess(arr_access) => {
+                // 获取数组元素指针
+                let (elem_type, elem_ptr, _) = self.get_array_element_ptr(arr_access)?;
+                
+                // 如果值类型与元素类型不匹配，需要转换
+                if value_type != elem_type {
+                    let temp = self.new_temp();
+                    
+                    // 浮点类型转换
+                    if value_type == "double" && elem_type == "float" {
+                        // double -> float 转换
+                        self.emit_line(&format!("  {} = fptrunc double {} to float", temp, val));
+                        self.emit_line(&format!("  store float {}, {}* {}", temp, elem_type, elem_ptr));
+                        return Ok(format!("float {}", temp));
+                    } else if value_type == "float" && elem_type == "double" {
+                        // float -> double 转换
+                        self.emit_line(&format!("  {} = fpext float {} to double", temp, val));
+                        self.emit_line(&format!("  store double {}, {}* {}", temp, elem_type, elem_ptr));
+                        return Ok(format!("double {}", temp));
+                    }
+                    // 整数类型转换
+                    else if value_type.starts_with("i") && elem_type.starts_with("i") {
+                        let from_bits: u32 = value_type.trim_start_matches('i').parse().unwrap_or(64);
+                        let to_bits: u32 = elem_type.trim_start_matches('i').parse().unwrap_or(64);
+                        
+                        if to_bits > from_bits {
+                            // 符号扩展
+                            self.emit_line(&format!("  {} = sext {} {} to {}",
+                                temp, value_type, val, elem_type));
+                        } else {
+                            // 截断
+                            self.emit_line(&format!("  {} = trunc {} {} to {}",
+                                temp, value_type, val, elem_type));
+                        }
+                        self.emit_line(&format!("  store {} {}, {}* {}", elem_type, temp, elem_type, elem_ptr));
+                        return Ok(format!("{} {}", elem_type, temp));
+                    }
+                }
+                
+                // 类型匹配，直接存储到数组元素
+                self.emit_line(&format!("  store {} {}, {}* {}", elem_type, val, elem_type, elem_ptr));
                 Ok(value)
             }
             _ => Err(codegen_error("Invalid assignment target".to_string()))
@@ -776,5 +920,110 @@ impl IRGenerator {
     fn generate_new_expression(&mut self, new_expr: &NewExpr) -> EolResult<String> {
         // 暂不实现，返回占位符
         Err(codegen_error("New expression not yet implemented".to_string()))
+    }
+
+    /// 生成数组创建表达式代码: new Type[size]
+    fn generate_array_creation(&mut self, arr: &ArrayCreationExpr) -> EolResult<String> {
+        // 生成数组大小表达式
+        let size_expr = self.generate_expression(&arr.size)?;
+        let (size_type, size_val) = self.parse_typed_value(&size_expr);
+        
+        // 确保大小是整数类型
+        if !size_type.starts_with("i") {
+            return Err(codegen_error(format!("Array size must be integer, got {}", size_type)));
+        }
+        
+        // 将大小转换为 i64（用于内存分配）
+        let size_i64 = if size_type != "i64" {
+            let temp = self.new_temp();
+            self.emit_line(&format!("  {} = sext {} {} to i64", temp, size_type, size_val));
+            temp
+        } else {
+            size_val.to_string()
+        };
+        
+        // 获取元素类型
+        let elem_type = self.type_to_llvm(&arr.element_type);
+        
+        // 计算总字节数 = 大小 * 元素大小
+        let elem_size = match &arr.element_type {
+            Type::Int32 => 4,
+            Type::Int64 => 8,
+            Type::Float32 => 4,
+            Type::Float64 => 8,
+            Type::Bool => 1,
+            Type::Char => 1,
+            Type::String => 8, // 指针大小
+            Type::Object(_) => 8, // 指针大小
+            Type::Array(_) => 8, // 指针大小
+            _ => 8, // 默认
+        };
+        
+        // 计算总字节数
+        let total_bytes_temp = self.new_temp();
+        self.emit_line(&format!("  {} = mul i64 {}, {}", total_bytes_temp, size_i64, elem_size));
+        
+        // 调用 malloc 分配内存
+        let malloc_temp = self.new_temp();
+        self.emit_line(&format!("  {} = call i8* @malloc(i64 {})", malloc_temp, total_bytes_temp));
+        
+        // 将 i8* 转换为元素类型指针
+        let cast_temp = self.new_temp();
+        self.emit_line(&format!("  {} = bitcast i8* {} to {}*", cast_temp, malloc_temp, elem_type));
+        
+        // 返回数组指针
+        Ok(format!("{}* {}", elem_type, cast_temp))
+    }
+
+    /// 获取数组元素指针（用于赋值操作）
+    fn get_array_element_ptr(&mut self, arr: &ArrayAccessExpr) -> EolResult<(String, String, String)> {
+        // 生成数组表达式
+        let array_expr = self.generate_expression(&arr.array)?;
+        let (array_type, array_val) = self.parse_typed_value(&array_expr);
+        
+        // 生成索引表达式
+        let index_expr = self.generate_expression(&arr.index)?;
+        let (index_type, index_val) = self.parse_typed_value(&index_expr);
+        
+        // 确保索引是整数类型
+        if !index_type.starts_with("i") {
+            return Err(codegen_error(format!("Array index must be integer, got {}", index_type)));
+        }
+        
+        // 将索引转换为 i64
+        let index_i64 = if index_type != "i64" {
+            let temp = self.new_temp();
+            self.emit_line(&format!("  {} = sext {} {} to i64", temp, index_type, index_val));
+            temp
+        } else {
+            index_val.to_string()
+        };
+        
+        // 获取数组元素类型（去掉末尾的 *）
+        let elem_type = if array_type.ends_with("*") {
+            array_type.trim_end_matches("*").to_string()
+        } else {
+            // 如果不是指针类型，假设是 i64*（向后兼容）
+            "i64".to_string()
+        };
+        
+        // 计算元素地址
+        let elem_ptr_temp = self.new_temp();
+        self.emit_line(&format!("  {} = getelementptr {}, {}* {}, i64 {}",
+            elem_ptr_temp, elem_type, elem_type, array_val, index_i64));
+        
+        Ok((elem_type, elem_ptr_temp, index_i64))
+    }
+    
+    /// 生成数组访问表达式代码: arr[index]
+    fn generate_array_access(&mut self, arr: &ArrayAccessExpr) -> EolResult<String> {
+        let (elem_type, elem_ptr_temp, _) = self.get_array_element_ptr(arr)?;
+        
+        // 加载元素值
+        let elem_temp = self.new_temp();
+        self.emit_line(&format!("  {} = load {}, {}* {}, align 8",
+            elem_temp, elem_type, elem_type, elem_ptr_temp));
+        
+        Ok(format!("{} {}", elem_type, elem_temp))
     }
 }

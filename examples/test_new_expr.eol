@@ -1,0 +1,6 @@
+public class TestNewExpr {
+    public static void main() {
+        // 测试 new int[5] 作为表达式
+        new int[5];
+    }
+}

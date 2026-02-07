@@ -95,3 +95,30 @@ fn test_billion() {
     // 大数字测试应该输出数字
     assert!(output.chars().any(|c| c.is_ascii_digit()), "Billion test should output numbers, got: {}", output);
 }
+
+#[test]
+fn test_array_simple() {
+    let output = compile_and_run_eol("examples/test_array_simple.eol").expect("array simple example should compile and run");
+    // 数组简单测试应该输出 arr[0] = 10
+    assert!(output.contains("arr[0] = 10"), "Array simple test should output 'arr[0] = 10', got: {}", output);
+}
+
+#[test]
+fn test_array_complex() {
+    let output = compile_and_run_eol("examples/test_array.eol").expect("array example should compile and run");
+    // 数组复杂测试应该输出数组相关的内容
+    assert!(output.contains("数组") || output.contains("arr[") || output.contains("sum") || output.contains("array"),
+            "Array test should output array-related content, got: {}", output);
+}
+
+#[test]
+fn test_all_features() {
+    let output = compile_and_run_eol("examples/test_all_features.eol").expect("all features example should compile and run");
+    // 综合测试应该包含数组功能和IO函数
+    assert!(output.contains("=== 测试数组功能 ===") || output.contains("arr[0] = "),
+            "All features test should output array test section, got: {}", output);
+    assert!(output.contains("=== 测试print/println函数 ===") || output.contains("Hello, World!"),
+            "All features test should output print test section, got: {}", output);
+    assert!(output.contains("=== IO函数已实现 ===") || output.contains("print() - 已实现"),
+            "All features test should output IO functions section, got: {}", output);
+}

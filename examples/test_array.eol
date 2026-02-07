@@ -1,0 +1,30 @@
+public class TestArray {
+    public static void main() {
+        // 测试数组创建和访问
+        int[] arr = new int[5];
+        arr[0] = 10;
+        arr[1] = 20;
+        arr[2] = 30;
+        arr[3] = 40;
+        arr[4] = 50;
+        
+        // 测试数组访问
+        int sum = arr[0] + arr[1] + arr[2] + arr[3] + arr[4];
+        
+        // 测试print函数
+        print("数组元素: ");
+        print(arr[0]);
+        print(" ");
+        print(arr[1]);
+        print(" ");
+        print(arr[2]);
+        print(" ");
+        print(arr[3]);
+        print(" ");
+        print(arr[4]);
+        println();
+        
+        print("数组总和: ");
+        println(sum);
+    }
+}

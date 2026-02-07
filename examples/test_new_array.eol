@@ -1,0 +1,6 @@
+public class TestNewArray {
+    public static void main() {
+        // 只测试 new int[5]
+        int[] arr = new int[5];
+    }
+}

@@ -1,0 +1,5 @@
+public class TestTypeOnly {
+    public static void main() {
+        int[] arr;
+    }
+}

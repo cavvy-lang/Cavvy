@@ -138,162 +138,93 @@ impl SemanticAnalyzer {
                 }
             }
         }
-        
-        self.current_class = None;
         Ok(())
     }
 
     fn type_check_program(&mut self, program: &Program) -> EolResult<()> {
         for class in &program.classes {
-            self.type_check_class(class)?;
-        }
-        Ok(())
-    }
-
-    fn type_check_class(&mut self, class: &ClassDecl) -> EolResult<()> {
-        self.current_class = Some(class.name.clone());
-        
-        for member in &class.members {
-            match member {
-                ClassMember::Method(method) => {
-                    self.type_check_method(method)?;
-                }
-                ClassMember::Field(field) => {
-                    self.type_check_field(field)?;
+            self.current_class = Some(class.name.clone());
+            
+            for member in &class.members {
+                match member {
+                    ClassMember::Method(method) => {
+                        self.current_method = Some(method.name.clone());
+                        self.symbol_table.enter_scope();
+                        
+                        // 添加参数到符号表
+                        for param in &method.params {
+                            self.symbol_table.declare(
+                                param.name.clone(),
+                                SemanticSymbolInfo {
+                                    name: param.name.clone(),
+                                    symbol_type: param.param_type.clone(),
+                                    is_final: false,
+                                    is_initialized: true,
+                                }
+                            );
+                        }
+                        
+                        // 类型检查方法体
+                        if let Some(body) = &method.body {
+                            self.type_check_statement(&Stmt::Block(body.clone()), Some(&method.return_type))?;
+                        }
+                        
+                        self.symbol_table.exit_scope();
+                        self.current_method = None;
+                    }
+                    ClassMember::Field(_) => {
+                        // 字段类型检查暂不实现
+                    }
                 }
             }
-        }
-        
-        self.current_class = None;
-        Ok(())
-    }
-
-    fn type_check_field(&mut self, field: &FieldDecl) -> EolResult<()> {
-        if let Some(ref initializer) = field.initializer {
-            let init_type = self.infer_expr_type(initializer)?;
-            if !self.types_compatible(&init_type, &field.field_type) {
-                return Err(semantic_error(
-                    field.loc.line,
-                    field.loc.column,
-                    format!(
-                        "Type mismatch: cannot assign {} to field of type {}",
-                        init_type, field.field_type
-                    )
-                ));
-            }
+            
+            self.current_class = None;
         }
         Ok(())
     }
 
-    fn type_check_method(&mut self, method: &MethodDecl) -> EolResult<()> {
-        self.current_method = Some(method.name.clone());
-        
-        // 创建新的作用域
-        self.symbol_table.enter_scope();
-        
-        // 添加参数到符号表
-        for param in &method.params {
-            self.symbol_table.declare(
-                param.name.clone(),
-                SemanticSymbolInfo {
-                    name: param.name.clone(),
-                    symbol_type: param.param_type.clone(),
-                    is_final: true,
-                    is_initialized: true,
-                }
-            );
-        }
-        
-        // 检查方法体
-        if let Some(ref body) = method.body {
-            for stmt in &body.statements {
-                self.type_check_statement(stmt, &method.return_type)?;
-            }
-        }
-        
-        // 退出作用域
-        self.symbol_table.exit_scope();
-        
-        self.current_method = None;
-        Ok(())
-    }
-
-    fn type_check_statement(&mut self, stmt: &Stmt, expected_return: &Type) -> EolResult<()> {
+    fn type_check_statement(&mut self, stmt: &Stmt, expected_return: Option<&Type>) -> EolResult<()> {
         match stmt {
             Stmt::Expr(expr) => {
                 self.infer_expr_type(expr)?;
             }
             Stmt::VarDecl(var) => {
-                let init_type = if let Some(ref init) = var.initializer {
-                    self.infer_expr_type(init)?
-                } else {
-                    var.var_type.clone()
-                };
-                
-                if !self.types_compatible(&init_type, &var.var_type) {
-                    return Err(semantic_error(
-                        var.loc.line,
-                        var.loc.column,
-                        format!(
-                            "Type mismatch: cannot assign {} to variable of type {}",
-                            init_type, var.var_type
-                        )
-                    ));
+                let var_type = var.var_type.clone();
+                if let Some(init) = &var.initializer {
+                    let init_type = self.infer_expr_type(init)?;
+                    if !self.types_compatible(&init_type, &var_type) {
+                        self.errors.push(format!(
+                            "Cannot assign {} to {} at line {}",
+                            init_type, var_type, var.loc.line
+                        ));
+                    }
                 }
                 
                 self.symbol_table.declare(
                     var.name.clone(),
                     SemanticSymbolInfo {
                         name: var.name.clone(),
-                        symbol_type: var.var_type.clone(),
+                        symbol_type: var_type,
                         is_final: var.is_final,
                         is_initialized: var.initializer.is_some(),
                     }
                 );
             }
             Stmt::Return(expr) => {
-                let actual_return = if let Some(e) = expr {
+                let return_type = if let Some(e) = expr {
                     self.infer_expr_type(e)?
                 } else {
                     Type::Void
                 };
                 
-                if !self.types_compatible(&actual_return, expected_return) {
-                    return Err(semantic_error(
-                        0, 0, // TODO: 获取位置信息
-                        format!(
+                if let Some(expected) = expected_return {
+                    if !self.types_compatible(&return_type, expected) {
+                        self.errors.push(format!(
                             "Return type mismatch: expected {}, got {}",
-                            expected_return, actual_return
-                        )
-                    ));
+                            expected, return_type
+                        ));
+                    }
                 }
-            }
-            Stmt::If(if_stmt) => {
-                let cond_type = self.infer_expr_type(&if_stmt.condition)?;
-                if cond_type != Type::Bool {
-                    return Err(semantic_error(
-                        if_stmt.loc.line,
-                        if_stmt.loc.column,
-                        "If condition must be boolean"
-                    ));
-                }
-                
-                self.type_check_statement(&if_stmt.then_branch, expected_return)?;
-                if let Some(ref else_branch) = if_stmt.else_branch {
-                    self.type_check_statement(else_branch, expected_return)?;
-                }
-            }
-            Stmt::While(while_stmt) => {
-                let cond_type = self.infer_expr_type(&while_stmt.condition)?;
-                if cond_type != Type::Bool {
-                    return Err(semantic_error(
-                        while_stmt.loc.line,
-                        while_stmt.loc.column,
-                        "While condition must be boolean"
-                    ));
-                }
-                
-                self.type_check_statement(&while_stmt.body, expected_return)?;
             }
             Stmt::Block(block) => {
                 self.symbol_table.enter_scope();
@@ -332,7 +263,24 @@ impl SemanticAnalyzer {
                 let right_type = self.infer_expr_type(&bin.right)?;
                 
                 match bin.op {
-                    BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div | BinaryOp::Mod => {
+                    BinaryOp::Add => {
+                        // 字符串连接：两个操作数都必须是字符串
+                        if left_type == Type::String && right_type == Type::String {
+                            Ok(Type::String)
+                        }
+                        // 数值加法：两个操作数都必须是基本数值类型
+                        else if left_type.is_primitive() && right_type.is_primitive() {
+                            // 类型提升
+                            Ok(self.promote_types(&left_type, &right_type))
+                        } else {
+                            Err(semantic_error(
+                                bin.loc.line,
+                                bin.loc.column,
+                                format!("Cannot add {} and {}: addition requires both operands to be numeric or both to be strings", left_type, right_type)
+                            ))
+                        }
+                    }
+                    BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div | BinaryOp::Mod => {
                         if left_type.is_primitive() && right_type.is_primitive() {
                             // 类型提升
                             Ok(self.promote_types(&left_type, &right_type))
@@ -340,7 +288,7 @@ impl SemanticAnalyzer {
                             Err(semantic_error(
                                 bin.loc.line,
                                 bin.loc.column,
-                                format!("Cannot apply {:?} to {} and {}", bin.op, left_type, right_type)
+                                format!("Cannot apply {:?} to {} and {}: operator requires numeric operands", bin.op, left_type, right_type)
                             ))
                         }
                     }
@@ -449,6 +397,40 @@ impl SemanticAnalyzer {
                 // TODO: 检查转换是否合法
                 Ok(cast.target_type.clone())
             }
+            Expr::ArrayCreation(arr) => {
+                // 数组创建: new Type[size]
+                let size_type = self.infer_expr_type(&arr.size)?;
+                if !size_type.is_integer() {
+                    return Err(semantic_error(
+                        arr.loc.line,
+                        arr.loc.column,
+                        format!("Array size must be integer, got {}", size_type)
+                    ));
+                }
+                Ok(Type::Array(Box::new(arr.element_type.clone())))
+            }
+            Expr::ArrayAccess(arr) => {
+                // 数组访问: arr[index]
+                let array_type = self.infer_expr_type(&arr.array)?;
+                let index_type = self.infer_expr_type(&arr.index)?;
+                
+                if !index_type.is_integer() {
+                    return Err(semantic_error(
+                        arr.loc.line,
+                        arr.loc.column,
+                        format!("Array index must be integer, got {}", index_type)
+                    ));
+                }
+                
+                match array_type {
+                    Type::Array(element_type) => Ok(*element_type),
+                    _ => Err(semantic_error(
+                        arr.loc.line,
+                        arr.loc.column,
+                        format!("Cannot index non-array type {}", array_type)
+                    )),
+                }
+            }
         }
     }
 
@@ -464,29 +446,27 @@ impl SemanticAnalyzer {
             (Type::Int32, Type::Float64) => true,
             (Type::Int64, Type::Float64) => true,
             (Type::Float32, Type::Float64) => true,
+            (Type::Float64, Type::Float32) => true, // 允许double到float转换（可能有精度损失）
             (Type::Object(_), Type::Object(_)) => true, // TODO: 继承检查
             _ => false,
         }
     }
 
-    fn promote_types(&self, t1: &Type, t2: &Type) -> Type {
-        use Type::*;
-        match (t1, t2) {
-            (Float64, _) | (_, Float64) => Float64,
-            (Float32, Float32) => Float32,
-            (Float32, _) | (_, Float32) => Float64,
-            (Int64, _) | (_, Int64) => Int64,
-            (Int32, Int32) => Int32,
-            _ => Int32,
+    fn promote_types(&self, left: &Type, right: &Type) -> Type {
+        // 类型提升规则
+        match (left, right) {
+            (Type::Float64, _) | (_, Type::Float64) => Type::Float64,
+            (Type::Float32, _) | (_, Type::Float32) => Type::Float32,
+            (Type::Int64, _) | (_, Type::Int64) => Type::Int64,
+            (Type::Int32, Type::Int32) => Type::Int32,
+            _ => left.clone(),
         }
     }
 
-    fn promote_integer_types(&self, t1: &Type, t2: &Type) -> Type {
-        use Type::*;
-        match (t1, t2) {
-            (Int64, _) | (_, Int64) => Int64,
-            (Int32, Int32) => Int32,
-            _ => Int32,
+    fn promote_integer_types(&self, left: &Type, right: &Type) -> Type {
+        match (left, right) {
+            (Type::Int64, _) | (_, Type::Int64) => Type::Int64,
+            _ => Type::Int32,
         }
     }
 }

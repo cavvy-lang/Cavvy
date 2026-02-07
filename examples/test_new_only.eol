@@ -1,0 +1,7 @@
+public class TestNewOnly {
+    public static void main() {
+        // 只测试 new int[5] 表达式
+        int x = 5;
+        int[] arr = new int[x];
+    }
+}
