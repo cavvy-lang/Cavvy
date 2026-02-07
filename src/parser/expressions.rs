@@ -484,20 +484,33 @@ pub fn parse_primary(parser: &mut Parser) -> EolResult<Expr> {
     }
 }
 
-/// 解析 new 表达式（支持类创建和数组创建）
+/// 解析 new 表达式（支持类创建和多维数组创建）
 fn parse_new_expression(parser: &mut Parser, loc: crate::error::SourceLocation) -> EolResult<Expr> {
     // 首先尝试解析类型
     if is_type_token(parser) {
         // 解析基本类型或类名（不包含数组维度）
-        let element_type = parse_base_type(parser)?;
+        let base_element_type = parse_base_type(parser)?;
 
-        // 如果接下来是 '[' 则为数组创建: new Type[size]
-        if parser.match_token(&crate::lexer::Token::LBracket) {
-            let size = parse_expression(parser)?;
-            parser.consume(&crate::lexer::Token::RBracket, "Expected ']' after array size")?;
+        // 如果接下来是 '[' 则为数组创建: new Type[size] 或 new Type[size1][size2]...
+        if parser.check(&crate::lexer::Token::LBracket) {
+            let mut sizes = Vec::new();
+            
+            // 解析所有维度: [size1][size2]...
+            while parser.match_token(&crate::lexer::Token::LBracket) {
+                let size = parse_expression(parser)?;
+                parser.consume(&crate::lexer::Token::RBracket, "Expected ']' after array size")?;
+                sizes.push(size);
+            }
+            
+            // 构建多维元素类型: base_type[][]...
+            let mut element_type = base_element_type;
+            for _ in 1..sizes.len() {
+                element_type = Type::Array(Box::new(element_type));
+            }
+            
             return Ok(Expr::ArrayCreation(ArrayCreationExpr {
                 element_type,
-                size: Box::new(size),
+                sizes,
                 loc,
             }));
         }
@@ -505,7 +518,7 @@ fn parse_new_expression(parser: &mut Parser, loc: crate::error::SourceLocation) 
         // 如果接下来是 '(' 则为对象创建: new ClassName(...)
         if parser.match_token(&crate::lexer::Token::LParen) {
             // element_type should be Type::Object(name)
-            match element_type {
+            match base_element_type {
                 crate::types::Type::Object(name) => {
                     let args = parse_arguments(parser)?;
                     parser.consume(&crate::lexer::Token::RParen, "Expected ')' after arguments")?;

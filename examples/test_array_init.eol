@@ -1,0 +1,32 @@
+public class TestArrayInit {
+    public static void main() {
+        // 测试数组初始化
+        println("=== Test Array Initialization ===");
+        
+        // 整数数组初始化
+        int[] arr1 = {10, 20, 30, 40, 50};
+        
+        // 验证数组元素
+        if (arr1[0] == 10) {
+            println("arr1[0] = 10: PASS");
+        } else {
+            println("arr1[0] = 10: FAIL");
+        }
+        
+        if (arr1[4] == 50) {
+            println("arr1[4] = 50: PASS");
+        } else {
+            println("arr1[4] = 50: FAIL");
+        }
+        
+        // 修改数组元素
+        arr1[2] = 100;
+        if (arr1[2] == 100) {
+            println("arr1[2] = 100: PASS");
+        } else {
+            println("arr1[2] = 100: FAIL");
+        }
+        
+        println("All array init tests passed!");
+    }
+}

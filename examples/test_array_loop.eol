@@ -1,0 +1,56 @@
+public class TestArrayLoop {
+    public static void main() {
+        // 测试数组与循环结合
+        println("=== Test Array with Loop ===");
+        
+        int[] arr = {5, 10, 15, 20, 25};
+        
+        // 计算数组元素和
+        int sum = 0;
+        int i = 0;
+        while (i < arr.length) {
+            sum = sum + arr[i];
+            i = i + 1;
+        }
+        
+        // sum should be 5+10+15+20+25 = 75
+        if (sum == 75) {
+            println("Sum = 75: PASS");
+        } else {
+            println("Sum = 75: FAIL");
+        }
+        
+        // 计算数组元素积
+        int product = 1;
+        i = 0;
+        while (i < arr.length) {
+            product = product * arr[i];
+            i = i + 1;
+        }
+        
+        // product should be 5*10*15*20*25 = 375000
+        if (product == 375000) {
+            println("Product = 375000: PASS");
+        } else {
+            println("Product = 375000: FAIL");
+        }
+        
+        // 查找最大值
+        int max = arr[0];
+        i = 1;
+        while (i < arr.length) {
+            if (arr[i] > max) {
+                max = arr[i];
+            }
+            i = i + 1;
+        }
+        
+        if (max == 25) {
+            println("Max = 25: PASS");
+        } else {
+            println("Max = 25: FAIL");
+        }
+        
+        println("All array loop tests passed!");
+    }
+}

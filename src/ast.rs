@@ -142,6 +142,7 @@ pub enum Expr {
     Cast(CastExpr),
     ArrayCreation(ArrayCreationExpr),
     ArrayAccess(ArrayAccessExpr),
+    ArrayInit(ArrayInitExpr),  // 数组初始化: {1, 2, 3}
 }
 
 #[derive(Debug, Clone)]
@@ -251,11 +252,18 @@ pub struct CastExpr {
     pub loc: SourceLocation,
 }
 
-/// 数组创建表达式: new Type[size]
+/// 数组创建表达式: new Type[size] 或 new Type[size1][size2]...
 #[derive(Debug, Clone)]
 pub struct ArrayCreationExpr {
     pub element_type: Type,
-    pub size: Box<Expr>,
+    pub sizes: Vec<Expr>,  // 支持多维数组，每个维度的大小
+    pub loc: SourceLocation,
+}
+
+/// 数组初始化表达式: {1, 2, 3}
+#[derive(Debug, Clone)]
+pub struct ArrayInitExpr {
+    pub elements: Vec<Expr>,
     pub loc: SourceLocation,
 }
 

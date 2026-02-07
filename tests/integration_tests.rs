@@ -150,3 +150,64 @@ fn test_function_nested_calls() {
     // 应该输出平方、立方和平方和
     assert!(output.contains("25") || output.contains("27") || output.contains("20"), "Nested calls test should output correct values, got: {}", output);
 }
+
+// ========== 0.3.3.0 Array Features Tests ==========
+
+#[test]
+fn test_array_init() {
+    let output = compile_and_run_eol("examples/test_array_init.eol").expect("array init example should compile and run");
+    assert!(output.contains("arr1[0] = 10: PASS"), "Array init test should pass for arr1[0], got: {}", output);
+    assert!(output.contains("arr1[4] = 50: PASS"), "Array init test should pass for arr1[4], got: {}", output);
+    assert!(output.contains("arr1[2] = 100: PASS"), "Array init test should pass for arr1[2], got: {}", output);
+    assert!(output.contains("All array init tests passed!"), "Array init test should complete, got: {}", output);
+}
+
+#[test]
+fn test_array_length() {
+    let output = compile_and_run_eol("examples/test_array_length.eol").expect("array length example should compile and run");
+    assert!(output.contains("arr1.length = 5: PASS"), "Array length test should pass for arr1, got: {}", output);
+    assert!(output.contains("arr2.length = 10: PASS"), "Array length test should pass for arr2, got: {}", output);
+    assert!(output.contains("Sum using length = 15: PASS"), "Array length test should pass for sum, got: {}", output);
+    assert!(output.contains("All length tests passed!"), "Array length test should complete, got: {}", output);
+}
+
+#[test]
+fn test_multidim_array() {
+    let output = compile_and_run_eol("examples/test_multidim_array.eol").expect("multidim array example should compile and run");
+    assert!(output.contains("matrix[0][0] = 1: PASS"), "Multidim array test should pass for [0][0], got: {}", output);
+    assert!(output.contains("matrix[0][1] = 2: PASS"), "Multidim array test should pass for [0][1], got: {}", output);
+    assert!(output.contains("matrix[1][0] = 3: PASS"), "Multidim array test should pass for [1][0], got: {}", output);
+    assert!(output.contains("matrix[2][3] = 4: PASS"), "Multidim array test should pass for [2][3], got: {}", output);
+    assert!(output.contains("All multidim array tests passed!"), "Multidim array test should complete, got: {}", output);
+}
+
+#[test]
+fn test_array_loop() {
+    let output = compile_and_run_eol("examples/test_array_loop.eol").expect("array loop example should compile and run");
+    assert!(output.contains("Sum = 75: PASS"), "Array loop test should pass for sum, got: {}", output);
+    assert!(output.contains("Product = 375000: PASS"), "Array loop test should pass for product, got: {}", output);
+    assert!(output.contains("Max = 25: PASS"), "Array loop test should pass for max, got: {}", output);
+    assert!(output.contains("All array loop tests passed!"), "Array loop test should complete, got: {}", output);
+}
+
+#[test]
+fn test_array_types() {
+    let output = compile_and_run_eol("examples/test_array_types.eol").expect("array types example should compile and run");
+    assert!(output.contains("long[]: PASS"), "Array types test should pass for long[], got: {}", output);
+    assert!(output.contains("float[]: PASS"), "Array types test should pass for float[], got: {}", output);
+    assert!(output.contains("double[]: PASS"), "Array types test should pass for double[], got: {}", output);
+    assert!(output.contains("char[]: PASS"), "Array types test should pass for char[], got: {}", output);
+    assert!(output.contains("bool[]: PASS"), "Array types test should pass for bool[], got: {}", output);
+    assert!(output.contains("All array type tests passed!"), "Array types test should complete, got: {}", output);
+}
+
+#[test]
+fn test_array_033() {
+    let output = compile_and_run_eol("examples/test_array_033.eol").expect("array 0.3.3 example should compile and run");
+    assert!(output.contains("arr1[0] is correct"), "Array 0.3.3 test should pass for arr1[0], got: {}", output);
+    assert!(output.contains("arr1[4] is correct"), "Array 0.3.3 test should pass for arr1[4], got: {}", output);
+    assert!(output.contains("arr1.length is correct"), "Array 0.3.3 test should pass for arr1.length, got: {}", output);
+    assert!(output.contains("arr2.length is correct"), "Array 0.3.3 test should pass for arr2.length, got: {}", output);
+    assert!(output.contains("Sum is correct: 150"), "Array 0.3.3 test should pass for sum, got: {}", output);
+    assert!(output.contains("All tests passed!"), "Array 0.3.3 test should complete, got: {}", output);
+}

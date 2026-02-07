@@ -26,6 +26,7 @@ impl IRGenerator {
             Expr::New(new_expr) => self.generate_new_expression(new_expr),
             Expr::ArrayCreation(arr) => self.generate_array_creation(arr),
             Expr::ArrayAccess(arr) => self.generate_array_access(arr),
+            Expr::ArrayInit(init) => self.generate_array_init(init),
         }
     }
 
@@ -893,6 +894,13 @@ impl IRGenerator {
             return Ok(format!("{} {}", to_type, val));
         }
         
+        // 指针类型转换 (bitcast)
+        if from_type.ends_with("*") && to_type.ends_with("*") {
+            self.emit_line(&format!("  {} = bitcast {} {} to {}",
+                temp, from_type, val, to_type));
+            return Ok(format!("{} {}", to_type, temp));
+        }
+        
         // 整数到整数
         if from_type.starts_with("i") && to_type.starts_with("i") && !from_type.ends_with("*") && !to_type.ends_with("*") {
             let from_bits: u32 = from_type.trim_start_matches('i').parse().unwrap_or(64);
@@ -962,6 +970,34 @@ impl IRGenerator {
 
     /// 生成成员访问表达式代码
     fn generate_member_access(&mut self, member: &MemberAccessExpr) -> EolResult<String> {
+        // 特殊处理数组的 .length 属性
+        if member.member == "length" {
+            let obj = self.generate_expression(&member.object)?;
+            let (obj_type, obj_val) = self.parse_typed_value(&obj);
+            
+            // 检查是否是数组类型（以 * 结尾）
+            if obj_type.ends_with("*") {
+                // 首先将数组指针转换为 i8*
+                let obj_i8 = self.new_temp();
+                self.emit_line(&format!("  {} = bitcast {} {} to i8*", obj_i8, obj_type, obj_val));
+                
+                // 数组长度存储在数组指针前面的 8 字节中
+                // 计算长度地址：array_ptr - 8
+                let len_ptr_i8 = self.new_temp();
+                self.emit_line(&format!("  {} = getelementptr i8, i8* {}, i64 -8", len_ptr_i8, obj_i8));
+                
+                // 将长度指针转换为 i32*
+                let len_ptr = self.new_temp();
+                self.emit_line(&format!("  {} = bitcast i8* {} to i32*", len_ptr, len_ptr_i8));
+                
+                // 加载长度（作为 i32）
+                let len_val = self.new_temp();
+                self.emit_line(&format!("  {} = load i32, i32* {}, align 4", len_val, len_ptr));
+                
+                return Ok(format!("i32 {}", len_val));
+            }
+        }
+        
         // 目前仅支持将成员访问视为对象指针的占位符（返回 i8* ptr）
         // 生成对象表达式并返回其指针值
         let obj = self.generate_expression(&member.object)?;
@@ -981,11 +1017,24 @@ impl IRGenerator {
         Ok(format!("i8* {}", cast_temp))
     }
 
-    /// 生成数组创建表达式代码: new Type[size]
+    /// 生成数组创建表达式代码: new Type[size] 或 new Type[size1][size2]...
     fn generate_array_creation(&mut self, arr: &ArrayCreationExpr) -> EolResult<String> {
+        if arr.sizes.len() == 1 {
+            // 一维数组
+            self.generate_1d_array_creation(&arr.element_type, &arr.sizes[0])
+        } else {
+            // 多维数组
+            self.generate_md_array_creation(&arr.element_type, &arr.sizes)
+        }
+    }
+
+    /// 生成一维数组创建
+    /// 内存布局: [长度:i32][填充:i32][元素0][元素1]...[元素N-1]
+    /// 返回的指针指向元素0，长度存储在指针前8字节
+    fn generate_1d_array_creation(&mut self, element_type: &Type, size_expr: &Expr) -> EolResult<String> {
         // 生成数组大小表达式
-        let size_expr = self.generate_expression(&arr.size)?;
-        let (size_type, size_val) = self.parse_typed_value(&size_expr);
+        let size_val_expr = self.generate_expression(size_expr)?;
+        let (size_type, size_val) = self.parse_typed_value(&size_val_expr);
         
         // 确保大小是整数类型
         if !size_type.starts_with("i") {
@@ -1001,11 +1050,20 @@ impl IRGenerator {
             size_val.to_string()
         };
         
-        // 获取元素类型
-        let elem_type = self.type_to_llvm(&arr.element_type);
+        // 同时保存为 i32 用于存储长度
+        let size_i32 = if size_type != "i32" {
+            let temp = self.new_temp();
+            self.emit_line(&format!("  {} = trunc {} {} to i32", temp, size_type, size_val));
+            temp
+        } else {
+            size_val.to_string()
+        };
         
-        // 计算总字节数 = 大小 * 元素大小
-        let elem_size = match &arr.element_type {
+        // 获取元素类型
+        let elem_type = self.type_to_llvm(element_type);
+        
+        // 计算元素大小
+        let elem_size = match element_type {
             Type::Int32 => 4,
             Type::Int64 => 8,
             Type::Float32 => 4,
@@ -1018,20 +1076,121 @@ impl IRGenerator {
             _ => 8, // 默认
         };
         
-        // 计算总字节数
+        // 计算数据字节数 = 大小 * 元素大小
+        let data_bytes_temp = self.new_temp();
+        self.emit_line(&format!("  {} = mul i64 {}, {}", data_bytes_temp, size_i64, elem_size));
+        
+        // 额外分配 8 字节用于存储长度（i32 + 填充）
         let total_bytes_temp = self.new_temp();
-        self.emit_line(&format!("  {} = mul i64 {}, {}", total_bytes_temp, size_i64, elem_size));
+        self.emit_line(&format!("  {} = add i64 {}, 8", total_bytes_temp, data_bytes_temp));
         
         // 调用 malloc 分配内存
         let malloc_temp = self.new_temp();
         self.emit_line(&format!("  {} = call i8* @malloc(i64 {})", malloc_temp, total_bytes_temp));
         
+        // 存储长度（前4字节）
+        let len_ptr = self.new_temp();
+        self.emit_line(&format!("  {} = bitcast i8* {} to i32*", len_ptr, malloc_temp));
+        self.emit_line(&format!("  store i32 {}, i32* {}, align 4", size_i32, len_ptr));
+        
+        // 计算数据起始地址（跳过8字节长度头）
+        let data_ptr = self.new_temp();
+        self.emit_line(&format!("  {} = getelementptr i8, i8* {}, i64 8", data_ptr, malloc_temp));
+        
         // 将 i8* 转换为元素类型指针
         let cast_temp = self.new_temp();
-        self.emit_line(&format!("  {} = bitcast i8* {} to {}*", cast_temp, malloc_temp, elem_type));
+        self.emit_line(&format!("  {} = bitcast i8* {} to {}*", cast_temp, data_ptr, elem_type));
         
-        // 返回数组指针
+        // 返回数组指针（指向数据，长度在指针前8字节）
         Ok(format!("{}* {}", elem_type, cast_temp))
+    }
+
+    /// 生成多维数组创建: new Type[size1][size2]...[sizeN]
+    fn generate_md_array_creation(&mut self, element_type: &Type, sizes: &[Expr]) -> EolResult<String> {
+        // 多维数组实现：分配一个指针数组，每个指针指向子数组
+        // 例如 new int[3][4]:
+        // 1. 分配 3 个指针的数组 (int**)
+        // 2. 循环 3 次，每次分配 4 个 int 的数组
+        // 3. 将子数组指针存入父数组
+        
+        if sizes.len() < 2 {
+            return Err(codegen_error("Multidimensional array needs at least 2 dimensions".to_string()));
+        }
+        
+        // 生成第一维大小
+        let first_size_expr = self.generate_expression(&sizes[0])?;
+        let (first_size_type, first_size_val) = self.parse_typed_value(&first_size_expr);
+        
+        let first_size_i64 = if first_size_type != "i64" {
+            let temp = self.new_temp();
+            self.emit_line(&format!("  {} = sext {} {} to i64", temp, first_size_type, first_size_val));
+            temp
+        } else {
+            first_size_val.to_string()
+        };
+        
+        // 获取元素类型的 LLVM 表示
+        let elem_llvm_type = self.type_to_llvm(element_type);
+        
+        // 分配指针数组 (elem_type** 用于存储子数组指针)
+        let ptr_array_bytes = self.new_temp();
+        self.emit_line(&format!("  {} = mul i64 {}, 8", ptr_array_bytes, first_size_i64));
+        
+        let malloc_ptr_array = self.new_temp();
+        self.emit_line(&format!("  {} = call i8* @malloc(i64 {})", malloc_ptr_array, ptr_array_bytes));
+        
+        // 转换为正确的指针类型 (elem_type**)
+        let ptr_array = self.new_temp();
+        self.emit_line(&format!("  {} = bitcast i8* {} to {}**", ptr_array, malloc_ptr_array, elem_llvm_type));
+        
+        // 生成循环来分配每个子数组
+        let loop_label = self.new_label("md_array_loop");
+        let body_label = self.new_label("md_array_body");
+        let end_label = self.new_label("md_array_end");
+        
+        // 循环变量
+        let loop_var = self.new_temp();
+        self.emit_line(&format!("  {} = alloca i64", loop_var));
+        self.emit_line(&format!("  store i64 0, i64* {}", loop_var));
+        
+        // 跳转到循环条件
+        self.emit_line(&format!("  br label %{}", loop_label));
+        
+        // 循环条件
+        self.emit_line(&format!("\n{}:", loop_label));
+        let current_idx = self.new_temp();
+        self.emit_line(&format!("  {} = load i64, i64* {}", current_idx, loop_var));
+        let cond = self.new_temp();
+        self.emit_line(&format!("  {} = icmp slt i64 {}, {}", cond, current_idx, first_size_i64));
+        self.emit_line(&format!("  br i1 {}, label %{}, label %{}", cond, body_label, end_label));
+        
+        // 循环体
+        self.emit_line(&format!("\n{}:", body_label));
+        
+        // 分配子数组
+        let sub_array = self.generate_1d_array_creation(element_type, &sizes[1])?;
+        let (sub_array_type, sub_array_val) = self.parse_typed_value(&sub_array);
+        
+        // 将子数组指针存入指针数组
+        let elem_ptr = self.new_temp();
+        self.emit_line(&format!("  {} = getelementptr {}*, {}** {}, i64 {}", 
+            elem_ptr, elem_llvm_type, elem_llvm_type, ptr_array, current_idx));
+        
+        self.emit_line(&format!("  store {}* {}, {}** {}", elem_llvm_type, sub_array_val, elem_llvm_type, elem_ptr));
+        
+        // 增加循环变量
+        let next_idx = self.new_temp();
+        self.emit_line(&format!("  {} = add i64 {}, 1", next_idx, current_idx));
+        self.emit_line(&format!("  store i64 {}, i64* {}", next_idx, loop_var));
+        
+        // 跳回循环条件
+        self.emit_line(&format!("  br label %{}", loop_label));
+        
+        // 循环结束
+        self.emit_line(&format!("\n{}:", end_label));
+        
+        // 返回指针数组 (elem_type**)
+        Ok(format!("{}** {}", elem_llvm_type, ptr_array))
     }
 
     /// 获取数组元素指针（用于赋值操作）
@@ -1058,9 +1217,12 @@ impl IRGenerator {
             index_val.to_string()
         };
         
-        // 获取数组元素类型（去掉末尾的 *）
+        // 获取数组元素类型（去掉末尾的一个 *）
+        // 例如: i32* -> i32, i32** -> i32*, i64* -> i64
         let elem_type = if array_type.ends_with("*") {
-            array_type.trim_end_matches("*").to_string()
+            // 找到最后一个 * 的位置，去掉它
+            let len = array_type.len();
+            array_type[..len-1].to_string()
         } else {
             // 如果不是指针类型，假设是 i64*（向后兼容）
             "i64".to_string()
@@ -1084,5 +1246,69 @@ impl IRGenerator {
         self.emit_line(&format!("  {} = load {}, {}* {}, align {}", elem_temp, elem_type, elem_type, elem_ptr_temp, align));
         
         Ok(format!("{} {}", elem_type, elem_temp))
+    }
+
+    /// 生成数组初始化表达式代码: {1, 2, 3}
+    /// 内存布局: [长度:i32][填充:i32][元素0][元素1]...[元素N-1]
+    fn generate_array_init(&mut self, init: &ArrayInitExpr) -> EolResult<String> {
+        if init.elements.is_empty() {
+            return Err(codegen_error("Cannot generate code for empty array initializer".to_string()));
+        }
+        
+        // 推断元素类型（从第一个元素）
+        let first_elem = self.generate_expression(&init.elements[0])?;
+        let (elem_llvm_type, _) = self.parse_typed_value(&first_elem);
+        
+        // 获取元素大小
+        let elem_size = match elem_llvm_type.as_str() {
+            "i1" => 1,
+            "i8" => 1,
+            "i32" => 4,
+            "i64" => 8,
+            "float" => 4,
+            "double" => 8,
+            _ => 8, // 指针类型
+        };
+        
+        let num_elements = init.elements.len() as i64;
+        
+        // 计算数据字节数
+        let data_bytes = num_elements * elem_size;
+        // 额外分配 8 字节用于存储长度
+        let total_bytes = data_bytes + 8;
+        
+        // 分配内存
+        let malloc_temp = self.new_temp();
+        self.emit_line(&format!("  {} = call i8* @malloc(i64 {})", malloc_temp, total_bytes));
+        
+        // 存储长度（前4字节）
+        let len_ptr = self.new_temp();
+        self.emit_line(&format!("  {} = bitcast i8* {} to i32*", len_ptr, malloc_temp));
+        self.emit_line(&format!("  store i32 {}, i32* {}, align 4", num_elements, len_ptr));
+        
+        // 计算数据起始地址（跳过8字节长度头）
+        let data_ptr = self.new_temp();
+        self.emit_line(&format!("  {} = getelementptr i8, i8* {}, i64 8", data_ptr, malloc_temp));
+        
+        // 转换为元素类型指针
+        let cast_temp = self.new_temp();
+        self.emit_line(&format!("  {} = bitcast i8* {} to {}*", cast_temp, data_ptr, elem_llvm_type));
+        
+        // 存储每个元素
+        for (i, elem) in init.elements.iter().enumerate() {
+            let elem_val = self.generate_expression(elem)?;
+            let (_, val) = self.parse_typed_value(&elem_val);
+            
+            // 获取元素地址
+            let elem_ptr = self.new_temp();
+            self.emit_line(&format!("  {} = getelementptr {}, {}* {}, i64 {}", 
+                elem_ptr, elem_llvm_type, elem_llvm_type, cast_temp, i));
+            
+            // 存储元素
+            self.emit_line(&format!("  store {} {}, {}* {}", elem_llvm_type, val, elem_llvm_type, elem_ptr));
+        }
+        
+        // 返回数组指针（指向数据，长度在指针前8字节）
+        Ok(format!("{}* {}", elem_llvm_type, cast_temp))
     }
 }

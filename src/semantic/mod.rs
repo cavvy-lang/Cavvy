@@ -439,9 +439,36 @@ impl SemanticAnalyzer {
                 // 如果找不到任何合适的方法，返回 Void（保持向后兼容）
                 Ok(Type::Void)
             }
-            Expr::MemberAccess(_) => {
-                // TODO: 成员访问类型检查
-                Ok(Type::Void)
+            Expr::MemberAccess(member) => {
+                // 成员访问类型检查
+                let obj_type = self.infer_expr_type(&member.object)?;
+                
+                // 特殊处理数组的 .length 属性
+                if member.member == "length" {
+                    if let Type::Array(_) = obj_type {
+                        return Ok(Type::Int32);  // length 返回 int
+                    }
+                }
+                
+                // 类成员访问
+                if let Type::Object(class_name) = obj_type {
+                    if let Some(class_info) = self.type_registry.get_class(&class_name) {
+                        if let Some(field_info) = class_info.fields.get(&member.member) {
+                            return Ok(field_info.field_type.clone());
+                        }
+                    }
+                    return Err(semantic_error(
+                        member.loc.line,
+                        member.loc.column,
+                        format!("Unknown member '{}' for class {}", member.member, class_name)
+                    ));
+                }
+                
+                Err(semantic_error(
+                    member.loc.line,
+                    member.loc.column,
+                    format!("Cannot access member '{}' on type {}", member.member, obj_type)
+                ))
             }
             Expr::New(new_expr) => {
                 if self.type_registry.class_exists(&new_expr.class_name) {
@@ -473,16 +500,34 @@ impl SemanticAnalyzer {
                 Ok(cast.target_type.clone())
             }
             Expr::ArrayCreation(arr) => {
-                // 数组创建: new Type[size]
-                let size_type = self.infer_expr_type(&arr.size)?;
-                if !size_type.is_integer() {
-                    return Err(semantic_error(
-                        arr.loc.line,
-                        arr.loc.column,
-                        format!("Array size must be integer, got {}", size_type)
-                    ));
+                // 数组创建: new Type[size] 或 new Type[size1][size2]...
+                // 检查所有维度的大小
+                for (i, size) in arr.sizes.iter().enumerate() {
+                    let size_type = self.infer_expr_type(size)?;
+                    if !size_type.is_integer() {
+                        return Err(semantic_error(
+                            arr.loc.line,
+                            arr.loc.column,
+                            format!("Array size at dimension {} must be integer, got {}", i + 1, size_type)
+                        ));
+                    }
                 }
                 Ok(Type::Array(Box::new(arr.element_type.clone())))
+            }
+            Expr::ArrayInit(init) => {
+                // 数组初始化: {1, 2, 3}
+                // 需要上下文来推断类型，这里返回一个占位符类型
+                // 实际类型会在变量声明时根据声明类型确定
+                if init.elements.is_empty() {
+                    return Err(semantic_error(
+                        init.loc.line,
+                        init.loc.column,
+                        "Cannot infer type of empty array initializer".to_string()
+                    ));
+                }
+                // 推断第一个元素的类型作为数组元素类型
+                let elem_type = self.infer_expr_type(&init.elements[0])?;
+                Ok(Type::Array(Box::new(elem_type)))
             }
             Expr::ArrayAccess(arr) => {
                 // 数组访问: arr[index]

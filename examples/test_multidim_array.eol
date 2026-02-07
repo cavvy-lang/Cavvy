@@ -1,0 +1,49 @@
+public class TestMultidimArray {
+    public static void main() {
+        // 测试多维数组
+        println("=== Test Multidimensional Array ===");
+        
+        // 创建二维数组
+        int[][] matrix = new int[3][4];
+        
+        // 设置元素
+        matrix[0][0] = 1;
+        matrix[0][1] = 2;
+        matrix[1][0] = 3;
+        matrix[2][3] = 4;
+        
+        // 验证元素
+        if (matrix[0][0] == 1) {
+            println("matrix[0][0] = 1: PASS");
+        } else {
+            println("matrix[0][0] = 1: FAIL");
+        }
+        
+        if (matrix[0][1] == 2) {
+            println("matrix[0][1] = 2: PASS");
+        } else {
+            println("matrix[0][1] = 2: FAIL");
+        }
+        
+        if (matrix[1][0] == 3) {
+            println("matrix[1][0] = 3: PASS");
+        } else {
+            println("matrix[1][0] = 3: FAIL");
+        }
+        
+        if (matrix[2][3] == 4) {
+            println("matrix[2][3] = 4: PASS");
+        } else {
+            println("matrix[2][3] = 4: FAIL");
+        }
+        
+        // 未初始化的元素应该是0
+        if (matrix[1][1] == 0) {
+            println("matrix[1][1] = 0 (default): PASS");
+        } else {
+            println("matrix[1][1] = 0 (default): FAIL");
+        }
+        
+        println("All multidim array tests passed!");
+    }
+}

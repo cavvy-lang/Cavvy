@@ -1,0 +1,55 @@
+public class TestArray033 {
+    public static void main() {
+        // 测试1: 数组初始化
+        println("Test 1: Array Initialization");
+        int[] arr1 = {10, 20, 30, 40, 50};
+        
+        // 访问数组元素
+        int first = arr1[0];
+        int last = arr1[4];
+        
+        // 验证值
+        if (first == 10) {
+            println("arr1[0] is correct");
+        }
+        if (last == 50) {
+            println("arr1[4] is correct");
+        }
+        
+        // 测试2: 数组长度属性
+        println("Test 2: Array Length");
+        int len1 = arr1.length;
+        
+        if (len1 == 5) {
+            println("arr1.length is correct");
+        }
+        
+        int[] arr2 = new int[10];
+        int len2 = arr2.length;
+        
+        if (len2 == 10) {
+            println("arr2.length is correct");
+        }
+        
+        // 测试3: 多维数组声明
+        println("Test 3: Multidimensional Array");
+        int[][] matrix = new int[3][4];
+        println("Created 3x4 matrix");
+        
+        // 测试4: 使用数组长度进行循环
+        println("Test 4: Loop with Array Length");
+        int sum = 0;
+        int i = 0;
+        while (i < arr1.length) {
+            sum = sum + arr1[i];
+            i = i + 1;
+        }
+        
+        // 验证 sum = 10+20+30+40+50 = 150
+        if (sum == 150) {
+            println("Sum is correct: 150");
+        }
+        
+        println("All tests passed!");
+    }
+}

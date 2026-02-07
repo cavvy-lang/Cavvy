@@ -50,8 +50,14 @@ impl IRGenerator {
                             let align = self.get_type_align("double");
                             self.emit_line(&format!("  store double {}, double* %{}, align {}", temp, var.name, align));
                         }
+                        // 指针类型转换 (bitcast)
+                        else if value_type.ends_with("*") && var_type.ends_with("*") {
+                            self.emit_line(&format!("  {} = bitcast {} {} to {}",
+                                temp, value_type, val, var_type));
+                            self.emit_line(&format!("  store {} {}, {}* %{}, align {}", var_type, temp, var_type, var.name, align));
+                        }
                         // 整数类型转换
-                        else if value_type.starts_with("i") && var_type.starts_with("i") {
+                        else if value_type.starts_with("i") && var_type.starts_with("i") && !value_type.ends_with("*") && !var_type.ends_with("*") {
                             let from_bits: u32 = value_type.trim_start_matches('i').parse().unwrap_or(64);
                             let to_bits: u32 = var_type.trim_start_matches('i').parse().unwrap_or(64);
                             

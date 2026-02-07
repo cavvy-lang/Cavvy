@@ -1,0 +1,48 @@
+public class TestArrayTypes {
+    public static void main() {
+        // 测试不同类型的数组
+        println("=== Test Different Array Types ===");
+        
+        // long数组
+        long[] longArr = {100L, 200L, 300L};
+        if (longArr[0] == 100L && longArr.length == 3) {
+            println("long[]: PASS");
+        } else {
+            println("long[]: FAIL");
+        }
+        
+        // float数组
+        float[] floatArr = {1.5f, 2.5f, 3.5f};
+        if (floatArr.length == 3) {
+            println("float[]: PASS");
+        } else {
+            println("float[]: FAIL");
+        }
+        
+        // double数组
+        double[] doubleArr = {1.1, 2.2, 3.3};
+        if (doubleArr.length == 3) {
+            println("double[]: PASS");
+        } else {
+            println("double[]: FAIL");
+        }
+        
+        // char数组
+        char[] charArr = {'A', 'B', 'C'};
+        if (charArr[0] == 'A' && charArr.length == 3) {
+            println("char[]: PASS");
+        } else {
+            println("char[]: FAIL");
+        }
+        
+        // bool数组
+        bool[] boolArr = {true, false, true};
+        if (boolArr[0] == true && boolArr.length == 3) {
+            println("bool[]: PASS");
+        } else {
+            println("bool[]: FAIL");
+        }
+        
+        println("All array type tests passed!");
+    }
+}

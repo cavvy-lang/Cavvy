@@ -1,0 +1,43 @@
+public class TestArrayLength {
+    public static void main() {
+        // 测试数组长度属性
+        println("=== Test Array Length ===");
+        
+        // 测试初始化数组的长度
+        int[] arr1 = {1, 2, 3, 4, 5};
+        int len1 = arr1.length;
+        
+        if (len1 == 5) {
+            println("arr1.length = 5: PASS");
+        } else {
+            println("arr1.length = 5: FAIL");
+        }
+        
+        // 测试new数组的长度
+        int[] arr2 = new int[10];
+        int len2 = arr2.length;
+        
+        if (len2 == 10) {
+            println("arr2.length = 10: PASS");
+        } else {
+            println("arr2.length = 10: FAIL");
+        }
+        
+        // 使用length进行循环
+        int sum = 0;
+        int i = 0;
+        while (i < arr1.length) {
+            sum = sum + arr1[i];
+            i = i + 1;
+        }
+        
+        // sum should be 1+2+3+4+5 = 15
+        if (sum == 15) {
+            println("Sum using length = 15: PASS");
+        } else {
+            println("Sum using length = 15: FAIL");
+        }
+        
+        println("All length tests passed!");
+    }
+}

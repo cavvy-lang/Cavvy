@@ -79,7 +79,12 @@ pub fn parse_var_decl(parser: &mut Parser) -> EolResult<Stmt> {
     let name = parser.consume_identifier("Expected variable name")?;
     
     let initializer = if parser.match_token(&crate::lexer::Token::Assign) {
-        Some(parse_expression(parser)?)
+        // 检查是否是数组初始化: {1, 2, 3}
+        if parser.check(&crate::lexer::Token::LBrace) {
+            Some(parse_array_initializer(parser)?)
+        } else {
+            Some(parse_expression(parser)?)
+        }
     } else {
         None
     };
@@ -93,6 +98,34 @@ pub fn parse_var_decl(parser: &mut Parser) -> EolResult<Stmt> {
         is_final,
         loc,
     }))
+}
+
+/// 解析数组初始化表达式: {1, 2, 3}
+fn parse_array_initializer(parser: &mut Parser) -> EolResult<Expr> {
+    let loc = parser.current_loc();
+    parser.consume(&crate::lexer::Token::LBrace, "Expected '{' to start array initializer")?;
+    
+    let mut elements = Vec::new();
+    
+    // 解析元素列表
+    if !parser.check(&crate::lexer::Token::RBrace) {
+        loop {
+            // 递归解析，支持嵌套数组初始化
+            if parser.check(&crate::lexer::Token::LBrace) {
+                elements.push(parse_array_initializer(parser)?);
+            } else {
+                elements.push(parse_expression(parser)?);
+            }
+            
+            if !parser.match_token(&crate::lexer::Token::Comma) {
+                break;
+            }
+        }
+    }
+    
+    parser.consume(&crate::lexer::Token::RBrace, "Expected '}' to end array initializer")?;
+    
+    Ok(Expr::ArrayInit(ArrayInitExpr { elements, loc }))
 }
 
 /// 解析 if 语句

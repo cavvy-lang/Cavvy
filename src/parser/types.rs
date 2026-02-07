@@ -4,7 +4,7 @@ use crate::types::Type;
 use crate::error::EolResult;
 use super::Parser;
 
-/// 解析类型
+/// 解析类型（支持多维数组）
 pub fn parse_type(parser: &mut Parser) -> EolResult<Type> {
     let base_type = match parser.current_token() {
         crate::lexer::Token::Int => { parser.advance(); Type::Int32 }
@@ -22,13 +22,14 @@ pub fn parse_type(parser: &mut Parser) -> EolResult<Type> {
         _ => return Err(parser.error("Expected type")),
     };
     
-    // 检查数组类型
-    if parser.match_token(&crate::lexer::Token::LBracket) {
+    // 检查多维数组类型 Type[][]...
+    let mut result_type = base_type;
+    while parser.match_token(&crate::lexer::Token::LBracket) {
         parser.consume(&crate::lexer::Token::RBracket, "Expected ']' after '['")?;
-        Ok(Type::Array(Box::new(base_type)))
-    } else {
-        Ok(base_type)
+        result_type = Type::Array(Box::new(result_type));
     }
+    
+    Ok(result_type)
 }
 
 /// 检查当前token是否是类型token
