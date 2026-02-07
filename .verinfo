@@ -1,11 +1,11 @@
 [EOLC]
-version = "0.3.2.2"
+version = "0.3.2.3"
 build = 5
 
 [EOLLL]
-version = "0.3.2.2"
+version = "0.3.2.3"
 build = 5
 
 [IR2EXE]
-version = "0.3.2.2"
+version = "0.3.2.3"
 build = 5
