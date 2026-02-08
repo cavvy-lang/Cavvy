@@ -60,6 +60,11 @@ fn main() {
                     println!("cargo:rustc-env=IR2EXE_VERSION={}", version);
                 }
             }
+            if let Some(eol_check_section) = verinfo.get("EOL_CHECK") {
+                if let Some(version) = eol_check_section.get("version") {
+                    println!("cargo:rustc-env=EOL_CHECK_VERSION={}", version);
+                }
+            }
             
             // 设置通用版本（使用EOLC的版本）
             if let Some(eolc_section) = verinfo.get("EOLC") {
@@ -74,6 +79,7 @@ fn main() {
             println!("cargo:rustc-env=EOLC_VERSION=0.3.2.0");
             println!("cargo:rustc-env=EOLLL_VERSION=0.3.2.0");
             println!("cargo:rustc-env=IR2EXE_VERSION=0.3.2.0");
+            println!("cargo:rustc-env=EOL_CHECK_VERSION=0.3.2.0");
             println!("cargo:rustc-env=VERSION=0.3.2.0");
         }
     }

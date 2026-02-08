@@ -19,3 +19,7 @@ path = "src/bin/eolll.rs"
 [[bin]]
 name = "ir2exe"
 path = "src/bin/ir2exe.rs"
+
+[[bin]]
+name = "eol-check"
+path = "src/bin/eol-check.rs"
