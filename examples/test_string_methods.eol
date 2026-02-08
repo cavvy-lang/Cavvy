@@ -1,0 +1,51 @@
+public class TestStringMethods {
+    public static void main() {
+        string s = "Hello, World!";
+
+        // Test length()
+        println("Testing length():");
+        int len = s.length();
+        print("Length: ");
+        println(len);
+
+        // Test substring(beginIndex)
+        println("Testing substring(beginIndex):");
+        string sub1 = s.substring(7);
+        print("substring(7): ");
+        println(sub1);
+
+        // Test substring(beginIndex, endIndex)
+        println("Testing substring(beginIndex, endIndex):");
+        string sub2 = s.substring(0, 5);
+        print("substring(0, 5): ");
+        println(sub2);
+
+        // Test indexOf()
+        println("Testing indexOf():");
+        int idx1 = s.indexOf("World");
+        print("indexOf(World): ");
+        println(idx1);
+
+        int idx2 = s.indexOf("xyz");
+        print("indexOf(xyz): ");
+        println(idx2);
+
+        // Test charAt()
+        println("Testing charAt():");
+        char c = s.charAt(0);
+        print("charAt(0): ");
+        println(c);
+
+        char c2 = s.charAt(7);
+        print("charAt(7): ");
+        println(c2);
+
+        // Test replace()
+        println("Testing replace():");
+        string replaced = s.replace("World", "EOL");
+        print("replace result: ");
+        println(replaced);
+
+        println("All tests completed!");
+    }
+}

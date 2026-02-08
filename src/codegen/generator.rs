@@ -46,7 +46,8 @@ impl IRGenerator {
             self.emit_raw("entry:");
             // 添加这行：强制设置 UTF-8 代码页
             self.emit_raw("  call void @SetConsoleOutputCP(i32 65001)");
-            self.emit_raw(&format!("  call void @{}.{:}()", class_name, "main"));
+            // main 方法没有参数，使用简单名称
+            self.emit_raw(&format!("  call void @{}.main()", class_name));
             self.emit_raw("  ret i32 0");
             self.emit_raw("}");
             self.emit_raw("");
@@ -140,7 +141,8 @@ impl IRGenerator {
 
     /// 生成方法代码
     fn generate_method(&mut self, class_name: &str, method: &MethodDecl) -> EolResult<()> {
-        let fn_name = format!("{}.{}", class_name, method.name);
+        // 生成带参数签名的方法名以支持重载
+        let fn_name = self.generate_method_name(class_name, method);
         self.current_function = fn_name.clone();
         self.current_class = class_name.to_string();
         self.current_return_type = self.type_to_llvm(&method.return_type);

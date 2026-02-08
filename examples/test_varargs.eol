@@ -1,0 +1,47 @@
+public class TestVarargs {
+    // 可变参数方法：计算多个整数的和
+    public static int sum(int... numbers) {
+        int total = 0;
+        for (int i = 0; i < numbers.length; i++) {
+            total = total + numbers[i];
+        }
+        return total;
+    }
+
+    // 混合参数和可变参数
+    public static void printAll(string prefix, int... numbers) {
+        print(prefix);
+        print(": ");
+        for (int i = 0; i < numbers.length; i++) {
+            print(numbers[i]);
+            if (i < numbers.length - 1) {
+                print(", ");
+            }
+        }
+        println("");
+    }
+
+    public static void main() {
+        println("Testing varargs:");
+
+        // 测试无参数
+        int result1 = sum();
+        print("sum() = ");
+        println(result1);
+
+        // 测试一个参数
+        int result2 = sum(10);
+        print("sum(10) = ");
+        println(result2);
+
+        // 测试多个参数
+        int result3 = sum(1, 2, 3, 4, 5);
+        print("sum(1, 2, 3, 4, 5) = ");
+        println(result3);
+
+        // 测试混合参数和可变参数
+        printAll("Numbers", 10, 20, 30);
+
+        println("Varargs tests completed!");
+    }
+}

@@ -74,298 +74,270 @@ EOL (Ethernos Object Language) 是一个始终编译为原生机器码的静态�
 - [x] **数组边界检查** - 运行时安全检查
 
 ### 0.3.4.x 字符串与方法
-- [ ] **字符串增强** - `String` 类方法（substring, indexOf, replace等）
-- [ ] **方法重载** - 同名不同参数列表
-- [ ] **可变参数** - `void method(String fmt, Object... args)`
+- [x] **字符串增强** - `String` 类方法（substring, indexOf, replace等）
+  - `int length()` - 获取字符串长度
+  - `String substring(int begin)` / `String substring(int begin, int end)` - 截取子串
+  - `int indexOf(String str)` - 查找子串位置
+  - `String replace(String old, String new)` - 替换子串
+  - `char charAt(int index)` - 获取指定位置字符
+  - 示例见: `examples/test_0_3_4_features.eol`
+- [x] **方法重载** - 同名不同参数列表
+  *因EOL语法高亮各大平台基本都不支持，这里使用Java语法高亮做演示*
+  ```java
+  public static int add() { return 0; }
+  public static int add(int a) { return a; }
+  public static int add(int a, int b) { return a + b; }
+  public static double add(double a, double b) { return a + b; }
+  ```
+  - 示例见: `examples/test_0_3_4_features.eol`
+- [x] **可变参数** - `void method(String fmt, Object... args)`
+  *因EOL语法高亮各大平台基本都不支持，这里使用Java语法高亮做演示*
+  ```java
+  public static int sum(int... numbers) { /* ... */ }
+  public static int multiplyAndAdd(int multiplier, int... numbers) { /* ... */ }
+  ```
+  - 示例见: `examples/test_0_3_4_features.eol`
 - [ ] **方法引用** - 静态/实例方法引用 `ClassName::methodName`
 - [ ] **Lambda 表达式** - `(params) -> { body }`
 
 ---
 
-## 阶段二：面向对象特性 (0.4.x.x)
+### 阶段二：面向对象核心 (0.4.x.x)
+**目标**：建立完整的 OOP 语义，支持典型的系统级抽象（如设备驱动框架、资源管理器）。
 
-### 0.4.1.x 继承与多态
-- [ ] **继承** - `class Child extends Parent`
-- [ ] **方法重写** - `@Override` 注解支持
-- [ ] **多态** - 父类引用指向子类对象
-- [ ] **抽象类** - `abstract class` 定义
-- [ ] **接口** - `interface` 多实现 `implements`
-- [ ] **访问修饰符** - `public/protected/private/default` 完整支持
+#### 0.4.0.x 基础继承体系（基础里程碑）
+- [ ] **单继承模型** - `class Child extends Parent`，严格单继承避免菱形继承复杂性
+- [ ] **虚函数表（vtable）布局** - 确定 C++ 兼容的 vtable 结构，支持后续 FFI
+- [ ] **方法重写与隐藏** - `@Override` 编译期检查，默认虚函数（非 Java 的默认 final）
+- [ ] **访问控制基础** - `public/private/protected`，其中 `protected` 允许包内访问（同 Java）
 
-### 0.4.2.x 构造与初始化
-- [ ] **构造函数重载** - 多构造函数支持
-- [ ] **构造函数链** - `this(...)` 和 `super(...)` 调用
-- [ ] **初始化块** - 实例初始化块 `{ ... }`
-- [ ] **静态初始化** - `static { ... }` 类级别初始化
+#### 0.4.1.x 多态与抽象（设计模式支持）
+- [ ] **动态分派** - 通过 vtable 实现运行时多态，确保零开销（不采用 fat pointer）
+- [ ] **抽象类** - `abstract class` 与纯虚函数（`= 0` 语法或 `abstract` 方法）
+- [ ] **接口（单实现版本）** - 先支持单接口实现 `implements Interface`，为后续多接口预留 vtable 空间
+- [ ] **类型转换** - `instanceof` 运算符与安全的向下转型（生成类型检查代码）
 
-### 0.4.3.x 核心类特性
-- [ ] **final 类/方法** - 不可继承/重写
-- [ ] **static 导入** - `import static ...`
-- [ ] **内部类** - 成员内部类、静态内部类
-- [ ] **匿名类** - `new Interface() { ... }`
+#### 0.4.2.x 构造体系与初始化顺序
+- [ ] **构造函数基础** - 默认构造函数、显式构造函数定义
+- [ ] **构造链** - `this(...)` 同链调用，`super(...)` 父类构造（强制首行）
+- [ ] **成员初始化顺序** - 定义字段初始化、实例块、构造函数的执行顺序规范
+- [ ] **析构函数（核心差异）** - `~ClassName()` 或 `dispose()` 方法，配合 RAII 模式（为 G2 所有权做铺垫）
 
-### 0.4.4.x 泛型编程（单态化）
-- [ ] **泛型类** - `class Container<T>`
-- [ ] **泛型方法** - `<T> T max(T a, T b)`
-- [ ] **类型边界** - `<T extends Number>`
-- [ ] **通配符** - `?`, `? extends T`, `? super T`
-- [ ] **单态化（Monomorphization）** - `List<int>` 生成专用代码，无装箱，非擦除
+#### 0.4.3.x 静态与 Final 语义
+- [ ] **final 类/方法** - 禁止继承与重写，允许编译器去虚拟化（devirtualization）
+- [ ] **静态成员** - `static` 字段与方法，明确静态存储期（BSS/data 段）
+- [ ] **静态初始化** - `static { ... }` 块，定义模块加载时的初始化顺序（解决循环依赖检测）
+- [ ] **常量表达式** - `static final` 编译期常量，用于数组大小等（类似 C++ 的 `constexpr` 基础）
 
-**设计决策**：EOL 采用单态化而非 Java 的擦除，保留类型信息，零开销抽象
+**阶段交付物**：可编写典型的资源管理类（如文件句柄包装器、网络连接管理器），支持基本的 RAII 模式。
 
 ---
 
-## 阶段三：标准库建设 (0.5.x.x)
+### 阶段三：零开销标准库 (0.5.x.x)
+**目标**：建立无 GC、显式内存管理的标准库，证明 EOL 可以替代 C++ 用于系统编程。
 
-### 0.5.0.x 准备阶段
-- [ ] **实现unsafe块** - `unsafe { ... }` 语法支持，允许直接操作原始内存指针、类型转换、调用外部函数等不安全操作，编译器不进行安全检查，开发者需自行保证内存安全
-- [ ] **实现基本模块概念** - `module` 声明、`import` 导入语句、包级访问控制、模块依赖管理，为标准库建设提供基础模块化支持
-- [ ] **类似Java的模块命名** - 标准库均在`lang.eol`或`System`下
+#### 0.5.0.x 内存管理与分配器基础（关键基础设施）
+- [ ] **分配器接口（Allocator trait）** - `interface Allocator { allocate(size, align); deallocate(ptr); }`
+- [ ] **GlobalAlloc** - 默认堆分配器（封装 malloc/free 或系统调用）
+- [ ] **Arena 分配器** - 线性分配器，支持批量释放（适合编译器、游戏帧分配）
+- [ ] **栈分配标记** - `scope` 关键字或注解，支持栈上对象（值类型语义准备）
 
-### 0.5.1.x 核心库
-- [ ] **String 类** - 不可变字符串，完整方法集
-- [ ] **StringBuilder/StringBuffer** - 可变字符串
+#### 0.5.1.x 基础类型与字符串（无 Object 根类）
+- [ ] **基础值类型** - 明确 `int`, `long`, `float`, `double`, `bool` 的内存布局（固定宽度，如 i32/i64）
+- [ ] **String 设计（不可变）** - 结构体 `{ char* data; usize len; }`，支持 SSO（短字符串优化，16/23 字节内栈存储）
+- [ ] **StringBuilder** - 基于 Arena 或显式容量预分配的可变字符串
+- [ ] **Optional<T>** - 取代 null，显式空值处理 `Option<String>`，编译期非空检查基础
 
-**注意**：无 Object 根类（避免强制堆分配），无 System 类（无运行时）
+#### 0.5.2.x 泛型集合（单态化实现）
+- [ ] **泛型基础** - `class ArrayList<T, A: Allocator>`，单态化生成专用代码（如 `ArrayList_i32`）
+- [ ] **显式分配器参数** - 所有集合必须携带分配器：`ArrayList<int> list = new ArrayList<>(arena);`
+- [ ] **核心集合**：
+  - `ArrayList<T>` - 动态数组，支持 reserve/shrink_to_fit
+  - `HashMap<K,V>` - 开放寻址法或 Robin Hood 哈希，无二次指针间接
+  - `HashSet<T>` - 基于 HashMap 的特化
+- [ ] **迭代器** - 基础迭代器协议 `interface Iterator<T> { bool hasNext(); T next(); }`，支持范围 for 循环
 
-### 0.5.2.x 集合框架（显式分配器）
-- [ ] **List 接口** - `ArrayList<T>`, `LinkedList<T>`
-- [ ] **Set 接口** - `HashSet<T>`, `TreeSet<T>`
-- [ ] **Map 接口** - `HashMap<K,V>`, `TreeMap<K,V>`
-- [ ] **显式分配器模式** - `new ArrayList<>(arena)` 或 `new ArrayList<>(heap)`
-- [ ] **Iterator** - `iterator()`, `hasNext()`, `next()`
-- [ ] **Collections 工具** - `sort()`, `binarySearch()`, `shuffle()`
+#### 0.5.3.x 智能指针与资源管理
+- [ ] **UniquePtr<T>** - 独占所有权，可移动（move），不可复制，自动调用析构
+- [ ] **ScopedPtr<T>** - 栈作用域指针，禁止堆分配
+- [ ] **Rc<T>**（引用计数）- 循环依赖检测（debug 模式），为 G2 的借用检查做过渡
+- [ ] **弱引用基础** - `WeakPtr<T>`，解决循环引用（此时需手动打破循环）
 
-**设计决策**：所有集合需显式指定分配器（arena/stack/heap），无隐式 GC
+#### 0.5.4.x 系统级 I/O
+- [ ] **File 与 Path** - 封装系统调用（Windows: HANDLE, Linux: fd），支持 RAII 关闭
+- [ ] **缓冲区 I/O** - `BufferedReader/Writer`，显式缓冲区大小参数
+- [ ] **内存映射文件** - `Mmap` 类型，支持大文件零拷贝处理
+- [ ] **错误处理基础** - `Result<T, E>` 类型，替代异常用于 I/O 错误（为 0.6.x 做准备）
 
-### 0.5.3.x 实用工具
-- [ ] **Arrays 类** - `Arrays.sort()`, `Arrays.toString()`
-- [ ] **Random 类** - 随机数生成
-- [ ] **Date/Time API** - `LocalDate`, `LocalTime`, `LocalDateTime`
-- [ ] **Formatter** - `String.format()`, `printf()`
-- [ ] **Scanner** - 控制台输入解析
-- [ ] **正则表达式** - `Pattern`, `Matcher`
-
-### 0.5.4.x IO 与 NIO
-- [ ] **File 类** - 文件/目录操作
-- [ ] **Stream** - `InputStream`, `OutputStream`, `Reader`, `Writer`
-- [ ] **Buffered IO** - `BufferedReader`, `BufferedWriter`
-- [ ] **File IO** - `FileInputStream`, `FileOutputStream`
-- [ ] **NIO.2** - `Path`, `Files`, `Paths`
-
----
-
-## 阶段四：高级特性 (0.6.x.x)
-
-### 0.6.1.x 异常处理（无受检异常）
-- [ ] **异常类层次** - `Throwable` > `Exception` > `RuntimeException`
-- [ ] **try-catch-finally** - 完整异常处理
-- [ ] **多重 catch** - `catch (A | B e)`
-- [ ] **try-with-resources** - 自动资源管理
-- [ ] **throw 语句** - 抛出异常
-- [ ] **自定义异常** - 继承 `Exception` 或 `RuntimeException`
-
-**设计决策**：保留异常语法，但取消 Java 的受检异常声明（throws），类似 C#
-
-### 0.6.2.x 注解与反射
-- [ ] **注解定义** - `@interface`
-- [ ] **元注解** - `@Retention`, `@Target`
-- [ ] **常用注解** - `@Override`, `@Deprecated`, `@SuppressWarnings`
-- [ ] **编译期反射** - 宏/编译期获取类型信息（无运行时反射开销）
-
-### 0.6.3.x 枚举与记录
-- [ ] **枚举类型** - `enum Status { ACTIVE, INACTIVE }`
-- [ ] **枚举方法** - 构造函数、字段、方法
-- [ ] **记录类** - `record Point(int x, int y)`
-
-### 0.6.4.x 并发编程（显式同步）
-- [ ] **Thread 类** - 线程创建和启动
-- [ ] **Runnable/Callable** - 任务接口
-- [ ] **显式锁** - `std.sync.Mutex`, `std.sync.RwLock`（非 synchronized）
-- [ ] **原子操作** - `AtomicInteger`, `AtomicBoolean`（编译为无锁指令）
-- [ ] **线程池** - `ExecutorService`, `ThreadPoolExecutor`
-- [ ] **并发集合** - `ConcurrentHashMap`, `CopyOnWriteArrayList`
-
-**设计决策**：无 synchronized 关键字（需要运行时 monitor），使用显式锁或原子操作
+**阶段交付物**：可编写无内存泄漏的文件复制工具、HTTP 服务器基础框架，性能与 C++ 同级。
 
 ---
 
-## 阶段五：模块系统与生态 (0.7.x.x)
+### 阶段四：错误处理与并发 (0.6.x.x)
+**目标**：建立系统级的错误传播机制和零成本并发抽象。
 
-### 0.7.1.x 包管理
-- [ ] **包声明** - `package com.example.project;`
-- [ ] **导入语句** - `import`, `import static`
-- [ ] **访问控制** - 包级私有 (default)
-- [ ] **包管理器** - 类似 Maven/Gradle 的依赖管理
+#### 0.6.1.x 错误处理机制（非异常体系）
+- [ ] **Result<T, E> 泛型** - 显式错误传播 `Result<File, IOError>`
+- [ ] **问号运算符** - `file.read()?` 自动展开错误传播（类似 Rust 的 `?` 或 Zig 的 `try`）
+- [ ] **错误类型层级** - `interface Error { string message(); }`，支持错误链（error chaining）
+- [ ] **panic/abort** - 不可恢复错误，调用栈回退或立即终止（可选 unwind 实现）
 
-### 0.7.2.x 模块系统 (Java 9+ 风格)
-- [ ] **module-info.java** - 模块声明
-- [ ] **exports** - 导出包
-- [ ] **requires** - 依赖声明
-- [ ] **服务提供** - `provides ... with ...`
+*设计决策*：取消 Java 式异常，采用类似 Rust/Zig 的错误码机制，确保无运行时异常处理开销。
 
-### 0.7.3.x 开发工具
-- [ ] **LSP 支持** - 语言服务器协议
-- [ ] **VSCode 插件** - 语法高亮、跳转、补全、调试
-- [ ] **代码格式化** - 类似 Eclipse/IDEA 格式化规则
-- [ ] **静态分析** - 代码检查工具
-- [ ] **单元测试** - JUnit 风格测试框架
+#### 0.6.2.x 轻量级并发（1:1 线程模型）
+- [ ] **OS 线程封装** - `Thread` 类，直接映射 pthread/Windows Thread
+- [ ] **线程参数传递** - 必须显式指定数据所有权转移（为 G2 所有权系统做铺垫）
+- [ ] **原子操作** - `AtomicI32`, `AtomicPtr<T>`，封装 C++11 风格内存序（Relaxed/Release/Acquire/SeqCst）
+- [ ] **互斥锁** - `Mutex<T>`，封装 OS 层 mutex（futex 或 CriticalSection），非语言级 synchronized
 
-### 0.7.4.x 跨平台支持
-- [ ] **Linux 后端** - ELF 可执行文件
-- [ ] **macOS 支持** - Mach-O 格式
-- [ ] **交叉编译** - 从任意平台编译到目标平台
+#### 0.6.3.x 异步 I/O 基础（非协程，基于 epoll/io_uring）
+- [ ] **Reactor 模式** - 单线程事件循环，支持 Linux epoll/Windows IOCP
+- [ ] **异步文件 I/O** - 基于 io_uring（Linux）或 Overlapped I/O（Windows）
+- [ ] **Future/Promise 基础** - 回调式异步，显式状态机转换（无 async/await 语法糖，纯库实现）
+
+**阶段交付物**：可编写高性能反向代理、键值存储服务，具备系统级错误处理和并发能力。
 
 ---
 
-## 阶段六：性能优化 (0.8.x.x)
+### 阶段五：模块系统与工具链 (0.7.x.x)
+**目标**：建立生产级工程能力，支持中大型项目开发。
 
-### 0.8.1.x 编译器优化
-- [ ] **逃逸分析** - 栈上分配对象
-- [ ] **内联优化** - 方法内联展开
-- [ ] **常量折叠** - 编译期常量计算
-- [ ] **死代码消除** - 移除未使用代码
-- [ ] **SIMD 向量化** - 自动使用 SIMD 指令
+#### 0.7.1.x 包管理器（eolpm）
+- [ ] **包声明** - `package com.ethernos.std;`
+- [ ] **模块清单** - `eol.toml`（类似 Cargo），声明依赖、版本、编译选项
+- [ ] **语义化版本** - 严格遵循 SemVer，支持 lock 文件确保可复现构建
+- [ ] **本地/远程仓库** - 支持 Git 依赖和中央仓库（registry）
 
-### 0.8.2.x 内存管理库
-- [ ] **Arena 分配器** - 快速批量分配/释放
-- [ ] **栈分配** - `Stack<T>` 自动作用域管理
-- [ ] **手动堆分配** - `heap.alloc()`, `heap.free()`
-- [ ] **内存池** - 对象池复用
-- [ ] **智能指针（可选）** - `UniquePtr<T>`, `SharedPtr<T>`（引用计数）
+#### 0.7.2.x 编译单元与链接
+- [ ] **模块化编译** - 增量编译，接口文件（.eoi）生成，类似 C++ 模块或 Swift 模块
+- [ ] **静态/动态链接** - 生成 .a/.so/.lib/.dll，支持 C ABI 导出
+- [ ] **LTO（链接时优化）** - 跨模块内联，基于 LLVM LTO
 
-**设计决策**：无 GC，提供显式内存管理工具，类似 Zig 的 `std.heap`
+#### 0.7.3.x 开发工具
+- [ ] **LSP 服务器** - 基于编译器前端，支持跳转、补全、重构
+- [ ] **调试信息** - DWARF/PDB 生成，支持 GDB/LLDB/VS Debugger
+- [ ] **格式化工具** - `eolfmt`，确定官方代码风格（类似 gofmt）
+- [ ] **静态分析** - 基础 lint 规则（未使用变量、内存泄漏风险检测）
 
----
-
-## 第二级：EOL 特色语法 (1.x.x.x)
-
-在保持 Java 兼容性的基础上，引入 EOL 独特的语法糖。
-
-### 7.1 现代 Lambda 与函数式编程
-- [ ] **箭头函数语法** - `(para1, para2) -> { body }` 风格匿名函数
-- [ ] **函数类型** - `Function<Int, Int> add = (a, b) -> a + b;`
-- [ ] **闭包支持** - 完整闭包，捕获外部变量
-- [ ] **高阶函数** - 函数作为参数和返回值
-- [ ] **函数组合** - `f.andThen(g)`, `f.compose(g)`
-- [ ] **柯里化** - `add(1)(2)(3)` 自动柯里化支持
-- [ ] **管道操作符** - `data |> transform |> filter |> collect`
-
-### 7.2 面向对象增强
-- [ ] **结构体 (struct)** - 值类型数据结构 `struct Point { int x, y; }`
-- [ ] **自定类型 (typedef/type)** - `type ID = String;` 类型别名增强
-- [ ] **扩展方法** - `extend ClassName { newMethod() {} }` 为现有类添加方法
-- [ ] **属性访问器** - `get/set` 自动属性 `property String name;`
-- [ ] **数据类** - `@Data` 自动生成 equals/hashCode/toString
-- [ ] **密封类** - `sealed class Shape permits Circle, Square`
-- [ ] **模式匹配 (类)** - `if (obj instanceof Point(int x, int y))`
-
-### 7.3 运算符重载与中缀函数
-- [ ] **中缀函数 (expr)** - `expr fun add(a: Int, b: Int) = a + b` 然后 `1 add 2`
-- [ ] **运算符重载** - `operator fun plus(other: Vector) = Vector(...)`
-- [ ] **自定义运算符** - 定义新的运算符符号和优先级
-- [ ] **范围运算符** - `1..10`, `'a'..'z'` 闭区间
-- [ ] **安全调用** - `obj?.method()` 空安全调用
-- [ ] **Elvis 运算符** - `name ?: "default"` 空值合并
-- [ ] **非空断言** - `name!!` 强制非空
-
-### 7.4 解构与模式匹配
-- [ ] **解构声明** - `val (x, y) = point;`
-- [ ] **数组解构** - `val [a, b, ...rest] = arr;`
-- [ ] **when 表达式** - 增强 switch，支持模式匹配
-  ```
-  when (obj) {
-      is Point(int x, int y) -> println("$x, $y");
-      is String s && s.length > 5 -> println("long string");
-      else -> println("other");
-  }
-  ```
-- [ ] **守卫子句** - `case n if n > 0:` 带条件的 case
-- [ ] **类型模式** - `case String s:` 自动类型转换
-- [ ] **列表模式** - `case [1, 2, 3]:` 匹配列表内容
-
-### 7.5 异步与并发语法糖
-- [ ] **async/await** - `async fun foo()` 和 `await result`
-- [ ] **异步流** - `async Stream<T>` 和 `yield` 生成器
-- [ ] **结构化并发** - `async { ... }` 块，自动取消子任务
-- [ ] **协程** - `suspend fun` 轻量级线程
-- [ ] **选择表达式** - `select { case chan1.recv() -> ... }`
-
-### 7.6 元编程与宏
-- [ ] **编译期常量** - `const val MAX = 100;`
-- [ ] **宏系统** - `macro!()` 编译时代码生成
-- [ ] **代码注入** - `#[derive(Debug)]` 自动派生 trait
-- [ ] **条件编译** - `#if DEBUG` 编译期条件
-- [ ] **编译期反射** - 在编译时获取类型信息
-
-### 7.7 内存与安全（可选）
-- [ ] **所有权系统（可选）** - 编译期内存安全（可选启用）
-- [ ] **借用检查** - `&T`, `&mut T` 借用语义
-- [ ] **智能指针** - `Box<T>`, `Rc<T>`, `Arc<T>`
-- [ ] **生命周期** - 显式生命周期标注
-- [ ] **unsafe 块** - `unsafe { ... }` 不安全代码隔离
-
-### 7.8 集合与流式处理
-- [ ] **集合字面量** - `#[1, 2, 3]`, `#{"a": 1, "b": 2}`
-- [ ] **序列推导式** - `[x * 2 for x in list if x > 0]`
-- [ ] **流式 API** - `list.stream().filter(...).map(...).collect()`
-- [ ] **并行流** - `list.parallelStream()` 自动并行化
-- [ ] **不可变集合** - `ImmutableList`, `ImmutableMap`
-
-### 7.9 字符串与格式化
-- [ ] **原始字符串** - `r"C:\Users\name"` 不转义
-- [ ] **多行字符串** - `"""..."""` 保留格式
-- [ ] **字符串模板** - `"Hello, $name!"` 和 `"Sum: ${a + b}"`
-- [ ] **内插表达式** - `"Result: ${method()}"`
-- [ ] **格式化字面量** - `f"{value:.2f}"` 格式控制
-
-### 7.10 其他语法糖
-- [ ] **尾随逗号** - 函数参数、数组末尾允许逗号
-- [ ] **命名参数** - `drawPoint(x: 10, y: 20)`
-- [ ] **默认参数** - `fun greet(name, greeting = "Hello")`
-- [ ] **参数展开** - `call(*args, **kwargs)`
-- [ ] **链式调用** - `obj.method1().method2().method3()`
-- [ ] **空合并链** - `a ?? b ?? c ?? default`
-- [ ] **提前返回** - `return if condition;` 守卫语句
-
-### 7.11 FFI 互操作
-- [ ] **C 外部函数** - `extern "C"` 调用 C 库
-- [ ] **Windows API** - 直接调用 Win32 API
-- [ ] **WebAssembly** - 编译为 WASM 在浏览器运行
-- [ ] **Python 绑定** - 调用 Python 库
+**阶段交付物**：可用 EOL 编写 10 万行级项目（如编译器自身前端），具备完整工具链支持。
 
 ---
 
-## 代际演进
+### 阶段六：底层控制与优化 (0.8.x.x)
+**目标**：提供底层硬件控制能力和极致性能优化。
 
-| 代际 | 版本 | 目标 |
-|------|------|------|
-| G0 | 0.x.x.x | LLVM 后端 + Java 兼容（当前） |
-| G1 | 1.x.x.x | 自托管编译器（用 EOL 写 EOL） |
-| G2 | 2.x.x.x | 所有权系统（内存安全纪元） |
+#### 0.8.1.x Unsafe 子集（为 G2 做准备）
+- [ ] **unsafe 块** - `unsafe { ... }`，内部允许：原始指针解引用、union 访问、调用 C 函数
+- [ ] **原始指针** - `*T` 和 `*mut T`，支持指针运算
+- [ ] **类型转换** - `transmute<T, U>`（位重解释），`as` 关键字基础转换
+- [ ] **内联汇编** - `asm!()` 宏，支持 x86_64/ARM64 内联汇编（类似 Rust 的 asm!）
+
+#### 0.8.2.x 编译器优化与 SIMD
+- [ ] **自动向量化** - LLVM auto-vectorization 调优，支持 AVX2/AVX-512/NEON
+- [ ] **显式 SIMD** - `std.simd.Vec4f` 等类型，封装 SIMD 指令
+- [ ] **内存布局控制** - `#[repr(C)]`, `#[repr(packed)]`, `#[align(N)]` 属性
+- [ ] **零成本抽象验证** - 确保泛型、迭代器等抽象最终编译为与手写 C 等价的机器码
+
+#### 0.8.3.x 嵌入式与裸机支持
+- [ ] **no_std** - 支持无标准库环境，不链接 libc
+- [ ] **启动代码** - 自定义 `_start`，支持裸机 ARM/RISC-V 编程
+- [ ] **内存映射 I/O** - `volatile` 读写语义，支持 MMIO 寄存器操作
+
+**阶段交付物**：可编写操作系统内核模块、嵌入式固件、高性能计算库（如矩阵运算），完全替代 C/C++ 在系统编程领域的地位。
+
+---
+
+## G1 代：自举与现代化（1.x.x.x）
+**目标**：用 EOL 重写自身编译器，引入现代语言特性，提升表达力。
+
+### 1.0.x 编译器自举（里程碑版本）
+- [ ] **前端迁移** - 词法分析器、语法分析器、AST 生成全部用 EOL 编写
+- [ ] **LLVM IR 生成** - 继续使用 LLVM 后端，但驱动代码为 EOL
+- [ ] **引导编译** - 使用 G0 编译器（0.8.x）编译 G1 编译器，再用 G1 编译器自举验证
+- [ ] **性能基准** - 自举编译速度不低于 G0 版本的 90%
+
+### 1.1.x 语法糖与提升开发体验
+- [ ] **类型推断增强** - `var` 关键字局部变量推断，`auto` 返回值推断（限于单 return）
+- [ ] **解构赋值** - `val (x, y) = point;`，支持元组和结构体
+- [ ] **范围与迭代** - `for i in 0..100 { ... }`（半开区间），支持自定义迭代器
+- [ ] **字符串模板** - `"Hello, \(name)"` 或 `"Hello, ${name}"`，编译期解析
+
+### 1.2.x 函数式编程支持
+- [ ] **Lambda 表达式** - `(x: int) => x * 2`，支持闭包（捕获环境）
+- [ ] **高阶函数** - 函数作为一等公民，支持函数类型 `fn(int) -> int`
+- [ ] **不可变集合** - `ImmutableList<T>`，基于持久化数据结构（HAMT 等）
+- [ ] **管道操作符** - `value |> transform |> filter`，左结合
+
+### 1.3.x 高级类型系统
+- [ ] **代数数据类型（ADT）** - `enum Option<T> { Some(T), None }`，支持模式匹配
+- [ ] **模式匹配基础** - `match` 表达式，支持常量、范围、元组匹配
+- [ ] **泛型约束** - `where T: Comparable`，泛型边界细化
+- [ ] **关联类型** - `interface Container { type Item; }`
+
+### 1.4.x 异步与并发语法糖（基于 G0 的 I/O 基础）
+- [ ] **async/await** - 基于 G0 阶段的手动 Future，编译器生成状态机
+- [ ] **协程（绿色线程）** - `async fn` 支持，M:N 线程模型可选
+- [ ] **结构化并发** - `async { ... }` 块，自动取消传播
 
 ---
 
-## 核心设计原则
+## G2 代：内存安全纪元（2.x.x.x）
+**目标**：引入所有权与借用检查系统，实现编译期内存安全，消除 use-after-free 和数据竞争。
 
-1. **始终编译为原生代码** - 无 VM，无字节码，无解释器
-2. **无隐式控制流** - 无 GC，无隐式内存分配，无运行时异常处理
-3. **显式优于隐式** - 内存管理、错误处理、并发都需显式声明
-4. **Java 语法，C++ 性能** - 熟悉的语法，零开销抽象
+### 2.0.x 所有权系统核心（代际升级标记）
+- [ ] **所有权语义** - 默认移动语义，复制需显式实现 `Copy` trait
+- [ ] **借用检查器（Borrow Checker）** - 编译期跟踪引用生命周期
+- [ ] **引用类型** - `&T`（不可变借用），`&mut T`（可变借用），严格 XOR 规则
+- [ ] **生命周期标注** - 显式生命周期 `'a`，函数签名如 `fn max<'a>(x: &'a T, y: &'a T) -> &'a T`
+- [ ] **RAII 强化** - Drop trait 自动调用，与所有权转移结合
+
+### 2.1.x 高级内存安全
+- [ ] **非词法生命周期（NLL）** - 更精确的借用范围分析
+- [ ] **内部可变性** - `Cell<T>`, `RefCell<T>`（单线程），`Mutex<T>`, `RwLock<T>`（多线程）的 unsafe 内部实现
+- [ ] **智能指针集成** - `Box<T>`（堆唯一所有权），`Arc<T>`（原子引用计数，线程安全共享）
+- [ ] **弱引用与循环检测** - `Weak<T>`，编译期警告潜在循环引用（辅助 lint）
+
+### 2.2.x 并发安全
+- [ ] **Send/Sync trait** - 标记类型是否可跨线程发送/共享，编译期数据竞争检测
+- [ ] **通道（Channels）** - `Sender<T>/Receiver<T>`，所有权转移实现无锁消息传递
+- [ ] **无锁数据结构** - `AtomicQueue<T>`, `AtomicStack<T>`，基于 CAS 操作
+
+### 2.3.x 编译期计算与元编程
+- [ ] **常量泛型** - `Array<T, N>` 其中 N 为编译期常量
+- [ ] **编译期函数执行** - `const fn`，可在编译期计算复杂逻辑
+- [ ] **宏系统** - 卫生宏（hygienic macros），`macro!()` 与 `macro_rules!`
+- [ ] **反射（编译期）** - `typeof`, `offsetof`, 生成序列化代码（零成本反射）
+
+### 2.4.x 与 G1/G0 的互操作
+- [ ] ** unsafe 桥接** - 在 G2 代码中调用 G1/G0 的不安全代码，需显式 `unsafe` 块
+- [ ] **迁移路径** - 允许 G1 代码逐步添加所有权标注升级为 G2，提供 `#[legacy]` 属性允许无所有权代码存在
+- [ ] **FFI 安全封装** - 自动生成 C 头文件的安全包装层
 
 ---
 
-## 开发优先级
+## 演进时间线参考
 
-| 优先级 | 特性类别 |
-|--------|----------|
-| P0 | Java 兼容性（0.3.x - 0.8.x） |
-| P1 | 语法糖（中缀函数、解构、字符串模板） |
-| P2 | 函数式（Lambda 增强、管道、高阶函数） |
-| P3 | 异步（async/await、协程） |
-| P4 | 元编程（宏、编译期计算） |
-| P5 | 内存安全（所有权系统，实验性） |
+| 代际 | 预计周期 | 关键里程碑 |
+|------|----------|------------|
+| **G0** | 2-3 年 | 生产可用（0.8.0），可替代 C++ 编写高性能服务 |
+| **G1** | 1.5-2 年 | 自举完成（1.0.0），语言稳定，生态建设 |
+| **G2** | 2-3 年 | 内存安全（2.0.0），进入 Linux 内核、嵌入式等最高安全要求领域 |
+
+**总计**：5-8 年达到完全体，符合系统编程语言的成熟周期（参考 Rust 1.0 到广泛采用约 5 年，C++ 标准化周期）。
 
 ---
+
+## 关键设计决策备忘
+
+1. **G0 与 G1 的边界**：G0 证明 EOL 可以系统编程，G1 证明 EOL 可以大规模工程开发。G0 保留手动内存管理（类似 C++），G1 不引入所有权，但完善类型系统和语法糖。
+
+2. **G1 与 G2 的边界**：G2 是可选的严格模式。G1 代码可在 G2 编译器中通过 `#[edition(G1)]` 继续运行，确保向后兼容。G2 的所有权系统是**渐进式**的，而非强制立即迁移。
+
+3. **异常 vs 错误码**：G0 和 G1 采用 `Result<T,E>` 为主，G2 可能引入 `?` 传播和更复杂的错误处理，但始终保持零开销（no unwinding cost）。
+
+4. **GC 永不引入**：所有代际均不提供垃圾回收，确保与 C/C++/Rust 同级的内存可控性。
+
+5. **C++ 互操作优先**：每一代都保持与 C++ ABI 的兼容性（通过 extern "C++" 或类似机制），确保可以调用现有系统库。
+
 
 **注意：** 本路线图会根据实际开发情况和社区反馈进行调整。

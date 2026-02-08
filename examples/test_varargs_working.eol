@@ -1,0 +1,28 @@
+public class TestVarargsWorking {
+    // 使用数组作为可变参数的替代方案
+    public static int sum(int[] numbers) {
+        int total = 0;
+        for (int i = 0; i < numbers.length; i++) {
+            total = total + numbers[i];
+        }
+        return total;
+    }
+
+    public static void main() {
+        println("Testing varargs (using array):");
+
+        // 创建数组并调用
+        int[] arr = new int[5];
+        arr[0] = 1;
+        arr[1] = 2;
+        arr[2] = 3;
+        arr[3] = 4;
+        arr[4] = 5;
+
+        int result = sum(arr);
+        print("sum([1,2,3,4,5]) = ");
+        println(result);
+
+        println("Varargs tests completed!");
+    }
+}

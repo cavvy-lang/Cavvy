@@ -132,7 +132,7 @@ impl SemanticAnalyzer {
     fn analyze_methods(&mut self, program: &Program) -> EolResult<()> {
         for class in &program.classes {
             self.current_class = Some(class.name.clone());
-            
+
             for member in &class.members {
                 if let ClassMember::Method(method) = member {
                     let method_info = MethodInfo {
@@ -144,9 +144,9 @@ impl SemanticAnalyzer {
                         is_static: method.modifiers.contains(&Modifier::Static),
                         is_native: method.modifiers.contains(&Modifier::Native),
                     };
-                    
+
                     if let Some(class_info) = self.type_registry.classes.get_mut(&class.name) {
-                        class_info.methods.insert(method.name.clone(), method_info);
+                        class_info.add_method(method_info);
                     }
                 }
             }
@@ -382,28 +382,19 @@ impl SemanticAnalyzer {
                         _ => {}
                     }
 
-                    // 尝试查找当前类的方法（无对象调用）
+                    // 尝试查找当前类的方法（无对象调用）- 支持方法重载
                     if let Some(current_class) = &self.current_class {
-                        if let Some(method_info) = self.type_registry.get_method(current_class, name) {
-                            if call.args.len() != method_info.params.len() {
-                                return Err(semantic_error(
-                                    call.loc.line,
-                                    call.loc.column,
-                                    format!("Method '{}' expects {} arguments, got {}",
-                                        name, method_info.params.len(), call.args.len())
-                                ));
-                            }
+                        // 先推断所有参数类型
+                        let mut arg_types = Vec::new();
+                        for arg in &call.args {
+                            arg_types.push(self.infer_expr_type(arg)?);
+                        }
 
-                            for (i, (arg, param)) in call.args.iter().zip(method_info.params.iter()).enumerate() {
-                                let arg_type = self.infer_expr_type(arg)?;
-                                if !self.types_compatible(&arg_type, &param.param_type) {
-                                    return Err(semantic_error(
-                                        call.loc.line,
-                                        call.loc.column,
-                                        format!("Argument {} type mismatch: expected {}, got {}",
-                                            i + 1, param.param_type, arg_type)
-                                    ));
-                                }
+                        // 使用参数类型查找匹配的方法
+                        if let Some(method_info) = self.type_registry.find_method(current_class, name, &arg_types) {
+                            // 检查参数类型兼容性（支持可变参数）
+                            if let Err(msg) = self.check_arguments_compatible(&call.args, &method_info.params, call.loc.line, call.loc.column) {
+                                return Err(semantic_error(call.loc.line, call.loc.column, msg));
                             }
 
                             return Ok(method_info.return_type.clone());
@@ -413,31 +404,29 @@ impl SemanticAnalyzer {
 
                 // 支持成员调用: obj.method(...) 或 ClassName.method()（静态方法）
                 if let Expr::MemberAccess(member) = call.callee.as_ref() {
-                    // 检查是否是类名（静态方法调用）
+                    // 推断对象类型
+                    let obj_type = self.infer_expr_type(&member.object)?;
+
+                    // 处理 String 类型方法调用
+                    if obj_type == Type::String {
+                        return self.infer_string_method_call(&member.member, &call.args, call.loc.line, call.loc.column);
+                    }
+
+                    // 检查是否是类名（静态方法调用）- 支持方法重载
                     if let Expr::Identifier(class_name) = &*member.object {
                         if let Some(class_info) = self.type_registry.get_class(class_name) {
-                            if let Some(method_info) = class_info.methods.get(&member.member) {
-                                if method_info.is_static {
-                                    // 静态方法调用
-                                    if call.args.len() != method_info.params.len() {
-                                        return Err(semantic_error(
-                                            call.loc.line,
-                                            call.loc.column,
-                                            format!("Method '{}' expects {} arguments, got {}",
-                                                member.member, method_info.params.len(), call.args.len())
-                                        ));
-                                    }
+                            // 先推断所有参数类型
+                            let mut arg_types = Vec::new();
+                            for arg in &call.args {
+                                arg_types.push(self.infer_expr_type(arg)?);
+                            }
 
-                                    for (i, (arg, param)) in call.args.iter().zip(method_info.params.iter()).enumerate() {
-                                        let arg_type = self.infer_expr_type(arg)?;
-                                        if !self.types_compatible(&arg_type, &param.param_type) {
-                                            return Err(semantic_error(
-                                                call.loc.line,
-                                                call.loc.column,
-                                                format!("Argument {} type mismatch: expected {}, got {}",
-                                                    i + 1, param.param_type, arg_type)
-                                            ));
-                                        }
+                            // 使用参数类型查找匹配的静态方法
+                            if let Some(method_info) = class_info.find_method(&member.member, &arg_types) {
+                                if method_info.is_static {
+                                    // 检查参数类型兼容性（支持可变参数）
+                                    if let Err(msg) = self.check_arguments_compatible(&call.args, &method_info.params, call.loc.line, call.loc.column) {
+                                        return Err(semantic_error(call.loc.line, call.loc.column, msg));
                                     }
 
                                     return Ok(method_info.return_type.clone());
@@ -445,30 +434,20 @@ impl SemanticAnalyzer {
                             }
                         }
                     }
-                    
-                    // 推断对象类型（实例方法调用）
-                    let obj_type = self.infer_expr_type(&member.object)?;
-                    if let Type::Object(class_name) = obj_type {
-                        if let Some(method_info) = self.type_registry.get_method(&class_name, &member.member) {
-                            if call.args.len() != method_info.params.len() {
-                                return Err(semantic_error(
-                                    call.loc.line,
-                                    call.loc.column,
-                                    format!("Method '{}' expects {} arguments, got {}",
-                                        member.member, method_info.params.len(), call.args.len())
-                                ));
-                            }
 
-                            for (i, (arg, param)) in call.args.iter().zip(method_info.params.iter()).enumerate() {
-                                let arg_type = self.infer_expr_type(arg)?;
-                                if !self.types_compatible(&arg_type, &param.param_type) {
-                                    return Err(semantic_error(
-                                        call.loc.line,
-                                        call.loc.column,
-                                        format!("Argument {} type mismatch: expected {}, got {}",
-                                            i + 1, param.param_type, arg_type)
-                                    ));
-                                }
+                    // 处理类实例方法调用 - 支持方法重载
+                    if let Type::Object(class_name) = obj_type {
+                        // 先推断所有参数类型
+                        let mut arg_types = Vec::new();
+                        for arg in &call.args {
+                            arg_types.push(self.infer_expr_type(arg)?);
+                        }
+
+                        // 使用参数类型查找匹配的方法
+                        if let Some(method_info) = self.type_registry.find_method(&class_name, &member.member, &arg_types) {
+                            // 检查参数类型兼容性（支持可变参数）
+                            if let Err(msg) = self.check_arguments_compatible(&call.args, &method_info.params, call.loc.line, call.loc.column) {
+                                return Err(semantic_error(call.loc.line, call.loc.column, msg));
                             }
 
                             return Ok(method_info.return_type.clone());
@@ -496,17 +475,25 @@ impl SemanticAnalyzer {
                         }
                     }
                 }
-                
+
                 // 成员访问类型检查
                 let obj_type = self.infer_expr_type(&member.object)?;
-                
+
                 // 特殊处理数组的 .length 属性
                 if member.member == "length" {
                     if let Type::Array(_) = obj_type {
                         return Ok(Type::Int32);  // length 返回 int
                     }
                 }
-                
+
+                // 特殊处理 String 类型方法
+                if obj_type == Type::String {
+                    match member.member.as_str() {
+                        "length" => return Ok(Type::Int32),
+                        _ => {}
+                    }
+                }
+
                 // 类成员访问
                 if let Type::Object(class_name) = obj_type {
                     if let Some(class_info) = self.type_registry.get_class(&class_name) {
@@ -520,7 +507,7 @@ impl SemanticAnalyzer {
                         format!("Unknown member '{}' for class {}", member.member, class_name)
                     ));
                 }
-                
+
                 Err(semantic_error(
                     member.loc.line,
                     member.loc.column,
@@ -644,6 +631,122 @@ impl SemanticAnalyzer {
         match (left, right) {
             (Type::Int64, _) | (_, Type::Int64) => Type::Int64,
             _ => Type::Int32,
+        }
+    }
+
+    /// 检查参数是否与参数定义兼容（支持可变参数）
+    fn check_arguments_compatible(&self, args: &[Expr], params: &[ParameterInfo], line: usize, column: usize) -> Result<(), String> {
+        if params.is_empty() {
+            if args.is_empty() {
+                return Ok(());
+            } else {
+                return Err(format!("Expected 0 arguments, got {}", args.len()));
+            }
+        }
+
+        // 检查最后一个参数是否是可变参数
+        let last_idx = params.len() - 1;
+        if params[last_idx].is_varargs {
+            // 可变参数：至少需要 params.len() - 1 个参数
+            if args.len() < last_idx {
+                return Err(format!("Expected at least {} arguments, got {}", last_idx, args.len()));
+            }
+
+            // 检查固定参数
+            for i in 0..last_idx {
+                let arg_type = self.infer_expr_type(&args[i]).map_err(|e| e.to_string())?;
+                if !self.types_compatible(&arg_type, &params[i].param_type) {
+                    return Err(format!("Argument {} type mismatch: expected {}, got {}",
+                        i + 1, params[i].param_type, arg_type));
+                }
+            }
+
+            // 检查可变参数
+            // 可变参数类型是 Array(ElementType)，需要匹配 ElementType
+            let vararg_element_type = match &params[last_idx].param_type {
+                Type::Array(elem) => elem.as_ref(),
+                _ => &params[last_idx].param_type,
+            };
+            for i in last_idx..args.len() {
+                let arg_type = self.infer_expr_type(&args[i]).map_err(|e| e.to_string())?;
+                if !self.types_compatible(&arg_type, vararg_element_type) {
+                    return Err(format!("Varargs argument {} type mismatch: expected {}, got {}",
+                        i + 1, vararg_element_type, arg_type));
+                }
+            }
+        } else {
+            // 非可变参数：参数数量必须完全匹配
+            if params.len() != args.len() {
+                return Err(format!("Expected {} arguments, got {}", params.len(), args.len()));
+            }
+
+            for (i, (arg, param)) in args.iter().zip(params.iter()).enumerate() {
+                let arg_type = self.infer_expr_type(arg).map_err(|e| e.to_string())?;
+                if !self.types_compatible(&arg_type, &param.param_type) {
+                    return Err(format!("Argument {} type mismatch: expected {}, got {}",
+                        i + 1, param.param_type, arg_type));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// 推断 String 方法调用的返回类型
+    fn infer_string_method_call(&self, method_name: &str, args: &[Expr], line: usize, column: usize) -> EolResult<Type> {
+        match method_name {
+            "length" => {
+                if !args.is_empty() {
+                    return Err(semantic_error(line, column, "String.length() takes no arguments".to_string()));
+                }
+                Ok(Type::Int32)
+            }
+            "substring" => {
+                if args.is_empty() || args.len() > 2 {
+                    return Err(semantic_error(line, column, "String.substring() takes 1 or 2 arguments".to_string()));
+                }
+                // 检查参数类型
+                for (i, arg) in args.iter().enumerate() {
+                    let arg_type = self.infer_expr_type(arg)?;
+                    if !arg_type.is_integer() {
+                        return Err(semantic_error(line, column, format!("Argument {} of substring() must be integer, got {}", i + 1, arg_type)));
+                    }
+                }
+                Ok(Type::String)
+            }
+            "indexOf" => {
+                if args.len() != 1 {
+                    return Err(semantic_error(line, column, "String.indexOf() takes 1 argument".to_string()));
+                }
+                let arg_type = self.infer_expr_type(&args[0])?;
+                if arg_type != Type::String {
+                    return Err(semantic_error(line, column, format!("Argument of indexOf() must be string, got {}", arg_type)));
+                }
+                Ok(Type::Int32)
+            }
+            "charAt" => {
+                if args.len() != 1 {
+                    return Err(semantic_error(line, column, "String.charAt() takes 1 argument".to_string()));
+                }
+                let arg_type = self.infer_expr_type(&args[0])?;
+                if !arg_type.is_integer() {
+                    return Err(semantic_error(line, column, format!("Argument of charAt() must be integer, got {}", arg_type)));
+                }
+                Ok(Type::Char)
+            }
+            "replace" => {
+                if args.len() != 2 {
+                    return Err(semantic_error(line, column, "String.replace() takes 2 arguments".to_string()));
+                }
+                for (i, arg) in args.iter().enumerate() {
+                    let arg_type = self.infer_expr_type(arg)?;
+                    if arg_type != Type::String {
+                        return Err(semantic_error(line, column, format!("Argument {} of replace() must be string, got {}", i + 1, arg_type)));
+                    }
+                }
+                Ok(Type::String)
+            }
+            _ => Err(semantic_error(line, column, format!("Unknown String method '{}'", method_name))),
         }
     }
 }

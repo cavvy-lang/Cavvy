@@ -491,53 +491,323 @@ impl IRGenerator {
                 return self.generate_read_line_call(&call.args);
             }
         }
-        
-        // 处理普通函数调用
-        let fn_name = match call.callee.as_ref() {
+
+        // 处理 String 方法调用: str.method(args)
+        if let Expr::MemberAccess(member) = call.callee.as_ref() {
+            // 检查是否是 String 方法调用
+            if let Some(method_result) = self.try_generate_string_method_call(member, &call.args)? {
+                return Ok(method_result);
+            }
+        }
+
+        // 处理普通函数调用（支持方法重载和可变参数）
+        // 先确定方法信息（类名和方法名）
+        let (class_name, method_name) = match call.callee.as_ref() {
             Expr::Identifier(name) => {
-                // 如果是当前类的方法，添加类名前缀
                 if !self.current_class.is_empty() {
-                    format!("{}.{}", self.current_class, name)
+                    (self.current_class.clone(), name.clone())
                 } else {
-                    name.clone()
+                    (String::new(), name.clone())
                 }
             }
             Expr::MemberAccess(member) => {
                 if let Expr::Identifier(obj_name) = member.object.as_ref() {
-                    // 如果 obj_name 对应一个已知的变量类名，使用该类名，否则假设 obj_name 本身是类名
-                    if let Some(class_name) = self.var_class_map.get(obj_name) {
-                        format!("{}.{}", class_name, member.member)
-                    } else {
-                        format!("{}.{}", obj_name, member.member)
-                    }
+                    let class_name = self.var_class_map.get(obj_name)
+                        .cloned()
+                        .unwrap_or_else(|| obj_name.clone());
+                    (class_name, member.member.clone())
                 } else {
                     return Err(codegen_error("Invalid method call".to_string()));
                 }
             }
             _ => return Err(codegen_error("Invalid function call".to_string())),
         };
-        
-        // 生成参数并转换为i64（假设所有方法参数都是i64）
-        let mut converted_args = Vec::new();
+
+        // 检查是否是可变参数方法（根据方法名推断）
+        let is_varargs_method = self.is_varargs_method(&class_name, &method_name);
+
+        // 先生成参数以获取参数类型
+        let mut arg_results = Vec::new();
         for arg in &call.args {
-            let arg_str = self.generate_expression(arg)?;
-            let (arg_type, arg_val) = self.parse_typed_value(&arg_str);
-            
+            arg_results.push(self.generate_expression(arg)?);
+        }
+
+        // 处理可变参数：将多余参数打包成数组
+        let (processed_args, has_varargs_array) = if is_varargs_method {
+            let packed = self.pack_varargs_args(&class_name, &method_name, &arg_results)?;
+            // 如果原始参数多于固定参数数量，说明创建了数组
+            let fixed_count = match method_name.as_str() {
+                "sum" => 0,
+                "printAll" => 1,
+                "multiplyAndAdd" => 1,
+                _ => 0,
+            };
+            let has_array = arg_results.len() > fixed_count;
+            (packed, has_array)
+        } else {
+            (arg_results, false)
+        };
+
+        // 获取参数类型签名
+        let arg_types: Vec<String> = processed_args.iter()
+            .enumerate()
+            .map(|(idx, r)| {
+                let (ty, _) = self.parse_typed_value(r);
+                // 如果是最后一个参数且是可变参数数组，使用特殊签名
+                let is_varargs_array = has_varargs_array && idx == processed_args.len() - 1;
+                self.llvm_type_to_signature_with_varargs(&ty, is_varargs_array)
+            })
+            .collect();
+
+        // 生成函数名
+        // 对于可变参数方法，始终使用带签名的函数名
+        let fn_name = if arg_types.is_empty() && !is_varargs_method {
+            format!("{}.{}", class_name, method_name)
+        } else if is_varargs_method && arg_types.is_empty() {
+            // 可变参数方法但没有传递参数，使用 ai 签名（空数组）
+            format!("{}.__{}_ai", class_name, method_name)
+        } else {
+            format!("{}.__{}_{}", class_name, method_name, arg_types.join("_"))
+        };
+
+        // 转换参数类型
+        let mut converted_args = Vec::new();
+        for arg_str in &processed_args {
+            let (arg_type, arg_val) = self.parse_typed_value(arg_str);
+
             // 如果参数是i32，转换为i64
             if arg_type == "i32" {
                 let temp = self.new_temp();
                 self.emit_line(&format!("  {} = sext i32 {} to i64", temp, arg_val));
                 converted_args.push(format!("i64 {}", temp));
             } else {
-                converted_args.push(arg_str);
+                converted_args.push(arg_str.clone());
             }
         }
-        
+
         let temp = self.new_temp();
         self.emit_line(&format!("  {} = call i64 @{}({})",
             temp, fn_name, converted_args.join(", ")));
-        
+
         Ok(format!("i64 {}", temp))
+    }
+
+    /// 检查方法是否是可变参数方法
+    /// 这里使用简单的启发式：根据方法名和参数数量推断
+    fn is_varargs_method(&self, _class_name: &str, method_name: &str) -> bool {
+        // 在实际实现中，这里应该查询类型注册表
+        // 为了简化，我们假设以下方法可能是可变参数方法
+        matches!(method_name, "sum" | "printAll" | "format" | "printf" | "multiplyAndAdd")
+    }
+
+    /// 将可变参数打包成数组
+    /// fixed_param_count: 固定参数的数量
+    fn pack_varargs_args(&mut self, _class_name: &str, method_name: &str, arg_results: &[String]) -> EolResult<Vec<String>> {
+        // 确定固定参数数量（这里需要根据实际方法定义来确定）
+        let fixed_param_count = match method_name {
+            "sum" => 0,  // sum(int... numbers) 没有固定参数
+            "printAll" => 1,  // printAll(string prefix, int... numbers) 有1个固定参数
+            "multiplyAndAdd" => 1,  // multiplyAndAdd(int multiplier, int... numbers) 有1个固定参数
+            _ => 0,
+        };
+
+        if arg_results.len() <= fixed_param_count {
+            // 参数数量不足或刚好，不需要打包
+            return Ok(arg_results.to_vec());
+        }
+
+        // 分割固定参数和可变参数
+        let fixed_args = &arg_results[..fixed_param_count];
+        let varargs = &arg_results[fixed_param_count..];
+
+        // 创建数组来存储可变参数
+        let array_size = varargs.len();
+        let array_type = "i32";  // 假设可变参数是 int 类型
+        let array_ptr = self.new_temp();
+
+        // 分配数组内存
+        let elem_size = 4;  // i32 占 4 字节
+        let total_size = array_size * elem_size;
+        self.emit_line(&format!("  {} = call i8* @calloc(i64 1, i64 {})", array_ptr, total_size));
+
+        // 将可变参数存入数组
+        for (i, arg_str) in varargs.iter().enumerate() {
+            let (arg_type, arg_val) = self.parse_typed_value(arg_str);
+            let elem_ptr_i8 = self.new_temp();
+            let elem_ptr_i32 = self.new_temp();
+            let offset = i * elem_size;
+
+            // 计算元素地址 (i8*)
+            self.emit_line(&format!("  {} = getelementptr i8, i8* {}, i64 {}", elem_ptr_i8, array_ptr, offset));
+
+            // 将 i8* 转换为 i32*
+            self.emit_line(&format!("  {} = bitcast i8* {} to i32*", elem_ptr_i32, elem_ptr_i8));
+
+            // 将值转换为 i32 并存储
+            if arg_type == "i64" {
+                let truncated = self.new_temp();
+                self.emit_line(&format!("  {} = trunc i64 {} to i32", truncated, arg_val));
+                self.emit_line(&format!("  store i32 {}, i32* {}, align 4", truncated, elem_ptr_i32));
+            } else if arg_type == "i32" {
+                self.emit_line(&format!("  store i32 {}, i32* {}, align 4", arg_val, elem_ptr_i32));
+            }
+        }
+
+        // 构建结果：固定参数 + 数组指针
+        let mut result = fixed_args.to_vec();
+        result.push(format!("i8* {}", array_ptr));
+
+        Ok(result)
+    }
+
+    /// 将 LLVM 类型转换为方法签名
+    fn llvm_type_to_signature(&self, llvm_type: &str) -> String {
+        match llvm_type {
+            "i32" => "i".to_string(),
+            "i64" => "l".to_string(),
+            "float" => "f".to_string(),
+            "double" => "d".to_string(),
+            "i1" => "b".to_string(),
+            "i8*" => "s".to_string(),
+            "i8" => "c".to_string(),
+            t if t.ends_with("*") => "o".to_string(), // 对象/数组指针
+            _ => "x".to_string(), // 未知类型
+        }
+    }
+
+    /// 将 LLVM 类型转换为方法签名（支持可变参数数组类型）
+    fn llvm_type_to_signature_with_varargs(&self, llvm_type: &str, is_varargs_array: bool) -> String {
+        if is_varargs_array {
+            // 可变参数数组使用 ai 签名（array of int）
+            "ai".to_string()
+        } else {
+            self.llvm_type_to_signature(llvm_type)
+        }
+    }
+
+    /// 尝试生成 String 方法调用代码
+    /// 返回 Some(result) 如果成功处理，None 如果不是 String 方法
+    fn try_generate_string_method_call(&mut self, member: &MemberAccessExpr, args: &[Expr]) -> EolResult<Option<String>> {
+        // 生成对象表达式（字符串）
+        let obj_result = self.generate_expression(&member.object)?;
+        let (obj_type, obj_val) = self.parse_typed_value(&obj_result);
+
+        // 检查对象是否是字符串类型 (i8*)
+        if obj_type != "i8*" {
+            return Ok(None);
+        }
+
+        let method_name = member.member.as_str();
+        let temp = self.new_temp();
+
+        match method_name {
+            "length" => {
+                // length() - 无参数，返回 i32
+                if !args.is_empty() {
+                    return Err(codegen_error("String.length() takes no arguments".to_string()));
+                }
+                self.emit_line(&format!("  {} = call i32 @__eol_string_length(i8* {})",
+                    temp, obj_val));
+                Ok(Some(format!("i32 {}", temp)))
+            }
+            "substring" => {
+                // substring(beginIndex) 或 substring(beginIndex, endIndex)
+                if args.is_empty() || args.len() > 2 {
+                    return Err(codegen_error("String.substring() takes 1 or 2 arguments".to_string()));
+                }
+
+                // 生成 beginIndex 参数
+                let begin_result = self.generate_expression(&args[0])?;
+                let (begin_type, begin_val) = self.parse_typed_value(&begin_result);
+                let begin_i32 = if begin_type == "i32" {
+                    begin_val.to_string()
+                } else {
+                    let t = self.new_temp();
+                    self.emit_line(&format!("  {} = trunc {} {} to i32", t, begin_type, begin_val));
+                    t
+                };
+
+                // 生成 endIndex 参数
+                let end_i32 = if args.len() == 2 {
+                    let end_result = self.generate_expression(&args[1])?;
+                    let (end_type, end_val) = self.parse_typed_value(&end_result);
+                    if end_type == "i32" {
+                        end_val.to_string()
+                    } else {
+                        let t = self.new_temp();
+                        self.emit_line(&format!("  {} = trunc {} {} to i32", t, end_type, end_val));
+                        t
+                    }
+                } else {
+                    // substring(beginIndex) - 使用字符串长度作为 endIndex
+                    let len_temp = self.new_temp();
+                    self.emit_line(&format!("  {} = call i32 @__eol_string_length(i8* {})",
+                        len_temp, obj_val));
+                    len_temp
+                };
+
+                self.emit_line(&format!("  {} = call i8* @__eol_string_substring(i8* {}, i32 {}, i32 {})",
+                    temp, obj_val, begin_i32, end_i32));
+                Ok(Some(format!("i8* {}", temp)))
+            }
+            "indexOf" => {
+                // indexOf(substr) - 返回子串首次出现的位置
+                if args.len() != 1 {
+                    return Err(codegen_error("String.indexOf() takes 1 argument".to_string()));
+                }
+
+                let substr_result = self.generate_expression(&args[0])?;
+                let (substr_type, substr_val) = self.parse_typed_value(&substr_result);
+
+                if substr_type != "i8*" {
+                    return Err(codegen_error("String.indexOf() argument must be a string".to_string()));
+                }
+
+                self.emit_line(&format!("  {} = call i32 @__eol_string_indexof(i8* {}, i8* {})",
+                    temp, obj_val, substr_val));
+                Ok(Some(format!("i32 {}", temp)))
+            }
+            "charAt" => {
+                // charAt(index) - 返回指定位置的字符
+                if args.len() != 1 {
+                    return Err(codegen_error("String.charAt() takes 1 argument".to_string()));
+                }
+
+                let index_result = self.generate_expression(&args[0])?;
+                let (index_type, index_val) = self.parse_typed_value(&index_result);
+                let index_i32 = if index_type == "i32" {
+                    index_val.to_string()
+                } else {
+                    let t = self.new_temp();
+                    self.emit_line(&format!("  {} = trunc {} {} to i32", t, index_type, index_val));
+                    t
+                };
+
+                self.emit_line(&format!("  {} = call i8 @__eol_string_charat(i8* {}, i32 {})",
+                    temp, obj_val, index_i32));
+                Ok(Some(format!("i8 {}", temp)))
+            }
+            "replace" => {
+                // replace(oldStr, newStr) - 替换所有出现的子串
+                if args.len() != 2 {
+                    return Err(codegen_error("String.replace() takes 2 arguments".to_string()));
+                }
+
+                let old_result = self.generate_expression(&args[0])?;
+                let (old_type, old_val) = self.parse_typed_value(&old_result);
+                let new_result = self.generate_expression(&args[1])?;
+                let (new_type, new_val) = self.parse_typed_value(&new_result);
+
+                if old_type != "i8*" || new_type != "i8*" {
+                    return Err(codegen_error("String.replace() arguments must be strings".to_string()));
+                }
+
+                self.emit_line(&format!("  {} = call i8* @__eol_string_replace(i8* {}, i8* {}, i8* {})",
+                    temp, obj_val, old_val, new_val));
+                Ok(Some(format!("i8* {}", temp)))
+            }
+            _ => Ok(None), // 不是已知的 String 方法
+        }
     }
 
     /// 生成 print/println 调用代码

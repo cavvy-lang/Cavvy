@@ -37,6 +37,7 @@ pub enum Token {
     #[token("bool")]
     Bool,
     #[token("string")]
+    #[token("String")]
     String,
     #[token("char")]
     Char,
@@ -222,6 +223,8 @@ pub enum Token {
     Comma,
     #[token(".")]
     Dot,
+    #[token("...")]
+    DotDotDot,
     #[token(":")]
     Colon,
     

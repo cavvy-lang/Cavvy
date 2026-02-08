@@ -178,25 +178,36 @@ pub fn parse_modifiers(parser: &mut Parser) -> EolResult<Vec<Modifier>> {
     Ok(modifiers)
 }
 
-/// 解析参数列表
+/// 解析参数列表（支持可变参数）
 pub fn parse_parameters(parser: &mut Parser) -> EolResult<Vec<ParameterInfo>> {
     let mut params = Vec::new();
-    
+
     if !parser.check(&Token::RParen) {
         loop {
+            // 检查是否是可变参数类型（type...）
             let param_type = parse_type(parser)?;
+
+            // 检查是否有 ... 标记
+            let is_varargs = parser.match_token(&Token::DotDotDot);
+
             let name = parser.consume_identifier("Expected parameter name")?;
-            
-            params.push(ParameterInfo {
-                name,
-                param_type,
-            });
-            
+
+            if is_varargs {
+                params.push(ParameterInfo::new_varargs(name, param_type));
+                // 可变参数必须是最后一个参数
+                if parser.match_token(&Token::Comma) {
+                    return Err(parser.error("Varargs parameter must be the last parameter"));
+                }
+                break;
+            } else {
+                params.push(ParameterInfo::new(name, param_type));
+            }
+
             if !parser.match_token(&Token::Comma) {
                 break;
             }
         }
     }
-    
+
     Ok(params)
 }

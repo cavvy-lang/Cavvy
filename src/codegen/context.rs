@@ -176,4 +176,38 @@ impl IRGenerator {
     pub fn get_global_strings(&self) -> &std::collections::HashMap<String, String> {
         &self.global_strings
     }
+
+    /// 生成带参数签名的方法名以支持方法重载
+    /// 格式: ClassName.methodName__param1Type_param2Type
+    /// 注意：LLVM IR 中函数名不能包含 @ 符号，使用 __ 作为分隔符
+    pub fn generate_method_name(&self, class_name: &str, method: &crate::ast::MethodDecl) -> String {
+        if method.params.is_empty() {
+            // 无参数方法，使用简单名称
+            format!("{}.{}", class_name, method.name)
+        } else {
+            // 有参数方法，添加参数类型签名
+            let param_types: Vec<String> = method.params.iter()
+                .map(|p| self.type_to_signature(&p.param_type))
+                .collect();
+            format!("{}.__{}_{}", class_name, method.name, param_types.join("_"))
+        }
+    }
+
+    /// 将类型转换为方法签名的一部分
+    fn type_to_signature(&self, ty: &crate::types::Type) -> String {
+        use crate::types::Type;
+        match ty {
+            Type::Void => "v".to_string(),
+            Type::Int32 => "i".to_string(),
+            Type::Int64 => "l".to_string(),
+            Type::Float32 => "f".to_string(),
+            Type::Float64 => "d".to_string(),
+            Type::Bool => "b".to_string(),
+            Type::String => "s".to_string(),
+            Type::Char => "c".to_string(),
+            Type::Object(name) => format!("o{}", name),
+            Type::Array(inner) => format!("a{}", self.type_to_signature(inner)),
+            Type::Function(_) => "fn".to_string(),
+        }
+    }
 }

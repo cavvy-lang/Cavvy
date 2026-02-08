@@ -1,0 +1,22 @@
+public class TestVarargsSimple {
+    // 简单的可变参数方法
+    public static int sum(int... numbers) {
+        return 0;
+    }
+
+    public static void main() {
+        println("Testing varargs:");
+
+        // 测试无参数
+        int result1 = sum();
+        print("sum() = ");
+        println(result1);
+
+        // 测试一个参数
+        int result2 = sum(10);
+        print("sum(10) = ");
+        println(result2);
+
+        println("Varargs tests completed!");
+    }
+}

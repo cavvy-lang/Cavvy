@@ -1,0 +1,234 @@
+public class Test034Features {
+
+    // ==================== 字符串增强功能测试 ====================
+
+    public static void testStringMethods() {
+        println("=== String Enhancement Test ===");
+
+        String str = "Hello, World!";
+        println("Original string: ");
+        println(str);
+
+        // Test length()
+        int len = str.length();
+        print("length(): ");
+        println(len);
+
+        // Test substring(beginIndex)
+        String sub1 = str.substring(7);
+        print("substring(7): ");
+        println(sub1);
+
+        // Test substring(beginIndex, endIndex)
+        String sub2 = str.substring(0, 5);
+        print("substring(0, 5): ");
+        println(sub2);
+
+        // Test indexOf
+        String text = "The quick brown fox jumps over the lazy dog";
+        int idx1 = text.indexOf("quick");
+        print("indexOf quick: ");
+        println(idx1);
+
+        int idx2 = text.indexOf("cat");
+        print("indexOf cat: ");
+        println(idx2);
+
+        // Test replace
+        String original = "I love Java, Java is great!";
+        String replaced = original.replace("Java", "EOL");
+        print("replace Java with EOL: ");
+        println(replaced);
+
+        // Test charAt
+        String chars = "ABCDEF";
+        char c = chars.charAt(2);
+        print("charAt(2): ");
+        println(c);
+
+        println("String test completed!");
+        println("");
+    }
+
+    // ==================== Method Overloading Test ====================
+
+    // Overload: no parameters
+    public static int add() {
+        return 0;
+    }
+
+    // Overload: one parameter
+    public static int add(int a) {
+        return a;
+    }
+
+    // Overload: two parameters
+    public static int add(int a, int b) {
+        return a + b;
+    }
+
+    // Overload: three parameters
+    public static int add(int a, int b, int c) {
+        return a + b + c;
+    }
+
+    // Overload: different type parameters
+    public static double add(double a, double b) {
+        return a + b;
+    }
+
+    // Overload: string concatenation
+    public static String add(String a, String b) {
+        return a + b;
+    }
+
+    public static void testMethodOverloading() {
+        println("=== Method Overloading Test ===");
+
+        // Test overloads with different parameter counts
+        int r1 = add();
+        print("add() = ");
+        println(r1);
+
+        int r2 = add(5);
+        print("add(5) = ");
+        println(r2);
+
+        int r3 = add(3, 7);
+        print("add(3, 7) = ");
+        println(r3);
+
+        int r4 = add(1, 2, 3);
+        print("add(1, 2, 3) = ");
+        println(r4);
+
+        // Test overloads with different types
+        double r5 = add(2.5, 3.5);
+        print("add(2.5, 3.5) = ");
+        println(r5);
+
+        String r6 = add("Hello, ", "EOL!");
+        print("add strings = ");
+        println(r6);
+
+        println("Overloading test completed!");
+        println("");
+    }
+
+    // ==================== Varargs Test ====================
+
+    // Pure varargs method
+    public static int sum(int... numbers) {
+        int total = 0;
+        int i = 0;
+        while (i < 5) {
+            total = total + numbers[i];
+            i = i + 1;
+        }
+        return total;
+    }
+
+    // Fixed parameter + varargs
+    public static int multiplyAndAdd(int multiplier, int... numbers) {
+        int total = 0;
+        int i = 0;
+        while (i < 3) {
+            total = total + numbers[i];
+            i = i + 1;
+        }
+        return total * multiplier;
+    }
+
+    // Varargs with prefix
+    public static void printAll(String prefix, int... numbers) {
+        print(prefix);
+        print("[");
+        int i = 0;
+        while (i < 3) {
+            print(numbers[i]);
+            if (i < 2) {
+                print(", ");
+            }
+            i = i + 1;
+        }
+        println("]");
+    }
+
+    public static void testVarargs() {
+        println("=== Varargs Test ===");
+
+        // Test no arguments
+        int result1 = sum();
+        print("sum() = ");
+        println(result1);
+
+        // Test one argument
+        int result2 = sum(10);
+        print("sum(10) = ");
+        println(result2);
+
+        // Test multiple arguments
+        int result3 = sum(1, 2, 3, 4, 5);
+        print("sum(1, 2, 3, 4, 5) = ");
+        println(result3);
+
+        // Test fixed + varargs
+        int result4 = multiplyAndAdd(2, 3, 4, 5);
+        print("multiplyAndAdd(2, 3, 4, 5) = ");
+        println(result4);
+
+        // Test varargs with prefix
+        printAll("Numbers: ", 10, 20, 30);
+
+        println("Varargs test completed!");
+        println("");
+    }
+
+    // ==================== Combined Test ====================
+
+    public static void testCombinedFeatures() {
+        println("=== Combined Features Test ===");
+
+        // String + overloading
+        String greeting = "Hello";
+        String target = "World";
+        String combined = add(greeting, ", " + target + "!");
+        print("String concat result: ");
+        println(combined);
+
+        // Verify length
+        print("String length: ");
+        println(combined.length());
+
+        // Substring
+        String sub = combined.substring(0, 5);
+        print("substring(0,5): ");
+        println(sub);
+
+        // Find position
+        int pos = combined.indexOf("World");
+        print("World position: ");
+        println(pos);
+
+        println("Combined test completed!");
+        println("");
+    }
+
+    // ==================== Main Entry ====================
+
+    public static void main() {
+        println("========================================");
+        println("EOL 0.3.4.x Features Complete Test");
+        println("========================================");
+        println("");
+
+        testStringMethods();
+        testMethodOverloading();
+        testVarargs();
+        testCombinedFeatures();
+
+        println("========================================");
+        println("All tests completed!");
+        println("========================================");
+    }
+}

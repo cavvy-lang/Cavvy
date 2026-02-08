@@ -1,0 +1,44 @@
+public class TestOverload {
+    // 无参数版本
+    public static void print() {
+        println("No arguments");
+    }
+
+    // int 参数版本
+    public static void print(int x) {
+        print("int: ");
+        println(x);
+    }
+
+    // double 参数版本
+    public static void print(double x) {
+        print("double: ");
+        println(x);
+    }
+
+    // string 参数版本
+    public static void print(string s) {
+        print("string: ");
+        println(s);
+    }
+
+    // 两个 int 参数版本
+    public static void print(int x, int y) {
+        print("two ints: ");
+        print(x);
+        print(", ");
+        println(y);
+    }
+
+    public static void main() {
+        println("Testing method overloading:");
+
+        print();
+        print(42);
+        print(3.14);
+        print("Hello");
+        print(10, 20);
+
+        println("All overload tests completed!");
+    }
+}

@@ -1,0 +1,7 @@
+public class TestStringSimple {
+    public static void main() {
+        String str = "Hello";
+        int len = str.length();
+        println(len);
+    }
+}
