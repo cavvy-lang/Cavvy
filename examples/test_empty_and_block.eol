@@ -1,0 +1,104 @@
+// 测试空语句和块语句
+class TestEmptyAndBlock {
+    public static void main() {
+        println("=== Empty and Block Statement Tests ===");
+        
+        // Test empty block
+        {
+            // This is an empty block
+        }
+        println("Test 1: Empty block executed");
+        
+        // Test block with single statement
+        {
+            int x = 10;
+            print("Test 2: Block with x = ");
+            println(x);
+        }
+        
+        // Test nested blocks
+        {
+            int a = 5;
+            {
+                int b = 10;
+                {
+                    int c = 15;
+                    print("Test 3: Nested blocks a=");
+                    print(a);
+                    print(", b=");
+                    print(b);
+                    print(", c=");
+                    println(c);
+                }
+            }
+        }
+        
+        // Test block in if statement
+        int x = 10;
+        if (x > 5) {
+            int y = 20;
+            print("Test 4: If block with y = ");
+            println(y);
+        }
+        
+        // Test block in while
+        int i = 0;
+        while (i < 3) {
+            {
+                int temp = i * 10;
+                print("Test 5: While block iteration ");
+                print(i);
+                print(", temp = ");
+                println(temp);
+            }
+            i = i + 1;
+        }
+        
+        // Test block in for loop
+        for (int j = 0; j < 3; ) {
+            {
+                int square = j * j;
+                print("Test 6: For block iteration ");
+                print(j);
+                print(", square = ");
+                println(square);
+            }
+            j = j + 1;
+        }
+        
+        // Test block with variable shadowing
+        int val = 100;
+        print("Test 7: Before block, val = ");
+        println(val);
+        {
+            int val2 = 50;
+            print("Test 7: Inside block, val2 = ");
+            println(val2);
+        }
+        println("Test 7: After block, val = ");
+        println(val);
+        
+        // Test while with break instead of for(;;)
+        int count = 0;
+        while (true) {
+            if (count >= 3) {
+                break;
+            }
+            print("Test 8: While with break, count = ");
+            println(count);
+            count = count + 1;
+        }
+        
+        // Test block with multiple statements
+        {
+            int a = 1;
+            int b = 2;
+            int c = 3;
+            int sum = a + b + c;
+            print("Test 9: Block with multiple statements, sum = ");
+            println(sum);
+        }
+        
+        println("=== All empty and block tests completed! ===");
+    }
+}

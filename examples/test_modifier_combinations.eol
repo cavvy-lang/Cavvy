@@ -1,0 +1,80 @@
+// 测试修饰符组合
+class TestModifierCombinations {
+    // Static field
+    static int staticField;
+    
+    // Public static field
+    public static int publicStaticField;
+    
+    // Private static field
+    private static int privateStaticField;
+    
+    // Final static field (constant-like)
+    final static int FINAL_STATIC_VALUE = 100;
+    
+    public static void main() {
+        println("=== Modifier Combinations Tests ===");
+        
+        // Test static field access with class name
+        TestModifierCombinations.staticField = 10;
+        print("staticField = ");
+        println(TestModifierCombinations.staticField);
+        
+        TestModifierCombinations.publicStaticField = 20;
+        print("publicStaticField = ");
+        println(TestModifierCombinations.publicStaticField);
+        
+        TestModifierCombinations.privateStaticField = 30;
+        print("privateStaticField = ");
+        println(TestModifierCombinations.privateStaticField);
+        
+        // Test final static
+        print("FINAL_STATIC_VALUE = ");
+        println(TestModifierCombinations.FINAL_STATIC_VALUE);
+        
+        // Test static method calls
+        int result = TestModifierCombinations.staticMethod();
+        print("staticMethod() = ");
+        println(result);
+        
+        result = TestModifierCombinations.publicStaticMethod();
+        print("publicStaticMethod() = ");
+        println(result);
+        
+        result = TestModifierCombinations.privateStaticMethod();
+        print("privateStaticMethod() = ");
+        println(result);
+        
+        // Test multiple modifiers
+        result = TestModifierCombinations.publicStaticFinalMethod();
+        print("publicStaticFinalMethod() = ");
+        println(result);
+        
+        // Test method with various parameter modifiers
+        result = TestModifierCombinations.methodWithParams(5, 10);
+        print("methodWithParams(5, 10) = ");
+        println(result);
+        
+        println("=== All modifier combination tests completed! ===");
+    }
+    
+    static int staticMethod() {
+        return 1;
+    }
+    
+    public static int publicStaticMethod() {
+        return 2;
+    }
+    
+    private static int privateStaticMethod() {
+        return 3;
+    }
+    
+    public static final int publicStaticFinalMethod() {
+        return 4;
+    }
+    
+    public static int methodWithParams(int a, int b) {
+        return a + b;
+    }
+}

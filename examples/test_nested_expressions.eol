@@ -1,0 +1,102 @@
+// 测试嵌套表达式和复杂优先级
+class TestNestedExpressions {
+    public static void main() {
+        println("=== Nested Expressions Tests ===");
+        
+        // Test arithmetic precedence
+        int result = 2 + 3 * 4;
+        print("2 + 3 * 4 = ");
+        print(result);
+        println(" (expected: 14)");
+        
+        result = (2 + 3) * 4;
+        print("(2 + 3) * 4 = ");
+        print(result);
+        println(" (expected: 20)");
+        
+        result = 10 - 4 - 3;
+        print("10 - 4 - 3 = ");
+        print(result);
+        println(" (expected: 3)");
+        
+        result = 100 / 10 / 2;
+        print("100 / 10 / 2 = ");
+        print(result);
+        println(" (expected: 5)");
+        
+        // Test mixed precedence
+        result = 2 + 3 * 4 - 5 / 5;
+        print("2 + 3 * 4 - 5 / 5 = ");
+        print(result);
+        println(" (expected: 13)");
+        
+        // Test complex boolean expressions
+        bool b = true && false || true;
+        println("true && false || true = true (expected)");
+        
+        b = true || false && false;
+        println("true || false && false = true (expected)");
+        
+        b = (true || false) && false;
+        println("(true || false) && false = false (expected)");
+        
+        // Test comparison and arithmetic
+        bool cmp = 2 + 3 > 4;
+        println("2 + 3 > 4 = true (expected)");
+        
+        cmp = 10 - 5 <= 3 + 2;
+        println("10 - 5 <= 3 + 2 = true (expected)");
+        
+        // Test nested function calls
+        int x = 5;
+        int y = 3;
+        result = add(multiply(x, 2), multiply(y, 3));
+        print("add(multiply(5, 2), multiply(3, 3)) = ");
+        print(result);
+        println(" (expected: 19)");
+        
+        // Test chained comparisons
+        b = 1 < 2 && 2 < 3 && 3 < 4;
+        println("1 < 2 && 2 < 3 && 3 < 4 = true (expected)");
+        
+        // Test complex assignment
+        int a = 10;
+        a += 5 * 2;
+        print("a = 10; a += 5 * 2; a = ");
+        print(a);
+        println(" (expected: 20)");
+        
+        // Test max using if
+        int max;
+        if (x > y) {
+            max = x;
+        } else {
+            max = y;
+        }
+        print("max of 5 and 3 = ");
+        print(max);
+        println(" (expected: 5)");
+        
+        // Test bit operations with arithmetic
+        result = (5 & 3) + (5 | 3);
+        print("(5 & 3) + (5 | 3) = ");
+        print(result);
+        println(" (expected: 7)");
+        
+        // Test shift operations
+        result = 8 >> 1 << 2;
+        print("8 >> 1 << 2 = ");
+        print(result);
+        println(" (expected: 16)");
+        
+        println("=== All nested expression tests completed! ===");
+    }
+    
+    public static int add(int a, int b) {
+        return a + b;
+    }
+    
+    public static int multiply(int a, int b) {
+        return a * b;
+    }
+}

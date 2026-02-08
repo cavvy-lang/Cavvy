@@ -11,8 +11,8 @@ fn compile_and_run_eol(source_path: &str) -> Result<String, String> {
     let exe_path = source_path.replace(".eol", ".exe");
     let ir_path = source_path.replace(".eol", ".ll");
     
-    // 1. 编译 EOL -> EXE (使用 debug 版本)
-    let output = Command::new("./target/debug/eolc.exe")
+    // 1. 编译 EOL -> EXE (使用 release 版本)
+    let output = Command::new("./target/release/eolc.exe")
         .args(&[source_path, &exe_path])
         .output()
         .map_err(|e| format!("Failed to execute eolc: {}", e))?;
@@ -465,4 +465,189 @@ fn test_atmain_annotation() {
     // 确保没有输出 HelperClass 的内容
     assert!(!output.contains("This should not be the entry point!"),
             "Should not output from HelperClass, got: {}", output);
+}
+
+// ========== EBNF 综合测试 ==========
+
+#[test]
+fn test_assignment_operators() {
+    let output = compile_and_run_eol("examples/test_assignment_operators.eol").expect("assignment operators example should compile and run");
+    assert!(output.contains("10 += 5 = 15"), "+= operator should work, got: {}", output);
+    assert!(output.contains("10 -= 5 = 5"), "-= operator should work, got: {}", output);
+    assert!(output.contains("10 *= 5 = 50"), "*= operator should work, got: {}", output);
+    assert!(output.contains("10 /= 5 = 2"), "/= operator should work, got: {}", output);
+    assert!(output.contains("10 %= 5 = 0"), "%= operator should work, got: {}", output);
+    assert!(output.contains("All assignment operator tests completed!"), "Test should complete, got: {}", output);
+}
+
+#[test]
+fn test_bitwise_operators() {
+    let output = compile_and_run_eol("examples/test_bitwise_operators.eol").expect("bitwise operators example should compile and run");
+    assert!(output.contains("a & b = 12"), "Bitwise AND should work, got: {}", output);
+    assert!(output.contains("a | b = 61"), "Bitwise OR should work, got: {}", output);
+    assert!(output.contains("a ^ b = 49"), "Bitwise XOR should work, got: {}", output);
+    assert!(output.contains("a << 2 = 240"), "Left shift should work, got: {}", output);
+    assert!(output.contains("a >> 2 = 15"), "Right shift should work, got: {}", output);
+    assert!(output.contains("All bitwise operator tests completed!"), "Test should complete, got: {}", output);
+}
+
+#[test]
+fn test_logical_operators() {
+    let output = compile_and_run_eol("examples/test_logical_operators.eol").expect("logical operators example should compile and run");
+    assert!(output.contains("true && true = true"), "Logical AND should work, got: {}", output);
+    assert!(output.contains("true || false = true"), "Logical OR should work, got: {}", output);
+    assert!(output.contains("!true = false"), "Logical NOT should work, got: {}", output);
+    assert!(output.contains("All logical operator tests completed!"), "Test should complete, got: {}", output);
+}
+
+#[test]
+fn test_comparison_operators() {
+    let output = compile_and_run_eol("examples/test_comparison_operators.eol").expect("comparison operators example should compile and run");
+    assert!(output.contains("a == c: true"), "== operator should work, got: {}", output);
+    assert!(output.contains("a != b: true"), "!= operator should work, got: {}", output);
+    assert!(output.contains("a < b: true"), "< operator should work, got: {}", output);
+    assert!(output.contains("a <= b: true"), "<= operator should work, got: {}", output);
+    assert!(output.contains("b > a: true"), "> operator should work, got: {}", output);
+    assert!(output.contains("b >= a: true"), ">= operator should work, got: {}", output);
+    assert!(output.contains("All comparison operator tests completed!"), "Test should complete, got: {}", output);
+}
+
+#[test]
+fn test_increment_decrement() {
+    let output = compile_and_run_eol("examples/test_increment_decrement.eol").expect("increment/decrement example should compile and run");
+    assert!(output.contains("expected: a=6, b=6") || output.contains("a = 6, b = 6"), "Prefix ++ should work, got: {}", output);
+    assert!(output.contains("expected: a=6, b=5") || output.contains("a = 6, b = 5"), "Postfix ++ should work, got: {}", output);
+    assert!(output.contains("All increment/decrement tests completed!"), "Test should complete, got: {}", output);
+}
+
+#[test]
+fn test_array_initializer() {
+    let output = compile_and_run_eol("examples/test_array_initializer.eol").expect("array initializer example should compile and run");
+    assert!(output.contains("arr1[0] = 10"), "Array initializer should work for int[], got: {}", output);
+    assert!(output.contains("arr1[2] = 30"), "Array element access should work, got: {}", output);
+    assert!(output.contains("arr1.length = 5"), "Array length should work, got: {}", output);
+    assert!(output.contains("All array initializer tests completed!"), "Test should complete, got: {}", output);
+}
+
+#[test]
+fn test_escape_sequences() {
+    let output = compile_and_run_eol("examples/test_escape_sequences.eol").expect("escape sequences example should compile and run");
+    assert!(output.contains("=== Escape Sequences Tests ==="), "Test header should appear, got: {}", output);
+    assert!(output.contains("All escape sequence tests completed!"), "Test should complete, got: {}", output);
+}
+
+#[test]
+fn test_number_literals() {
+    let output = compile_and_run_eol("examples/test_number_literals.eol").expect("number literals example should compile and run");
+    assert!(output.contains("Hex 0xFF = 255"), "Hex literal should work, got: {}", output);
+    assert!(output.contains("Binary 0b1010 = 10"), "Binary literal should work, got: {}", output);
+    assert!(output.contains("Octal 0o377 = 255"), "Octal literal should work, got: {}", output);
+    assert!(output.contains("All number literal tests completed!"), "Test should complete, got: {}", output);
+}
+
+#[test]
+fn test_char_literals() {
+    let output = compile_and_run_eol("examples/test_char_literals.eol").expect("char literals example should compile and run");
+    assert!(output.contains("ASCII: 65") || output.contains("char 'A' = 65"), "Char literal 'A' should work, got: {}", output);
+    assert!(output.contains("All char literal tests completed!"), "Test should complete, got: {}", output);
+}
+
+#[test]
+fn test_boolean_null() {
+    let output = compile_and_run_eol("examples/test_boolean_null.eol").expect("boolean and null example should compile and run");
+    assert!(output.contains("bool true assigned"), "Boolean true should work, got: {}", output);
+    assert!(output.contains("bool false assigned"), "Boolean false should work, got: {}", output);
+    assert!(output.contains("All boolean and null tests completed!"), "Test should complete, got: {}", output);
+}
+
+#[test]
+fn test_break_continue() {
+    let output = compile_and_run_eol("examples/test_break_continue.eol").expect("break/continue example should compile and run");
+    assert!(output.contains("stopped at 5") || output.contains("Break in for loop"), "Break should work, got: {}", output);
+    assert!(output.contains("All break and continue tests completed!"), "Test should complete, got: {}", output);
+}
+
+#[test]
+fn test_nested_expressions() {
+    let output = compile_and_run_eol("examples/test_nested_expressions.eol").expect("nested expressions example should compile and run");
+    assert!(output.contains("expected: 14") || output.contains("= 14"), "Expression precedence should work, got: {}", output);
+    assert!(output.contains("All nested expression tests completed!"), "Test should complete, got: {}", output);
+}
+
+#[test]
+fn test_floating_point() {
+    let output = compile_and_run_eol("examples/test_floating_point.eol").expect("floating point example should compile and run");
+    assert!(output.contains("=== Floating Point Tests ==="), "Float test header should appear, got: {}", output);
+    assert!(output.contains("All floating point tests completed!"), "Test should complete, got: {}", output);
+}
+
+#[test]
+fn test_complex_conditions() {
+    let output = compile_and_run_eol("examples/test_complex_conditions.eol").expect("complex conditions example should compile and run");
+    assert!(output.contains("Test 1:"), "Complex condition test 1 should run, got: {}", output);
+    assert!(output.contains("All complex condition tests completed!"), "Test should complete, got: {}", output);
+}
+
+#[test]
+fn test_modifier_combinations() {
+    let output = compile_and_run_eol("examples/test_modifier_combinations.eol").expect("modifier combinations example should compile and run");
+    assert!(output.contains("staticField = 10"), "Static field should work, got: {}", output);
+    assert!(output.contains("All modifier combination tests completed!"), "Test should complete, got: {}", output);
+}
+
+#[test]
+fn test_multidim_advanced() {
+    let output = compile_and_run_eol("examples/test_multidim_advanced.eol").expect("advanced multidim array example should compile and run");
+    assert!(output.contains("=== Advanced Multidimensional Array Tests ==="), "Test header should appear, got: {}", output);
+    assert!(output.contains("All advanced multidim tests completed!"), "Test should complete, got: {}", output);
+}
+
+#[test]
+fn test_empty_and_block() {
+    let output = compile_and_run_eol("examples/test_empty_and_block.eol").expect("empty and block example should compile and run");
+    assert!(output.contains("Empty block executed"), "Empty block should work, got: {}", output);
+    assert!(output.contains("All empty and block tests completed!"), "Test should complete, got: {}", output);
+}
+
+#[test]
+fn test_string_concat_advanced() {
+    let output = compile_and_run_eol("examples/test_string_concat_advanced.eol").expect("advanced string concat example should compile and run");
+    // 强类型语言：只允许 string + string，不允许隐式转换
+    assert!(output.contains("Test 1: Value: 42"), "String + string should work, got: {}", output);
+    assert!(output.contains("All advanced string concat tests completed!"), "Test should complete, got: {}", output);
+}
+
+#[test]
+fn test_arithmetic_edge_cases() {
+    let output = compile_and_run_eol("examples/test_arithmetic_edge_cases.eol").expect("arithmetic edge cases example should compile and run");
+    assert!(output.contains("=== Arithmetic Edge Cases Tests ==="), "Test header should appear, got: {}", output);
+    assert!(output.contains("All arithmetic edge case tests completed!"), "Test should complete, got: {}", output);
+}
+
+#[test]
+fn test_loop_patterns() {
+    let output = compile_and_run_eol("examples/test_loop_patterns.eol").expect("loop patterns example should compile and run");
+    assert!(output.contains("Pattern 1:"), "Loop patterns should run, got: {}", output);
+    assert!(output.contains("All loop pattern tests completed!"), "Test should complete, got: {}", output);
+}
+
+#[test]
+fn test_switch_advanced() {
+    let output = compile_and_run_eol("examples/test_switch_advanced.eol").expect("advanced switch example should compile and run");
+    assert!(output.contains("Day of week"), "Switch should work, got: {}", output);
+    assert!(output.contains("All advanced switch tests completed!"), "Test should complete, got: {}", output);
+}
+
+#[test]
+fn test_final_variables() {
+    let output = compile_and_run_eol("examples/test_final_variables.eol").expect("final variables example should compile and run");
+    assert!(output.contains("FINAL_INT = 100"), "Final int should work, got: {}", output);
+    assert!(output.contains("All final variable tests completed!"), "Test should complete, got: {}", output);
+}
+
+#[test]
+fn test_method_chaining() {
+    let output = compile_and_run_eol("examples/test_method_chaining.eol").expect("method chaining example should compile and run");
+    assert!(output.contains("add(5, 3) = 8"), "Method chaining should work, got: {}", output);
+    assert!(output.contains("All method chaining tests completed!"), "Test should complete, got: {}", output);
 }

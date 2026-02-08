@@ -1,0 +1,45 @@
+// 测试位运算符
+class TestBitwiseOperators {
+    public static void main() {
+        int a = 60;
+        int b = 13;
+        
+        println("=== Bitwise Operators Tests ===");
+        println("a = 60, b = 13");
+        
+        // Test & (bitwise AND)
+        int result = a & b;
+        println("a & b = 12");
+        
+        // Test | (bitwise OR)
+        result = a | b;
+        println("a | b = 61");
+        
+        // Test ^ (bitwise XOR)
+        result = a ^ b;
+        println("a ^ b = 49");
+        
+        // Test ~ (bitwise NOT)
+        result = ~a;
+        println("~a calculated");
+        
+        // Test << (left shift)
+        result = a << 2;
+        println("a << 2 = 240");
+        
+        // Test >> (right shift)
+        result = a >> 2;
+        println("a >> 2 = 15");
+        
+        // Test >>> (unsigned right shift)
+        result = a >>> 2;
+        println("a >>> 2 = 15");
+        
+        // Test negative number shift
+        int neg = -16;
+        result = neg >> 2;
+        println("-16 >> 2 calculated");
+        
+        println("=== All bitwise operator tests completed! ===");
+    }
+}

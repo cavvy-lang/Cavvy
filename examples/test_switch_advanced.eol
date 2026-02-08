@@ -1,0 +1,137 @@
+// 测试高级switch语句
+class TestSwitchAdvanced {
+    public static void main() {
+        println("=== Advanced Switch Tests ===");
+        
+        // Test 1: Simple switch with multiple cases
+        println("Test 1: Day of week");
+        int day = 1;
+        while (day <= 3) {
+            print("Day ");
+            print(day);
+            print(" is ");
+            switch (day) {
+                case 1:
+                    println("Monday");
+                    break;
+                case 2:
+                    println("Tuesday");
+                    break;
+                case 3:
+                    println("Wednesday");
+                    break;
+                default:
+                    println("Other");
+                    break;
+            }
+            day = day + 1;
+        }
+        
+        // Test 2: Switch with default only
+        println("Test 2: Switch with no matching case");
+        int x = 99;
+        switch (x) {
+            case 1:
+                println("One");
+                break;
+            case 2:
+                println("Two");
+                break;
+            default:
+                print("Unknown: ");
+                println(x);
+                break;
+        }
+        
+        // Test 3: Switch in loop
+        println("Test 3: Switch in loop");
+        int i = 0;
+        while (i < 4) {
+            switch (i) {
+                case 0:
+                    println("Zero");
+                    break;
+                case 1:
+                    println("One");
+                    break;
+                case 2:
+                    println("Two");
+                    break;
+                default:
+                    println("Many");
+                    break;
+            }
+            i = i + 1;
+        }
+        
+        // Test 4: Switch with arithmetic
+        println("Test 4: Grade evaluation");
+        int score = 85;
+        int grade = score / 10;
+        switch (grade) {
+            case 10:
+            case 9:
+                println("Grade: A");
+                break;
+            case 8:
+                println("Grade: B");
+                break;
+            case 7:
+                println("Grade: C");
+                break;
+            case 6:
+                println("Grade: D");
+                break;
+            default:
+                println("Grade: F");
+                break;
+        }
+        
+        // Test 5: Switch with multiple cases
+        println("Test 5: Size range");
+        int size = 5;
+        switch (size) {
+            case 1:
+            case 2:
+                println("Small");
+                break;
+            case 3:
+            case 4:
+            case 5:
+                println("Medium");
+                break;
+            case 6:
+            case 7:
+            case 8:
+                println("Large");
+                break;
+            default:
+                println("Other size");
+                break;
+        }
+        
+        // Test 6: Switch with variable
+        println("Test 6: Switch with variable");
+        int val1 = 10;
+        switch (val1) {
+            case 10:
+                println("Got 10");
+                break;
+            case 20:
+                println("Got 20");
+                break;
+            case 30:
+                println("Got 30");
+                break;
+            default:
+                println("Got other");
+                break;
+        }
+        
+        println("=== All advanced switch tests completed! ===");
+    }
+    
+    public static int getValue(int n) {
+        return n * 10;
+    }
+}

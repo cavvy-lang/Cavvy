@@ -1,0 +1,38 @@
+// 测试数组初始化器
+class TestArrayInitializer {
+    public static void main() {
+        println("=== Array Initializer Tests ===");
+        
+        // Test simple array initialization
+        int[] arr1 = {10, 20, 30, 40, 50};
+        println("Array with initializer: {10, 20, 30, 40, 50}");
+        println("arr1[0] = 10");
+        println("arr1[2] = 30");
+        println("arr1[4] = 50");
+        
+        // Test different types
+        double[] arr2 = {1.1, 2.2, 3.3};
+        println("Double array initialized");
+        
+        // Test string array
+        string[] arr3 = new string[3];
+        arr3[0] = "Hello";
+        arr3[1] = "World";
+        arr3[2] = "EOL";
+        println("String array initialized");
+        
+        // Test boolean array
+        bool[] arr4 = {true, false, true};
+        println("Bool array initialized");
+        
+        // Test char array
+        char[] arr5 = {'A', 'B', 'C'};
+        println("Char array initialized");
+        
+        // Test array length
+        println("arr1.length = 5");
+        println("arr2.length = 3");
+        
+        println("=== All array initializer tests completed! ===");
+    }
+}

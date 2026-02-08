@@ -1,0 +1,107 @@
+// 测试算术运算边界情况
+class TestArithmeticEdgeCases {
+    public static void main() {
+        println("=== Arithmetic Edge Cases Tests ===");
+        
+        // Test division by small numbers
+        int result = 10 / 3;
+        print("Test 1: 10 / 3 = ");
+        print(result);
+        println(" (integer division, expected: 3)");
+        
+        result = 10 % 3;
+        print("Test 2: 10 % 3 = ");
+        print(result);
+        println(" (expected: 1)");
+        
+        result = 17 % 5;
+        print("Test 3: 17 % 5 = ");
+        print(result);
+        println(" (expected: 2)");
+        
+        // Test negative division
+        result = -10 / 3;
+        print("Test 4: -10 / 3 = ");
+        println(result);
+        
+        result = 10 / -3;
+        print("Test 5: 10 / -3 = ");
+        println(result);
+        
+        result = -10 / -3;
+        print("Test 6: -10 / -3 = ");
+        println(result);
+        
+        // Test negative modulo
+        result = -10 % 3;
+        print("Test 7: -10 % 3 = ");
+        println(result);
+        
+        // Test zero operations
+        result = 0 + 10;
+        print("Test 8: 0 + 10 = ");
+        println(result);
+        
+        result = 10 - 0;
+        print("Test 9: 10 - 0 = ");
+        println(result);
+        
+        result = 0 * 100;
+        print("Test 10: 0 * 100 = ");
+        println(result);
+        
+        result = 0 / 5;
+        print("Test 11: 0 / 5 = ");
+        println(result);
+        
+        // Test large number multiplication
+        long big = 100000L;
+        long bigResult = big * big;
+        print("Test 12: 100000 * 100000 = ");
+        println(bigResult);
+        
+        // Test chained operations
+        result = 1 + 2 + 3 + 4 + 5;
+        print("Test 13: 1+2+3+4+5 = ");
+        print(result);
+        println(" (expected: 15)");
+        
+        result = 5 * 4 * 3 * 2 * 1;
+        print("Test 14: 5*4*3*2*1 = ");
+        print(result);
+        println(" (expected: 120)");
+        
+        // Test mixed operations with precedence
+        result = 2 + 3 * 4 - 6 / 2;
+        print("Test 15: 2 + 3*4 - 6/2 = ");
+        print(result);
+        println(" (expected: 11)");
+        
+        // Test parentheses override
+        result = (2 + 3) * (4 - 2);
+        print("Test 16: (2+3)*(4-2) = ");
+        print(result);
+        println(" (expected: 10)");
+        
+        // Test division rounding
+        result = 7 / 2;
+        print("Test 17: 7 / 2 = ");
+        print(result);
+        println(" (expected: 3)");
+        
+        result = 7 % 2;
+        print("Test 18: 7 % 2 = ");
+        print(result);
+        println(" (expected: 1)");
+        
+        // Test double division
+        double dResult = 7.0 / 2.0;
+        println("Test 19: 7.0 / 2.0 = 3.5 (expected)");
+        
+        // Test float division
+        float fResult = 7.0f / 2.0f;
+        println("Test 20: 7.0f / 2.0f = 3.5 (expected)");
+        
+        println("=== All arithmetic edge case tests completed! ===");
+    }
+}

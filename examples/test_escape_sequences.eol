@@ -1,0 +1,37 @@
+// 测试字符串转义序列
+class TestEscapeSequences {
+    public static void main() {
+        println("=== Escape Sequences Tests ===");
+        
+        // Test newline using actual newline in code
+        println("Test 1: Newline");
+        println("Line1");
+        println("Line2");
+        
+        // Test tab using spaces
+        println("Test 2: Tab simulation");
+        println("Col1    Col2");
+        
+        // Test backslash in path
+        string path = "C:UsersTest";
+        println("Test 3: Path done");
+        
+        // Test quote using concatenation
+        string quote = "She said Hello";
+        println("Test 4: Quote done");
+        
+        // Test single quote char
+        char single = '\'';
+        println("Test 5: Single quote char done");
+        
+        // Test carriage return simulation
+        println("Test 6: Carriage return simulation done");
+        
+        // Combined test
+        println("Test 7: Combined output:");
+        println("Line1");
+        println("    Indented");
+        
+        println("=== All escape sequence tests completed! ===");
+    }
+}

@@ -1,0 +1,147 @@
+// 测试各种循环模式
+class TestLoopPatterns {
+    public static void main() {
+        println("=== Loop Patterns Tests ===");
+        
+        // Pattern 1: Simple counter
+        println("Pattern 1: Simple counter 0 to 4");
+        for (int i = 0; i < 5; ) {
+            print(i);
+            print(" ");
+            i = i + 1;
+        }
+        println("");
+        
+        // Pattern 2: Reverse counter
+        println("Pattern 2: Reverse counter 5 to 1");
+        for (int i = 5; i > 0; ) {
+            print(i);
+            print(" ");
+            i = i - 1;
+        }
+        println("");
+        
+        // Pattern 3: Step by 2
+        println("Pattern 3: Step by 2 (0, 2, 4, 6, 8)");
+        for (int i = 0; i < 10; ) {
+            print(i);
+            print(" ");
+            i = i + 2;
+        }
+        println("");
+        
+        // Pattern 4: Array traversal
+        println("Pattern 4: Array traversal");
+        int[] arr = {10, 20, 30, 40, 50};
+        for (int i = 0; i < arr.length; ) {
+            print(arr[i]);
+            print(" ");
+            i = i + 1;
+        }
+        println("");
+        
+        // Pattern 5: Nested loop - multiplication table
+        println("Pattern 5: 3x3 multiplication table");
+        for (int i = 1; i <= 3; ) {
+            for (int j = 1; j <= 3; ) {
+                print(i * j);
+                print(" ");
+                j = j + 1;
+            }
+            println("");
+            i = i + 1;
+        }
+        
+        // Pattern 6: While with complex condition
+        println("Pattern 6: While with multiple conditions");
+        int a = 0;
+        int b = 10;
+        while (a < 5 && b > 5) {
+            print("(");
+            print(a);
+            print(",");
+            print(b);
+            print(") ");
+            a = a + 1;
+            b = b - 1;
+        }
+        println("");
+        
+        // Pattern 7: Do-while at least once
+        println("Pattern 7: Do-while (executes at least once)");
+        int x = 0;
+        do {
+            print(x);
+            print(" ");
+            x = x + 1;
+        } while (x < 0);
+        println("(condition false but executed once)");
+        
+        // Pattern 8: Search loop with break
+        println("Pattern 8: Search with break");
+        int[] data = {5, 8, 3, 9, 2, 7};
+        int target = 9;
+        int foundAt = -1;
+        for (int i = 0; i < data.length; ) {
+            if (data[i] == target) {
+                foundAt = i;
+                break;
+            }
+            i = i + 1;
+        }
+        print("Found ");
+        print(target);
+        print(" at index ");
+        println(foundAt);
+        
+        // Pattern 9: Filter loop with continue
+        println("Pattern 9: Filter even numbers with continue");
+        for (int i = 0; i < 10; ) {
+            if (i % 2 != 0) {
+                i = i + 1;
+                continue;
+            }
+            print(i);
+            print(" ");
+            i = i + 1;
+        }
+        println("(only even numbers)");
+        
+        // Pattern 10: Accumulator pattern
+        println("Pattern 10: Accumulator (sum of 1 to 10)");
+        int sum = 0;
+        for (int i = 1; i <= 10; ) {
+            sum = sum + i;
+            i = i + 1;
+        }
+        print("Sum = ");
+        print(sum);
+        println(" (expected: 55)");
+        
+        // Pattern 11: Factorial calculation
+        println("Pattern 11: Factorial (5!)");
+        int factorial = 1;
+        for (int i = 2; i <= 5; ) {
+            factorial = factorial * i;
+            i = i + 1;
+        }
+        print("5! = ");
+        print(factorial);
+        println(" (expected: 120)");
+        
+        // Pattern 12: Infinite loop with break
+        println("Pattern 12: Infinite loop with break");
+        int count = 0;
+        while (true) {
+            print(count);
+            print(" ");
+            count = count + 1;
+            if (count >= 3) {
+                break;
+            }
+        }
+        println("(broke at 3)");
+        
+        println("=== All loop pattern tests completed! ===");
+    }
+}

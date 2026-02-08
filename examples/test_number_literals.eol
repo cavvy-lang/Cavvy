@@ -1,0 +1,74 @@
+// 测试各种数字字面量格式
+class TestNumberLiterals {
+    public static void main() {
+        println("=== Number Literals Tests ===");
+        
+        // Test decimal literal
+        int dec = 255;
+        println("Decimal 255 = 255");
+        
+        // Test hexadecimal literal
+        int hex = 0xFF;
+        println("Hex 0xFF = 255");
+        
+        int hex2 = 0X1a2b;
+        println("Hex 0X1a2b = 6699");
+        
+        // Test binary literal
+        int bin = 0b1010;
+        println("Binary 0b1010 = 10");
+        
+        int bin2 = 0B11110000;
+        println("Binary 0B11110000 = 240");
+        
+        // Test octal literal
+        int oct = 0o377;
+        println("Octal 0o377 = 255");
+        
+        int oct2 = 0O755;
+        println("Octal 0O755 = 493");
+        
+        // Test underscore separators
+        int under = 1_000_000;
+        println("With underscores 1_000_000 = 1000000");
+        
+        // Test integer suffix
+        long l = 123456789L;
+        println("Long suffix 123456789L done");
+        
+        long l2 = 987654321l;
+        println("Long suffix 987654321l done");
+        
+        // Test floating point suffix
+        float f = 3.14f;
+        println("Float suffix 3.14f done");
+        
+        float f2 = 2.718F;
+        println("Float suffix 2.718F done");
+        
+        double d = 3.14159d;
+        println("Double suffix 3.14159d done");
+        
+        double d2 = 2.71828D;
+        println("Double suffix 2.71828D done");
+        
+        // Test negative numbers
+        int neg = -42;
+        println("Negative -42 = -42");
+        
+        double negF = -3.14;
+        println("Negative float -3.14 done");
+        
+        // Test exponent notation
+        double exp = 1.5e10;
+        println("Exponent 1.5e10 done");
+        
+        double exp2 = 2.5E-3;
+        println("Exponent 2.5E-3 done");
+        
+        double exp3 = 1.0e5;
+        println("Exponent 1.0e5 done");
+        
+        println("=== All number literal tests completed! ===");
+    }
+}

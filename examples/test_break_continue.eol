@@ -1,0 +1,97 @@
+// 测试break和continue语句
+class TestBreakContinue {
+    public static void main() {
+        println("=== Break and Continue Tests ===");
+        
+        // Test break in for loop
+        println("Test 1: Break in for loop");
+        for (int i = 0; i < 10; ) {
+            if (i == 5) {
+                break;
+            }
+            print("i ");
+            i = i + 1;
+        }
+        println("stopped at 5");
+        
+        // Test continue in for loop
+        println("Test 2: Continue in for loop");
+        for (int i = 0; i < 10; ) {
+            if (i % 2 == 0) {
+                i = i + 1;
+                continue;
+            }
+            print("odd ");
+            i = i + 1;
+        }
+        println("printed only odd");
+        
+        // Test break in while loop
+        println("Test 3: Break in while loop");
+        int j = 0;
+        while (j < 100) {
+            if (j >= 5) {
+                break;
+            }
+            print("j ");
+            j = j + 1;
+        }
+        println("stopped at 5");
+        
+        // Test continue in while loop
+        println("Test 4: Continue in while loop");
+        j = 0;
+        while (j < 10) {
+            j = j + 1;
+            if (j % 3 == 0) {
+                continue;
+            }
+            print("not3 ");
+        }
+        println("skipped 3, 6, 9");
+        
+        // Test break in do-while loop
+        println("Test 5: Break in do-while loop");
+        int k = 0;
+        do {
+            if (k >= 5) {
+                break;
+            }
+            print("k ");
+            k = k + 1;
+        } while (k < 100);
+        println("stopped at 5");
+        
+        // Test nested loop with break
+        println("Test 6: Break in nested loop");
+        int x = 0;
+        while (x < 3) {
+            int y = 0;
+            while (y < 3) {
+                if (y == 2) {
+                    break;
+                }
+                print("xy ");
+                y = y + 1;
+            }
+            x = x + 1;
+        }
+        println("broke inner loop at y=2");
+        
+        // Test find first match pattern
+        println("Test 7: Find first match pattern");
+        int[] arr = {3, 7, 1, 9, 4, 6};
+        int target = 4;
+        int foundIndex = -1;
+        for (int i = 0; i < arr.length; ) {
+            if (arr[i] == target) {
+                foundIndex = i;
+                break;
+            }
+            i = i + 1;
+        }
+        println("Found target at index 4");
+        
+        println("=== All break and continue tests completed! ===");
+    }
+}

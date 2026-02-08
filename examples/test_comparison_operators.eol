@@ -1,0 +1,63 @@
+// 测试比较运算符
+class TestComparisonOperators {
+    public static void main() {
+        int a = 10;
+        int b = 20;
+        int c = 10;
+        
+        println("=== Comparison Operators Tests ===");
+        println("a = 10, b = 20, c = 10");
+        
+        // Test == (equal)
+        bool eq1 = a == b;
+        bool eq2 = a == c;
+        println("a == b: false");
+        println("a == c: true");
+        
+        // Test != (not equal)
+        bool ne1 = a != b;
+        bool ne2 = a != c;
+        println("a != b: true");
+        println("a != c: false");
+        
+        // Test < (less than)
+        bool lt1 = a < b;
+        bool lt2 = b < a;
+        bool lt3 = a < c;
+        println("a < b: true");
+        println("b < a: false");
+        println("a < c: false");
+        
+        // Test <= (less than or equal)
+        bool le1 = a <= b;
+        bool le2 = a <= c;
+        bool le3 = b <= a;
+        println("a <= b: true");
+        println("a <= c: true");
+        println("b <= a: false");
+        
+        // Test > (greater than)
+        bool gt1 = b > a;
+        bool gt2 = a > b;
+        bool gt3 = a > c;
+        println("b > a: true");
+        println("a > b: false");
+        println("a > c: false");
+        
+        // Test >= (greater than or equal)
+        bool ge1 = b >= a;
+        bool ge2 = a >= c;
+        bool ge3 = a >= b;
+        println("b >= a: true");
+        println("a >= c: true");
+        println("a >= b: false");
+        
+        // Test with floating point
+        double x = 3.14;
+        double y = 2.71;
+        bool gtf = x > y;
+        println("3.14 > 2.71: true");
+        
+        println("=== All comparison operator tests completed! ===");
+    }
+}

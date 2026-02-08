@@ -1,0 +1,125 @@
+// 测试方法链式调用
+class TestMethodChaining {
+    public static void main() {
+        println("=== Method Chaining Tests ===");
+        
+        // Test simple method calls
+        int result = add(5, 3);
+        print("add(5, 3) = ");
+        println(result);
+        
+        // Test chained arithmetic
+        result = multiply(add(2, 3), 4);
+        print("multiply(add(2, 3), 4) = ");
+        print(result);
+        println(" (expected: 20)");
+        
+        // Test nested calls
+        result = add(add(1, 2), add(3, 4));
+        print("add(add(1, 2), add(3, 4)) = ");
+        print(result);
+        println(" (expected: 10)");
+        
+        // Test with subtraction
+        result = subtract(10, add(2, 3));
+        print("subtract(10, add(2, 3)) = ");
+        print(result);
+        println(" (expected: 5)");
+        
+        // Test complex expression
+        result = add(multiply(2, 3), multiply(4, 5));
+        print("add(multiply(2, 3), multiply(4, 5)) = ");
+        print(result);
+        println(" (expected: 26)");
+        
+        // Test with division
+        result = divide(multiply(6, 4), 3);
+        print("divide(multiply(6, 4), 3) = ");
+        print(result);
+        println(" (expected: 8)");
+        
+        // Test string length chain
+        string s = "Hello, World!";
+        int len = s.length();
+        print("Hello World length = ");
+        println(len);
+        
+        // Test substring chain
+        string sub = s.substring(7);
+        print("substring(7) = ");
+        println(sub);
+        
+        string sub2 = s.substring(0, 5);
+        print("substring(0, 5) = ");
+        println(sub2);
+        
+        // Test indexOf
+        int idx = s.indexOf("World");
+        print("indexOf(World) = ");
+        print(idx);
+        println(" (expected: 7)");
+        
+        // Test replace
+        string replaced = s.replace("World", "EOL");
+        print("replace result = ");
+        println(replaced);
+        
+        // Test charAt - returns char, store in char variable
+        char ch = s.charAt(0);
+        print("charAt(0) = ");
+        print(ch);
+        println(" (ASCII of 'H': 72)");
+        
+        // Test factorial chain
+        result = factorial(5);
+        print("factorial(5) = ");
+        print(result);
+        println(" (expected: 120)");
+        
+        result = factorial(3);
+        print("factorial(3) = ");
+        print(result);
+        println(" (expected: 6)");
+        
+        // Test fibonacci
+        result = fibonacci(10);
+        print("fibonacci(10) = ");
+        print(result);
+        println(" (expected: 55)");
+        
+        println("=== All method chaining tests completed! ===");
+    }
+    
+    public static int add(int a, int b) {
+        return a + b;
+    }
+    
+    public static int subtract(int a, int b) {
+        return a - b;
+    }
+    
+    public static int multiply(int a, int b) {
+        return a * b;
+    }
+    
+    public static int divide(int a, int b) {
+        return a / b;
+    }
+    
+    public static int factorial(int n) {
+        if (n <= 1) {
+            return 1;
+        }
+        return n * factorial(n - 1);
+    }
+    
+    public static int fibonacci(int n) {
+        if (n <= 0) {
+            return 0;
+        }
+        if (n == 1) {
+            return 1;
+        }
+        return fibonacci(n - 1) + fibonacci(n - 2);
+    }
+}

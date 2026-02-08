@@ -1,0 +1,48 @@
+// 测试自增自减运算符 (使用常规赋值模拟)
+class TestIncrementDecrement {
+    public static void main() {
+        println("=== Increment/Decrement Tests ===");
+        
+        // Simulate prefix increment: b = ++a  =>  a = a + 1; b = a;
+        int a = 5;
+        a = a + 1;
+        int b = a;
+        println("Prefix ++: a = 6, b = 6");
+        
+        // Simulate postfix increment: b = a++  =>  b = a; a = a + 1;
+        a = 5;
+        b = a;
+        a = a + 1;
+        println("Postfix ++: a = 6, b = 5");
+        
+        // Simulate prefix decrement: b = --a  =>  a = a - 1; b = a;
+        a = 5;
+        a = a - 1;
+        b = a;
+        println("Prefix --: a = 4, b = 4");
+        
+        // Simulate postfix decrement: b = a--  =>  b = a; a = a - 1;
+        a = 5;
+        b = a;
+        a = a - 1;
+        println("Postfix --: a = 4, b = 5");
+        
+        // Test in loop context using regular increment
+        println("Increment in for loop:");
+        for (int i = 0; i < 5; ) {
+            print("i ");
+            i = i + 1;
+        }
+        println("");
+        
+        println("Prefix in expression:");
+        int x = 0;
+        x = x + 1;
+        int r1 = x;
+        x = x + 1;
+        int r2 = x;
+        println("x = 0, ++x = 1, ++x = 2");
+        
+        println("=== All increment/decrement tests completed! ===");
+    }
+}

@@ -1,0 +1,90 @@
+// 测试复杂条件组合
+class TestComplexConditions {
+    public static void main() {
+        println("=== Complex Conditions Tests ===");
+        
+        int a = 10;
+        int b = 20;
+        int c = 30;
+        
+        // Test multiple AND conditions
+        if (a < b && b < c && a < c) {
+            println("Test 1: a < b && b < c && a < c = true");
+        }
+        
+        // Test multiple OR conditions
+        if (a > 100 || b > 15 || c > 25) {
+            println("Test 2: a > 100 || b > 15 || c > 25 = true");
+        }
+        
+        // Test mixed AND/OR with parentheses
+        if ((a < b && b > c) || (a < c && c > b)) {
+            println("Test 3: (a < b && b > c) || (a < c && c > b) = true");
+        }
+        
+        // Test negation with comparison
+        if (!(a > b)) {
+            println("Test 4: !(a > b) = true (a is not greater than b)");
+        }
+        
+        // Test complex arithmetic in conditions
+        if (a + b > c && b - a < c) {
+            println("Test 5: a + b > c && b - a < c = true");
+        }
+        
+        // Test equality with arithmetic
+        if (a * 2 == b && b + a == c) {
+            println("Test 6: a * 2 == b && b + a == c = true");
+        }
+        
+        // Test range check pattern
+        int x = 15;
+        if (x >= 10 && x <= 20) {
+            println("Test 7: 15 is in range [10, 20]");
+        }
+        
+        // Test out of range check
+        if (x < 10 || x > 20) {
+            println("Test 8: 15 is NOT out of range (this should not print)");
+        } else {
+            println("Test 8: 15 is within range [10, 20]");
+        }
+        
+        // Test with boolean variables
+        bool p = true;
+        bool q = false;
+        
+        if (p && !q) {
+            println("Test 9: p && !q = true (true && !false)");
+        }
+        
+        if (!p || q) {
+            println("Test 10: !p || q = false (this should not print)");
+        } else {
+            println("Test 10: !p || q = false (as expected)");
+        }
+        
+        // Test XOR-like pattern
+        if ((p || q) && !(p && q)) {
+            println("Test 11: XOR pattern (p || q) && !(p && q) = true");
+        }
+        
+        // Test with method calls in conditions
+        if (getValue() > 5 && getValue() < 15) {
+            println("Test 12: getValue() is between 5 and 15");
+        }
+        
+        // Test nested if with complex conditions
+        if (a < b) {
+            if (b < c && a + b == c) {
+                println("Test 13: Nested conditions passed");
+            }
+        }
+        
+        println("=== All complex condition tests completed! ===");
+    }
+    
+    public static int getValue() {
+        return 10;
+    }
+}

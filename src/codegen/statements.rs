@@ -403,7 +403,7 @@ impl IRGenerator {
 
         // 生成条件表达式
         let expr = self.generate_expression(&switch_stmt.expr)?;
-        let (_, expr_val) = self.parse_typed_value(&expr);
+        let (expr_type, expr_val) = self.parse_typed_value(&expr);
 
         // 创建 case 标签
         let mut case_labels: Vec<(i64, String, usize)> = Vec::new();
@@ -412,8 +412,17 @@ impl IRGenerator {
             case_labels.push((case.value, label, idx));
         }
 
+        // 将表达式值转换为 i64（如果还不是的话）
+        let switch_val = if expr_type == "i64" {
+            expr_val.to_string()
+        } else {
+            let temp = self.new_temp();
+            self.emit_line(&format!("  {} = sext {} {} to i64", temp, expr_type, expr_val));
+            temp
+        };
+
         // 生成 switch 指令
-        self.emit_line(&format!("  switch i64 {}, label %{} [", expr_val, default_label));
+        self.emit_line(&format!("  switch i64 {}, label %{} [", switch_val, default_label));
         for (value, label, _) in &case_labels {
             self.emit_line(&format!("    i64 {}, label %{}", value, label));
         }
@@ -427,20 +436,25 @@ impl IRGenerator {
             self.emit_line(&format!("{}:", label));
 
             // 执行 case 体
-            for (j, stmt) in case.body.iter().enumerate() {
-                match stmt {
-                    Stmt::Break => {
-                        // 遇到 break，跳转到 switch 结束
-                        self.emit_line(&format!("  br label %{}", end_label));
-                        fallthrough = false;
-                        break;
-                    }
-                    _ => {
-                        self.generate_statement(stmt)?;
-                        // 如果不是最后一条，继续执行
-                        if j == case.body.len() - 1 {
-                            // 最后一条语句，检查是否需要穿透
-                            fallthrough = true;
+            if case.body.is_empty() {
+                // 空的 case 体，直接穿透到下一个 case
+                fallthrough = true;
+            } else {
+                for (j, stmt) in case.body.iter().enumerate() {
+                    match stmt {
+                        Stmt::Break => {
+                            // 遇到 break，跳转到 switch 结束
+                            self.emit_line(&format!("  br label %{}", end_label));
+                            fallthrough = false;
+                            break;
+                        }
+                        _ => {
+                            self.generate_statement(stmt)?;
+                            // 如果不是最后一条，继续执行
+                            if j == case.body.len() - 1 {
+                                // 最后一条语句，检查是否需要穿透
+                                fallthrough = true;
+                            }
                         }
                     }
                 }

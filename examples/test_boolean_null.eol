@@ -1,0 +1,66 @@
+// 测试布尔类型和null
+class TestBooleanNull {
+    public static void main() {
+        println("=== Boolean and Null Tests ===");
+        
+        // Test boolean true
+        bool t = true;
+        println("bool true assigned");
+        
+        // Test boolean false
+        bool f = false;
+        println("bool false assigned");
+        
+        // Test boolean operations
+        bool result = t && t;
+        println("true && true operation done");
+        
+        result = t || f;
+        println("true || false operation done");
+        
+        result = !t;
+        println("!true operation done");
+        
+        result = !f;
+        println("!false operation done");
+        
+        // Test boolean in conditions
+        if (t) {
+            println("If with true: executed");
+        }
+        
+        if (!f) {
+            println("If with !false: executed");
+        }
+        
+        // Test boolean comparison
+        result = (t == true);
+        println("true == true operation done");
+        
+        result = (f == false);
+        println("false == false operation done");
+        
+        result = (t != f);
+        println("true != false operation done");
+        
+        // Test string null
+        string s = null;
+        println("string null assigned");
+        
+        // Test null comparison
+        string s2 = null;
+        result = (s == s2);
+        println("null == null operation done");
+        
+        // Test boolean array
+        bool[] boolArr = {true, false, true, true};
+        print("Bool array length = ");
+        println(boolArr.length);
+        print("boolArr[0] = ");
+        println(boolArr[0]);
+        print("boolArr[1] = ");
+        println(boolArr[1]);
+        
+        println("=== All boolean and null tests completed! ===");
+    }
+}

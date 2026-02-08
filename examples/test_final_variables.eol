@@ -1,0 +1,82 @@
+// 测试final变量
+class TestFinalVariables {
+    public static void main() {
+        println("=== Final Variables Tests ===");
+        
+        // Test final int
+        final int FINAL_INT = 100;
+        print("final int FINAL_INT = ");
+        println(FINAL_INT);
+        
+        // Test final double
+        final double PI = 3.14159;
+        print("final double PI = ");
+        println(PI);
+        
+        // Test final string
+        final string GREETING = "Hello, EOL!";
+        print("final string GREETING = ");
+        println(GREETING);
+        
+        // Test final bool
+        final bool FLAG = true;
+        println("final bool FLAG assigned");
+        
+        // Test final in array declaration
+        final int SIZE = 5;
+        int[] arr = new int[SIZE]();
+        print("Array with final size ");
+        print(SIZE);
+        print(", length = ");
+        println(arr.length);
+        
+        // Test final in loop - use while instead of for with final
+        final int MAX = 3;
+        print("Loop with final MAX = ");
+        print(MAX);
+        println(":");
+        int i = 0;
+        while (i < MAX) {
+            print(i);
+            print(" ");
+            i = i + 1;
+        }
+        println("");
+        
+        // Test final in calculation
+        final int RADIUS = 5;
+        double circumference = 2.0 * PI * 5.0;
+        print("Circumference with radius ");
+        print(RADIUS);
+        println(" calculated");
+        
+        // Test multiple finals
+        final int A = 10;
+        final int B = 20;
+        final int C = A + B;
+        print("A + B = C: ");
+        print(A);
+        print(" + ");
+        print(B);
+        print(" = ");
+        println(C);
+        
+        // Test final array reference
+        final int[] FINAL_ARR = {1, 2, 3};
+        print("Final array length = ");
+        println(FINAL_ARR.length);
+        print("Final array[0] = ");
+        println(FINAL_ARR[0]);
+        
+        // Test final with conditional
+        final int THRESHOLD = 50;
+        int value = 75;
+        if (value > THRESHOLD) {
+            print(value);
+            print(" is above threshold ");
+            println(THRESHOLD);
+        }
+        
+        println("=== All final variable tests completed! ===");
+    }
+}

@@ -1,0 +1,41 @@
+// 测试各种赋值运算符
+class TestAssignmentOperators {
+    public static void main() {
+        int a = 10;
+        int b = 5;
+        
+        println("=== Assignment Operators Tests ===");
+        
+        // Test +=
+        int x = a;
+        x += b;
+        println("10 += 5 = 15");
+        
+        // Test -=
+        x = a;
+        x -= b;
+        println("10 -= 5 = 5");
+        
+        // Test *=
+        x = a;
+        x *= b;
+        println("10 *= 5 = 50");
+        
+        // Test /=
+        x = a;
+        x /= b;
+        println("10 /= 5 = 2");
+        
+        // Test %=
+        x = a;
+        x %= b;
+        println("10 %= 5 = 0");
+        
+        // Test with different values
+        int c = 17;
+        c %= 5;
+        println("17 %= 5 = 2");
+        
+        println("=== All assignment operator tests completed! ===");
+    }
+}

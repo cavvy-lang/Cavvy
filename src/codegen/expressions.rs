@@ -95,6 +95,15 @@ impl IRGenerator {
             return (left_type.to_string(), left_val.to_string(), right_val.to_string());
         }
         
+        // 检查是否为指针类型（如 i8*），指针类型不参与整数提升
+        let left_is_ptr = left_type.ends_with('*');
+        let right_is_ptr = right_type.ends_with('*');
+        
+        if left_is_ptr || right_is_ptr {
+            // 指针类型不应该调用此函数，返回原值以避免错误
+            return (left_type.to_string(), left_val.to_string(), right_val.to_string());
+        }
+        
         // 确定提升后的类型（选择位数更大的类型）
         let left_bits: u32 = left_type.trim_start_matches('i').parse().unwrap_or(64);
         let right_bits: u32 = right_type.trim_start_matches('i').parse().unwrap_or(64);

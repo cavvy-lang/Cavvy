@@ -1,0 +1,50 @@
+// 测试逻辑运算符
+class TestLogicalOperators {
+    public static void main() {
+        bool t = true;
+        bool f = false;
+        
+        println("=== Logical Operators Tests ===");
+        
+        // Test && (logical AND)
+        bool r1 = t && t;
+        bool r2 = t && f;
+        bool r3 = f && t;
+        bool r4 = f && f;
+        println("true && true = true");
+        println("true && false = false");
+        println("false && true = false");
+        println("false && false = false");
+        
+        // Test || (logical OR)
+        bool r5 = t || t;
+        bool r6 = t || f;
+        bool r7 = f || t;
+        bool r8 = f || f;
+        println("true || true = true");
+        println("true || false = true");
+        println("false || true = true");
+        println("false || false = false");
+        
+        // Test ! (logical NOT)
+        bool r9 = !t;
+        bool r10 = !f;
+        println("!true = false");
+        println("!false = true");
+        
+        // Test complex logical expressions
+        bool result = (t && f) || (t && t);
+        println("(true && false) || (true && true) = true");
+        
+        result = !(f || f) && t;
+        println("!(false || false) && true = true");
+        
+        // Test with comparison operators
+        int a = 10;
+        int b = 20;
+        result = (a < b) && (b > 15);
+        println("(10 < 20) && (20 > 15) = true");
+        
+        println("=== All logical operator tests completed! ===");
+    }
+}

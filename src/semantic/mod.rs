@@ -769,6 +769,14 @@ impl SemanticAnalyzer {
             return true;
         }
         
+        // null 可以赋值给任何引用类型（包括 string）
+        if let Type::Object(obj_name) = from {
+            if obj_name == "Object" {
+                // null 是 Object 类型，可以赋值给 String 或其他引用类型
+                return true;
+            }
+        }
+        
         // 基本类型之间的兼容
         match (from, to) {
             (Type::Int32, Type::Int64) => true,
@@ -778,6 +786,9 @@ impl SemanticAnalyzer {
             (Type::Float32, Type::Float64) => true,
             (Type::Float64, Type::Float32) => true, // 允许double到float转换（可能有精度损失）
             (Type::Object(_), Type::Object(_)) => true, // TODO: 继承检查
+            // char 可以赋值给 int (ASCII 码值)
+            (Type::Char, Type::Int32) => true,
+            (Type::Char, Type::Int64) => true,
             _ => false,
         }
     }
@@ -788,6 +799,9 @@ impl SemanticAnalyzer {
             (Type::Float64, _) | (_, Type::Float64) => Type::Float64,
             (Type::Float32, _) | (_, Type::Float32) => Type::Float32,
             (Type::Int64, _) | (_, Type::Int64) => Type::Int64,
+            // char 类型在算术运算中提升为 int32
+            (Type::Char, Type::Char) => Type::Int32,
+            (Type::Char, Type::Int32) | (Type::Int32, Type::Char) => Type::Int32,
             (Type::Int32, Type::Int32) => Type::Int32,
             _ => left.clone(),
         }
