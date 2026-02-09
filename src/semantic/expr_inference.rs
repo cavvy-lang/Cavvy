@@ -27,6 +27,16 @@ impl SemanticAnalyzer {
                     // 标识符是类名，返回类类型（用于静态成员访问）
                     Ok(Type::Object(name.clone()))
                 } else {
+                    // 检查是否是当前类的静态字段
+                    if let Some(current_class_name) = &self.current_class {
+                        if let Some(class_info) = self.type_registry.get_class(current_class_name) {
+                            if let Some(field_info) = class_info.fields.get(name) {
+                                if field_info.is_static {
+                                    return Ok(field_info.field_type.clone());
+                                }
+                            }
+                        }
+                    }
                     Err(semantic_error(0, 0, format!("Undefined variable: {}", name)))
                 }
             }

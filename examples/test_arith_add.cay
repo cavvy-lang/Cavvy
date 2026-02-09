@@ -1,0 +1,12 @@
+public class TestArithAdd {
+    public static void main() {
+        println("=== Arithmetic Add Tests ===");
+        int a = 10;
+        int b = 20;
+        println(a + b);
+        double c = 1.5;
+        double d = 2.5;
+        println(c + d);
+        println("All arithmetic add tests completed!");
+    }
+}

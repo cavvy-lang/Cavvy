@@ -1,0 +1,15 @@
+public class TestRecursionFactorial {
+    public static long factorial(int n) {
+        if (n <= 1) {
+            return 1;
+        }
+        return n * factorial(n - 1);
+    }
+
+    public static void main() {
+        println("=== Recursion Factorial Tests ===");
+        println(factorial(5));
+        println(factorial(10));
+        println("All recursion factorial tests completed!");
+    }
+}

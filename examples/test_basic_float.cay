@@ -1,0 +1,12 @@
+public class TestBasicFloat {
+    public static void main() {
+        println("=== Basic Float Tests ===");
+        float a = 3.14f;
+        float b = 2.5f;
+        println(a + b);
+        println(a - b);
+        println(a * b);
+        println(a / b);
+        println("All basic float tests completed!");
+    }
+}

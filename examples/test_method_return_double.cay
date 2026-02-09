@@ -1,0 +1,13 @@
+public class TestMethodReturnDouble {
+    public static double getDouble() {
+        return 3.14159;
+    }
+    
+    public static void main() {
+        println("=== Method Return Double Tests ===");
+        double result = getDouble();
+        print("getDouble() = ");
+        println(result);
+        println("All method return double tests completed!");
+    }
+}

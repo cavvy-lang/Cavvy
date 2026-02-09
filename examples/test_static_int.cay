@@ -1,0 +1,16 @@
+public class TestStaticInt {
+    static int counter = 0;
+
+    public static void main() {
+        println("=== Static Int Tests ===");
+        print("Initial counter: ");
+        println(counter);
+        counter = counter + 1;
+        print("After increment: ");
+        println(counter);
+        counter = counter + 1;
+        print("After another increment: ");
+        println(counter);
+        println("All static int tests completed!");
+    }
+}

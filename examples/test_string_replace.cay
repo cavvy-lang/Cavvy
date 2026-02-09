@@ -1,0 +1,12 @@
+public class TestStringReplace {
+    public static void main() {
+        println("=== String Replace Tests ===");
+        String s = "Hello, Java! Java is great!";
+        String replaced = s.replace("Java", "EOL");
+        print("Original: ");
+        println(s);
+        print("Replaced: ");
+        println(replaced);
+        println("All string replace tests completed!");
+    }
+}

@@ -1,0 +1,17 @@
+public class TestReverseNumber {
+    public static int reverseNumber(int n) {
+        int reversed = 0;
+        while (n > 0) {
+            reversed = reversed * 10 + (n % 10);
+            n = n / 10;
+        }
+        return reversed;
+    }
+
+    public static void main() {
+        println("=== Reverse Number Tests ===");
+        println(reverseNumber(12345));
+        println(reverseNumber(9876));
+        println("All reverse number tests completed!");
+    }
+}

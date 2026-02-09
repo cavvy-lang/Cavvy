@@ -19,6 +19,18 @@ impl IRGenerator {
                     }
                 }
 
+                // 检查是否是当前类的静态字段
+                if !self.current_class.is_empty() {
+                    let static_key = format!("{}.{}", self.current_class, name);
+                    if let Some(field_info) = self.static_field_map.get(&static_key).cloned() {
+                        let temp = self.new_temp();
+                        let align = self.get_type_align(&field_info.llvm_type);
+                        self.emit_line(&format!("  {} = load {}, {}* {}, align {}",
+                            temp, field_info.llvm_type, field_info.llvm_type, field_info.name, align));
+                        return Ok(format!("{} {}", field_info.llvm_type, temp));
+                    }
+                }
+
                 let temp = self.new_temp();
                 // 优先使用作用域管理器获取变量类型和 LLVM 名称
                 let (var_type, llvm_name) = if let Some(scope_type) = self.scope_manager.get_var_type(name) {
@@ -688,70 +700,35 @@ impl IRGenerator {
         // 转换参数类型
         let mut converted_args = Vec::new();
         for arg_str in &processed_args {
-            let (arg_type, arg_val) = self.parse_typed_value(arg_str);
-
-            // 如果参数是i32，转换为i64
-            if arg_type == "i32" {
-                let temp = self.new_temp();
-                self.emit_line(&format!("  {} = sext i32 {} to i64", temp, arg_val));
-                converted_args.push(format!("i64 {}", temp));
-            } else {
-                converted_args.push(arg_str.clone());
-            }
+            // 保持参数类型不变，不进行转换
+            converted_args.push(arg_str.clone());
         }
 
-        let temp = self.new_temp();
-        self.emit_line(&format!("  {} = call i64 @{}({})",
-            temp, fn_name, converted_args.join(", ")));
-
-        Ok(format!("i64 {}", temp))
+        // 获取方法的返回类型
+        let ret_type = self.get_method_return_type(&class_name, &method_name, &processed_args, has_varargs_array);
+        let llvm_ret_type = self.type_to_llvm(&ret_type);
+        
+        if llvm_ret_type == "void" {
+            // void 方法调用不需要命名结果
+            self.emit_line(&format!("  call void @{}({})",
+                fn_name, converted_args.join(", ")));
+            Ok("void %dummy".to_string())
+        } else {
+            let temp = self.new_temp();
+            self.emit_line(&format!("  {} = call {} @{}({})",
+                temp, llvm_ret_type, fn_name, converted_args.join(", ")));
+            Ok(format!("{} {}", llvm_ret_type, temp))
+        }
     }
 
     /// 生成函数名 - 优先使用类型注册表中方法定义的参数类型
     fn generate_function_name(&self, class_name: &str, method_name: &str, processed_args: &[String], has_varargs_array: bool) -> String {
-        // 尝试从类型注册表获取方法信息
-        if let Some(ref registry) = self.type_registry {
-            if let Some(class_info) = registry.get_class(class_name) {
-                // 尝试找到匹配的方法（根据参数数量）
-                if let Some(methods) = class_info.methods.get(method_name) {
-                    // 首先尝试找到参数数量完全匹配的方法
-                    for method in methods {
-                        let param_count = method.params.len();
-                        let arg_count = processed_args.len();
-
-                        // 检查是否是可变参数方法
-                        let is_varargs = method.params.last().map(|p| p.is_varargs).unwrap_or(false);
-
-                        if is_varargs {
-                            // 可变参数方法：实际参数数量 >= 固定参数数量
-                            let fixed_count = param_count.saturating_sub(1);
-                            if arg_count >= fixed_count {
-                                return self.build_function_name_from_method(class_name, method_name, &method.params, has_varargs_array);
-                            }
-                        } else if param_count == arg_count {
-                            // 非可变参数方法：参数数量必须完全匹配
-                            return self.build_function_name_from_method(class_name, method_name, &method.params, has_varargs_array);
-                        }
-                    }
-
-                    // 如果没有找到参数数量匹配的方法，但只有一个方法，就使用它
-                    // 这处理 main(string[] args) 被无参数调用的情况
-                    if methods.len() == 1 {
-                        return self.build_function_name_from_method(class_name, method_name, &methods[0].params, has_varargs_array);
-                    }
-                }
-            }
-        }
-
-        // 回退到使用实际参数类型生成函数名
-        // 注意：这里使用与 generate_method_name 相同的逻辑
+        // 获取实际参数的类型签名
         let arg_types: Vec<String> = processed_args.iter()
             .enumerate()
             .map(|(idx, r)| {
                 let (ty, _) = self.parse_typed_value(r);
                 let is_varargs_array = has_varargs_array && idx == processed_args.len() - 1;
-                // 使用 param_type_to_signature 而不是 llvm_type_to_signature_with_varargs
-                // 以确保与 generate_method_name 生成的函数名一致
                 let llvm_type = self.llvm_type_to_signature(&ty);
                 if is_varargs_array {
                     "ai".to_string()
@@ -760,7 +737,58 @@ impl IRGenerator {
                 }
             })
             .collect();
+        
+        // 尝试从类型注册表获取方法信息
+        if let Some(ref registry) = self.type_registry {
+            if let Some(class_info) = registry.get_class(class_name) {
+                if let Some(methods) = class_info.methods.get(method_name) {
+                    let arg_count = processed_args.len();
+                    
+                    // 首先尝试找到参数类型完全匹配的方法
+                    for method in methods {
+                        let param_count = method.params.len();
+                        let is_varargs = method.params.last().map(|p| p.is_varargs).unwrap_or(false);
+                        
+                        if is_varargs {
+                            // 可变参数方法
+                            let fixed_count = param_count.saturating_sub(1);
+                            if arg_count >= fixed_count {
+                                // 检查固定参数类型是否匹配
+                                let method_sig = self.build_function_name_from_method(class_name, method_name, &method.params, has_varargs_array);
+                                let expected_sig = format!("{}.__{}_{}", class_name, method_name, arg_types.join("_"));
+                                if method_sig == expected_sig {
+                                    return method_sig;
+                                }
+                            }
+                        } else if param_count == arg_count {
+                            // 非可变参数方法：检查参数类型是否匹配
+                            let method_sig = self.build_function_name_from_method(class_name, method_name, &method.params, has_varargs_array);
+                            let expected_sig = format!("{}.__{}_{}", class_name, method_name, arg_types.join("_"));
+                            if method_sig == expected_sig {
+                                return method_sig;
+                            }
+                        }
+                    }
+                    
+                    // 如果没有找到类型完全匹配的方法，回退到参数数量匹配
+                    for method in methods {
+                        let param_count = method.params.len();
+                        let is_varargs = method.params.last().map(|p| p.is_varargs).unwrap_or(false);
+                        
+                        if is_varargs {
+                            let fixed_count = param_count.saturating_sub(1);
+                            if arg_count >= fixed_count {
+                                return self.build_function_name_from_method(class_name, method_name, &method.params, has_varargs_array);
+                            }
+                        } else if param_count == arg_count {
+                            return self.build_function_name_from_method(class_name, method_name, &method.params, has_varargs_array);
+                        }
+                    }
+                }
+            }
+        }
 
+        // 回退到使用实际参数类型生成函数名
         if arg_types.is_empty() {
             format!("{}.{}", class_name, method_name)
         } else {
@@ -805,12 +833,91 @@ impl IRGenerator {
         }
     }
 
+    /// 获取方法的返回类型
+    fn get_method_return_type(&self, class_name: &str, method_name: &str, processed_args: &[String], has_varargs_array: bool) -> crate::types::Type {
+        // 获取实际参数的类型签名
+        let arg_types: Vec<String> = processed_args.iter()
+            .enumerate()
+            .map(|(idx, r)| {
+                let (ty, _) = self.parse_typed_value(r);
+                let is_varargs_array = has_varargs_array && idx == processed_args.len() - 1;
+                let llvm_type = self.llvm_type_to_signature(&ty);
+                if is_varargs_array {
+                    "ai".to_string()
+                } else {
+                    llvm_type
+                }
+            })
+            .collect();
+        
+        if let Some(ref registry) = self.type_registry {
+            if let Some(class_info) = registry.get_class(class_name) {
+                if let Some(methods) = class_info.methods.get(method_name) {
+                    let arg_count = processed_args.len();
+                    
+                    // 首先尝试找到参数类型完全匹配的方法
+                    for method in methods {
+                        let param_count = method.params.len();
+                        let is_varargs = method.params.last().map(|p| p.is_varargs).unwrap_or(false);
+                        
+                        if is_varargs {
+                            let fixed_count = param_count.saturating_sub(1);
+                            if arg_count >= fixed_count {
+                                let method_sig = self.build_function_name_from_method(class_name, method_name, &method.params, has_varargs_array);
+                                let expected_sig = format!("{}.__{}_{}", class_name, method_name, arg_types.join("_"));
+                                if method_sig == expected_sig {
+                                    return method.return_type.clone();
+                                }
+                            }
+                        } else if param_count == arg_count {
+                            let method_sig = self.build_function_name_from_method(class_name, method_name, &method.params, has_varargs_array);
+                            let expected_sig = format!("{}.__{}_{}", class_name, method_name, arg_types.join("_"));
+                            if method_sig == expected_sig {
+                                return method.return_type.clone();
+                            }
+                        }
+                    }
+                    
+                    // 如果没有找到类型完全匹配的方法，回退到参数数量匹配
+                    for method in methods {
+                        let param_count = method.params.len();
+                        let is_varargs = method.params.last().map(|p| p.is_varargs).unwrap_or(false);
+                        
+                        if is_varargs {
+                            let fixed_count = param_count.saturating_sub(1);
+                            if arg_count >= fixed_count {
+                                return method.return_type.clone();
+                            }
+                        } else if param_count == arg_count {
+                            return method.return_type.clone();
+                        }
+                    }
+                }
+            }
+        }
+        
+        // 默认返回 i64 类型
+        crate::types::Type::Int64
+    }
+
     /// 检查方法是否是可变参数方法
-    /// 这里使用简单的启发式：根据方法名和参数数量推断
-    fn is_varargs_method(&self, _class_name: &str, method_name: &str) -> bool {
-        // 在实际实现中，这里应该查询类型注册表
-        // 为了简化，我们假设以下方法可能是可变参数方法
-        matches!(method_name, "sum" | "printAll" | "format" | "printf" | "multiplyAndAdd")
+    /// 查询类型注册表来确定方法是否真的是可变参数方法
+    fn is_varargs_method(&self, class_name: &str, method_name: &str) -> bool {
+        // 查询类型注册表
+        if let Some(ref registry) = self.type_registry {
+            if let Some(class_info) = registry.get_class(class_name) {
+                if let Some(methods) = class_info.methods.get(method_name) {
+                    // 检查是否有任何方法是可变参数的
+                    for method in methods {
+                        if method.params.last().map(|p| p.is_varargs).unwrap_or(false) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        // 默认返回false，避免将普通方法误认为可变参数方法
+        false
     }
 
     /// 将可变参数打包成数组
@@ -1308,6 +1415,16 @@ impl IRGenerator {
                     let llvm_name = self.scope_manager.get_llvm_name(name).unwrap_or_else(|| name.clone());
                     (scope_type, llvm_name)
                 } else {
+                    // 检查是否是当前类的静态字段
+                    if !self.current_class.is_empty() {
+                        let static_key = format!("{}.{}", self.current_class, name);
+                        if let Some(field_info) = self.static_field_map.get(&static_key).cloned() {
+                            let align = self.get_type_align(&field_info.llvm_type);
+                            self.emit_line(&format!("  store {} {}, {}* {}, align {}",
+                                field_info.llvm_type, val, field_info.llvm_type, field_info.name, align));
+                            return Ok(value);
+                        }
+                    }
                     // 回退到旧系统
                     let var_type = self.var_types.get(name)
                         .ok_or_else(|| codegen_error(format!("Variable '{}' not found", name)))?

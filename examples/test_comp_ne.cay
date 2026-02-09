@@ -1,0 +1,19 @@
+public class TestCompNe {
+    public static void main() {
+        println("=== Comparison Not Equal Tests ===");
+        int a = 10;
+        int b = 20;
+        int c = 10;
+        if (a != b) {
+            println("a != b is true");
+        } else {
+            println("a != b is false");
+        }
+        if (a != c) {
+            println("a != c is true");
+        } else {
+            println("a != c is false");
+        }
+        println("All comparison not equal tests completed!");
+    }
+}

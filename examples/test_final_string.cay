@@ -1,0 +1,10 @@
+public class TestFinalString {
+    public static void main() {
+        println("=== Final String Tests ===");
+        final String GREETING = "Hello";
+        println(GREETING);
+        final String NAME = "EOL";
+        println(NAME);
+        println("All final string tests completed!");
+    }
+}

@@ -1,0 +1,15 @@
+public class TestArrayFindMax {
+    public static void main() {
+        println("=== Array Find Max Tests ===");
+        int[] arr = {15, 8, 42, 23, 16};
+        int max = arr[0];
+        for (int i = 1; i < arr.length; i = i + 1) {
+            if (arr[i] > max) {
+                max = arr[i];
+            }
+        }
+        print("Max = ");
+        println(max);
+        println("All array find max tests completed!");
+    }
+}

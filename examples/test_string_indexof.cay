@@ -1,0 +1,16 @@
+public class TestStringIndexOf {
+    public static void main() {
+        println("=== String IndexOf Tests ===");
+        String s = "Hello, World!";
+        int idx1 = s.indexOf("World");
+        print("indexOf('World') = ");
+        println(idx1);
+        int idx2 = s.indexOf("Java");
+        print("indexOf('Java') = ");
+        println(idx2);
+        int idx3 = s.indexOf("o");
+        print("indexOf('o') = ");
+        println(idx3);
+        println("All string indexOf tests completed!");
+    }
+}

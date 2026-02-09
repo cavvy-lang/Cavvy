@@ -1,0 +1,18 @@
+public class TestCompGt {
+    public static void main() {
+        println("=== Comparison Greater Than Tests ===");
+        int a = 30;
+        int b = 20;
+        if (a > b) {
+            println("a > b is true");
+        } else {
+            println("a > b is false");
+        }
+        if (b > a) {
+            println("b > a is true");
+        } else {
+            println("b > a is false");
+        }
+        println("All comparison greater than tests completed!");
+    }
+}

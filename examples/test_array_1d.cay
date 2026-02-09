@@ -1,0 +1,18 @@
+public class TestArray1D {
+    public static void main() {
+        println("=== 1D Array Tests ===");
+        int[] arr = new int[5];
+        arr[0] = 10;
+        arr[1] = 20;
+        arr[2] = 30;
+        arr[3] = 40;
+        arr[4] = 50;
+        for (int i = 0; i < arr.length; i = i + 1) {
+            print("arr[");
+            print(i);
+            print("] = ");
+            println(arr[i]);
+        }
+        println("All 1D array tests completed!");
+    }
+}

@@ -1,0 +1,16 @@
+public class TestStringCharAt {
+    public static void main() {
+        println("=== String CharAt Tests ===");
+        String s = "ABC";
+        char c0 = s.charAt(0);
+        char c1 = s.charAt(1);
+        char c2 = s.charAt(2);
+        print("charAt(0) = ");
+        println(c0);
+        print("charAt(1) = ");
+        println(c1);
+        print("charAt(2) = ");
+        println(c2);
+        println("All string charAt tests completed!");
+    }
+}

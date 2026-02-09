@@ -1,0 +1,27 @@
+public class TestSwitchBasic {
+    public static void main() {
+        println("=== Basic Switch Tests ===");
+        int day = 3;
+        switch (day) {
+            case 1:
+                println("Monday");
+                break;
+            case 2:
+                println("Tuesday");
+                break;
+            case 3:
+                println("Wednesday");
+                break;
+            case 4:
+                println("Thursday");
+                break;
+            case 5:
+                println("Friday");
+                break;
+            default:
+                println("Weekend");
+                break;
+        }
+        println("All basic switch tests completed!");
+    }
+}

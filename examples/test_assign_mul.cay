@@ -1,0 +1,14 @@
+public class TestAssignMul {
+    public static void main() {
+        println("=== Assign Multiply Tests ===");
+        int a = 5;
+        a *= 4;
+        print("a after *= 4: ");
+        println(a);
+        int b = 10;
+        b *= 3;
+        print("b after *= 3: ");
+        println(b);
+        println("All assign multiply tests completed!");
+    }
+}

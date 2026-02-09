@@ -1,0 +1,12 @@
+public class TestBasicDouble {
+    public static void main() {
+        println("=== Basic Double Tests ===");
+        double a = 3.14159;
+        double b = 2.71828;
+        println(a + b);
+        println(a - b);
+        println(a * b);
+        println(a / b);
+        println("All basic double tests completed!");
+    }
+}

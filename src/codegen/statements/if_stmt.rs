@@ -14,9 +14,16 @@ impl IRGenerator {
         let merge_label = self.new_label("ifmerge");
 
         let cond = self.generate_expression(&if_stmt.condition)?;
-        let (_, cond_val) = self.parse_typed_value(&cond);
+        let (cond_type, cond_val) = self.parse_typed_value(&cond);
         let cond_reg = self.new_temp();
-        self.emit_line(&format!("  {} = icmp ne i1 {}, 0", cond_reg, cond_val));
+        
+        // 将条件转换为 i1 类型
+        if cond_type == "i1" {
+            self.emit_line(&format!("  {} = icmp ne i1 {}, 0", cond_reg, cond_val));
+        } else {
+            // 对于整数类型，先与 0 比较
+            self.emit_line(&format!("  {} = icmp ne {} {}, 0", cond_reg, cond_type, cond_val));
+        }
 
         let has_else = if_stmt.else_branch.is_some();
 

@@ -1,0 +1,24 @@
+public class TestLogicalNot {
+    public static void main() {
+        println("=== Logical NOT Tests ===");
+        bool a = true;
+        bool b = false;
+        if (!a) {
+            println("!true is true - wrong!");
+        } else {
+            println("!true is false - correct!");
+        }
+        if (!b) {
+            println("!false is true - correct!");
+        }
+        if (!!a) {
+            println("!!true is true - correct!");
+        }
+        if (!!b) {
+            println("!!false is true - wrong!");
+        } else {
+            println("!!false is false - correct!");
+        }
+        println("All logical NOT tests completed!");
+    }
+}

@@ -1,0 +1,9 @@
+public class TestCastDoubleToInt {
+    public static void main() {
+        println("=== Cast Double to Int Tests ===");
+        double a = 3.99;
+        int b = (int)a;
+        println(b);
+        println("All cast double to int tests completed!");
+    }
+}

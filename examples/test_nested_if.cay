@@ -1,0 +1,17 @@
+public class TestNestedIf {
+    public static void main() {
+        println("=== Nested If Tests ===");
+        int a = 10;
+        int b = 20;
+        if (a > 5) {
+            if (b > 15) {
+                println("a > 5 and b > 15");
+            } else {
+                println("a > 5 but b <= 15");
+            }
+        } else {
+            println("a <= 5");
+        }
+        println("All nested if tests completed!");
+    }
+}

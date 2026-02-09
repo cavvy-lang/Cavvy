@@ -1,0 +1,16 @@
+public class TestVarargsSum {
+    public static int sum(int a, int b, int c) {
+        return a + b + c;
+    }
+
+    public static void main() {
+        println("=== Varargs Sum Tests ===");
+        int r1 = sum(1, 2, 3);
+        print("sum(1, 2, 3) = ");
+        println(r1);
+        int r2 = sum(10, 20, 30);
+        print("sum(10, 20, 30) = ");
+        println(r2);
+        println("All varargs sum tests completed!");
+    }
+}

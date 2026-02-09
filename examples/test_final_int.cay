@@ -1,0 +1,10 @@
+public class TestFinalInt {
+    public static void main() {
+        println("=== Final Int Tests ===");
+        final int MAX = 100;
+        println(MAX);
+        final int MIN = 0;
+        println(MIN);
+        println("All final int tests completed!");
+    }
+}

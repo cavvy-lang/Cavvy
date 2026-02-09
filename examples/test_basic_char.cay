@@ -1,0 +1,12 @@
+public class TestBasicChar {
+    public static void main() {
+        println("=== Basic Char Tests ===");
+        char c1 = 'A';
+        char c2 = 'B';
+        println(c1);
+        println(c2);
+        println(c1 + 1);
+        println(c2 - 1);
+        println("All basic char tests completed!");
+    }
+}

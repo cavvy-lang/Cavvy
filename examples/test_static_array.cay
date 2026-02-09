@@ -1,53 +1,31 @@
-// 测试静态数组字段
-// 静态数组在类级别共享，自动零初始化
+public class TestStaticArray {
+    static int[] arr;
 
-public class Vector {
-    // 静态数组 - 用于存储向量
-    static long[] data;
-    static int size;
-    
-    public static void init(int n) {
-        Vector.size = n;
-        Vector.data = new long[n]();
-    }
-    
-    public static void set(int i, long value) {
-        Vector.data[i] = value;
-    }
-    
-    public static long get(int i) {
-        return Vector.data[i];
-    }
-    
-    public static void printVector() {
-        print(Vector.get(0)); print(" ");
-        print(Vector.get(1)); print(" ");
-        print(Vector.get(2)); print(" ");
-        println("");
-    }
-    
-    public static long sum() {
-        return Vector.get(0) + Vector.get(1) + Vector.get(2);
-    }
-}
-
-public class Main {
-    public static void main(string[] args) {
-        // 初始化3元素向量
-        Vector.init(3);
-        
+    public static void main() {
+        println("=== Static Array Tests ===");
         println("Initial zero vector:");
-        Vector.printVector();
+        arr = new int[5];
+        print("arr[0]=");
+        println(arr[0]);
+        print("arr[1]=");
+        println(arr[1]);
+        print("arr[2]=");
+        println(arr[2]);
         
-        // 设置一些值
-        Vector.set(0, 10);
-        Vector.set(1, 20);
-        Vector.set(2, 30);
+        println("After setting values:");
+        arr[0] = 10;
+        arr[1] = 20;
+        arr[2] = 30;
+        print("arr[0]=");
+        println(arr[0]);
+        print("arr[1]=");
+        println(arr[1]);
+        print("arr[2]=");
+        println(arr[2]);
         
-        println("\nAfter setting values:");
-        Vector.printVector();
-        
-        println("\nSum:");
-        println(Vector.sum());
+        int sum = arr[0] + arr[1] + arr[2];
+        print("Sum:");
+        println(sum);
+        println("All static array tests completed!");
     }
 }

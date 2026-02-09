@@ -1,0 +1,8 @@
+public class TestBitwiseNot {
+    public static void main() {
+        println("=== Bitwise NOT Tests ===");
+        int a = 0b00001111;
+        println(~a);
+        println("All bitwise NOT tests completed!");
+    }
+}

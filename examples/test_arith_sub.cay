@@ -1,0 +1,12 @@
+public class TestArithSub {
+    public static void main() {
+        println("=== Arithmetic Subtract Tests ===");
+        int a = 30;
+        int b = 10;
+        println(a - b);
+        double c = 5.5;
+        double d = 2.5;
+        println(c - d);
+        println("All arithmetic subtract tests completed!");
+    }
+}

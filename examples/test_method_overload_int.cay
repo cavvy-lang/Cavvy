@@ -1,0 +1,21 @@
+public class TestMethodOverloadInt {
+    public static int calc(int a) {
+        return a * 2;
+    }
+
+    public static int calc(int a, int b) {
+        return a + b;
+    }
+
+    public static int calc(int a, int b, int c) {
+        return a + b + c;
+    }
+
+    public static void main() {
+        println("=== Method Overload Int Tests ===");
+        println(calc(5));
+        println(calc(10, 20));
+        println(calc(1, 2, 3));
+        println("All method overload int tests completed!");
+    }
+}

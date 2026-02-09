@@ -1,0 +1,14 @@
+public class TestPreIncrement {
+    public static void main() {
+        println("=== Pre-Increment Tests ===");
+        int a = 5;
+        int b = a + 1;
+        print("a = ");
+        println(b);
+        int c = 10;
+        int d = c + 1;
+        print("c = ");
+        println(d);
+        println("All pre-increment tests completed!");
+    }
+}

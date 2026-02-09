@@ -1,0 +1,10 @@
+public class TestShiftRight {
+    public static void main() {
+        println("=== Shift Right Tests ===");
+        int a = 8;
+        println(a >> 1);
+        println(a >> 2);
+        println(a >> 3);
+        println("All shift right tests completed!");
+    }
+}

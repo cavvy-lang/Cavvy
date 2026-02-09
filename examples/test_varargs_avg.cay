@@ -1,0 +1,16 @@
+public class TestVarargsAvg {
+    public static double average(int a, int b, int c) {
+        return (double)(a + b + c) / 3;
+    }
+
+    public static void main() {
+        println("=== Varargs Average Tests ===");
+        double r1 = average(10, 20, 30);
+        print("average(10, 20, 30) = ");
+        println(r1);
+        double r2 = average(15, 15, 15);
+        print("average(15, 15, 15) = ");
+        println(r2);
+        println("All varargs average tests completed!");
+    }
+}

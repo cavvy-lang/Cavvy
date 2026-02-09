@@ -21,9 +21,13 @@ impl IRGenerator {
         // 条件块
         self.emit_line(&format!("{}:", cond_label));
         let cond = self.generate_expression(&while_stmt.condition)?;
-        let (_, cond_val) = self.parse_typed_value(&cond);
+        let (cond_type, cond_val) = self.parse_typed_value(&cond);
         let cond_reg = self.new_temp();
-        self.emit_line(&format!("  {} = icmp ne i1 {}, 0", cond_reg, cond_val));
+        if cond_type == "i1" {
+            self.emit_line(&format!("  {} = icmp ne i1 {}, 0", cond_reg, cond_val));
+        } else {
+            self.emit_line(&format!("  {} = icmp ne {} {}, 0", cond_reg, cond_type, cond_val));
+        }
         self.emit_line(&format!("  br i1 {}, label %{}, label %{}",
             cond_reg, body_label, end_label));
 
@@ -62,9 +66,13 @@ impl IRGenerator {
         self.emit_line(&format!("{}:", cond_label));
         if let Some(condition) = for_stmt.condition.as_ref() {
             let cond = self.generate_expression(condition)?;
-            let (_, cond_val) = self.parse_typed_value(&cond);
+            let (cond_type, cond_val) = self.parse_typed_value(&cond);
             let cond_reg = self.new_temp();
-            self.emit_line(&format!("  {} = icmp ne i1 {}, 0", cond_reg, cond_val));
+            if cond_type == "i1" {
+                self.emit_line(&format!("  {} = icmp ne i1 {}, 0", cond_reg, cond_val));
+            } else {
+                self.emit_line(&format!("  {} = icmp ne {} {}, 0", cond_reg, cond_type, cond_val));
+            }
             self.emit_line(&format!("  br i1 {}, label %{}, label %{}",
                 cond_reg, body_label, end_label));
         } else {
@@ -111,9 +119,13 @@ impl IRGenerator {
         // 条件检查
         self.emit_line(&format!("{}:", cond_label));
         let cond = self.generate_expression(&do_while_stmt.condition)?;
-        let (_, cond_val) = self.parse_typed_value(&cond);
+        let (cond_type, cond_val) = self.parse_typed_value(&cond);
         let cond_reg = self.new_temp();
-        self.emit_line(&format!("  {} = icmp ne i1 {}, 0", cond_reg, cond_val));
+        if cond_type == "i1" {
+            self.emit_line(&format!("  {} = icmp ne i1 {}, 0", cond_reg, cond_val));
+        } else {
+            self.emit_line(&format!("  {} = icmp ne {} {}, 0", cond_reg, cond_type, cond_val));
+        }
         self.emit_line(&format!("  br i1 {}, label %{}, label %{}",
             cond_reg, body_label, end_label));
 

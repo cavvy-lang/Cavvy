@@ -1,0 +1,26 @@
+public class TestIsPrime {
+    public static bool isPrime(int n) {
+        if (n <= 1) {
+            return false;
+        }
+        for (int i = 2; i * i <= n; i = i + 1) {
+            if (n % i == 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public static void main() {
+        println("=== Is Prime Tests ===");
+        for (int i = 1; i <= 20; i = i + 1) {
+            print(i);
+            if (isPrime(i)) {
+                println(" is prime");
+            } else {
+                println(" is not prime");
+            }
+        }
+        println("All is prime tests completed!");
+    }
+}

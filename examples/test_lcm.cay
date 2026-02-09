@@ -1,0 +1,21 @@
+public class TestLcm {
+    public static int gcd(int a, int b) {
+        while (b != 0) {
+            int temp = b;
+            b = a % b;
+            a = temp;
+        }
+        return a;
+    }
+
+    public static int lcm(int a, int b) {
+        return (a * b) / gcd(a, b);
+    }
+
+    public static void main() {
+        println("=== LCM Tests ===");
+        println(lcm(4, 6));
+        println(lcm(21, 6));
+        println("All LCM tests completed!");
+    }
+}

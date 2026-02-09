@@ -1,0 +1,13 @@
+public class TestArrayInitInline {
+    public static void main() {
+        println("=== Array Inline Init Tests ===");
+        int[] arr = {1, 2, 3, 4, 5};
+        for (int i = 0; i < arr.length; i = i + 1) {
+            print("arr[");
+            print(i);
+            print("] = ");
+            println(arr[i]);
+        }
+        println("All array inline init tests completed!");
+    }
+}

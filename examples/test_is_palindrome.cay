@@ -1,0 +1,19 @@
+public class TestIsPalindrome {
+    public static bool isPalindrome(int n) {
+        int original = n;
+        int reversed = 0;
+        while (n > 0) {
+            reversed = reversed * 10 + (n % 10);
+            n = n / 10;
+        }
+        return original == reversed;
+    }
+
+    public static void main() {
+        println("=== Is Palindrome Tests ===");
+        println(isPalindrome(12321));
+        println(isPalindrome(12345));
+        println(isPalindrome(1221));
+        println("All is palindrome tests completed!");
+    }
+}

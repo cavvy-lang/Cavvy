@@ -1,0 +1,27 @@
+public class TestMethodOverloadTypes {
+    public static int calc(int a, int b) {
+        return a + b;
+    }
+
+    public static double calc(double a, double b) {
+        return a + b;
+    }
+
+    public static String calc(String a, String b) {
+        return a + b;
+    }
+
+    public static void main() {
+        println("=== Method Overload Types Tests ===");
+        int r1 = calc(10, 20);
+        print("calc(10, 20) = ");
+        println(r1);
+        double r2 = calc(1.5, 2.5);
+        print("calc(1.5, 2.5) = ");
+        println(r2);
+        String r3 = calc("Hello, ", "World!");
+        print("calc strings = ");
+        println(r3);
+        println("All method overload types tests completed!");
+    }
+}

@@ -1,0 +1,13 @@
+public class TestMethodThreeParams {
+    public static int sum(int a, int b, int c) {
+        return a + b + c;
+    }
+    
+    public static void main() {
+        println("=== Method Three Params Tests ===");
+        int result = sum(1, 2, 3);
+        print("sum(1, 2, 3) = ");
+        println(result);
+        println("All method three params tests completed!");
+    }
+}

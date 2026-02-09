@@ -1,0 +1,27 @@
+public class TestArrayCopy {
+    public static void main() {
+        println("=== Array Copy Tests ===");
+        int[] src = {1, 2, 3, 4, 5};
+        int[] dst = new int[src.length];
+        for (int i = 0; i < src.length; i = i + 1) {
+            dst[i] = src[i];
+        }
+        print("Source: ");
+        for (int i = 0; i < src.length; i = i + 1) {
+            print(src[i]);
+            if (i < src.length - 1) {
+                print(", ");
+            }
+        }
+        println("");
+        print("Destination: ");
+        for (int i = 0; i < dst.length; i = i + 1) {
+            print(dst[i]);
+            if (i < dst.length - 1) {
+                print(", ");
+            }
+        }
+        println("");
+        println("All array copy tests completed!");
+    }
+}

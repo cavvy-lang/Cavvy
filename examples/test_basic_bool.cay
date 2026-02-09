@@ -1,0 +1,20 @@
+public class TestBasicBool {
+    public static void main() {
+        println("=== Basic Bool Tests ===");
+        bool t = true;
+        bool f = false;
+        if (t) {
+            println("true is true");
+        }
+        if (!f) {
+            println("false is false");
+        }
+        if (t && t) {
+            println("true && true is true");
+        }
+        if (t || f) {
+            println("true || false is true");
+        }
+        println("All basic bool tests completed!");
+    }
+}

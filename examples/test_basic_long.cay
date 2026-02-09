@@ -1,0 +1,13 @@
+public class TestBasicLong {
+    public static void main() {
+        println("=== Basic Long Tests ===");
+        long a = 1000000L;
+        long b = 2000000L;
+        println(a + b);
+        println(a - b);
+        println(a * b);
+        println(b / a);
+        println(b % a);
+        println("All basic long tests completed!");
+    }
+}

@@ -1,0 +1,9 @@
+public class TestCastIntToFloat {
+    public static void main() {
+        println("=== Cast Int to Float Tests ===");
+        int a = 42;
+        float b = (float)a;
+        println(b);
+        println("All cast int to float tests completed!");
+    }
+}

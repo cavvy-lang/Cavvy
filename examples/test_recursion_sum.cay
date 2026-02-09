@@ -1,0 +1,19 @@
+public class TestRecursionSum {
+    public static int sum(int n) {
+        if (n <= 0) {
+            return 0;
+        }
+        return n + sum(n - 1);
+    }
+
+    public static void main() {
+        println("=== Recursion Sum Tests ===");
+        int r1 = sum(5);
+        print("sum(5) = ");
+        println(r1);
+        int r2 = sum(10);
+        print("sum(10) = ");
+        println(r2);
+        println("All recursion sum tests completed!");
+    }
+}

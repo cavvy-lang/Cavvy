@@ -1,0 +1,14 @@
+public class TestContinueInLoop {
+    public static void main() {
+        println("=== Continue in Loop Tests ===");
+        for (int i = 0; i < 5; i = i + 1) {
+            if (i == 2) {
+                println("Skipping i = 2");
+                continue;
+            }
+            print("i = ");
+            println(i);
+        }
+        println("All continue in loop tests completed!");
+    }
+}

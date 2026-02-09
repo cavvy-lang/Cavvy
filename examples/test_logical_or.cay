@@ -1,0 +1,20 @@
+public class TestLogicalOr {
+    public static void main() {
+        println("=== Logical OR Tests ===");
+        bool a = true;
+        bool b = false;
+        if (a || a) {
+            println("true || true is true");
+        }
+        if (a || b) {
+            println("true || false is true");
+        }
+        if (b || a) {
+            println("false || true is true");
+        }
+        if (!(b || b)) {
+            println("false || false is false");
+        }
+        println("All logical OR tests completed!");
+    }
+}

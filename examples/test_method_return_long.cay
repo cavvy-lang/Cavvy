@@ -1,0 +1,13 @@
+public class TestMethodReturnLong {
+    public static long getLong() {
+        return 1000000L;
+    }
+    
+    public static void main() {
+        println("=== Method Return Long Tests ===");
+        long result = getLong();
+        print("getLong() = ");
+        println(result);
+        println("All method return long tests completed!");
+    }
+}

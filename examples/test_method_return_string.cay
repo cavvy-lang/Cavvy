@@ -1,0 +1,12 @@
+public class TestMethodReturnString {
+    public static String greet(String name) {
+        return "Hello, " + name + "!";
+    }
+
+    public static void main() {
+        println("=== Method Return String Tests ===");
+        String result = greet("EOL");
+        println(result);
+        println("All method return string tests completed!");
+    }
+}

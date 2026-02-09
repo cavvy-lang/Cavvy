@@ -1,0 +1,13 @@
+public class TestMethodOneParam {
+    public static int square(int n) {
+        return n * n;
+    }
+    
+    public static void main() {
+        println("=== Method One Param Tests ===");
+        int result = square(5);
+        print("square(5) = ");
+        println(result);
+        println("All method one param tests completed!");
+    }
+}

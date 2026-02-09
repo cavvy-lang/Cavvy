@@ -1,0 +1,20 @@
+public class TestStaticMethodCall {
+    static int value;
+
+    public static void setValue(int v) {
+        value = v;
+    }
+
+    public static int getValue() {
+        return value;
+    }
+
+    public static void main() {
+        println("=== Static Method Call Tests ===");
+        setValue(100);
+        println(getValue());
+        setValue(200);
+        println(getValue());
+        println("All static method call tests completed!");
+    }
+}

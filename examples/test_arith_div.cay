@@ -1,0 +1,12 @@
+public class TestArithDiv {
+    public static void main() {
+        println("=== Arithmetic Divide Tests ===");
+        int a = 20;
+        int b = 4;
+        println(a / b);
+        double c = 10.0;
+        double d = 4.0;
+        println(c / d);
+        println("All arithmetic divide tests completed!");
+    }
+}

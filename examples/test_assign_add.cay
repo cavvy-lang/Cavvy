@@ -1,0 +1,14 @@
+public class TestAssignAdd {
+    public static void main() {
+        println("=== Assign Add Tests ===");
+        int a = 10;
+        a += 5;
+        print("a after += 5: ");
+        println(a);
+        int b = 20;
+        b += 10;
+        print("b after += 10: ");
+        println(b);
+        println("All assign add tests completed!");
+    }
+}

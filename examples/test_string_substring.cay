@@ -1,0 +1,13 @@
+public class TestStringSubstring {
+    public static void main() {
+        println("=== String Substring Tests ===");
+        String s = "Hello, World!";
+        String sub1 = s.substring(7);
+        print("substring(7) = ");
+        println(sub1);
+        String sub2 = s.substring(0, 5);
+        print("substring(0, 5) = ");
+        println(sub2);
+        println("All string substring tests completed!");
+    }
+}

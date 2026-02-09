@@ -1,0 +1,18 @@
+public class TestVarargsMixed {
+    public static void printAll(String prefix, int a, int b, int c) {
+        print(prefix);
+        print(": ");
+        print(a);
+        print(", ");
+        print(b);
+        print(", ");
+        println(c);
+    }
+
+    public static void main() {
+        println("=== Varargs Mixed Tests ===");
+        printAll("Numbers", 1, 2, 3);
+        printAll("Values", 10, 20, 30);
+        println("All varargs mixed tests completed!");
+    }
+}

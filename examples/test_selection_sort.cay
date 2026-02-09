@@ -1,0 +1,34 @@
+public class TestSelectionSort {
+    public static void main() {
+        println("=== Selection Sort Tests ===");
+        int[] arr = {64, 25, 12, 22, 11};
+        print("Original: ");
+        for (int i = 0; i < arr.length; i = i + 1) {
+            print(arr[i]);
+            if (i < arr.length - 1) {
+                print(", ");
+            }
+        }
+        println("");
+        for (int i = 0; i < arr.length - 1; i = i + 1) {
+            int minIdx = i;
+            for (int j = i + 1; j < arr.length; j = j + 1) {
+                if (arr[j] < arr[minIdx]) {
+                    minIdx = j;
+                }
+            }
+            int temp = arr[minIdx];
+            arr[minIdx] = arr[i];
+            arr[i] = temp;
+        }
+        print("Sorted: ");
+        for (int i = 0; i < arr.length; i = i + 1) {
+            print(arr[i]);
+            if (i < arr.length - 1) {
+                print(", ");
+            }
+        }
+        println("");
+        println("All selection sort tests completed!");
+    }
+}

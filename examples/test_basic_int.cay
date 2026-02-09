@@ -1,0 +1,13 @@
+public class TestBasicInt {
+    public static void main() {
+        println("=== Basic Int Tests ===");
+        int a = 10;
+        int b = 20;
+        println(a + b);
+        println(a - b);
+        println(a * b);
+        println(b / a);
+        println(b % a);
+        println("All basic int tests completed!");
+    }
+}

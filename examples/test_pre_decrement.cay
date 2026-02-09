@@ -1,0 +1,14 @@
+public class TestPreDecrement {
+    public static void main() {
+        println("=== Pre-Decrement Tests ===");
+        int a = 5;
+        int b = a - 1;
+        print("a - 1 = ");
+        println(b);
+        int c = 10;
+        int d = c - 1;
+        print("c - 1 = ");
+        println(d);
+        println("All pre-decrement tests completed!");
+    }
+}

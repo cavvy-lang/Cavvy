@@ -1,0 +1,9 @@
+public class TestBitwiseAnd {
+    public static void main() {
+        println("=== Bitwise AND Tests ===");
+        int a = 0b1100;
+        int b = 0b1010;
+        println(a & b);
+        println("All bitwise AND tests completed!");
+    }
+}

@@ -1,0 +1,24 @@
+public class TestCompGe {
+    public static void main() {
+        println("=== Comparison Greater Equal Tests ===");
+        int a = 20;
+        int b = 20;
+        int c = 10;
+        if (a >= b) {
+            println("a >= b is true");
+        } else {
+            println("a >= b is false");
+        }
+        if (a >= c) {
+            println("a >= c is true");
+        } else {
+            println("a >= c is false");
+        }
+        if (c >= a) {
+            println("c >= a is true");
+        } else {
+            println("c >= a is false");
+        }
+        println("All comparison greater equal tests completed!");
+    }
+}

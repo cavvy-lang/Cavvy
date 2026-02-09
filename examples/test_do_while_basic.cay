@@ -1,0 +1,12 @@
+public class TestDoWhileBasic {
+    public static void main() {
+        println("=== Basic Do-While Tests ===");
+        int i = 0;
+        do {
+            print("i = ");
+            println(i);
+            i = i + 1;
+        } while (i < 5);
+        println("All basic do-while tests completed!");
+    }
+}

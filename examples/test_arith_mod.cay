@@ -1,0 +1,12 @@
+public class TestArithMod {
+    public static void main() {
+        println("=== Arithmetic Modulo Tests ===");
+        int a = 17;
+        int b = 5;
+        println(a % b);
+        int c = 20;
+        int d = 4;
+        println(c % d);
+        println("All arithmetic modulo tests completed!");
+    }
+}

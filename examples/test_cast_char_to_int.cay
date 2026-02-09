@@ -1,0 +1,12 @@
+public class TestCastCharToInt {
+    public static void main() {
+        println("=== Cast Char to Int Tests ===");
+        char c = 'A';
+        int i = (int)c;
+        println(i);
+        char d = 'a';
+        int j = (int)d;
+        println(j);
+        println("All cast char to int tests completed!");
+    }
+}

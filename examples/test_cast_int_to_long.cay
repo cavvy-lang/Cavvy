@@ -1,0 +1,9 @@
+public class TestCastIntToLong {
+    public static void main() {
+        println("=== Cast Int to Long Tests ===");
+        int a = 100;
+        long b = (long)a;
+        println(b);
+        println("All cast int to long tests completed!");
+    }
+}

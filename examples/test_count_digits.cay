@@ -1,0 +1,21 @@
+public class TestCountDigits {
+    public static int countDigits(int n) {
+        int count = 0;
+        if (n == 0) {
+            return 1;
+        }
+        while (n > 0) {
+            count = count + 1;
+            n = n / 10;
+        }
+        return count;
+    }
+
+    public static void main() {
+        println("=== Count Digits Tests ===");
+        println(countDigits(12345));
+        println(countDigits(987654));
+        println(countDigits(0));
+        println("All count digits tests completed!");
+    }
+}

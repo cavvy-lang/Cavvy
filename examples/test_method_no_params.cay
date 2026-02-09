@@ -1,0 +1,13 @@
+public class TestMethodNoParams {
+    public static int getNumber() {
+        return 42;
+    }
+    
+    public static void main() {
+        println("=== Method No Params Tests ===");
+        int result = getNumber();
+        print("getNumber() = ");
+        println(result);
+        println("All method no params tests completed!");
+    }
+}

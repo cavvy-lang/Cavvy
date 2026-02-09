@@ -1,0 +1,14 @@
+public class TestAssignMod {
+    public static void main() {
+        println("=== Assign Modulo Tests ===");
+        int a = 17;
+        a %= 5;
+        print("a after %= 5: ");
+        println(a);
+        int b = 25;
+        b %= 7;
+        print("b after %= 7: ");
+        println(b);
+        println("All assign modulo tests completed!");
+    }
+}

@@ -1,0 +1,14 @@
+public class TestAssignDiv {
+    public static void main() {
+        println("=== Assign Divide Tests ===");
+        int a = 20;
+        a /= 4;
+        print("a after /= 4: ");
+        println(a);
+        int b = 30;
+        b /= 5;
+        print("b after /= 5: ");
+        println(b);
+        println("All assign divide tests completed!");
+    }
+}

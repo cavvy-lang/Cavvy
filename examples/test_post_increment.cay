@@ -1,0 +1,18 @@
+public class TestPostIncrement {
+    public static void main() {
+        println("=== Post-Increment Tests ===");
+        int a = 5;
+        print("a before: ");
+        println(a);
+        a = a + 1;
+        print("a after increment: ");
+        println(a);
+        int b = 10;
+        print("b before: ");
+        println(b);
+        b = b + 1;
+        print("b after increment: ");
+        println(b);
+        println("All post-increment tests completed!");
+    }
+}

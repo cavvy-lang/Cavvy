@@ -1,0 +1,13 @@
+public class TestMethodReturnFloat {
+    public static float getFloat() {
+        return 3.14f;
+    }
+    
+    public static void main() {
+        println("=== Method Return Float Tests ===");
+        float result = getFloat();
+        print("getFloat() = ");
+        println(result);
+        println("All method return float tests completed!");
+    }
+}

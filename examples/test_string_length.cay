@@ -1,0 +1,15 @@
+public class TestStringLength {
+    public static void main() {
+        println("=== String Length Tests ===");
+        String s1 = "Hello";
+        String s2 = "Hello, World!";
+        String s3 = "";
+        print("s1 length = ");
+        println(s1.length());
+        print("s2 length = ");
+        println(s2.length());
+        print("s3 length = ");
+        println(s3.length());
+        println("All string length tests completed!");
+    }
+}

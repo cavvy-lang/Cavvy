@@ -1,0 +1,11 @@
+public class TestMethodReturnVoid {
+    public static void printMessage() {
+        println("Hello from void method!");
+    }
+
+    public static void main() {
+        println("=== Method Return Void Tests ===");
+        printMessage();
+        println("All method return void tests completed!");
+    }
+}

@@ -1,0 +1,20 @@
+public class TestMethodReturnBool {
+    public static bool isEven(int n) {
+        return n % 2 == 0;
+    }
+
+    public static void main() {
+        println("=== Method Return Bool Tests ===");
+        if (isEven(4)) {
+            println("isEven(4) is true");
+        } else {
+            println("isEven(4) is false");
+        }
+        if (isEven(7)) {
+            println("isEven(7) is true");
+        } else {
+            println("isEven(7) is false");
+        }
+        println("All method return bool tests completed!");
+    }
+}

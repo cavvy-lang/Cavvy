@@ -1,0 +1,13 @@
+public class TestMethodReturnInt {
+    public static int add(int a, int b) {
+        return a + b;
+    }
+
+    public static void main() {
+        println("=== Method Return Int Tests ===");
+        int result = add(10, 20);
+        print("add(10, 20) = ");
+        println(result);
+        println("All method return int tests completed!");
+    }
+}

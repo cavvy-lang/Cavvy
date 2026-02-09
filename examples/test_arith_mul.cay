@@ -1,0 +1,12 @@
+public class TestArithMul {
+    public static void main() {
+        println("=== Arithmetic Multiply Tests ===");
+        int a = 6;
+        int b = 7;
+        println(a * b);
+        double c = 2.5;
+        double d = 4.0;
+        println(c * d);
+        println("All arithmetic multiply tests completed!");
+    }
+}

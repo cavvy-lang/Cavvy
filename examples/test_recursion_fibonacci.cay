@@ -1,0 +1,19 @@
+public class TestRecursionFibonacci {
+    public static int fibonacci(int n) {
+        if (n <= 1) {
+            return n;
+        }
+        return fibonacci(n - 1) + fibonacci(n - 2);
+    }
+
+    public static void main() {
+        println("=== Recursion Fibonacci Tests ===");
+        for (int i = 0; i < 10; i = i + 1) {
+            print("fib(");
+            print(i);
+            print(") = ");
+            println(fibonacci(i));
+        }
+        println("All recursion fibonacci tests completed!");
+    }
+}

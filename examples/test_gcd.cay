@@ -1,0 +1,17 @@
+public class TestGcd {
+    public static int gcd(int a, int b) {
+        while (b != 0) {
+            int temp = b;
+            b = a % b;
+            a = temp;
+        }
+        return a;
+    }
+
+    public static void main() {
+        println("=== GCD Tests ===");
+        println(gcd(48, 18));
+        println(gcd(56, 98));
+        println("All GCD tests completed!");
+    }
+}

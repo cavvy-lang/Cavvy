@@ -1,0 +1,16 @@
+public class TestStaticString {
+    static String message = "";
+
+    public static void main() {
+        println("=== Static String Tests ===");
+        print("Initial message: ");
+        println(message);
+        message = "Hello";
+        print("After setting: ");
+        println(message);
+        message = "World";
+        print("After changing: ");
+        println(message);
+        println("All static string tests completed!");
+    }
+}
