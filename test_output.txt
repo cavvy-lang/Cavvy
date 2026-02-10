@@ -1,0 +1,397 @@
+warning: cavvy@0.3.4: Copied toolchain and license directories to e:\spj\EOL\target\release
+warning: type `cayError` should have an upper camel case name
+ --> src\error.rs:5:10
+  |
+5 | pub enum cayError {
+  |          ^^^^^^^^ help: convert the identifier to upper camel case (notice the capitalization): `CayError`
+  |
+  = note: `#[warn(non_camel_case_types)]` (part of `#[warn(nonstandard_style)]`) on by default
+
+warning: type `cayResult` should have an upper camel case name
+  --> src\error.rs:69:10
+   |
+69 | pub type cayResult<T> = Result<T, cayError>;
+   |          ^^^^^^^^^ help: convert the identifier to upper camel case (notice the capitalization): `CayResult`
+
+warning: unused imports: `ClassInfo` and `MethodInfo`
+ --> src\ast.rs:1:41
+  |
+1 | use crate::types::{Type, ParameterInfo, ClassInfo, MethodInfo};
+  |                                         ^^^^^^^^^  ^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `crate::error::SourceLocation`
+ --> src\parser\classes.rs:7:5
+  |
+7 | use crate::error::SourceLocation;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `is_primitive_type_token`
+ --> src\parser\statements.rs:6:32
+  |
+6 | use super::types::{parse_type, is_primitive_type_token};
+  |                                ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `lambda::*`
+  --> src\parser\expressions\mod.rs:16:9
+   |
+16 | pub use lambda::*;
+   |         ^^^^^^^^^
+
+warning: unused import: `TokenWithLocation`
+ --> src\parser\utils.rs:3:27
+  |
+3 | use crate::lexer::{Token, TokenWithLocation};
+  |                           ^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `ClassInfo`, `FieldInfo`, `MethodInfo`, `ParameterInfo`, and `Type`
+ --> src\semantic\analyzer.rs:4:20
+  |
+4 | use crate::types::{Type, ParameterInfo, ClassInfo, MethodInfo, FieldInfo, TypeRegistry};
+  |                    ^^^^  ^^^^^^^^^^^^^  ^^^^^^^^^  ^^^^^^^^^^  ^^^^^^^^^
+
+warning: unused import: `SemanticSymbolInfo`
+ --> src\semantic\analyzer.rs:6:48
+  |
+6 | use super::symbol_table::{SemanticSymbolTable, SemanticSymbolInfo};
+  |                                                ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `ParameterInfo`
+ --> src\semantic\class_analysis.rs:4:54
+  |
+4 | use crate::types::{ClassInfo, FieldInfo, MethodInfo, ParameterInfo};
+  |                                                      ^^^^^^^^^^^^^
+
+warning: unused import: `ParameterInfo`
+ --> src\semantic\type_check.rs:4:26
+  |
+4 | use crate::types::{Type, ParameterInfo};
+  |                          ^^^^^^^^^^^^^
+
+warning: unused import: `semantic_error`
+ --> src\semantic\type_check.rs:5:31
+  |
+5 | use crate::error::{cayResult, semantic_error};
+  |                               ^^^^^^^^^^^^^^
+
+warning: unnecessary parentheses around `if` condition
+   --> src\codegen\expressions.rs:259:27
+    |
+259 |                 } else if (left_type.starts_with("i") && (right_type == "float" || right_type == "double")) {
+    |                           ^                                                                               ^
+    |
+    = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
+help: remove these parentheses
+    |
+259 -                 } else if (left_type.starts_with("i") && (right_type == "float" || right_type == "double")) {
+259 +                 } else if left_type.starts_with("i") && (right_type == "float" || right_type == "double") {
+    |
+
+warning: unnecessary parentheses around `if` condition
+   --> src\codegen\expressions.rs:271:27
+    |
+271 |                 } else if ((left_type == "float" || left_type == "double") && right_type.starts_with("i")) {
+    |                           ^                                                                              ^
+    |
+help: remove these parentheses
+    |
+271 -                 } else if ((left_type == "float" || left_type == "double") && right_type.starts_with("i")) {
+271 +                 } else if (left_type == "float" || left_type == "double") && right_type.starts_with("i") {
+    |
+
+warning: unused import: `block::*`
+  --> src\codegen\statements\mod.rs:14:9
+   |
+14 | pub use block::*;
+   |         ^^^^^^^^
+
+warning: unused import: `var_decl::*`
+  --> src\codegen\statements\mod.rs:15:9
+   |
+15 | pub use var_decl::*;
+   |         ^^^^^^^^^^^
+
+warning: unused import: `return_stmt::*`
+  --> src\codegen\statements\mod.rs:16:9
+   |
+16 | pub use return_stmt::*;
+   |         ^^^^^^^^^^^^^^
+
+warning: unused import: `if_stmt::*`
+  --> src\codegen\statements\mod.rs:17:9
+   |
+17 | pub use if_stmt::*;
+   |         ^^^^^^^^^^
+
+warning: unused import: `loops::*`
+  --> src\codegen\statements\mod.rs:18:9
+   |
+18 | pub use loops::*;
+   |         ^^^^^^^^
+
+warning: unused import: `switch_stmt::*`
+  --> src\codegen\statements\mod.rs:19:9
+   |
+19 | pub use switch_stmt::*;
+   |         ^^^^^^^^^^^^^^
+
+warning: unused import: `jump_stmt::*`
+  --> src\codegen\statements\mod.rs:20:9
+   |
+20 | pub use jump_stmt::*;
+   |         ^^^^^^^^^^^^
+
+warning: unused import: `statement::*`
+  --> src\codegen\statements\mod.rs:21:9
+   |
+21 | pub use statement::*;
+   |         ^^^^^^^^^^^^
+
+warning: unreachable pattern
+   --> src\semantic\expr_inference.rs:157:13
+    |
+157 |             _ => Ok(left_type),
+    |             ^ no value can reach this
+    |
+note: multiple earlier patterns match some of the same values
+   --> src\semantic\expr_inference.rs:157:13
+    |
+ 64 |             BinaryOp::Add => {
+    |             ------------- matches some of the same values
+...
+ 89 |             BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div | BinaryOp::Mod => {
+    |             ------------------------------------------------------------- matches some of the same values
+...
+118 |             BinaryOp::Eq | BinaryOp::Ne | BinaryOp::Lt | BinaryOp::Le | BinaryOp::Gt | BinaryOp::Ge => {
+    |             --------------------------------------------------------------------------------------- matches some of the same values
+...
+121 |             BinaryOp::And | BinaryOp::Or => {
+    |             ---------------------------- matches some of the same values
+...
+157 |             _ => Ok(left_type),
+    |             ^ ...and 2 other patterns collectively make this unreachable
+    = note: `#[warn(unreachable_patterns)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `body_type`
+   --> src\semantic\expr_inference.rs:594:13
+    |
+594 |         let body_type = match &lambda.body {
+    |             ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_body_type`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `escaped`
+   --> src\codegen\context.rs:252:13
+    |
+252 |         let escaped = s.replace("\\", "\\\\")
+    |             ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_escaped`
+
+warning: unused variable: `array_type`
+   --> src\codegen\expressions.rs:962:13
+    |
+962 |         let array_type = "i32";  // 鍋囪鍙彉鍙傛暟鏄?int 绫诲瀷
+    |             ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_array_type`
+
+warning: unused variable: `align`
+  --> src\codegen\statements\return_stmt.rs:28:25
+   |
+28 |                     let align = self.get_type_align("float");
+   |                         ^^^^^ help: if this is intentional, prefix it with an underscore: `_align`
+
+warning: unused variable: `align`
+  --> src\codegen\statements\return_stmt.rs:33:25
+   |
+33 |                     let align = self.get_type_align("double");
+   |                         ^^^^^ help: if this is intentional, prefix it with an underscore: `_align`
+
+warning: unused variable: `value`
+  --> src\codegen\statements\switch_stmt.rs:49:18
+   |
+49 |             let (value, label, case_idx) = &case_labels[i];
+   |                  ^^^^^ help: if this is intentional, prefix it with an underscore: `_value`
+
+warning: multiple methods are never used
+   --> src\parser\mod.rs:55:8
+    |
+ 24 | impl Parser {
+    | ----------- methods in this implementation
+...
+ 55 |     fn parse_class_member(&mut self) -> cayResult<crate::ast::ClassMember> {
+    |        ^^^^^^^^^^^^^^^^^^
+...
+ 59 |     fn parse_field(&mut self) -> cayResult<crate::ast::FieldDecl> {
+    |        ^^^^^^^^^^^
+...
+ 63 |     fn parse_method(&mut self) -> cayResult<crate::ast::MethodDecl> {
+    |        ^^^^^^^^^^^^
+...
+ 67 |     fn parse_modifiers(&mut self) -> cayResult<Vec<crate::ast::Modifier>> {
+    |        ^^^^^^^^^^^^^^^
+...
+ 71 |     fn parse_parameters(&mut self) -> cayResult<Vec<crate::types::ParameterInfo>> {
+    |        ^^^^^^^^^^^^^^^^
+...
+ 76 |     fn parse_type(&mut self) -> cayResult<crate::types::Type> {
+    |        ^^^^^^^^^^
+...
+ 80 |     fn is_type_token(&self) -> bool {
+    |        ^^^^^^^^^^^^^
+...
+ 84 |     fn is_primitive_type_token(&self) -> bool {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^
+...
+ 89 |     fn parse_block(&mut self) -> cayResult<crate::ast::Block> {
+    |        ^^^^^^^^^^^
+...
+ 93 |     fn parse_statement(&mut self) -> cayResult<crate::ast::Stmt> {
+    |        ^^^^^^^^^^^^^^^
+...
+ 97 |     fn parse_var_decl(&mut self) -> cayResult<crate::ast::Stmt> {
+    |        ^^^^^^^^^^^^^^
+...
+101 |     fn parse_if_statement(&mut self) -> cayResult<crate::ast::Stmt> {
+    |        ^^^^^^^^^^^^^^^^^^
+...
+105 |     fn parse_while_statement(&mut self) -> cayResult<crate::ast::Stmt> {
+    |        ^^^^^^^^^^^^^^^^^^^^^
+...
+109 |     fn parse_for_statement(&mut self) -> cayResult<crate::ast::Stmt> {
+    |        ^^^^^^^^^^^^^^^^^^^
+...
+113 |     fn parse_do_while_statement(&mut self) -> cayResult<crate::ast::Stmt> {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^
+...
+117 |     fn parse_switch_statement(&mut self) -> cayResult<crate::ast::Stmt> {
+    |        ^^^^^^^^^^^^^^^^^^^^^^
+...
+121 |     fn parse_return_statement(&mut self) -> cayResult<crate::ast::Stmt> {
+    |        ^^^^^^^^^^^^^^^^^^^^^^
+...
+125 |     fn parse_expression_statement(&mut self) -> cayResult<crate::ast::Stmt> {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+130 |     fn parse_expression(&mut self) -> cayResult<crate::ast::Expr> {
+    |        ^^^^^^^^^^^^^^^^
+...
+134 |     fn parse_assignment(&mut self) -> cayResult<crate::ast::Expr> {
+    |        ^^^^^^^^^^^^^^^^
+...
+138 |     fn parse_or(&mut self) -> cayResult<crate::ast::Expr> {
+    |        ^^^^^^^^
+...
+142 |     fn parse_and(&mut self) -> cayResult<crate::ast::Expr> {
+    |        ^^^^^^^^^
+...
+146 |     fn parse_bitwise_or(&mut self) -> cayResult<crate::ast::Expr> {
+    |        ^^^^^^^^^^^^^^^^
+...
+150 |     fn parse_bitwise_xor(&mut self) -> cayResult<crate::ast::Expr> {
+    |        ^^^^^^^^^^^^^^^^^
+...
+154 |     fn parse_bitwise_and(&mut self) -> cayResult<crate::ast::Expr> {
+    |        ^^^^^^^^^^^^^^^^^
+...
+158 |     fn parse_equality(&mut self) -> cayResult<crate::ast::Expr> {
+    |        ^^^^^^^^^^^^^^
+...
+162 |     fn parse_comparison(&mut self) -> cayResult<crate::ast::Expr> {
+    |        ^^^^^^^^^^^^^^^^
+...
+166 |     fn parse_shift(&mut self) -> cayResult<crate::ast::Expr> {
+    |        ^^^^^^^^^^^
+...
+170 |     fn parse_term(&mut self) -> cayResult<crate::ast::Expr> {
+    |        ^^^^^^^^^^
+...
+174 |     fn parse_factor(&mut self) -> cayResult<crate::ast::Expr> {
+    |        ^^^^^^^^^^^^
+...
+178 |     fn parse_unary(&mut self) -> cayResult<crate::ast::Expr> {
+    |        ^^^^^^^^^^^
+...
+182 |     fn parse_postfix(&mut self) -> cayResult<crate::ast::Expr> {
+    |        ^^^^^^^^^^^^^
+...
+186 |     fn parse_primary(&mut self) -> cayResult<crate::ast::Expr> {
+    |        ^^^^^^^^^^^^^
+...
+190 |     fn parse_arguments(&mut self) -> cayResult<Vec<crate::ast::Expr>> {
+    |        ^^^^^^^^^^^^^^^
+...
+194 |     fn match_assignment_op(&mut self) -> Option<crate::ast::AssignOp> {
+    |        ^^^^^^^^^^^^^^^^^^^
+...
+211 |     fn previous_loc(&self) -> crate::error::SourceLocation {
+    |        ^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `is_primitive_type_token` is never used
+  --> src\parser\types.rs:45:8
+   |
+45 | pub fn is_primitive_type_token(parser: &Parser) -> bool {
+   |        ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: method `llvm_type_to_signature_with_varargs` is never used
+    --> src\codegen\expressions.rs:1016:8
+     |
+   7 | impl IRGenerator {
+     | ---------------- method in this implementation
+...
+1016 |     fn llvm_type_to_signature_with_varargs(&self, llvm_type: &str, is_varargs_array: bool) -> String {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: methods `generate_class_declarations` and `generate_method_declaration` are never used
+   --> src\codegen\generator.rs:151:8
+    |
+ 10 | impl IRGenerator {
+    | ---------------- methods in this implementation
+...
+151 |     fn generate_class_declarations(&mut self, class: &ClassDecl) -> cayResult<()> {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+163 |     fn generate_method_declaration(&mut self, class_name: &str, method: &MethodDecl) -> cayResult<()> {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+   Compiling cavvy v0.3.4 (E:\spj\EOL)
+warning: `cavvy` (lib) generated 33 warnings (run `cargo fix --lib -p cavvy` to apply 20 suggestions)
+warning: unused import: `cayError`
+ --> src\bin\cayc.rs:6:46
+  |
+6 | use cavvy::error::{print_error_with_context, cayError};
+  |                                              ^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `Path`
+ --> src\bin\cay-ir.rs:4:17
+  |
+4 | use std::path::{Path, PathBuf};
+  |                 ^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `cavvy` (bin "cayc") generated 1 warning (run `cargo fix --bin "cayc"` to apply 1 suggestion)
+warning: `cavvy` (bin "cay-ir") generated 1 warning (run `cargo fix --bin "cay-ir"` to apply 1 suggestion)
+warning: unused import: `std::path::Path`
+ --> tests\integration_tests.rs:7:5
+  |
+7 | use std::path::Path;
+  |     ^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `cavvy` (bin "cayc" test) generated 1 warning (1 duplicate)
+warning: `cavvy` (bin "cay-ir" test) generated 1 warning (1 duplicate)
+warning: `cavvy` (lib test) generated 33 warnings (33 duplicates)
+error: linking with `link.exe` failed: exit code: 1104
+  |
+  = note: "C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.44.35207\\bin\\HostX64\\x64\\link.exe" "/NOLOGO" "E:\\Temp\\rustcBSpJe8\\symbols.o" "<3 object files omitted>" "<sysroot>\\lib\\rustlib\\x86_64-pc-windows-msvc\\lib/{libtest-*,libgetopts-*,librustc_std_workspace_std-*,libstd-*,libpanic_unwind-*,libcfg_if-*,libwindows_targets-*,librustc_demangle-*,libstd_detect-*,libhashbrown-*,librustc_std_workspace_alloc-*,libunwind-*,librustc_std_workspace_core-*,liballoc-*,libcore-*,libcompiler_builtins-*}.rlib" "kernel32.lib" "kernel32.lib" "kernel32.lib" "kernel32.lib" "ntdll.lib" "userenv.lib" "ws2_32.lib" "dbghelp.lib" "/defaultlib:msvcrt" "/NXCOMPAT" "/OUT:E:\\spj\\EOL\\target\\release\\deps\\integration_tests-36a7e97a85dbf7c5.exe" "/OPT:REF,ICF" "/DEBUG" "/PDBALTPATH:%_PDB%" "/NATVIS:<sysroot>\\lib\\rustlib\\etc\\intrinsic.natvis" "/NATVIS:<sysroot>\\lib\\rustlib\\etc\\liballoc.natvis" "/NATVIS:<sysroot>\\lib\\rustlib\\etc\\libcore.natvis" "/NATVIS:<sysroot>\\lib\\rustlib\\etc\\libstd.natvis"
+  = note: some arguments are omitted. use `--verbose` to show all linker arguments
+  = note: LINK : fatal error LNK1104: 鏃犳硶鎵撳紑鏂囦欢鈥淓:\spj\EOL\target\release\deps\integration_tests-36a7e97a85dbf7c5.exe鈥濃悕
+          
+
+warning: `cavvy` (test "integration_tests") generated 1 warning
+warning: cavvy@0.3.4: Copied toolchain and license directories to e:\spj\EOL\target\release
+error: could not compile `cavvy` (test "integration_tests") due to 1 previous error; 1 warning emitted

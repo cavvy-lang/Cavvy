@@ -15,6 +15,10 @@ pub struct StaticFieldInfo {
     pub name: String,           // 完整名称: @ClassName.fieldName
     pub llvm_type: String,      // LLVM 类型
     pub size: usize,            // 大小（字节）
+    pub field_type: crate::types::Type,  // 原始类型
+    pub initializer: Option<crate::ast::Expr>,  // 初始化器
+    pub class_name: String,     // 类名
+    pub field_name: String,     // 字段名
 }
 
 /// 变量作用域信息

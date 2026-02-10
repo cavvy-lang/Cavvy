@@ -1956,16 +1956,16 @@ impl IRGenerator {
         // 生成数组表达式
         let array_expr = self.generate_expression(&arr.array)?;
         let (array_type, array_val) = self.parse_typed_value(&array_expr);
-        
+
         // 生成索引表达式
         let index_expr = self.generate_expression(&arr.index)?;
         let (index_type, index_val) = self.parse_typed_value(&index_expr);
-        
+
         // 确保索引是整数类型
         if !index_type.starts_with("i") {
             return Err(codegen_error(format!("Array index must be integer, got {}", index_type)));
         }
-        
+
         // 将索引转换为 i64
         let index_i64 = if index_type != "i64" {
             let temp = self.new_temp();
@@ -1974,7 +1974,7 @@ impl IRGenerator {
         } else {
             index_val.to_string()
         };
-        
+
         // 获取数组元素类型（去掉末尾的一个 *）
         // 例如: i32* -> i32, i32** -> i32*, i64* -> i64
         let elem_type = if array_type.ends_with("*") {
@@ -1985,12 +1985,12 @@ impl IRGenerator {
             // 如果不是指针类型，假设是 i64*（向后兼容）
             "i64".to_string()
         };
-        
+
         // 计算元素地址
         let elem_ptr_temp = self.new_temp();
         self.emit_line(&format!("  {} = getelementptr {}, {}* {}, i64 {}",
             elem_ptr_temp, elem_type, elem_type, array_val, index_i64));
-        
+
         Ok((elem_type, elem_ptr_temp, index_i64))
     }
     

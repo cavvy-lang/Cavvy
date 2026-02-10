@@ -68,6 +68,10 @@ impl IRGenerator {
             self.output.push_str("entry:\n");
             // 添加这行：强制设置 UTF-8 代码页
             self.output.push_str("  call void @SetConsoleOutputCP(i32 65001)\n");
+
+            // 初始化静态数组字段
+            self.generate_static_array_initialization();
+
             // 根据main方法的参数生成正确的函数名
             let main_fn_name = self.generate_method_name(&class_name, &main_method);
             self.output.push_str(&format!("  call void @{}()\n", main_fn_name));
@@ -113,17 +117,21 @@ impl IRGenerator {
         let full_name = format!("@{}.{}", class_name, field.name);
         let llvm_type = self.type_to_llvm(&field.field_type);
         let size = field.field_type.size_in_bytes();
-        
+
         let field_info = crate::codegen::context::StaticFieldInfo {
             name: full_name.clone(),
             llvm_type: llvm_type.clone(),
             size,
+            field_type: field.field_type.clone(),
+            initializer: field.initializer.clone(),
+            class_name: class_name.to_string(),
+            field_name: field.name.clone(),
         };
-        
+
         let key = format!("{}.{}", class_name, field.name);
         self.static_field_map.insert(key, field_info.clone());
         self.static_fields.push(field_info);
-        
+
         Ok(())
     }
 
@@ -132,7 +140,7 @@ impl IRGenerator {
         if self.static_fields.is_empty() {
             return;
         }
-        
+
         self.emit_raw("; 静态字段声明（零初始化）");
         // 克隆字段列表以避免借用问题
         let fields: Vec<_> = self.static_fields.clone();
@@ -145,6 +153,82 @@ impl IRGenerator {
             ));
         }
         self.emit_raw("");
+    }
+
+    /// 生成静态数组字段的初始化代码（在 main 函数中调用）
+    fn generate_static_array_initialization(&mut self) {
+        let fields: Vec<_> = self.static_fields.clone();
+        for field in fields {
+            // 只处理数组类型的静态字段
+            if let Type::Array(elem_type) = &field.field_type {
+                if let Some(init) = &field.initializer {
+                    // 检查是否是 new Type[size]() 形式的初始化
+                    if let Expr::ArrayCreation(array_creation) = init {
+                        if !array_creation.sizes.is_empty() {
+                            // 尝试计算数组大小（仅支持一维数组）
+                            if let Some(size_val) = self.evaluate_const_int(&array_creation.sizes[0]) {
+                                let elem_llvm_type = self.type_to_llvm(elem_type);
+                                let elem_size = self.get_type_size(&elem_llvm_type);
+                                let total_size = size_val as i64 * elem_size;
+
+                                // 分配内存: calloc(1, total_size)
+                                let calloc_temp = self.new_temp();
+                                self.output.push_str(&format!(
+                                    "  {} = call i8* @calloc(i64 1, i64 {})\n",
+                                    calloc_temp, total_size
+                                ));
+
+                                // 将 i8* 转换为元素类型指针
+                                let cast_temp = self.new_temp();
+                                self.output.push_str(&format!(
+                                    "  {} = bitcast i8* {} to {}*\n",
+                                    cast_temp, calloc_temp, elem_llvm_type
+                                ));
+
+                                // 存储到静态字段
+                                self.output.push_str(&format!(
+                                    "  store {}* {}, {}** {}, align 8\n",
+                                    elem_llvm_type, cast_temp, elem_llvm_type, field.name
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// 计算常量整数表达式的值
+    fn evaluate_const_int(&self, expr: &Expr) -> Option<i64> {
+        match expr {
+            Expr::Literal(crate::ast::LiteralValue::Int32(n)) => Some(*n as i64),
+            Expr::Literal(crate::ast::LiteralValue::Int64(n)) => Some(*n),
+            Expr::Binary(binary) => {
+                let left = self.evaluate_const_int(&binary.left)?;
+                let right = self.evaluate_const_int(&binary.right)?;
+                match binary.op {
+                    crate::ast::BinaryOp::Add => Some(left + right),
+                    crate::ast::BinaryOp::Sub => Some(left - right),
+                    crate::ast::BinaryOp::Mul => Some(left * right),
+                    crate::ast::BinaryOp::Div => if right != 0 { Some(left / right) } else { None },
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+
+    /// 获取 LLVM 类型的大小（字节）
+    fn get_type_size(&self, llvm_type: &str) -> i64 {
+        match llvm_type {
+            "i1" => 1,
+            "i8" => 1,
+            "i32" => 4,
+            "i64" => 8,
+            "float" => 4,
+            "double" => 8,
+            _ => 8, // 指针类型
+        }
     }
 
     /// 生成类方法声明（前向声明）
