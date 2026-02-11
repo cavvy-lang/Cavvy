@@ -292,7 +292,7 @@ impl SemanticAnalyzer {
                         return Err(semantic_error(
                             call.loc.line,
                             call.loc.column,
-                            format!("Method '{}' in class '{}' cannot be applied to given types", name, current_class)
+                            format!("Method '{}' in class '{}' cannot be applied to given types: argument mismatch", name, current_class)
                         ));
                     }
                 }
@@ -309,14 +309,14 @@ impl SemanticAnalyzer {
                 return Err(semantic_error(
                     call.loc.line,
                     call.loc.column,
-                    format!("Method '{}' in class '{}' cannot be applied to given types", member.member, class_name)
+                    format!("Method '{}' in class '{}' cannot be applied to given types: argument mismatch", member.member, class_name)
                 ));
             }
             if let Type::Object(class_name) = self.infer_expr_type(&member.object)? {
                 return Err(semantic_error(
                     call.loc.line,
                     call.loc.column,
-                    format!("Method '{}' in class '{}' cannot be applied to given types", member.member, class_name)
+                    format!("Method '{}' in class '{}' cannot be applied to given types: argument mismatch", member.member, class_name)
                 ));
             }
         }
