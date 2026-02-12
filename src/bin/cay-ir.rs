@@ -3,6 +3,7 @@ use std::fs;
 use std::process;
 use std::path::{Path, PathBuf};
 use cavvy::Compiler;
+use cavvy::error::print_error_with_context;
 
 /// 查找 clang 可执行文件
 /// 1. 首先尝试直接调用 "clang"（系统 PATH 中）
@@ -177,7 +178,7 @@ fn main() {
     println!("Compiling: {}", source_path);
     println!("Output: {}", output_path);
     if options.optimize_ir {
-        println!("IR 优化: 启用 ({ })", options.optimization);
+        println!("IR 优化: 启用 ({})", options.optimization);
     }
     println!("");
 
@@ -185,12 +186,12 @@ fn main() {
     let compiler = Compiler::new();
     let temp_ir_file = format!("{}.tmp.ll", output_path.trim_end_matches(".ll"));
 
-    match compiler.compile(&source, &temp_ir_file) {
+    match compiler.compile_file(&source_path, &temp_ir_file) {
         Ok(_) => {
             println!("  [+] Cavvy → IR 编译成功");
         }
         Err(e) => {
-            eprintln!("Compilation error: {}", e);
+            print_error_with_context(&e, &source, &source_path);
             let _ = fs::remove_file(&temp_ir_file);
             process::exit(1);
         }
