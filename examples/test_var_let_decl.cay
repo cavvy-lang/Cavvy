@@ -1,0 +1,33 @@
+// 测试 var/let 后置类型声明语法
+// Cavvy 0.4.3.0 新增特性
+
+public class TestVarLetDecl {
+    public static int main(String[] args) {
+        // 使用 var 进行后置类型声明
+        var x: int = 10;
+        var y: int = 20;
+        
+        // 使用 let 进行后置类型声明
+        let name: String = "Cavvy";
+        let pi: double = 3.14159;
+        
+        // 混合使用传统语法和新语法
+        int traditional = 100;
+        var modern: int = 200;
+        
+        // 打印结果验证
+        println("Testing var/let declarations:");
+        println("x = " + x);
+        println("y = " + y);
+        println("name = " + name);
+        println("pi = " + pi);
+        println("traditional = " + traditional);
+        println("modern = " + modern);
+        
+        // 计算并返回
+        int sum = x + y + traditional + modern;
+        println("sum = " + sum);
+        
+        return 0;
+    }
+}

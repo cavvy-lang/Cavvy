@@ -14,6 +14,7 @@ pub enum Type {
     Object(String),
     Array(Box<Type>),
     Function(Box<FunctionType>),
+    Auto,  // 自动类型推断占位符
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -195,6 +196,7 @@ impl Type {
             Type::Object(_) => 8, // 引用类型
             Type::Array(_) => 8, // 指针大小
             Type::Function(_) => 8, // 函数指针
+            Type::Auto => panic!("Cannot get size of auto type - type inference not completed"),
         }
     }
 
@@ -241,6 +243,7 @@ impl fmt::Display for Type {
                 }
                 write!(f, ") -> {}", func_type.return_type)
             }
+            Type::Auto => write!(f, "auto"),
         }
     }
 }

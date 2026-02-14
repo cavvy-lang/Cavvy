@@ -1,0 +1,35 @@
+// 测试 auto 自动类型推断
+// Cavvy 0.4.3.0 新增特性
+
+public class TestAutoInference {
+    public static int main(String[] args) {
+        // auto 自动推断为 int
+        auto a = 42;
+        
+        // auto 自动推断为 double（浮点数字面量默认为 double）
+        auto d = 3.14159;
+        
+        // auto 自动推断为 String
+        auto s = "Hello, Auto!";
+        
+        // auto 自动推断为 bool
+        auto flag = true;
+        
+        // auto 自动推断为 char
+        auto c = 'X';
+        
+        // 打印结果验证
+        println("Testing auto type inference:");
+        println("a = " + a);
+        println("d = " + d);
+        println("s = " + s);
+        println("flag = " + flag);
+        println("c = " + c);
+        
+        // 算术运算
+        auto result = a + 8;  // 应该推断为 int
+        println("result = " + result);
+        
+        return 0;
+    }
+}

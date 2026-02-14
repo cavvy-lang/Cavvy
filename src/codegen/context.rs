@@ -338,6 +338,7 @@ impl IRGenerator {
             Type::Object(name) => format!("o{}", name),
             Type::Array(inner) => format!("a{}", self.type_to_signature(inner)),
             Type::Function(_) => "fn".to_string(),
+            Type::Auto => panic!("Type::Auto should have been resolved before code generation"),
         }
     }
 

@@ -89,6 +89,12 @@ pub enum Token {
     Interface,
     #[token("instanceof")]
     InstanceOf,
+    #[token("var")]
+    Var,
+    #[token("let")]
+    Let,
+    #[token("auto")]
+    Auto,
 
     // 标识符
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice().to_string())]

@@ -1,0 +1,60 @@
+// Cavvy 0.4.3.0 新特性综合测试
+// - var/let 后置类型声明
+// - auto 自动类型推断
+
+public class Test043Features {
+    public static int main(String[] args) {
+        println("=== Cavvy 0.4.3.0 Feature Test ===");
+        
+        // 测试1: var 后置类型声明
+        println("\n1. Testing var declaration:");
+        var count: int = 5;
+        var message: String = "Hello var!";
+        var price: double = 19.99;
+        println("count = " + count);
+        println("message = " + message);
+        println("price = " + price);
+        
+        // 测试2: let 后置类型声明
+        println("\n2. Testing let declaration:");
+        let id: int = 1001;
+        let title: String = "Cavvy Language";
+        let ratio: double = 1.618;
+        println("id = " + id);
+        println("title = " + title);
+        println("ratio = " + ratio);
+        
+        // 测试3: auto 类型推断
+        println("\n3. Testing auto inference:");
+        auto num = 123;
+        auto text = "Auto inferred string";
+        auto value = 2.71828;
+        auto flag = true;
+        auto ch = 'Z';
+        println("num = " + num);
+        println("text = " + text);
+        println("value = " + value);
+        println("flag = " + flag);
+        println("ch = " + ch);
+        
+        // 测试4: 混合使用
+        println("\n4. Testing mixed usage:");
+        int oldStyle = 1;
+        var newStyle: int = 2;
+        auto inferred = 3;
+        let letStyle: int = 4;
+        int sum = oldStyle + newStyle + inferred + letStyle;
+        println("sum (1+2+3+4) = " + sum);
+        
+        // 测试5: 表达式中使用
+        println("\n5. Testing in expressions:");
+        var x: int = 10;
+        auto y = 20;
+        let z: int = x + y;
+        auto result = z * 2;
+        println("result = " + result);
+        
+        println("\n=== All Tests Passed! ===");
+        return 0;
+    }
+}

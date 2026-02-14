@@ -17,6 +17,7 @@ impl IRGenerator {
             Type::Object(_) => "i8*".to_string(),
             Type::Array(inner) => format!("{}*", self.type_to_llvm(inner)),
             Type::Function(_) => "i8*".to_string(),
+            Type::Auto => panic!("Type::Auto should have been resolved before code generation"),
         }
     }
 

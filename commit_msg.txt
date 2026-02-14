@@ -1,0 +1,15 @@
+feat(0.4.3.0): 实现 var/let 后置类型声明和 auto 自动类型推断
+
+- 新增 var/let 关键字支持后置类型声明语法
+  - var x: int = 10; // var + 类型注解
+  - let y: String = "hello"; // let + 类型注解
+- 新增 auto 关键字支持自动类型推断
+  - auto num = 10; // 推断为 int
+  - auto d = 3.14; // 推断为 double
+  - auto s = "text"; // 推断为 String
+  - auto flag = true; // 推断为 bool
+  - auto c = 'X'; // 推断为 char
+- 更新版本号到 0.4.3.0
+- 新增测试用例：test_var_let_decl.cay, test_auto_inference.cay, test_0_4_3_features.cay
+
+注意：顶层 main 函数支持推迟到后续版本实现

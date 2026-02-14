@@ -43,10 +43,20 @@ pub fn parse_statement(parser: &mut Parser) -> cayResult<Stmt> {
             parser.consume(&crate::lexer::Token::Semicolon, "Expected ';' after continue")?;
             Ok(Stmt::Continue)
         }
+        crate::lexer::Token::Var | crate::lexer::Token::Let | crate::lexer::Token::Auto => {
+            // 后置类型声明或自动类型推断
+            parse_modern_var_decl(parser)
+        }
         _ => {
             // 检查是否是变量声明：支持任意类型标识（类名或原始类型），
             // 但要确保接下来的 token 是变量名（Identifier），以避免将函数调用等标识误判为类型。
             if parser.check(&crate::lexer::Token::Final) {
+                // 检查是否是 final var/let/auto 语法
+                if parser.check_next(&crate::lexer::Token::Var) ||
+                   parser.check_next(&crate::lexer::Token::Let) ||
+                   parser.check_next(&crate::lexer::Token::Auto) {
+                    return parse_modern_var_decl(parser);
+                }
                 return parse_var_decl(parser);
             }
 
@@ -69,7 +79,7 @@ pub fn parse_statement(parser: &mut Parser) -> cayResult<Stmt> {
     }
 }
 
-/// 解析变量声明
+/// 解析传统变量声明（类型前置）
 pub fn parse_var_decl(parser: &mut Parser) -> cayResult<Stmt> {
     let loc = parser.current_loc();
     
@@ -78,6 +88,63 @@ pub fn parse_var_decl(parser: &mut Parser) -> cayResult<Stmt> {
     let var_type = parse_type(parser)?;
     let name = parser.consume_identifier("Expected variable name")?;
     
+    let initializer = if parser.match_token(&crate::lexer::Token::Assign) {
+        // 检查是否是数组初始化: {1, 2, 3}
+        if parser.check(&crate::lexer::Token::LBrace) {
+            Some(parse_array_initializer(parser)?)
+        } else {
+            Some(parse_expression(parser)?)
+        }
+    } else {
+        None
+    };
+    
+    parser.consume(&crate::lexer::Token::Semicolon, "Expected ';' after variable declaration")?;
+    
+    Ok(Stmt::VarDecl(VarDecl {
+        name,
+        var_type,
+        initializer,
+        is_final,
+        loc,
+    }))
+}
+
+/// 解析现代变量声明（var/let/auto + 后置类型）
+/// 支持语法：
+/// - var x: int = 10;      // var 声明，类型后置
+/// - let y: String = "a";  // let 声明，类型后置
+/// - auto z = 10;          // 自动类型推断
+/// - final var x: int = 10; // final 修饰
+pub fn parse_modern_var_decl(parser: &mut Parser) -> cayResult<Stmt> {
+    let loc = parser.current_loc();
+    
+    // 检查是否有 final 修饰符（final var x: int = 10）
+    let is_final = parser.match_token(&crate::lexer::Token::Final);
+    
+    // 获取声明关键字（var/let/auto）
+    let keyword = parser.current_token().clone();
+    parser.advance(); // consume var/let/auto
+    
+    let name = parser.consume_identifier("Expected variable name after var/let/auto")?;
+    
+    // 解析可选的类型注解（: Type）
+    let var_type = if parser.match_token(&crate::lexer::Token::Colon) {
+        // 有类型注解：var x: int
+        parse_type(parser)?
+    } else {
+        // 无类型注解，必须是 auto 或必须有初始化器
+        match keyword {
+            crate::lexer::Token::Auto => crate::types::Type::Auto,
+            crate::lexer::Token::Var | crate::lexer::Token::Let => {
+                // var/let 必须有类型注解（暂时如此，之后可以实现类型推断）
+                return Err(parser.error("var/let declaration requires type annotation (: Type) or use 'auto' for type inference"));
+            }
+            _ => unreachable!()
+        }
+    };
+    
+    // 解析初始化器
     let initializer = if parser.match_token(&crate::lexer::Token::Assign) {
         // 检查是否是数组初始化: {1, 2, 3}
         if parser.check(&crate::lexer::Token::LBrace) {

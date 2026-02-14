@@ -10,7 +10,22 @@ use crate::error::cayResult;
 impl IRGenerator {
     /// 生成变量声明代码
     pub fn generate_var_decl(&mut self, var: &VarDecl) -> cayResult<()> {
-        let var_type = self.type_to_llvm(&var.var_type);
+        // 处理 auto 类型推断
+        let actual_type = if var.var_type == Type::Auto {
+            // 从初始化器推断类型
+            if let Some(init) = &var.initializer {
+                self.infer_expr_type(init)?
+            } else {
+                return Err(crate::error::semantic_error(
+                    var.loc.line, var.loc.column,
+                    "'auto' variable declaration requires an initializer".to_string()
+                ));
+            }
+        } else {
+            var.var_type.clone()
+        };
+
+        let var_type = self.type_to_llvm(&actual_type);
         let align = self.get_type_align(&var_type);  // 获取对齐
 
         // 使用作用域管理器生成唯一的 LLVM 变量名
@@ -20,14 +35,14 @@ impl IRGenerator {
         // 同时存储到旧系统以保持兼容性
         self.var_types.insert(var.name.clone(), var_type.clone());
         // 如果变量类型是对象，记录其类名以便后续方法调用解析
-        if let Type::Object(class_name) = &var.var_type {
+        if let Type::Object(class_name) = &actual_type {
             self.var_class_map.insert(var.name.clone(), class_name.clone());
         }
 
         if let Some(init) = var.initializer.as_ref() {
             // 特殊处理数组初始化，传递目标类型信息
             if let Expr::ArrayInit(array_init) = init {
-                let value = self.generate_array_init_with_type(array_init, &var.var_type)?;
+                let value = self.generate_array_init_with_type(array_init, &actual_type)?;
                 self.emit_line(&format!("  store {}, {}* %{}",
                     value, var_type, llvm_name));
             } else {
