@@ -164,9 +164,9 @@ EOL (Ethernos Object Language) 是一个始终编译为原生机器码的静态�
 
 ---
 ### 阶段2.5: 实现另类的“一次编译，到处运行”
-- [ ] **目标** - 实现EOL程序在不同平台上的可移植性，无需修改代码
-- [ ] **先编译出Cavvy的linux可执行文件** - 
-- [ ] **能在Linux下编译**(需单独测试)
+- [x] **目标** - 实现EOL程序在不同平台上的可移植性，无需修改代码
+- [x] **先编译出Cavvy的linux可执行文件** - 
+- [x] **能在Linux下编译**(需单独测试)
   -**迁移提示**（从 Windows MinGW 到 Linux）：
     - **目标三元组**：从 `x86_64-w64-mingw64` 改为 `x86_64-unknown-linux-gnu`（或 `x86_64-pc-linux-gnu`）
     - **链接方式**：Linux 默认动态链接 libc，如需分发独立二进制文件，记得加 `-static` 或 `-static-libgcc`
