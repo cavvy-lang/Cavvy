@@ -81,7 +81,10 @@ impl IRGenerator {
             self.output.push_str("; C entry point\n");
             self.output.push_str(&format!("define i32 @main() {{\n"));
             self.output.push_str("entry:\n");
-            self.output.push_str("  call void @SetConsoleOutputCP(i32 65001)\n");
+            // 只在 Windows 平台上设置控制台代码页
+            if cfg!(target_os = "windows") {
+                self.output.push_str("  call void @SetConsoleOutputCP(i32 65001)\n");
+            }
             self.generate_static_array_initialization();
             let main_fn_name = self.generate_top_level_function_name(&func.name);
             if func.return_type == Type::Void {
@@ -97,7 +100,10 @@ impl IRGenerator {
             self.output.push_str("; C entry point\n");
             self.output.push_str(&format!("define i32 @main() {{\n"));
             self.output.push_str("entry:\n");
-            self.output.push_str("  call void @SetConsoleOutputCP(i32 65001)\n");
+            // 只在 Windows 平台上设置控制台代码页
+            if cfg!(target_os = "windows") {
+                self.output.push_str("  call void @SetConsoleOutputCP(i32 65001)\n");
+            }
             self.generate_static_array_initialization();
             let main_fn_name = self.generate_method_name(&class_name, &main_method);
             self.output.push_str(&format!("  call void @{}()\n", main_fn_name));

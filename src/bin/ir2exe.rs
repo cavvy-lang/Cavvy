@@ -63,6 +63,29 @@ struct CompileOptions {
     fslp_vectorize: bool,         // -fslp-vectorize
 }
 
+/// 根据当前操作系统自动选择默认目标平台
+fn get_default_target() -> String {
+    if cfg!(target_os = "windows") {
+        "x86_64-w64-mingw32".to_string()
+    } else if cfg!(target_os = "linux") {
+        "x86_64-unknown-linux-gnu".to_string()
+    } else if cfg!(target_os = "macos") {
+        "x86_64-apple-darwin".to_string()
+    } else {
+        // 默认使用当前系统的目标
+        std::env::var("TARGET").unwrap_or_else(|_| {
+            // 如果无法获取环境变量，回退到通用目标
+            if cfg!(target_arch = "x86_64") {
+                "x86_64-unknown-linux-gnu".to_string()
+            } else if cfg!(target_arch = "aarch64") {
+                "aarch64-unknown-linux-gnu".to_string()
+            } else {
+                "x86_64-unknown-linux-gnu".to_string()
+            }
+        })
+    }
+}
+
 impl Default for CompileOptions {
     fn default() -> Self {
         CompileOptions {
@@ -72,7 +95,7 @@ impl Default for CompileOptions {
             extra_libs: Vec::new(),
             extra_ldflags: Vec::new(),
             extra_cflags: Vec::new(),
-            target: "x86_64-w64-mingw32".to_string(),
+            target: get_default_target(),
             static_link: false,
             position_independent: false,
             lto: false,
@@ -354,11 +377,21 @@ fn parse_args(args: &[String]) -> Result<(CompileOptions, String, String), Strin
 
     let input_file = input_file.ok_or("需要指定输入文件")?;
     let output_file = output_file.unwrap_or_else(|| {
-        Path::new(&input_file)
+        let stem = Path::new(&input_file)
             .file_stem()
             .and_then(|stem| stem.to_str())
-            .map(|stem| format!("{}.exe", stem))
-            .unwrap_or_else(|| "output.exe".to_string())
+            .unwrap_or("output");
+        
+        // 根据目标平台选择扩展名
+        if options.target.contains("windows") || options.target.contains("mingw") {
+            format!("{}.exe", stem)
+        } else if options.target.contains("darwin") {
+            // macOS 通常没有扩展名，或者使用 .app
+            stem.to_string()
+        } else {
+            // Linux 和其他 Unix-like 系统
+            stem.to_string()
+        }
     });
 
     Ok((options, input_file, output_file))
@@ -376,9 +409,21 @@ fn main() {
         }
     };
 
-    println!("IR 编译器 v{} (MinGW-w64 模式)", VERSION);
+    // 根据目标平台显示编译模式
+    let mode = if options.target.contains("windows") || options.target.contains("mingw") {
+        "MinGW-w64 模式"
+    } else if options.target.contains("linux") {
+        "Linux 模式"
+    } else if options.target.contains("darwin") {
+        "macOS 模式"
+    } else {
+        "通用模式"
+    };
+    
+    println!("IR 编译器 v{} ({})", VERSION, mode);
     println!("IR 文件: {}", input_file);
     println!("输出: {}", output_file);
+    println!("目标平台: {}", options.target);
     println!("优化级别: {}", options.optimization);
 
     // 显示 CPU 优化信息
@@ -468,9 +513,20 @@ fn main() {
         .ok()
         .and_then(|p| p.parent().map(|p| p.to_path_buf()))
         .unwrap_or_else(|| PathBuf::from("."));
-    let lib_path1 = exe_dir.join("lib/mingw64/x86_64-w64-mingw32/lib");
-    let lib_path2 = exe_dir.join("lib/mingw64/lib");
-    let lib_path3 = exe_dir.join("lib/mingw64/lib/gcc/x86_64-w64-mingw32/15.2.0");
+    
+    // 根据目标平台选择库路径
+    let lib_paths: Vec<PathBuf> = if options.target.contains("windows") || options.target.contains("mingw") {
+        // Windows/MinGW 库路径
+        vec![
+            exe_dir.join("lib/mingw64/x86_64-w64-mingw32/lib"),
+            exe_dir.join("lib/mingw64/lib"),
+            exe_dir.join("lib/mingw64/lib/gcc/x86_64-w64-mingw32/15.2.0")
+        ]
+    } else {
+        // Linux/Unix 系统使用系统默认库路径
+        // 不添加额外的库路径，让链接器使用系统默认路径
+        vec![]
+    };
 
     // 构建 clang 命令
     let mut cmd = process::Command::new(&clang_exe);
@@ -562,10 +618,12 @@ fn main() {
         cmd.arg("-fslp-vectorize");
     }
 
-    // 默认库路径
-    cmd.arg("-L").arg(&lib_path1)
-        .arg("-L").arg(&lib_path2)
-        .arg("-L").arg(&lib_path3);
+    // 添加库路径
+    for lib_path in &lib_paths {
+        if lib_path.exists() {
+            cmd.arg("-L").arg(lib_path);
+        }
+    }
 
     // 额外库路径
     for path in &options.extra_lib_paths {
@@ -580,10 +638,26 @@ fn main() {
     // 使用 lld 链接器
     cmd.arg("-fuse-ld=lld");
 
-    // 默认库
-    cmd.arg("-lkernel32")
-        .arg("-lmsvcrt")
-        .arg("-ladvapi32");
+    // 根据目标平台选择默认库
+    if options.target.contains("windows") || options.target.contains("mingw") {
+        // Windows 平台库
+        cmd.arg("-lkernel32")
+            .arg("-lmsvcrt")
+            .arg("-ladvapi32");
+    } else if options.target.contains("linux") {
+        // Linux 平台库
+        cmd.arg("-lc")
+            .arg("-lm")
+            .arg("-lpthread");
+    } else if options.target.contains("darwin") {
+        // macOS 平台库
+        cmd.arg("-lc")
+            .arg("-lm");
+    } else {
+        // 通用库
+        cmd.arg("-lc")
+            .arg("-lm");
+    }
 
     // 额外库
     for lib in &options.extra_libs {

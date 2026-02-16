@@ -43,6 +43,7 @@ struct CompileOptions {
     extra_libs: Vec<String>,      // -l<lib>
     extra_ldflags: Vec<String>,   // --ldflags
     extra_cflags: Vec<String>,    // --cflags
+    target: String,               // --target
     static_link: bool,            // --static
     position_independent: bool,   // -fPIC/-fPIE
     // LTO 选项
@@ -68,6 +69,29 @@ struct CompileOptions {
     fslp_vectorize: bool,         // -fslp-vectorize
 }
 
+/// 根据当前操作系统自动选择默认目标平台
+fn get_default_target() -> String {
+    if cfg!(target_os = "windows") {
+        "x86_64-w64-mingw32".to_string()
+    } else if cfg!(target_os = "linux") {
+        "x86_64-unknown-linux-gnu".to_string()
+    } else if cfg!(target_os = "macos") {
+        "x86_64-apple-darwin".to_string()
+    } else {
+        // 默认使用当前系统的目标
+        std::env::var("TARGET").unwrap_or_else(|_| {
+            // 如果无法获取环境变量，回退到通用目标
+            if cfg!(target_arch = "x86_64") {
+                "x86_64-unknown-linux-gnu".to_string()
+            } else if cfg!(target_arch = "aarch64") {
+                "aarch64-unknown-linux-gnu".to_string()
+            } else {
+                "x86_64-unknown-linux-gnu".to_string()
+            }
+        })
+    }
+}
+
 impl Default for CompileOptions {
     fn default() -> Self {
         CompileOptions {
@@ -79,6 +103,7 @@ impl Default for CompileOptions {
             extra_libs: Vec::new(),
             extra_ldflags: Vec::new(),
             extra_cflags: Vec::new(),
+            target: get_default_target(),
             static_link: false,
             position_independent: false,
             lto: false,
@@ -216,6 +241,13 @@ fn parse_args(args: &[String]) -> Result<(CompileOptions, String, String), Strin
             }
             "--lto" => {
                 options.lto = true;
+            }
+            "--target" => {
+                i += 1;
+                if i >= args.len() {
+                    return Err("--target 需要参数".to_string());
+                }
+                options.target = args[i].clone();
             }
             "--ldflags" => {
                 i += 1;
@@ -480,16 +512,31 @@ fn main() {
         process::exit(1);
     });
 
-    let ir2exe_path = bin_dir.join("ir2exe.exe");
+    // 尝试搜索 ir2exe 和 ir2exe.exe 两个文件名
+    let ir2exe_paths = [
+        bin_dir.join("ir2exe"),
+        bin_dir.join("ir2exe.exe")
+    ];
+    
+    let ir2exe_path = match ir2exe_paths.iter().find(|path| path.exists()) {
+        Some(path) => path,
+        None => {
+            eprintln!("错误: 找不到 ir2exe 或 ir2exe.exe 在以下位置:");
+            for path in &ir2exe_paths {
+                eprintln!("  {:?}", path);
+            }
+            let _ = fs::remove_file(&ir_file);
+            process::exit(1);
+        }
+    };
 
-    if !ir2exe_path.exists() {
-        eprintln!("错误: 找不到 ir2exe.exe 在 {:?}", ir2exe_path);
-        let _ = fs::remove_file(&ir_file);
-        process::exit(1);
-    }
 
     // 构建 ir2exe 参数
     let mut ir2exe_args: Vec<String> = vec![];
+
+    // 目标平台
+    ir2exe_args.push("--target".to_string());
+    ir2exe_args.push(options.target.clone());
 
     // 基础优化
     ir2exe_args.push(options.optimization.clone());
@@ -595,6 +642,12 @@ fn main() {
     ir2exe_args.push(ir_file.clone());
     ir2exe_args.push(exe_output.clone());
 
+    // 调试：显示实际调用的命令
+    println!("  [D] 调用: {} {}", ir2exe_path.display(), ir2exe_args.join(" "));
+    
+    // 调试：显示实际调用的命令
+    println!("  [D] 调用: {} {}", ir2exe_path.display(), ir2exe_args.join(" "));
+    
     // 调用ir2exe
     let output = process::Command::new(&ir2exe_path)
         .args(&ir2exe_args)

@@ -21,13 +21,29 @@ impl IRGenerator {
     /// 发射IR头部（外部声明和运行时函数）
     pub fn emit_header(&mut self) {
         self.emit_raw("; cay (Ethernos Object Language) Generated LLVM IR");
-        self.emit_raw("target triple = \"x86_64-w64-mingw32\"");
+        
+        // 根据目标平台设置目标三元组
+        let target_triple = if cfg!(target_os = "windows") {
+            "x86_64-w64-mingw32"
+        } else if cfg!(target_os = "linux") {
+            "x86_64-unknown-linux-gnu"
+        } else if cfg!(target_os = "macos") {
+            "x86_64-apple-darwin"
+        } else {
+            "x86_64-unknown-linux-gnu"
+        };
+        self.emit_raw(&format!("target triple = \"{}\"", target_triple));
         self.emit_raw("");
 
         // 声明外部函数 (printf 和标准C库函数)
         self.emit_raw("declare i32 @printf(i8*, ...)");
         self.emit_raw("declare i32 @scanf(i8*, ...)");
-        self.emit_raw("declare void @SetConsoleOutputCP(i32)");
+        
+        // 只在 Windows 平台上声明 Windows API 函数
+        if cfg!(target_os = "windows") {
+            self.emit_raw("declare void @SetConsoleOutputCP(i32)");
+        }
+        
         self.emit_raw("declare i64 @strlen(i8*)");
         self.emit_raw("declare i8* @calloc(i64, i64)");
         self.emit_raw("declare void @exit(i32)");

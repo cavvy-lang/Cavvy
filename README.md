@@ -6,14 +6,14 @@
 ![Rust](https://img.shields.io/badge/rust-2024%20edition-orange.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)
 
-Cavvy (Cay) 是一个简单的面向对象编程语言，支持编译为原生 Windows 可执行文件。
+Cavvy (Cay) 是一个简单的面向对象编程语言，支持编译为~~原生 Windows 可执行文件~~原生 Windows 可执行文件和 Linux 可执行文件。
 
 Cavvy 是整个 Ethernos 编程语言工具链中的里程碑，它是 Ethernos 发布的所有编程语言中，第一个编译型编程语言。
 
 ![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)
 ![Version](https://img.shields.io/badge/version-0.3.4-blue.svg)
 
-> **注意**: 当前版本主要针对 Windows 平台。如果您熟悉 Linux 开发环境，欢迎帮助我们移植到 Linux 平台！
+> ~~**注意**: 当前版本主要针对 Windows 平台。如果您熟悉 Linux 开发环境，欢迎帮助我们移植到 Linux 平台！~~
 
 ## 特性
 
