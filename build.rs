@@ -6,28 +6,59 @@ use std::process::Command;
 
 /// 获取 git commit hash 和 dirty 状态
 /// 返回格式: "abc1234" 或 "abc1234-dirty"
+/// 自动忽略编译生成的二进制可执行文件（ELF 格式）
 fn get_git_version() -> Option<String> {
     // 获取 short commit hash
     let output = Command::new("git")
         .args(&["rev-parse", "--short", "HEAD"])
         .output()
         .ok()?;
-    
+
     if !output.status.success() {
         return None;
     }
-    
+
     let commit = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    
-    // 检查是否有未提交的修改
+
+    // 检查是否有未提交的修改（排除编译生成的二进制文件）
     let status_output = Command::new("git")
         .args(&["status", "--porcelain"])
         .output()
         .ok()?;
+
+    let status_str = String::from_utf8_lossy(&status_output.stdout);
     
-    let has_uncommitted = !String::from_utf8_lossy(&status_output.stdout).trim().is_empty();
-    
-    if has_uncommitted {
+    // 过滤掉编译生成的二进制可执行文件（ELF 格式，无后缀）
+    let is_dirty = status_str
+        .lines()
+        .any(|line| {
+            let line = line.trim();
+            if line.is_empty() {
+                return false;
+            }
+            
+            // 提取文件名（git status --porcelain 格式: XY filename 或 ?? filename）
+            let file_name = if line.starts_with("??") {
+                line[2..].trim()
+            } else if line.len() >= 3 {
+                line[3..].trim()
+            } else {
+                return false;
+            };
+            
+            // 跳过项目根目录下的 ELF 可执行文件（无后缀且是单个文件名）
+            if !file_name.contains('/') && !file_name.contains('\\') && !file_name.contains('.') {
+                // 检查是否是 ELF 文件
+                let path = PathBuf::from(file_name);
+                if is_elf_executable(&path) {
+                    return false; // 忽略 ELF 可执行文件
+                }
+            }
+            
+            true // 其他变更视为 dirty
+        });
+
+    if is_dirty {
         Some(format!("{}-dirty", commit))
     } else {
         Some(commit)
@@ -278,6 +309,25 @@ fn main() {
         .expect("Failed to copy caylibs directory");
     
     println!("cargo:warning=Copied examples and caylibs directories to {}", target_dir.display());
+}
+
+/// 检查文件是否是 ELF 可执行文件
+/// 时间复杂度: O(1) - 只读取文件头
+/// 空间复杂度: O(1)
+fn is_elf_executable(path: &std::path::Path) -> bool {
+    use std::io::Read;
+
+    let mut file = match fs::File::open(path) {
+        Ok(f) => f,
+        Err(_) => return false,
+    };
+
+    // ELF 文件头魔数: 0x7F 'E' 'L' 'F'
+    let mut header = [0u8; 4];
+    match file.read_exact(&mut header) {
+        Ok(_) => header == [0x7F, 0x45, 0x4C, 0x46], // \x7F ELF
+        Err(_) => false,
+    }
 }
 
 fn copy_dir_all(src: impl AsRef<std::path::Path>, dst: impl AsRef<std::path::Path>) -> std::io::Result<()> {
