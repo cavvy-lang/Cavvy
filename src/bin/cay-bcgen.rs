@@ -7,7 +7,7 @@ use cavvy::bytecode::instructions::{Instruction, Opcode};
 use cavvy::bytecode::constant_pool::ConstantPool;
 use cavvy::error::{print_miette_error, print_tool_error, print_warning};
 
-const VERSION: &str = "0.4.7";
+const VERSION: &str = env!("CAY_BCGEN_VERSION");
 
 /// 字节码生成选项
 struct BcgenOptions {

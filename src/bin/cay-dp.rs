@@ -10,7 +10,7 @@ use cavvy::parser::parse_with_source;
 use cavvy::ast::{Program, ClassDecl, InterfaceDecl, TopLevelFunction, ClassMember, MethodDecl, FieldDecl};
 use cavvy::preprocessor::preprocess;
 
-const VERSION: &str = env!("CARGO_PKG_VERSION");
+const VERSION: &str = env!("CAY_DP_VERSION");
 
 fn print_usage(program: &str) {
     eprintln!("Cavvy Debugger - Parse PreViewer v{}", VERSION);

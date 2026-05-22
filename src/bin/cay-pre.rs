@@ -10,7 +10,7 @@ use std::process;
 use cavvy::preprocessor::{Preprocessor, SourceMap};
 use cavvy::error::print_miette_error;
 
-const VERSION: &str = "0.5.1";
+const VERSION: &str = env!("CAY_PRE_VERSION");
 
 /// 预处理器选项
 struct PreprocessOptions {

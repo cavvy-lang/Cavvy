@@ -8,7 +8,7 @@
 
 use std::env;
 
-const VERSION: &str = env!("CARGO_PKG_VERSION");
+const VERSION: &str = env!("CAY_IDLE_VERSION");
 
 fn print_usage() {
     println!("cay-IDLE v{}", VERSION);

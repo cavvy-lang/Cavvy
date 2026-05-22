@@ -2,6 +2,45 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 use std::collections::HashMap;
+use std::process::Command;
+
+/// 获取 git commit hash 和 dirty 状态
+/// 返回格式: "abc1234" 或 "abc1234-dirty"
+fn get_git_version() -> Option<String> {
+    // 获取 short commit hash
+    let output = Command::new("git")
+        .args(&["rev-parse", "--short", "HEAD"])
+        .output()
+        .ok()?;
+    
+    if !output.status.success() {
+        return None;
+    }
+    
+    let commit = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    
+    // 检查是否有未提交的修改
+    let status_output = Command::new("git")
+        .args(&["status", "--porcelain"])
+        .output()
+        .ok()?;
+    
+    let has_uncommitted = !String::from_utf8_lossy(&status_output.stdout).trim().is_empty();
+    
+    if has_uncommitted {
+        Some(format!("{}-dirty", commit))
+    } else {
+        Some(commit)
+    }
+}
+
+/// 构建完整版本字符串: "version+commit" 或 "version+commit-dirty"
+fn build_full_version(base_version: &str) -> String {
+    match get_git_version() {
+        Some(git_ver) => format!("{}+{}", base_version, git_ver),
+        None => base_version.to_string(),
+    }
+}
 
 fn parse_verinfo() -> Result<HashMap<String, HashMap<String, String>>, String> {
     let content = fs::read_to_string(".verinfo")
@@ -44,69 +83,118 @@ fn main() {
     // 解析 .verinfo 文件
     match parse_verinfo() {
         Ok(verinfo) => {
-            // 设置各工具的版本环境变量
+            // 设置各工具的版本环境变量（带 commit hash）
             if let Some(cayc_section) = verinfo.get("CAYC") {
                 if let Some(version) = cayc_section.get("version") {
-                    println!("cargo:rustc-env=CAYC_VERSION={}", version);
+                    println!("cargo:rustc-env=CAYC_VERSION={}", build_full_version(version));
                 }
             }
             if let Some(cay_ir_section) = verinfo.get("CAY-IR") {
                 if let Some(version) = cay_ir_section.get("version") {
-                    println!("cargo:rustc-env=CAY-IR_VERSION={}", version);
+                    println!("cargo:rustc-env=CAY-IR_VERSION={}", build_full_version(version));
                 }
             }
             if let Some(ir2exe_section) = verinfo.get("IR2EXE") {
                 if let Some(version) = ir2exe_section.get("version") {
-                    println!("cargo:rustc-env=IR2EXE_VERSION={}", version);
+                    println!("cargo:rustc-env=IR2EXE_VERSION={}", build_full_version(version));
                 }
             }
             if let Some(cay_check_section) = verinfo.get("CAY-CHECK") {
                 if let Some(version) = cay_check_section.get("version") {
-                    println!("cargo:rustc-env=CAY_CHECK_VERSION={}", version);
+                    println!("cargo:rustc-env=CAY_CHECK_VERSION={}", build_full_version(version));
                 }
             }
             if let Some(cay_run_section) = verinfo.get("CAY-RUN") {
                 if let Some(version) = cay_run_section.get("version") {
-                    println!("cargo:rustc-env=CAY_RUN_VERSION={}", version);
+                    println!("cargo:rustc-env=CAY_RUN_VERSION={}", build_full_version(version));
                 }
             }
             if let Some(cay_lsp_section) = verinfo.get("CAY-LSP") {
                 if let Some(version) = cay_lsp_section.get("version") {
-                    println!("cargo:rustc-env=CAY_LSP_VERSION={}", version);
+                    println!("cargo:rustc-env=CAY_LSP_VERSION={}", build_full_version(version));
                 }
             }
             if let Some(cay_dll_section) = verinfo.get("CAY-DLL") {
                 if let Some(version) = cay_dll_section.get("version") {
-                    println!("cargo:rustc-env=CAY_DLL_VERSION={}", version);
+                    println!("cargo:rustc-env=CAY_DLL_VERSION={}", build_full_version(version));
                 }
             }
             
             // 设置 Cavly 版本
             if let Some(cavly_section) = verinfo.get("CAVLY") {
                 if let Some(version) = cavly_section.get("version") {
-                    println!("cargo:rustc-env=CAVLY_VERSION={}", version);
+                    println!("cargo:rustc-env=CAVLY_VERSION={}", build_full_version(version));
                 }
             }
-            
+
+            // 设置 CAY-PRE 版本
+            if let Some(cay_pre_section) = verinfo.get("CAY-PRE") {
+                if let Some(version) = cay_pre_section.get("version") {
+                    println!("cargo:rustc-env=CAY_PRE_VERSION={}", build_full_version(version));
+                }
+            }
+
+            // 设置 CAY-BCGEN 版本
+            if let Some(cay_bcgen_section) = verinfo.get("CAY-BCGEN") {
+                if let Some(version) = cay_bcgen_section.get("version") {
+                    println!("cargo:rustc-env=CAY_BCGEN_VERSION={}", build_full_version(version));
+                }
+            }
+
+            // 设置 CAY-DT 版本
+            if let Some(cay_dt_section) = verinfo.get("CAY-DT") {
+                if let Some(version) = cay_dt_section.get("version") {
+                    println!("cargo:rustc-env=CAY_DT_VERSION={}", build_full_version(version));
+                }
+            }
+
+            // 设置 CAY-DP 版本
+            if let Some(cay_dp_section) = verinfo.get("CAY-DP") {
+                if let Some(version) = cay_dp_section.get("version") {
+                    println!("cargo:rustc-env=CAY_DP_VERSION={}", build_full_version(version));
+                }
+            }
+
+            // 设置 CAY-IDLE 版本
+            if let Some(cay_idle_section) = verinfo.get("CAY-IDLE") {
+                if let Some(version) = cay_idle_section.get("version") {
+                    println!("cargo:rustc-env=CAY_IDLE_VERSION={}", build_full_version(version));
+                }
+            }
+
+            // 设置 CAY-RCPL 版本
+            if let Some(cay_rcpl_section) = verinfo.get("CAY-RCPL") {
+                if let Some(version) = cay_rcpl_section.get("version") {
+                    println!("cargo:rustc-env=CAY_RCPL_VERSION={}", build_full_version(version));
+                }
+            }
+
             // 设置通用版本（使用CAYC的版本）
             if let Some(cayc_section) = verinfo.get("CAYC") {
                 if let Some(version) = cayc_section.get("version") {
-                    println!("cargo:rustc-env=VERSION={}", version);
+                    println!("cargo:rustc-env=VERSION={}", build_full_version(version));
                 }
             }
         }
         Err(e) => {
             eprintln!("Warning: Failed to parse .verinfo: {}", e);
-            // 设置默认版本
-            println!("cargo:rustc-env=CAYC_VERSION=0.4.8.3");
-            println!("cargo:rustc-env=CAY-IR_VERSION=0.4.8.3");
-            println!("cargo:rustc-env=IR2EXE_VERSION=0.4.8.3");
-            println!("cargo:rustc-env=CAY_CHECK_VERSION=0.4.8.3");
-            println!("cargo:rustc-env=CAY_RUN_VERSION=0.4.8.3");
-            println!("cargo:rustc-env=CAY_LSP_VERSION=0.4.8.3");
-            println!("cargo:rustc-env=CAY_DLL_VERSION=0.4.8.3");
-            println!("cargo:rustc-env=CAVLY_VERSION=0.1.0");
-            println!("cargo:rustc-env=VERSION=0.4.8.3");
+            // 设置默认版本（带 commit hash）
+            let default_version = "5.1.0-Alpha.3";
+            println!("cargo:rustc-env=CAYC_VERSION={}", build_full_version(default_version));
+            println!("cargo:rustc-env=CAY-IR_VERSION={}", build_full_version(default_version));
+            println!("cargo:rustc-env=IR2EXE_VERSION={}", build_full_version(default_version));
+            println!("cargo:rustc-env=CAY_CHECK_VERSION={}", build_full_version(default_version));
+            println!("cargo:rustc-env=CAY_RUN_VERSION={}", build_full_version(default_version));
+            println!("cargo:rustc-env=CAY_LSP_VERSION={}", build_full_version(default_version));
+            println!("cargo:rustc-env=CAY_DLL_VERSION={}", build_full_version(default_version));
+            println!("cargo:rustc-env=CAVLY_VERSION={}", build_full_version(default_version));
+            println!("cargo:rustc-env=CAY_PRE_VERSION={}", build_full_version(default_version));
+            println!("cargo:rustc-env=CAY_BCGEN_VERSION={}", build_full_version(default_version));
+            println!("cargo:rustc-env=CAY_DT_VERSION={}", build_full_version(default_version));
+            println!("cargo:rustc-env=CAY_DP_VERSION={}", build_full_version(default_version));
+            println!("cargo:rustc-env=CAY_IDLE_VERSION={}", build_full_version(default_version));
+            println!("cargo:rustc-env=CAY_RCPL_VERSION={}", build_full_version(default_version));
+            println!("cargo:rustc-env=VERSION={}", build_full_version(default_version));
         }
     }
     
@@ -131,6 +219,8 @@ fn main() {
     
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=.verinfo");
+    println!("cargo:rerun-if-changed=.git/HEAD");
+    println!("cargo:rerun-if-changed=.git/index");
     println!("cargo:rerun-if-changed=llvm-minimal/");
     println!("cargo:rerun-if-changed=lib/");
     println!("cargo:rerun-if-changed=mingw-minimal/");

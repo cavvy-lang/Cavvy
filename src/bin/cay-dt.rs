@@ -9,7 +9,7 @@ use cavvy::lexer::{lex_with_diagnostics, TokenWithLocation};
 use cavvy::diagnostic::DiagnosticCollector;
 use cavvy::preprocessor::preprocess;
 
-const VERSION: &str = env!("CARGO_PKG_VERSION");
+const VERSION: &str = env!("CAY_DT_VERSION");
 
 fn print_usage(program: &str) {
     eprintln!("Cavvy Debugger - Token PreViewer v{}", VERSION);

@@ -8,7 +8,7 @@ use cavvy::bytecode::obfuscator;
 use cavvy::error::{print_error_with_context, print_miette_error, print_tool_error, print_warning};
 use cavvy::error::cayError;
 
-const VERSION: &str = "0.4.7";
+const VERSION: &str = env!("CAY_RUN_VERSION");
 
 /// 运行选项
 struct RunOptions {

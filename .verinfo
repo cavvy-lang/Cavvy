@@ -26,6 +26,30 @@ build = 9
 version = "5.1.0-Alpha.3"
 build = 3
 
+[CAY-PRE]
+version = "5.1.0-Alpha.3"
+build = 1
+
+[CAY-BCGEN]
+version = "5.1.0-Alpha.3"
+build = 1
+
+[CAY-DT]
+version = "5.1.0-Alpha.3"
+build = 1
+
+[CAY-DP]
+version = "5.1.0-Alpha.3"
+build = 1
+
+[CAY-IDLE]
+version = "5.1.0-Alpha.3"
+build = 1
+
+[CAY-RCPL]
+version = "5.1.0-Alpha.3"
+build = 1
+
 [LLVM-MINIMAL]
 version = "22.1.6"
 

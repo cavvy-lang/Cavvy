@@ -483,7 +483,9 @@ fn test_bcgen_version() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     
     assert!(output.status.success(), "cay-bcgen --version should succeed");
-    assert!(stdout.contains("0.4.7"), "Version should be 0.4.7");
+    assert!(stdout.contains("5.1.0-Alpha.3"), "Version should contain 5.1.0-Alpha.3, got: {}", stdout);
+    // 验证包含 commit hash（格式: version+commit 或 version+commit-dirty）
+    assert!(stdout.contains('+'), "Version should contain commit hash with + separator, got: {}", stdout);
 }
 
 /// 测试 cay-run 版本信息
@@ -497,7 +499,9 @@ fn test_cay_run_version() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     
     assert!(output.status.success(), "cay-run --version should succeed");
-    assert!(stdout.contains("0.4.7"), "Version should be 0.4.7");
+    assert!(stdout.contains("5.1.0-Alpha.3"), "Version should contain 5.1.0-Alpha.3, got: {}", stdout);
+    // 验证包含 commit hash（格式: version+commit 或 version+commit-dirty）
+    assert!(stdout.contains('+'), "Version should contain commit hash with + separator, got: {}", stdout);
 }
 
 /// 测试字节码文件格式验证

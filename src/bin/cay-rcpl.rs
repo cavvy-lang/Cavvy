@@ -9,7 +9,7 @@
 use std::env;
 use cavvy::error::print_miette_error;
 
-const VERSION: &str = env!("CARGO_PKG_VERSION");
+const VERSION: &str = env!("CAY_RCPL_VERSION");
 
 fn print_usage() {
     println!("Cavvy RCPL (Rust Cavvy Playground Loop) v{}", VERSION);
