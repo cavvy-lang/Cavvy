@@ -1,7 +1,7 @@
 (*
  * Cavvy 编程语言语法规范 - EBNF 表示
- * 版本: 0.5.0.0
- * 构建号: 32
+ * 版本: 5.1.0-a.3
+ * 构建号: 36
  *
  * 本文件使用扩展巴科斯-瑙尔范式 (EBNF) 描述 Cavvy 编程语言的语法结构。
  * 符号约定:
@@ -16,7 +16,7 @@
  *)
 
 (* ============================================================================
- * 预处理器指令 (Preprocessor Directives)
+ * 1. 预处理器指令 (Preprocessor Directives)
  * ============================================================================ *)
 
 (* 预处理器指令在编译前处理，支持条件编译和宏定义 *)
@@ -27,7 +27,10 @@ preprocessor_directive = define_directive
                        | elif_directive
                        | else_directive
                        | endif_directive
-                       | include_directive;
+                       | include_directive
+                       | error_directive
+                       | warning_directive
+                       | pragma_directive;
 
 (* #define 定义宏 - 支持对象宏 *)
 define_directive = "#define", identifier, [ replacement_text ];
@@ -43,7 +46,7 @@ ifndef_directive = "#ifndef", identifier;
 (* #if 条件编译 - 基于常量表达式 *)
 if_directive = "#if", constant_expression;
 
-(* #elif 条件编译 -  else if 分支 *)
+(* #elif 条件编译 - else if 分支 *)
 elif_directive = "#elif", constant_expression;
 
 (* #else 条件编译 - else 分支 *)
@@ -56,6 +59,17 @@ endif_directive = "#endif";
 include_directive = "#include", ( "<", header_name, ">" | '"', header_name, '"' );
 
 header_name = { any_character_except_angle_quote };
+
+(* #error 编译期错误 *)
+error_directive = "#error", string_literal;
+
+(* #warning 编译期警告 *)
+warning_directive = "#warning", string_literal;
+
+(* #pragma 编译器指令 *)
+pragma_directive = "#pragma", pragma_option;
+
+pragma_option = "once";
 
 (* 预处理器指令示例：
  *   #define DEBUG
@@ -72,10 +86,13 @@ header_name = { any_character_except_angle_quote };
  *   #ifndef RELEASE
  *   println("Non-release code included");
  *   #endif
+ *   
+ *   #include "caylibs/Network.cay"
+ *   #include <std/ffi.cay>
  *)
 
 (* ============================================================================
- * 程序结构 (Program Structure)
+ * 2. 程序结构 (Program Structure)
  * ============================================================================ *)
 
 program = { preprocessor_directive | declaration };
@@ -84,18 +101,25 @@ declaration = class_declaration
             | interface_declaration
             | top_level_function
             | extern_declaration
-            | namespace_declaration;
+            | type_alias_declaration;
 
-(* 顶层函数声明 - 0.4.3.x 新增 *)
-top_level_function = [ modifiers ], ( type | "void" ), "main", "(", [ parameter_list ], ")", block;
+(* 顶层函数声明 - 5.1.0-a.2 支持 *)
+top_level_function = [ modifiers ], ( type | "void" ), identifier, 
+                     "(", [ parameter_list ], ")", block;
 
-(* 顶层函数示例：
+(* 顶层 main 函数示例：
  *   public int main() { return 0; }
  *   public int main(String[] args) { return 0; }
+ *   int add(int a, int b) { return a + b; }
  *)
 
-(* 命名空间声明 *)
-namespace_declaration = "namespace", identifier, "{", { declaration }, "}";
+(* 类型别名声明 - type Name = Type; *)
+type_alias_declaration = "alias", identifier, "=", type, ";";
+
+(* 类型别名示例：
+ *   alias MyInt = int;
+ *   alias StringList = String[];
+ *)
 
 (* 类声明 *)
 class_declaration = [ annotation ], [ modifiers ], "class", identifier, 
@@ -141,6 +165,7 @@ annotation_argument = identifier, "=", expression
 class_member = field_declaration 
              | method_declaration
              | constructor_declaration
+             | destructor_declaration
              | static_initializer
              | instance_initializer
              | nested_class_declaration
@@ -153,7 +178,7 @@ nested_class_declaration = class_declaration;
 nested_interface_declaration = interface_declaration;
 
 (* ============================================================================
- * 修饰符 (Modifiers)
+ * 3. 修饰符 (Modifiers)
  * ============================================================================ *)
 
 modifiers = modifier, { modifier };
@@ -168,7 +193,7 @@ modifier = access_modifier
 access_modifier = "public" | "private" | "protected";
 
 (* ============================================================================
- * 字段声明（支持静态字段、final 字段）
+ * 4. 字段声明（支持静态字段、final 字段）
  * ============================================================================ *)
 
 field_declaration = [ modifiers ], type, identifier, [ "=", variable_initializer ], ";";
@@ -184,7 +209,7 @@ variable_initializer = expression
  *)
 
 (* ============================================================================
- * 方法声明（支持方法重载、可变参数、Lambda）
+ * 5. 方法声明（支持方法重载、可变参数、Lambda）
  * ============================================================================ *)
 
 method_declaration = [ modifiers ], ( type | "void" ), identifier, 
@@ -212,7 +237,7 @@ varargs_parameter = [ "final" ], type, "...", identifier;
  *)
 
 (* ============================================================================
- * 构造函数
+ * 6. 构造函数与析构函数
  * ============================================================================ *)
 
 constructor_declaration = [ modifiers ], identifier, 
@@ -224,8 +249,11 @@ constructor_declaration = [ modifiers ], identifier,
 constructor_chaining = "this", "(", [ argument_list ], ")"
                      | "super", "(", [ argument_list ], ")";
 
+(* 析构函数声明 - 5.1.0-a.2 *)
+destructor_declaration = [ modifiers ], "~", identifier, "(", ")", block;
+
 (* ============================================================================
- * 初始化块
+ * 7. 初始化块
  * ============================================================================ *)
 
 static_initializer = "static", block;
@@ -233,12 +261,13 @@ static_initializer = "static", block;
 instance_initializer = block;
 
 (* ============================================================================
- * 类型系统 (Type System)
+ * 8. 类型系统 (Type System)
  * ============================================================================ *)
 
 type = primitive_type 
      | reference_type 
-     | ffi_type;
+     | ffi_type
+     | function_type;
 
 (* 基本类型 *)
 primitive_type = "int" 
@@ -248,20 +277,29 @@ primitive_type = "int"
                | "bool" 
                | "boolean"
                | "char" 
+               | "byte"
+               | "short"
                | "void"
                | "auto";
 
-(* auto 类型 - 0.4.3.x 新增 *)
+(* auto 类型 - 自动类型推断 *)
 (* auto 类型用于自动类型推断，编译器根据初始化表达式推断实际类型 *)
 (* 注意：auto 类型必须带有初始化表达式 *)
 
-(* FFI 类型 - 0.4.8.x 新增，用于外部函数接口 *)
-ffi_type = "c_int" | "c_long" | "c_short" | "c_char" | "c_byte"
+(* FFI 类型 - 用于外部函数接口 *)
+ffi_type = "c_int" | "c_uint" | "c_long" | "c_short" | "c_ushort"
+         | "c_char" | "c_uchar" | "c_byte"
          | "c_float" | "c_double" | "c_bool" | "c_void"
+         | "c_int8_t" | "c_uint8_t" | "c_int16_t" | "c_uint16_t"
+         | "c_int32_t" | "c_uint32_t" | "c_int64_t" | "c_uint64_t"
          | "size_t" | "ssize_t" 
          | "uintptr_t" | "intptr_t"
-         | "uint8_t" | "uint16_t" | "uint32_t" | "uint64_t"
-         | "int8_t" | "int16_t" | "int32_t" | "int64_t";
+         | "c_string";
+
+(* 函数类型 *)
+function_type = "fn", "(", [ parameter_type_list ], ")", [ "->", type ];
+
+parameter_type_list = type, { ",", type };
 
 (* 引用类型 *)
 reference_type = qualified_name, { "[", "]" } 
@@ -272,7 +310,7 @@ reference_type = qualified_name, { "[", "]" }
 qualified_name = identifier, { ".", identifier };
 
 (* ============================================================================
- * 语句 (Statements)
+ * 9. 语句 (Statements)
  * ============================================================================ *)
 
 block = "{", { statement }, "}";
@@ -288,14 +326,14 @@ statement = block
           | break_statement
           | continue_statement
           | expression_statement
-          | scope_statement;
+          | scope_statement
+          | inline_ir_statement;
 
 variable_declaration = [ "final" ], type, identifier, 
                        [ "=", variable_initializer ], ";"
                      | modern_variable_declaration;
 
-(* 现代变量声明语法 - 0.4.3.x 新增 *)
-(* 支持 var/let 后置类型声明和 auto 自动类型推断 *)
+(* 现代变量声明语法 - 支持 var/let 后置类型声明和 auto 自动类型推断 *)
 modern_variable_declaration = [ "final" ], ( "var" | "let" | "auto" ), identifier, 
                               [ ":", type ], [ "=", expression ], ";";
 
@@ -344,7 +382,8 @@ break_statement = "break", [ identifier ], ";";
 continue_statement = "continue", [ identifier ], ";";
 
 expression_statement = expression, ";";
-(* 0.5.0.x: scope 语句 - 栈作用域块 *)
+
+(* scope 语句 - 栈作用域块 *)
 scope_statement = "scope", block;
 
 (* scope 语句示例：
@@ -355,9 +394,13 @@ scope_statement = "scope", block;
  *   // x 在这里不再可访问
  *)
 
+(* 内联 IR 语句 *)
+inline_ir_statement = "__ir", "{", { inline_ir_line }, "}";
+
+inline_ir_line = { any_character_except_newline }, "\n";
 
 (* ============================================================================
- * 表达式 (Expressions) - 按优先级从低到高
+ * 10. 表达式 (Expressions) - 按优先级从低到高
  * ============================================================================ *)
 
 expression = assignment_expression;
@@ -388,7 +431,7 @@ additive_expression = multiplicative_expression, { ( "+" | "-" ), multiplicative
 
 multiplicative_expression = unary_expression, { ( "*" | "/" | "%" ), unary_expression };
 
-unary_expression = ( "+" | "-" | "!" | "~" | "++" | "--" ), unary_expression
+unary_expression = ( "+" | "-" | "!" | "~" | "++" | "--" | "&" | "*" ), unary_expression
                  | cast_expression
                  | postfix_expression;
 
@@ -417,7 +460,9 @@ primary_expression = literal
                    | array_creation_expression
                    | object_creation_expression
                    | lambda_expression
-                   | method_reference;
+                   | method_reference
+                   | alloc_expression
+                   | dealloc_expression;
 
 (* Lambda 表达式 *)
 lambda_expression = lambda_parameters, "->", lambda_body;
@@ -453,20 +498,27 @@ method_reference = qualified_name, "::", identifier
  *   ArrayList::new
  *)
 
+(* 内存分配表达式 *)
+alloc_expression = "__cay_alloc", "(", expression, [ ",", expression ], ")";
+
+(* 内存释放表达式 *)
+dealloc_expression = "__cay_free", "(", expression, ")";
+
 array_creation_expression = "new", type, "[", expression, "]", { "[", expression, "]" }, [ array_initializer ]
-                          | "new", type, array_initializer;
+                          | "new", type, array_initializer
+                          | "new", type, "[", expression, "]", "(", ")";  (* 零初始化 *)
 
 object_creation_expression = "new", qualified_name, "(", [ argument_list ], ")"
                            | qualified_name, ".", "new", identifier, "(", [ argument_list ], ")";
 
 (* ============================================================================
- * 常量表达式 (用于 switch case、数组大小等)
+ * 11. 常量表达式 (用于 switch case、数组大小等)
  * ============================================================================ *)
 
 constant_expression = conditional_expression;
 
 (* ============================================================================
- * 字面量 (Literals)
+ * 12. 字面量 (Literals)
  * ============================================================================ *)
 
 literal = integer_literal
@@ -509,7 +561,55 @@ boolean_literal = "true" | "false";
 null_literal = "null";
 
 (* ============================================================================
- * 字符串方法（内置）
+ * 13. 转义序列
+ * ============================================================================ *)
+
+escape_sequence = "\\", ( "n" | "t" | "r" | "\\" | "'" | '"' | "b" | "f" | "0" 
+                        | "u", hex_digit, hex_digit, hex_digit, hex_digit
+                        | octal_digit, [ octal_digit, [ octal_digit ] ] );
+
+(* ============================================================================
+ * 14. 外部函数接口 (FFI - Foreign Function Interface)
+ * ============================================================================ *)
+
+extern_declaration = "extern", [ calling_convention ], extern_body;
+
+calling_convention = "cdecl" | "stdcall" | "fastcall" | "thiscall" | "vectorcall" 
+                   | "sysv64" | "win64" | "aapcs" | "msp430";
+
+extern_body = extern_block | extern_single;
+
+extern_block = "{", { extern_function_declaration }, "}";
+
+extern_single = extern_function_declaration;
+
+extern_function_declaration = ( type | "void" ), identifier, [ "as", identifier ],
+                              "(", [ extern_parameter_list ], ")", [ varargs ], ";";
+
+extern_parameter_list = extern_parameter, { ",", extern_parameter };
+
+extern_parameter = ffi_type, identifier;
+
+varargs = "," , "...";
+
+(* FFI 示例：
+ *   extern {
+ *       c_int printf(c_int fmt, ...);
+ *       c_void exit(c_int code);
+ *       c_int strcmp(c_int s1, c_int s2);
+ *   }
+ *
+ *   extern stdcall {
+ *       c_int MessageBoxA(c_int hwnd, c_int text, c_int caption, c_int type);
+ *   }
+ *   
+ *   extern {
+ *       c_int strlen(c_string s) as string_length;
+ *   }
+ *)
+
+(* ============================================================================
+ * 15. 字符串方法（内置）
  * ============================================================================ *)
 
 (* 字符串类型支持以下方法调用：
@@ -517,6 +617,7 @@ null_literal = "null";
  *   String substring(int begin)           - 从begin开始到末尾的子串
  *   String substring(int begin, int end)  - 从begin到end的子串
  *   int indexOf(String str)               - 查找子串位置，未找到返回-1
+ *   int lastIndexOf(String str)           - 从后向前查找子串位置
  *   String replace(String old, String new) - 替换子串
  *   char charAt(int index)                - 获取指定位置字符（返回ASCII码）
  *   String toLowerCase()                  - 转换为小写
@@ -532,14 +633,14 @@ null_literal = "null";
  *   String valueOf(int/long/float/double) - 数值转字符串（静态方法）
  *
  * 示例：
- *   string s = "Hello, World!";
+ *   String s = "Hello, World!";
  *   int len = s.length();           // 13
  *   String sub = s.substring(7);    // "World!"
  *   int idx = s.indexOf("World");   // 7
  *)
 
 (* ============================================================================
- * 数组属性和方法（内置）
+ * 16. 数组属性和方法（内置）
  * ============================================================================ *)
 
 (* 数组支持 length 属性：
@@ -563,7 +664,7 @@ null_literal = "null";
  *)
 
 (* ============================================================================
- * 静态成员访问
+ * 17. 静态成员访问
  * ============================================================================ *)
 
 (* 静态字段访问：
@@ -582,7 +683,7 @@ null_literal = "null";
  *)
 
 (* ============================================================================
- * 内置函数 (Built-in Functions)
+ * 18. 内置函数 (Built-in Functions)
  * ============================================================================ *)
 
 (* 内置函数是编译器直接支持的函数，无需声明即可使用 *)
@@ -614,137 +715,7 @@ null_literal = "null";
 (* Math.pow(double, double)           - 幂运算 *)
 
 (* ============================================================================
- * FFI (Foreign Function Interface) - 0.4.8.x
- * ============================================================================ *)
-
-(*
- * Cavvy 0.4.8.x 引入了 FFI 功能，支持直接声明和调用 C 函数
- *
- * 语法:
- *   extern { type func(params); ... }                    - 默认 C 调用约定
- *   extern cdecl { type func(params); ... }              - cdecl 调用约定
- *   extern stdcall { type func(params); ... }            - Windows stdcall
- *   extern sysv64 { type func(params); ... }             - System V AMD64 ABI
- *   extern win64 { type func(params); ... }              - Windows x64 ABI
- *   extern fastcall { type func(params); ... }           - fastcall 调用约定
- *   extern thiscall { type func(params); ... }           - thiscall 调用约定
- *   extern vectorcall { type func(params); ... }         - vectorcall 调用约定
- *
- * FFI 类型映射:
- *   Cavvy Type    ->   C Type
- *   c_int         ->   int
- *   c_long        ->   long
- *   c_short       ->   short
- *   c_char        ->   char
- *   c_byte        ->   signed char
- *   c_float       ->   float
- *   c_double      ->   double
- *   c_bool        ->   _Bool (C99)
- *   c_void        ->   void
- *   size_t        ->   size_t
- *   ssize_t       ->   ssize_t
- *   uintptr_t     ->   uintptr_t
- *   intptr_t      ->   intptr_t
- *
- * 示例:
- *   extern {
- *       c_int printf(c_int fmt, ...);
- *       c_void exit(c_int code);
- *       c_int strcmp(c_int s1, c_int s2);
- *   }
- *
- *   extern stdcall {
- *       c_int MessageBoxA(c_int hwnd, c_int text, c_int caption, c_int type);
- *   }
- *)
-
-extern_declaration = "extern", [ calling_convention ], extern_body;
-
-calling_convention = "cdecl" | "stdcall" | "fastcall" | "thiscall" | "vectorcall" 
-                   | "sysv64" | "win64" | "aapcs" | "msp430";
-
-extern_body = extern_block | extern_single;
-
-extern_block = "{", { extern_function_declaration }, "}";
-
-extern_single = extern_function_declaration;
-
-extern_function_declaration = ( type | "void" ), identifier, "(", [ extern_parameter_list ], ")", [ varargs ], ";";
-
-extern_parameter_list = extern_parameter, { ",", extern_parameter };
-
-extern_parameter = ffi_type, identifier;
-
-varargs = "," , "...";
-
-(* ============================================================================
- * 类型转换规则
- * ============================================================================ *)
-
-(*
- * 隐式类型转换（自动，无需显式转换）：
- *   - byte -> short -> int -> long
- *   - int -> float -> double
- *   - long -> double
- *   - char -> int
- * 
- * 显式类型转换（需要强制转换）：
- *   - long -> int        (可能丢失高位)
- *   - double -> float    (可能丢失精度)
- *   - double -> int      (截断小数部分)
- *   - float -> int       (截断小数部分)
- *   - int -> char        (截断高位)
- *   - 任何类型 -> String (调用 toString())
- *
- * 转换语法：
- *   (target_type) expression
- *
- * 示例：
- *   int i = 100;
- *   long l = i;          // 隐式转换，OK
- *   double d = i;        // 隐式转换，OK
- *   int i2 = (int)d;     // 显式转换，截断小数
- *)
-
-(* ============================================================================
- * 访问控制规则
- * ============================================================================ *)
-
-(*
- * public    - 任何地方可访问
- * private   - 仅类内部可访问
- * protected - 类内部和子类可访问
- *
- * 示例：
- *   public class PublicClass { }
- *   private int privateField;
- *   protected void protectedMethod() { }
- *)
-
-(* ============================================================================
- * 继承和多态规则
- * ============================================================================ *)
-
-(*
- * - Cavvy 支持单继承（只能有一个父类）
- * - 支持多接口实现
- * - 所有非 final 方法默认是虚方法
- * - 使用 @Override 注解检查方法重写
- * - 支持 super 关键字调用父类方法
- *
- * 示例：
- *   class Animal {
- *       public void speak() { }
- *   }
- *   
- *   class Dog : Animal {
- *       @Override
- *       public void speak() { println("Woof!"); }
- *   }
- *)
-
-(* ============================================================================
- * 基本定义 (Basic Definitions)
+ * 19. 基本定义 (Basic Definitions)
  * ============================================================================ *)
 
 identifier = letter | "_", { letter | digit | "_" | "$" };
@@ -759,10 +730,6 @@ binary_digit = "0" | "1";
 
 octal_digit = "0" .. "7";
 
-escape_sequence = "\\", ( "n" | "t" | "r" | "\\" | "'" | '"' | "b" | "f" | "0" 
-                        | "u", hex_digit, hex_digit, hex_digit, hex_digit
-                        | octal_digit, [ octal_digit, [ octal_digit ] ] );
-
 character = any_unicode_character;
 
 any_character_except_double_quote = ? 除双引号外的任何字符 ?;
@@ -774,23 +741,18 @@ any_character_except_angle_quote = ? 除 < 和 > 外的任何字符 ?;
 any_unicode_character = ? 任何 Unicode 字符 ?;
 
 (* ============================================================================
- * 编译器指令和元数据
+ * 20. 编译器指令和元数据
  * ============================================================================ *)
 
 (*
- * 预定义宏：
- *   __CAVVY__         - 定义为 1
- *   __CAVVY_VERSION__ - 版本号十六进制 (0x00040802 = 0.4.8.2)
- *   __FILE__          - 当前文件名
- *   __LINE__          - 当前行号
- *
- * 平台宏：
- *   _WIN32, _WIN64    - Windows 平台
- *   __x86_64__        - x86_64 架构
+ * 平台宏（由预处理器自动定义）：
+ *   _WIN32            - Windows 平台
+ *   __linux__         - Linux 平台
+ *   __APPLE__         - macOS 平台
  *)
 
 (* ============================================================================
- * 标准库 (Standard Library)
+ * 21. 标准库 (Standard Library)
  * ============================================================================ *)
 
 (*
@@ -842,56 +804,39 @@ any_unicode_character = ? 任何 Unicode 字符 ?;
  *    - GlobalAlloc: 全局堆分配器
  *    - Arena: 线性分配器
  *    - ScopeAlloc: 栈作用域分配器
+ *
+ * 5. Math.cay - 数学库
+ *    - abs(), max(), min()
+ *    - sqrt(), pow(), sin(), cos(), tan()
+ *    - log(), log10(), exp()
+ *    - floor(), ceil(), round()
+ *
+ * 6. File.cay - 文件操作
+ *    - File: 文件操作类
+ *    - readAll(), writeAll()
+ *    - readLines(), writeLines()
  *)
 
 (* ============================================================================
- * 标准库 (Standard Library)
+ * 22. 版本历史
  * ============================================================================ *)
 
 (*
- * Cavvy 提供以下标准库模块 (位于 caylibs/ 目录):
- *
- * 1. Allocator.cay - 内存分配器
- *    - interface Allocator
- *    - class GlobalAlloc
- *    - class Arena
- *    - class ScopeAlloc
- *
- * 2. IOPlus.cay - 输入输出增强
- *    - prints(String...), printsNoLn(String...)
- *    - printsSep(String, String...)
- *    - printi(int...), printfl(float...), printdb(double...)
- *    - input(String), input()
- *
- * 3. StringPlus.cay - 字符串增强
- *    - split(String), split(String, String)
- *    - format(String, String...), formatIndexed(String, String...)
- *
- * 4. Network.cay - 网络编程 (0.5.1.x 新增)
- *    - class Socket - 基础Socket类
- *    - class TcpSocket - TCP客户端
- *    - class TcpServer - TCP服务器
- *    - class UdpSocket - UDP Socket
- *    - class SocketAddr - 网络地址
- *    - class NetworkUtils - 网络工具
- *    - 字节序转换: htons, htonl, ntohs, ntohl
- *    - 便捷函数: connectTcp, listenTcp, createUdp
- *
- * 使用方式:
- *   #include <Allocator.cay>
- *   #include <Network.cay>
- *)
-
-(* ============================================================================
- * 版本历史
- * ============================================================================ *)
-
-(*
- * 0.5.1.x (Build 33) - 当前版本
+ * 5.1.0-a.2 (Build 33) - 当前版本
  *   - 网络编程标准库 (Network.cay)
  *   - TCP/UDP Socket支持
  *   - 字节序转换函数
  *   - 网络工具类
+ *   - 类型别名 (alias)
+ *   - 析构函数支持
+ *   - 函数类型 (fn)
+ *
+ * 5.1.0-a.1
+ *   - 内存分配器接口 (Allocator trait)
+ *   - GlobalAlloc 默认堆分配器
+ *   - Arena 线性分配器
+ *   - scope 栈分配标记
+ *   - 显式内存管理基础
  *
  * 0.5.0.x (Build 32)
  *   - 内存分配器接口 (Allocator trait)
@@ -998,6 +943,115 @@ any_unicode_character = ? 任何 Unicode 字符 ?;
  * 0.1.x
  *   - 基础词法/语法分析器
  *   - LLVM IR 代码生成
- *   - Windows EXE 输出
- *   - 基础类型和类
+ *)
+
+(* ============================================================================
+ * 附录 A: 运算符优先级表（从高到低）
+ * ============================================================================ *)
+
+(*
+ * 优先级 | 运算符类别          | 运算符
+ * -------|---------------------|------------------------------------------
+ *   1    | 后缀运算符          | () [] . :: ++ --
+ *   2    | 前缀一元运算符      | + - ! ~ ++ -- & * (type)
+ *   3    | 乘除模              | * / %
+ *   4    | 加减                | + -
+ *   5    | 移位                | << >> >>>
+ *   6    | 关系                | < <= > >= instanceof
+ *   7    | 相等                | == !=
+ *   8    | 按位与              | &
+ *   9    | 按位异或            | ^
+ *  10    | 按位或              | |
+ *  11    | 逻辑与              | &&
+ *  12    | 逻辑或              | ||
+ *  13    | 三元条件            | ? :
+ *  14    | 赋值                | = += -= *= /= %= &= |= ^= <<= >>= >>>=
+ *)
+
+(* ============================================================================
+ * 附录 B: 关键字列表
+ * ============================================================================ *)
+
+(*
+ * 严格关键字（不能用作标识符）：
+ *   abstract, alias, as, auto, bool, boolean, break, byte, case, char,
+ *   class, continue, cdecl, default, do, double, else, extern, extends,
+ *   false, final, float, fn, for, if, implements, instanceof, int,
+ *   interface, let, long, native, new, null, private, protected, public,
+ *   return, scope, static, stdcall, super, switch, sysv64, this, true,
+ *   var, void, while, win64
+ *
+ * 上下文关键字（在特定上下文中是关键字）：
+ *   Override, c_int, c_long, c_float, c_double, c_char, c_void, size_t,
+ *   ssize_t, uintptr_t, intptr_t
+ *
+ * 预处理器指令：
+ *   #define, #ifdef, #ifndef, #if, #elif, #else, #endif, #include,
+ *   #error, #warning, #pragma
+ *)
+
+(* ============================================================================
+ * 附录 C: 类型转换规则
+ * ============================================================================ *)
+
+(*
+ * 隐式类型转换（自动，无需显式转换）：
+ *   - byte -> short -> int -> long
+ *   - int -> float -> double
+ *   - long -> double
+ *   - char -> int
+ * 
+ * 显式类型转换（需要强制转换）：
+ *   - long -> int        (可能丢失高位)
+ *   - double -> float    (可能丢失精度)
+ *   - double -> int      (截断小数部分)
+ *   - float -> int       (截断小数部分)
+ *   - int -> char        (截断高位)
+ *   - 任何类型 -> String (调用 toString())
+ *
+ * 转换语法：
+ *   (target_type) expression
+ *
+ * 示例：
+ *   int i = 100;
+ *   long l = i;          // 隐式转换，OK
+ *   double d = i;        // 隐式转换，OK
+ *   int i2 = (int)d;     // 显式转换，截断小数
+ *)
+
+(* ============================================================================
+ * 附录 D: 访问控制规则
+ * ============================================================================ *)
+
+(*
+ * public    - 任何地方可访问
+ * private   - 仅类内部可访问
+ * protected - 类内部和子类可访问
+ *
+ * 示例：
+ *   public class PublicClass { }
+ *   private int privateField;
+ *   protected void protectedMethod() { }
+ *)
+
+(* ============================================================================
+ * 附录 E: 继承和多态规则
+ * ============================================================================ *)
+
+(*
+ * - Cavvy 支持单继承（只能有一个父类）
+ * - 支持多接口实现
+ * - 所有非 final 方法默认是虚方法
+ * - 使用 @Override 注解检查方法重写
+ * - 支持 super 关键字调用父类方法
+ *
+ * 示例：
+ *   class Animal {
+ *       public void speak() { }
+ *   }
+ *   
+ *   class Dog : Animal {
+ *       @Override
+ *       public void speak() { println("Woof!"); }
+ *   }
  *)
