@@ -12,8 +12,25 @@ fn semantic_error_at_loc(loc: &crate::error::SourceLocation, message: impl Into<
 }
 
 impl SemanticAnalyzer {
-    /// 推断表达式类型
-    pub fn infer_expr_type(&mut self, expr: &Expr) -> cayResult<Type> {
+    /// 推断表达式类型（带错误收集）
+    /// 这个版本会收集错误到 self.errors 而不是直接返回 Err
+    pub fn infer_expr_type_collect_errors(&mut self, expr: &Expr) -> Type {
+        match self.infer_expr_type_internal(expr) {
+            Ok(ty) => ty,
+            Err(e) => {
+                // 将错误转换为 SemanticErrorInfo 并收集
+                if let Some((line, column)) = crate::error::get_error_location(&e) {
+                    let message = crate::error::get_error_message(&e);
+                    let file = crate::error::get_error_file(&e);
+                    self.errors.push(self.create_error_info_with_file(file, line, column, message));
+                }
+                Type::Int32 // 返回默认类型继续分析
+            }
+        }
+    }
+
+    /// 推断表达式类型（内部实现）
+    fn infer_expr_type_internal(&mut self, expr: &Expr) -> cayResult<Type> {
         match expr {
             Expr::Literal(lit) => match lit {
                 LiteralValue::Int32(_) => Ok(Type::Int32),
@@ -138,8 +155,8 @@ impl SemanticAnalyzer {
 
     /// 推断二元表达式类型
     fn infer_binary_type(&mut self, bin: &BinaryExpr) -> cayResult<Type> {
-        let left_type = self.infer_expr_type(&bin.left)?;
-        let right_type = self.infer_expr_type(&bin.right)?;
+        let left_type = self.infer_expr_type_internal(&bin.left)?;
+        let right_type = self.infer_expr_type_internal(&bin.right)?;
         
         match bin.op {
             BinaryOp::Add => {
@@ -241,7 +258,7 @@ impl SemanticAnalyzer {
 
     /// 推断一元表达式类型
     fn infer_unary_type(&mut self, unary: &UnaryExpr) -> cayResult<Type> {
-        let operand_type = self.infer_expr_type(&unary.operand)?;
+        let operand_type = self.infer_expr_type_internal(&unary.operand)?;
         match unary.op {
             UnaryOp::Neg => Ok(operand_type),
             UnaryOp::Not => {
@@ -391,7 +408,7 @@ impl SemanticAnalyzer {
                     if param.is_varargs {
                         break; // 可变参数后面不再检查
                     }
-                    let arg_type = self.infer_expr_type(arg)?;
+                    let arg_type = self.infer_expr_type_internal(arg)?;
                     if !self.types_compatible(&arg_type, &param.param_type) {
                         return Err(semantic_error_at_loc(&call.loc, format!("Argument {} type mismatch: expected {}, got {}",
                                 i + 1, param.param_type, arg_type)
@@ -406,7 +423,7 @@ impl SemanticAnalyzer {
                 // 先推断所有参数类型
                 let mut arg_types = Vec::new();
                 for arg in &call.args {
-                    arg_types.push(self.infer_expr_type(arg)?);
+                    arg_types.push(self.infer_expr_type_internal(arg)?);
                 }
 
                 // 使用参数类型查找匹配的方法
@@ -444,7 +461,7 @@ impl SemanticAnalyzer {
         // 支持成员调用: obj.method(...) 或 ClassName.method()（静态方法）
         if let Expr::MemberAccess(member) = call.callee.as_ref() {
             // 推断对象类型
-            let obj_type = self.infer_expr_type(&member.object)?;
+            let obj_type = self.infer_expr_type_internal(&member.object)?;
 
             // 处理 String 类型方法调用
             if obj_type == Type::String {
@@ -457,7 +474,7 @@ impl SemanticAnalyzer {
                 // 先推断所有参数类型
                 let mut arg_types = Vec::new();
                 for arg in &call.args {
-                    arg_types.push(self.infer_expr_type(arg)?);
+                    arg_types.push(self.infer_expr_type_internal(arg)?);
                 }
 
                 if let Some(class_info) = self.type_registry.get_class(&class_name_str) {
@@ -489,7 +506,7 @@ impl SemanticAnalyzer {
                 // 先推断所有参数类型
                 let mut arg_types = Vec::new();
                 for arg in &call.args {
-                    arg_types.push(self.infer_expr_type(arg)?);
+                    arg_types.push(self.infer_expr_type_internal(arg)?);
                 }
 
                 // 首先检查是否是函数指针字段调用
@@ -508,7 +525,7 @@ impl SemanticAnalyzer {
                             }
                             // 检查参数类型兼容性（手动检查，因为params是Vec<Type>而不是Vec<ParameterInfo>）
                             for (i, (arg, expected_type)) in call.args.iter().zip(params.iter()).enumerate() {
-                                let arg_type = self.infer_expr_type(arg)?;
+                                let arg_type = self.infer_expr_type_internal(arg)?;
                                 if !self.types_compatible(&arg_type, expected_type) {
                                     return Err(semantic_error_at_loc(&call.loc, format!("Argument {} type mismatch: expected {}, got {}", i + 1, expected_type, arg_type)
                                     ));
@@ -557,7 +574,7 @@ impl SemanticAnalyzer {
                 }
                 // 检查参数类型兼容性
                 for (i, (arg, expected_type)) in call.args.iter().zip(params.iter()).enumerate() {
-                    let arg_type = self.infer_expr_type(arg)?;
+                    let arg_type = self.infer_expr_type_internal(arg)?;
                     if !self.types_compatible(&arg_type, expected_type) {
                         return Err(semantic_error_at_loc(&call.loc, format!("Argument {} type mismatch: expected {}, got {}", i + 1, expected_type, arg_type)
                         ));
@@ -586,7 +603,7 @@ impl SemanticAnalyzer {
                 return Err(semantic_error_at_loc(&call.loc, format!("Method '{}' in class '{}' cannot be applied to given types: argument mismatch", member.member, class_name)
                 ));
             }
-            if let Type::Object(class_name) = self.infer_expr_type(&member.object)? {
+            if let Type::Object(class_name) = self.infer_expr_type_internal(&member.object)? {
                 return Err(semantic_error_at_loc(&call.loc, format!("Method '{}' in class '{}' cannot be applied to given types: argument mismatch", member.member, class_name)
                 ));
             }
@@ -594,7 +611,7 @@ impl SemanticAnalyzer {
 
         // 最后检查是否是函数指针类型调用: fn_ptr(args...)
         // 如果callee不是标识符或标识符不是已知函数名，则尝试作为函数指针处理
-        let callee_type = self.infer_expr_type(&call.callee)?;
+        let callee_type = self.infer_expr_type_internal(&call.callee)?;
         if let Type::Function(func_type) = &callee_type {
             // 检查参数数量
             let expected_args = func_type.params.len();
@@ -605,7 +622,7 @@ impl SemanticAnalyzer {
             }
             // 检查参数类型兼容性
             for (i, (arg, expected_type)) in call.args.iter().zip(func_type.params.iter()).enumerate() {
-                let arg_type = self.infer_expr_type(arg)?;
+                let arg_type = self.infer_expr_type_internal(arg)?;
                 if !self.types_compatible(&arg_type, expected_type) {
                     return Err(semantic_error_at_loc(&call.loc, format!("Argument {} type mismatch: expected {}, got {}", i + 1, expected_type, arg_type)
                     ));
@@ -689,7 +706,7 @@ impl SemanticAnalyzer {
         }
 
         // 成员访问类型检查
-        let obj_type = self.infer_expr_type(&member.object)?;
+        let obj_type = self.infer_expr_type_internal(&member.object)?;
 
         // 特殊处理数组的 .length 属性
         if member.member == "length" {
@@ -809,8 +826,8 @@ impl SemanticAnalyzer {
             }
         }
 
-        let target_type = self.infer_expr_type(&assign.target)?;
-        let value_type = self.infer_expr_type(&assign.value)?;
+        let target_type = self.infer_expr_type_internal(&assign.target)?;
+        let value_type = self.infer_expr_type_internal(&assign.value)?;
 
         if self.types_compatible(&value_type, &target_type) {
             Ok(target_type)
@@ -846,7 +863,7 @@ impl SemanticAnalyzer {
     /// 5. 数组类型之间：仅当元素类型兼容时允许
     /// 6. 其他组合：非法转换
     fn infer_cast_type(&mut self, cast: &CastExpr) -> cayResult<Type> {
-        let source_type = self.infer_expr_type(&cast.expr)?;
+        let source_type = self.infer_expr_type_internal(&cast.expr)?;
         let target_type = &cast.target_type;
         
         // 相同类型，无需转换
@@ -1069,7 +1086,7 @@ impl SemanticAnalyzer {
                 continue;
             }
             
-            let size_type = self.infer_expr_type(size)?;
+            let size_type = self.infer_expr_type_internal(size)?;
             if !size_type.is_integer() {
                 return Err(semantic_error(
                     arr.loc.line,
@@ -1133,15 +1150,15 @@ impl SemanticAnalyzer {
             ));
         }
         // 推断第一个元素的类型作为数组元素类型
-        let elem_type = self.infer_expr_type(&init.elements[0])?;
+        let elem_type = self.infer_expr_type_internal(&init.elements[0])?;
         Ok(Type::Array(Box::new(elem_type)))
     }
 
     /// 推断数组访问表达式类型
     fn infer_array_access_type(&mut self, arr: &ArrayAccessExpr) -> cayResult<Type> {
         // 数组访问: arr[index]
-        let array_type = self.infer_expr_type(&arr.array)?;
-        let index_type = self.infer_expr_type(&arr.index)?;
+        let array_type = self.infer_expr_type_internal(&arr.array)?;
+        let index_type = self.infer_expr_type_internal(&arr.index)?;
 
         if !index_type.is_integer() {
             return Err(semantic_error_at_loc(
@@ -1199,7 +1216,7 @@ impl SemanticAnalyzer {
             }
         } else if let Some(object) = method_ref.object.as_ref() {
             // 实例方法引用: obj::methodName
-            let obj_type = self.infer_expr_type(object)?;
+            let obj_type = self.infer_expr_type_internal(object)?;
             if let Type::Object(class_name) = obj_type {
                 if let Some(class_info) = self.type_registry.get_class(&class_name) {
                     if let Some(methods) = class_info.methods.get(&method_ref.method_name) {
@@ -1249,7 +1266,7 @@ impl SemanticAnalyzer {
         // 推断 Lambda 体类型
         let return_type = match &lambda.body {
             LambdaBody::Expr(expr) => {
-                let expr_type = self.infer_expr_type(expr)?;
+                let expr_type = self.infer_expr_type_internal(expr)?;
                 Box::new(expr_type)
             }
             LambdaBody::Block(block) => {
@@ -1258,7 +1275,7 @@ impl SemanticAnalyzer {
                 for stmt in &block.statements {
                     if let Stmt::Return(ret_expr_opt) = stmt {
                         if let Some(ret_expr) = ret_expr_opt {
-                            let ret_type = self.infer_expr_type(ret_expr)?;
+                            let ret_type = self.infer_expr_type_internal(ret_expr)?;
                             inferred_return = Some(ret_type);
                         } else {
                             inferred_return = Some(Type::Void);
@@ -1283,7 +1300,7 @@ impl SemanticAnalyzer {
     /// 推断三元运算符表达式类型
     fn infer_ternary_type(&mut self, ternary: &TernaryExpr) -> cayResult<Type> {
         // 推断条件表达式类型
-        let cond_type = self.infer_expr_type(&ternary.condition)?;
+        let cond_type = self.infer_expr_type_internal(&ternary.condition)?;
 
         // 条件必须是布尔类型
         if cond_type != Type::Bool {
@@ -1295,8 +1312,8 @@ impl SemanticAnalyzer {
         }
 
         // 推断两个分支的类型
-        let true_type = self.infer_expr_type(&ternary.true_branch)?;
-        let false_type = self.infer_expr_type(&ternary.false_branch)?;
+        let true_type = self.infer_expr_type_internal(&ternary.true_branch)?;
+        let false_type = self.infer_expr_type_internal(&ternary.false_branch)?;
 
         // 两个分支类型必须兼容
         if true_type == false_type {
@@ -1316,7 +1333,7 @@ impl SemanticAnalyzer {
     /// 推断 instanceof 表达式类型
     fn infer_instanceof_type(&mut self, instanceof: &InstanceOfExpr) -> cayResult<Type> {
         // 检查表达式类型
-        let expr_type = self.infer_expr_type(&instanceof.expr)?;
+        let expr_type = self.infer_expr_type_internal(&instanceof.expr)?;
 
         // 检查目标类型是否存在（类或接口）
         match &instanceof.target_type {

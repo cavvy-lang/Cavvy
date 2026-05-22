@@ -46,8 +46,8 @@ fn test_error_undefined_variable() {
     let error = compile_eol_expect_error("examples/errors/error_undefined_variable.cay")
         .expect("undefined variable should fail to compile");
     assert!(
-        error.contains("未定义标识符: 'y'"),
-        "Should report '未定义标识符: y' error, got: {}",
+        error.contains("未定义") && error.contains("'y'"),
+        "Should report undefined variable 'y' error, got: {}",
         error
     );
 }
@@ -148,8 +148,8 @@ fn test_error_duplicate_class() {
     let error = compile_eol_expect_error("examples/errors/error_duplicate_class.cay")
         .expect("duplicate class should fail to compile");
     assert!(
-        error.contains("Class 'TestDuplicateClass' already defined"),
-        "Should report 'Class 'TestDuplicateClass' already defined' error, got: {}",
+        error.contains("重复定义") && error.contains("TestDuplicateClass"),
+        "Should report duplicate class error with class name, got: {}",
         error
     );
 }

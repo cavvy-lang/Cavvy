@@ -81,9 +81,256 @@ pub enum cayError {
         message: String,
         suggestion: String,
     },
+
+    #[error("发现 {} 个错误", errors.len())]
+    MultipleErrors {
+        errors: Vec<cayError>,
+    },
 }
 
 pub type cayResult<T> = Result<T, cayError>;
+
+// ============================================================
+// 新错误系统：统一 CompilerError（包装 Diagnostic）
+// ============================================================
+
+/// 新的统一编译器错误类型 —— 所有错误最终都表达为一个 Diagnostic。
+/// Phase 2 迁移完成后，cayError 将被废弃，CompilerError 成为唯一错误类型。
+#[derive(Debug, Clone)]
+pub struct CompilerError(pub crate::diagnostic::Diagnostic);
+
+impl fmt::Display for CompilerError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[{}] {}", self.0.code, self.0.message)
+    }
+}
+
+impl std::error::Error for CompilerError {}
+
+// ============================================================
+// miette::Diagnostic 实现 —— 提供漂亮的终端错误展示
+// ============================================================
+
+impl miette::Diagnostic for CompilerError {
+    fn code<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> {
+        Some(Box::new(&self.0.code))
+    }
+
+    fn severity(&self) -> Option<miette::Severity> {
+        match self.0.severity {
+            Severity::Error | Severity::Fatal => Some(miette::Severity::Error),
+            Severity::Warning => Some(miette::Severity::Warning),
+            Severity::Note => Some(miette::Severity::Advice),
+        }
+    }
+
+    fn help<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> {
+        // 取第一个修复建议作为 help
+        self.0.suggestions.first().map(|s| {
+            Box::new(s.description.clone()) as Box<dyn fmt::Display>
+        })
+    }
+
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+        let diag = &self.0;
+        if diag.location.line == 0 {
+            return None;
+        }
+        let offset = line_col_to_offset("", diag.location.line, diag.location.column);
+        let len = 1usize; // 默认高亮1个字符
+        let label = diag.message.clone();
+        let span = miette::LabeledSpan::new_with_span(Some(label), miette::SourceSpan::new(offset.into(), len));
+        Some(Box::new(std::iter::once(span)))
+    }
+
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        // 源文件内容由调用方通过 Report::with_source_code() 注入
+        None
+    }
+}
+
+impl From<cayError> for CompilerError {
+    fn from(e: cayError) -> Self {
+        let diagnostic = match &e {
+            cayError::Lexer { file, line, column, message, suggestion } => {
+                let code = if message.contains("未闭合") || message.contains("Unterminated") {
+                    crate::diagnostic::ErrorCodes::LEXER_UNTERMINATED_STRING
+                } else {
+                    crate::diagnostic::ErrorCodes::LEXER_INVALID_CHARACTER
+                };
+                crate::diagnostic::Diagnostic::error(
+                    code,
+                    crate::diagnostic::CompilationPhase::Lexer,
+                    message.clone(),
+                    SourceLocation { file: file.clone(), line: *line, column: *column },
+                ).with_suggestion(crate::diagnostic::FixSuggestion::new(suggestion.clone()))
+            }
+            cayError::Parser { file, line, column, message, suggestion } => {
+                let code = if message.contains("';'") || message.contains("分号") {
+                    crate::diagnostic::ErrorCodes::PARSER_EXPECTED_SEMICOLON
+                } else if message.contains("'{'") || message.contains("'}'") || message.contains("大括号") {
+                    crate::diagnostic::ErrorCodes::PARSER_EXPECTED_BRACE
+                } else if message.contains("'('") || message.contains("')'") || message.contains("括号") {
+                    crate::diagnostic::ErrorCodes::PARSER_EXPECTED_PAREN
+                } else {
+                    crate::diagnostic::ErrorCodes::PARSER_UNEXPECTED_TOKEN
+                };
+                crate::diagnostic::Diagnostic::error(
+                    code,
+                    crate::diagnostic::CompilationPhase::Parser,
+                    message.clone(),
+                    SourceLocation { file: file.clone(), line: *line, column: *column },
+                ).with_suggestion(crate::diagnostic::FixSuggestion::new(suggestion.clone()))
+            }
+            cayError::Semantic { file, line, column, message, suggestion } => {
+                let code = if message.contains("Undefined") || message.contains("未定义") || message.contains("not found") {
+                    crate::diagnostic::ErrorCodes::SEMANTIC_UNDEFINED_IDENTIFIER
+                } else if message.contains("Duplicate") || message.contains("重复") {
+                    crate::diagnostic::ErrorCodes::SEMANTIC_DUPLICATE_DEFINITION
+                } else if message.contains("type") || message.contains("类型") || message.contains("assign") || message.contains("Cannot") {
+                    crate::diagnostic::ErrorCodes::SEMANTIC_TYPE_MISMATCH
+                } else {
+                    crate::diagnostic::ErrorCodes::SEMANTIC_INVALID_OPERATION
+                };
+                crate::diagnostic::Diagnostic::error(
+                    code,
+                    crate::diagnostic::CompilationPhase::Semantic,
+                    message.clone(),
+                    SourceLocation { file: file.clone(), line: *line, column: *column },
+                ).with_suggestion(crate::diagnostic::FixSuggestion::new(suggestion.clone()))
+            }
+            cayError::CodeGen { message, suggestion } => {
+                crate::diagnostic::Diagnostic::error(
+                    crate::diagnostic::ErrorCodes::CODEGEN_UNSUPPORTED_FEATURE,
+                    crate::diagnostic::CompilationPhase::CodeGen,
+                    message.clone(),
+                    SourceLocation::default(),
+                ).with_suggestion(crate::diagnostic::FixSuggestion::new(suggestion.clone()))
+            }
+            cayError::Io(msg) => {
+                crate::diagnostic::Diagnostic::new(
+                    "I0001".to_string(),
+                    crate::diagnostic::Severity::Error,
+                    crate::diagnostic::CompilationPhase::Linker,
+                    msg.clone(),
+                    SourceLocation::default(),
+                )
+            }
+            cayError::Llvm(msg) => {
+                crate::diagnostic::Diagnostic::error(
+                    crate::diagnostic::ErrorCodes::CODEGEN_LLVM_ERROR,
+                    crate::diagnostic::CompilationPhase::CodeGen,
+                    msg.clone(),
+                    SourceLocation::default(),
+                )
+            }
+            cayError::TypeMismatch { file, line, column, message, expected, actual, suggestion } => {
+                crate::diagnostic::Diagnostic::error(
+                    crate::diagnostic::ErrorCodes::SEMANTIC_TYPE_MISMATCH,
+                    crate::diagnostic::CompilationPhase::Semantic,
+                    format!("{}: 期望 '{}', 实际 '{}'", message, expected, actual),
+                    SourceLocation { file: file.clone(), line: *line, column: *column },
+                ).with_suggestion(crate::diagnostic::FixSuggestion::new(suggestion.clone()))
+            }
+            cayError::UndefinedIdentifier { file, line, column, name, suggestion } => {
+                crate::diagnostic::Diagnostic::error(
+                    crate::diagnostic::ErrorCodes::SEMANTIC_UNDEFINED_IDENTIFIER,
+                    crate::diagnostic::CompilationPhase::Semantic,
+                    format!("未定义的标识符: '{}'", name),
+                    SourceLocation { file: file.clone(), line: *line, column: *column },
+                ).with_suggestion(crate::diagnostic::FixSuggestion::new(suggestion.clone()))
+            }
+            cayError::DuplicateDefinition { file, line, column, name, suggestion } => {
+                crate::diagnostic::Diagnostic::error(
+                    crate::diagnostic::ErrorCodes::SEMANTIC_DUPLICATE_DEFINITION,
+                    crate::diagnostic::CompilationPhase::Semantic,
+                    format!("重复定义: '{}'", name),
+                    SourceLocation { file: file.clone(), line: *line, column: *column },
+                ).with_suggestion(crate::diagnostic::FixSuggestion::new(suggestion.clone()))
+            }
+            cayError::Preprocessor { file, line, column, message, suggestion } => {
+                crate::diagnostic::Diagnostic::error(
+                    crate::diagnostic::ErrorCodes::PREPROCESSOR_DEFINE_ERROR,
+                    crate::diagnostic::CompilationPhase::Preprocessor,
+                    message.clone(),
+                    SourceLocation { file: file.clone(), line: *line, column: *column },
+                ).with_suggestion(crate::diagnostic::FixSuggestion::new(suggestion.clone()))
+            }
+            cayError::MultipleErrors { errors } => {
+                // 取第一个错误的 Diagnostic
+                if let Some(first) = errors.first() {
+                    return CompilerError::from(first.clone());
+                }
+                crate::diagnostic::Diagnostic::error(
+                    "E9999",
+                    crate::diagnostic::CompilationPhase::Semantic,
+                    format!("发现 {} 个错误", errors.len()),
+                    SourceLocation::default(),
+                )
+            }
+        };
+        CompilerError(diagnostic)
+    }
+}
+
+// 反向转换：CompilerError → cayError（迁移期间桥接）
+impl From<CompilerError> for cayError {
+    fn from(e: CompilerError) -> Self {
+        let d = &e.0;
+        let message = d.message.clone();
+        let suggestion = d.suggestions.first()
+            .map(|s| s.description.clone())
+            .unwrap_or_else(|| "请检查代码".to_string());
+        let file = d.location.file.clone();
+        
+        match d.phase {
+            CompilationPhase::Lexer => cayError::Lexer {
+                file,
+                line: d.location.line,
+                column: d.location.column,
+                message,
+                suggestion,
+            },
+            CompilationPhase::Parser => cayError::Parser {
+                file,
+                line: d.location.line,
+                column: d.location.column,
+                message,
+                suggestion,
+            },
+            CompilationPhase::Semantic => cayError::Semantic {
+                file,
+                line: d.location.line,
+                column: d.location.column,
+                message,
+                suggestion,
+            },
+            CompilationPhase::Preprocessor => cayError::Preprocessor {
+                file,
+                line: d.location.line,
+                column: d.location.column,
+                message,
+                suggestion,
+            },
+            _ => cayError::CodeGen {
+                message,
+                suggestion,
+            },
+        }
+    }
+}
+
+/// 新的统一编译结果类型
+pub type CompilerResult<T> = Result<T, CompilerError>;
+
+/// 为 DiagnosticCollector 添加便捷方法：收集 cayError
+impl crate::diagnostic::DiagnosticCollector {
+    /// 将一个 cayError 转换为 Diagnostic 并添加到收集器
+    pub fn add_cay_error(&mut self, error: &cayError) {
+        let compiler_err = CompilerError::from(error.clone());
+        self.add(compiler_err.0);
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SourceLocation {
@@ -133,27 +380,34 @@ impl fmt::Display for SourceLocation {
     }
 }
 
-/// 完整的源位置信息（包含文件路径）
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct FullSourceLocation {
-    pub file: Option<String>,
-    pub line: usize,
-    pub column: usize,
+// FullSourceLocation 已合并到 SourceLocation，保留类型别名以便迁移
+pub type FullSourceLocation = SourceLocation;
+
+// ============================================================
+// 新错误系统便捷构造函数（使用错误代码，Phase 2 迁移目标）
+// ============================================================
+
+use crate::diagnostic::{Diagnostic as CavvyDiagnostic, CompilationPhase, Severity, ErrorCodes, FixSuggestion};
+
+/// 创建一个 CompilerError（错误级别）
+pub fn error(code: &str, phase: CompilationPhase, message: impl Into<String>, location: SourceLocation) -> CompilerError {
+    CompilerError(CavvyDiagnostic::error(code, phase, message, location))
 }
 
-impl FullSourceLocation {
-    pub fn new(file: Option<String>, line: usize, column: usize) -> Self {
-        Self { file, line, column }
-    }
-    
-    pub fn from_token(token: &crate::lexer::TokenWithLocation) -> Self {
-        Self {
-            file: token.source_file.clone(),
-            line: token.source_line.unwrap_or(token.loc.line),
-            column: token.loc.column,
-        }
-    }
+/// 创建一个 CompilerError（警告级别）
+pub fn warning(code: &str, phase: CompilationPhase, message: impl Into<String>, location: SourceLocation) -> CompilerError {
+    CompilerError(CavvyDiagnostic::warning(code, phase, message, location))
 }
+
+/// 创建一个 CompilerError 并附带修复建议
+pub fn error_with_suggestion(code: &str, phase: CompilationPhase, message: impl Into<String>, location: SourceLocation, suggestion: impl Into<String>) -> CompilerError {
+    CompilerError(CavvyDiagnostic::error(code, phase, message, location).with_suggestion(crate::diagnostic::FixSuggestion::new(suggestion)))
+}
+
+// ============================================================
+// 旧错误构造函数（现在内部使用 CompilerError + 错误代码）
+// 迁移完成后，这些函数将逐步替换为直接使用 error()/warning()
+// ============================================================
 
 // 词法错误
 pub fn lexer_error(line: usize, column: usize, message: impl Into<String>) -> cayError {
@@ -162,14 +416,12 @@ pub fn lexer_error(line: usize, column: usize, message: impl Into<String>) -> ca
 
 pub fn lexer_error_with_file(file: Option<String>, line: usize, column: usize, message: impl Into<String>) -> cayError {
     let msg = message.into();
-    let suggestion = get_lexer_suggestion(&msg);
-    cayError::Lexer {
-        file,
-        line,
-        column,
-        message: msg,
-        suggestion,
-    }
+    let code = if msg.contains("未闭合") { ErrorCodes::LEXER_UNTERMINATED_STRING }
+              else { ErrorCodes::LEXER_INVALID_CHARACTER };
+    CompilerError(
+        CavvyDiagnostic::error(code, CompilationPhase::Lexer, msg,
+            SourceLocation::new(file, line, column))
+    ).into()
 }
 
 // 语法错误
@@ -179,14 +431,14 @@ pub fn parser_error(line: usize, column: usize, message: impl Into<String>) -> c
 
 pub fn parser_error_with_file(file: Option<String>, line: usize, column: usize, message: impl Into<String>) -> cayError {
     let msg = message.into();
-    let suggestion = get_parser_suggestion(&msg);
-    cayError::Parser {
-        file,
-        line,
-        column,
-        message: msg,
-        suggestion,
-    }
+    let code = if msg.contains("';'") { ErrorCodes::PARSER_EXPECTED_SEMICOLON }
+              else if msg.contains("'{'") || msg.contains("'}'") { ErrorCodes::PARSER_EXPECTED_BRACE }
+              else if msg.contains("'('") || msg.contains("')'") { ErrorCodes::PARSER_EXPECTED_PAREN }
+              else { ErrorCodes::PARSER_UNEXPECTED_TOKEN };
+    CompilerError(
+        CavvyDiagnostic::error(code, CompilationPhase::Parser, msg,
+            SourceLocation::new(file, line, column))
+    ).into()
 }
 
 // 语义错误
@@ -196,24 +448,25 @@ pub fn semantic_error(line: usize, column: usize, message: impl Into<String>) ->
 
 pub fn semantic_error_with_file(file: Option<String>, line: usize, column: usize, message: impl Into<String>) -> cayError {
     let msg = message.into();
-    let suggestion = get_semantic_suggestion(&msg);
-    cayError::Semantic {
-        file,
-        line,
-        column,
-        message: msg,
-        suggestion,
-    }
+    let code = if msg.contains("Undefined") || msg.contains("未定义") { ErrorCodes::SEMANTIC_UNDEFINED_IDENTIFIER }
+              else if msg.contains("Duplicate") || msg.contains("重复") { ErrorCodes::SEMANTIC_DUPLICATE_DEFINITION }
+              else if msg.contains("type") || msg.contains("类型") { ErrorCodes::SEMANTIC_TYPE_MISMATCH }
+              else { ErrorCodes::SEMANTIC_INVALID_OPERATION };
+    CompilerError(
+        CavvyDiagnostic::error(code, CompilationPhase::Semantic, msg,
+            SourceLocation::new(file, line, column))
+    ).into()
 }
 
 // 代码生成错误
 pub fn codegen_error(message: impl Into<String>) -> cayError {
     let msg = message.into();
-    let suggestion = get_codegen_suggestion(&msg);
-    cayError::CodeGen {
-        message: msg,
-        suggestion,
-    }
+    let code = if msg.contains("Unsupported") { ErrorCodes::CODEGEN_UNSUPPORTED_FEATURE }
+              else if msg.contains("not found") { ErrorCodes::CODEGEN_SYMBOL_NOT_FOUND }
+              else { ErrorCodes::CODEGEN_INVALID_OPERATION };
+    CompilerError(
+        CavvyDiagnostic::error(code, CompilationPhase::CodeGen, msg, SourceLocation::default())
+    ).into()
 }
 
 // 类型不匹配错误
@@ -235,16 +488,16 @@ pub fn type_mismatch_error_with_file(
 ) -> cayError {
     let expected_str = expected.into();
     let actual_str = actual.into();
-    let suggestion = format!("请确保表达式返回 '{}' 类型的值", expected_str);
-    cayError::TypeMismatch {
-        file,
-        line,
-        column,
-        message: format!("类型不匹配: 期望 '{}', 实际 '{}'", expected_str, actual_str),
-        expected: expected_str,
-        actual: actual_str,
-        suggestion,
-    }
+    CompilerError(
+        CavvyDiagnostic::error(
+            ErrorCodes::SEMANTIC_TYPE_MISMATCH,
+            CompilationPhase::Semantic,
+            format!("类型不匹配: 期望 '{}', 实际 '{}'", expected_str, actual_str),
+            SourceLocation::new(file, line, column),
+        ).with_suggestion(FixSuggestion::new(
+            format!("请确保表达式返回 '{}' 类型的值", expected_str)
+        ))
+    ).into()
 }
 
 // 未定义标识符错误
@@ -263,14 +516,16 @@ pub fn undefined_identifier_error_with_file(
     name: impl Into<String>,
 ) -> cayError {
     let name_str = name.into();
-    let suggestion = format!("请检查 '{}' 的拼写，或在使用前声明该变量/函数", name_str);
-    cayError::UndefinedIdentifier {
-        file,
-        line,
-        column,
-        name: name_str,
-        suggestion,
-    }
+    CompilerError(
+        CavvyDiagnostic::error(
+            ErrorCodes::SEMANTIC_UNDEFINED_IDENTIFIER,
+            CompilationPhase::Semantic,
+            format!("未定义的标识符: '{}'", name_str),
+            SourceLocation::new(file, line, column),
+        ).with_suggestion(FixSuggestion::new(
+            format!("请检查 '{}' 的拼写，或在使用前声明该变量/函数", name_str)
+        ))
+    ).into()
 }
 
 // 重复定义错误
@@ -289,80 +544,16 @@ pub fn duplicate_definition_error_with_file(
     name: impl Into<String>,
 ) -> cayError {
     let name_str = name.into();
-    let suggestion = format!("'{}' 已被定义，请使用不同的名称", name_str);
-    cayError::DuplicateDefinition {
-        file,
-        line,
-        column,
-        name: name_str,
-        suggestion,
-    }
-}
-
-// 根据错误信息提供词法分析建议
-fn get_lexer_suggestion(message: &str) -> String {
-    if message.contains("Unexpected character") {
-        "请检查是否有非法字符，cay 仅支持标准 ASCII 字符".to_string()
-    } else if message.contains("Unterminated string") {
-        "字符串字面量必须使用双引号闭合".to_string()
-    } else if message.contains("Invalid escape") {
-        "转义字符必须是以下之一: \\n \\t \\\" \\\\'. 不支持其他转义序列".to_string()
-    } else {
-        "请检查代码语法".to_string()
-    }
-}
-
-// 根据错误信息提供语法分析建议
-fn get_parser_suggestion(message: &str) -> String {
-    if message.contains("Expected ';'") {
-        "语句末尾必须添加分号 (;)".to_string()
-    } else if message.contains("Expected '{'") {
-        "代码块必须使用大括号 {} 包裹".to_string()
-    } else if message.contains("Expected '('") {
-        "条件表达式必须使用括号 () 包裹".to_string()
-    } else if message.contains("Unexpected token") {
-        "请检查语法结构，可能是关键字拼写错误或缺少必要的符号".to_string()
-    } else if message.contains("Expected identifier") {
-        "此处需要一个标识符（变量名或函数名）".to_string()
-    } else if message.contains("Expected type") {
-        "变量声明需要指定类型，如: int, long, String, void".to_string()
-    } else {
-        "请检查代码语法结构".to_string()
-    }
-}
-
-// 根据错误信息提供语义分析建议
-fn get_semantic_suggestion(message: &str) -> String {
-    if message.contains("Type mismatch") {
-        "类型不匹配。请确保赋值或表达式中的类型一致".to_string()
-    } else if message.contains("Undefined variable") {
-        "变量未定义。请在使用前声明变量".to_string()
-    } else if message.contains("Undefined function") {
-        "函数未定义。请检查函数名拼写或声明函数".to_string()
-    } else if message.contains("Duplicate") {
-        "重复定义。请使用不同的名称".to_string()
-    } else if message.contains("main method") {
-        "程序必须包含一个 public static void main() 方法作为入口".to_string()
-    } else if message.contains("return type") {
-        "返回值类型与函数声明不匹配".to_string()
-    } else if message.contains("cannot assign") {
-        "赋值错误。请确保左侧是可赋值的变量".to_string()
-    } else if message.contains("Operator") {
-        "运算符不支持这些类型的操作数".to_string()
-    } else {
-        "请检查语义正确性".to_string()
-    }
-}
-
-// 根据错误信息提供代码生成建议
-fn get_codegen_suggestion(message: &str) -> String {
-    if message.contains("Unsupported") {
-        "此功能暂不支持。请查看文档了解支持的特性".to_string()
-    } else if message.contains("main function") {
-        "请确保定义了 public static void main() 方法".to_string()
-    } else {
-        "代码生成失败，请检查代码结构".to_string()
-    }
+    CompilerError(
+        CavvyDiagnostic::error(
+            ErrorCodes::SEMANTIC_DUPLICATE_DEFINITION,
+            CompilationPhase::Semantic,
+            format!("重复定义: '{}'", name_str),
+            SourceLocation::new(file, line, column),
+        ).with_suggestion(FixSuggestion::new(
+            format!("'{}' 已被定义，请使用不同的名称", name_str)
+        ))
+    ).into()
 }
 
 /// 将行号列号转换为字节偏移量
@@ -418,22 +609,24 @@ fn get_error_code(error: &cayError) -> &'static str {
         cayError::Io(_) => "cavvy::io_error",
         cayError::Llvm(_) => "cavvy::llvm_error",
         cayError::Preprocessor { .. } => "cavvy::preprocessor_error",
+        cayError::MultipleErrors { .. } => "cavvy::multiple_errors",
     }
 }
 
 /// 获取错误消息（不含建议）
 pub fn get_error_message(error: &cayError) -> String {
     match error {
-        cayError::Lexer { message, .. } => format!("词法错误: {}", message),
-        cayError::Parser { message, .. } => format!("语法错误: {}", message),
-        cayError::Semantic { message, .. } => format!("语义错误: {}", message),
-        cayError::TypeMismatch { message, .. } => format!("类型不匹配: {}", message),
-        cayError::UndefinedIdentifier { name, .. } => format!("未定义标识符: '{}'", name),
-        cayError::DuplicateDefinition { name, .. } => format!("重复定义: '{}'", name),
-        cayError::CodeGen { message, .. } => format!("代码生成错误: {}", message),
-        cayError::Io(msg) => format!("IO错误: {}", msg),
-        cayError::Llvm(msg) => format!("LLVM错误: {}", msg),
-        cayError::Preprocessor { message, .. } => format!("预处理器错误: {}", message),
+        cayError::Lexer { message, .. } => message.clone(),
+        cayError::Parser { message, .. } => message.clone(),
+        cayError::Semantic { message, .. } => message.clone(),
+        cayError::TypeMismatch { message, .. } => message.clone(),
+        cayError::UndefinedIdentifier { name, .. } => format!("未定义的标识符 '{}'", name),
+        cayError::DuplicateDefinition { name, .. } => format!("重复定义 '{}'", name),
+        cayError::CodeGen { message, .. } => message.clone(),
+        cayError::Io(msg) => msg.clone(),
+        cayError::Llvm(msg) => msg.clone(),
+        cayError::Preprocessor { message, .. } => message.clone(),
+        cayError::MultipleErrors { errors } => format!("发现 {} 个错误", errors.len()),
     }
 }
 
@@ -450,6 +643,7 @@ pub fn get_error_help(error: &cayError) -> Option<String> {
         cayError::Io(_) => None,
         cayError::Llvm(_) => None,
         cayError::Preprocessor { suggestion, .. } => Some(suggestion.clone()),
+        cayError::MultipleErrors { .. } => Some("请逐个修复上述错误".to_string()),
     }
 }
 
@@ -463,12 +657,13 @@ pub fn get_error_location(error: &cayError) -> Option<(usize, usize)> {
         cayError::UndefinedIdentifier { line, column, .. } => Some((*line, *column)),
         cayError::DuplicateDefinition { line, column, .. } => Some((*line, *column)),
         cayError::Preprocessor { line, column, .. } => Some((*line, *column)),
+        cayError::MultipleErrors { .. } => None,
         _ => None,
     }
 }
 
 /// 获取错误文件路径
-fn get_error_file(error: &cayError) -> Option<String> {
+pub fn get_error_file(error: &cayError) -> Option<String> {
     match error {
         cayError::Lexer { file, .. } => file.clone(),
         cayError::Parser { file, .. } => file.clone(),
@@ -477,6 +672,7 @@ fn get_error_file(error: &cayError) -> Option<String> {
         cayError::UndefinedIdentifier { file, .. } => file.clone(),
         cayError::DuplicateDefinition { file, .. } => file.clone(),
         cayError::Preprocessor { file, .. } => file.clone(),
+        cayError::MultipleErrors { .. } => None,
         _ => None,
     }
 }
@@ -495,101 +691,73 @@ fn get_error_file(error: &cayError) -> Option<String> {
 /// print_error_with_context(&error, "let x = @", "test.cay");
 /// ```
 pub fn print_error_with_context(error: &cayError, source: &str, filename: &str) {
-    // 尝试获取错误中的文件路径
-    let error_file = get_error_file(error);
+    use crate::diagnostic::DiagnosticCollector;
     
-    // 如果错误中有文件路径且与传入的不同，尝试读取该文件
-    let (source_to_use, filename_to_use) = if let Some(ref error_path) = error_file {
-        if error_path != filename {
-            // 尝试读取错误对应的源文件
-            if let Ok(file_content) = std::fs::read_to_string(error_path) {
-                (file_content, error_path.as_str())
-            } else {
-                (source.to_string(), error_path.as_str())
-            }
-        } else {
-            (source.to_string(), filename)
-        }
-    } else {
-        (source.to_string(), filename)
-    };
+    let mut collector = DiagnosticCollector::new();
     
-    // 尝试获取错误位置
-    if let Some((line, column)) = get_error_location(error) {
-        if line > 0 {
-            print_error_with_location(error, &source_to_use, filename_to_use, line, column);
-            return;
-        }
-    }
-    
-    // 没有位置信息的错误
-    print_error_without_location(error);
-}
-
-/// 打印带有位置信息的错误
-fn print_error_with_location(
-    error: &cayError,
-    source: &str,
-    filename: &str,
-    line: usize,
-    column: usize,
-) {
-    let code = get_error_code(error);
-    let message = get_error_message(error);
-    let help = get_error_help(error);
-    
-    // 使用 miette 风格格式
-    eprintln!("\n  × {}: {}", code, message);
-    eprintln!("   ╭─[{}:{}:{}]", filename, line, column);
-    
-    // 打印源代码上下文（前后3行）
-    let lines: Vec<&str> = source.lines().collect();
-    let start_line = line.saturating_sub(3).max(1);
-    let end_line = (line + 2).min(lines.len());
-    
-    for i in start_line..=end_line {
-        if i <= lines.len() {
-            let line_content = lines[i - 1];
-            eprintln!("{:3} │ {}", i, line_content);
-            
-            if i == line {
-                // 打印错误指示器
-                let prefix_len = column.saturating_sub(1);
-                let span_len = get_highlight_length(error);
-                let spaces = " ".repeat(prefix_len);
-                let arrows = "─".repeat(span_len.max(1));
-                eprintln!("    │ {}{} {}", spaces, arrows, "错误在这里");
+    // 将所有错误收集到一个 DiagnosticCollector
+    match error {
+        cayError::MultipleErrors { errors } => {
+            for err in errors {
+                collector.add(CompilerError::from(err.clone()).0);
             }
         }
-    }
-    
-    eprintln!("   ╰────");
-    
-    // 打印帮助信息
-    if let Some(help_text) = help {
-        if !help_text.is_empty() {
-            eprintln!("  help: {}", help_text);
+        single => {
+            collector.add(CompilerError::from(single.clone()).0);
         }
     }
     
-    eprintln!();
+    // 对于多文件场景，每个诊断可能引用不同的源文件。
+    // print_diagnostics_per_file 会按文件分组展示。
+    print_diagnostics_per_file(&collector, source, filename);
 }
 
-/// 打印没有位置信息的错误
-fn print_error_without_location(error: &cayError) {
-    let code = get_error_code(error);
-    let message = get_error_message(error);
-    let help = get_error_help(error);
+/// 按文件分组打印诊断（支持多文件 include 场景）
+fn print_diagnostics_per_file(collector: &crate::diagnostic::DiagnosticCollector, default_source: &str, default_filename: &str) {
+    use std::collections::HashMap;
+    use crate::diagnostic::print_diagnostics;
     
-    eprintln!("\n  × {}: {}", code, message);
-    
-    if let Some(help_text) = help {
-        if !help_text.is_empty() {
-            eprintln!("  help: {}", help_text);
-        }
+    let diagnostics = collector.diagnostics();
+    if diagnostics.is_empty() {
+        return;
     }
     
-    eprintln!();
+    // 按文件分组
+    let mut by_file: HashMap<String, (String, Vec<&crate::diagnostic::Diagnostic>)> = HashMap::new();
+    let mut no_file_diags: Vec<&crate::diagnostic::Diagnostic> = Vec::new();
+    
+    for diag in diagnostics {
+        if let Some(ref file) = diag.location.file {
+            if !file.is_empty() {
+                let entry = by_file.entry(file.clone()).or_insert_with(|| {
+                    // 尝试读取该文件内容
+                    let content = std::fs::read_to_string(file).unwrap_or_else(|_| default_source.to_string());
+                    (content, Vec::new())
+                });
+                entry.1.push(diag);
+                continue;
+            }
+        }
+        no_file_diags.push(diag);
+    }
+    
+    // 打印有明确文件的诊断
+    for (file, (content, diags)) in &by_file {
+        let mut sub_collector = crate::diagnostic::DiagnosticCollector::new();
+        for d in diags {
+            sub_collector.add((*d).clone());
+        }
+        print_diagnostics(&sub_collector, content, file);
+    }
+    
+    // 打印无文件的诊断（使用默认源文件）
+    if !no_file_diags.is_empty() {
+        let mut sub_collector = crate::diagnostic::DiagnosticCollector::new();
+        for d in no_file_diags {
+            sub_collector.add(d.clone());
+        }
+        print_diagnostics(&sub_collector, default_source, default_filename);
+    }
 }
 
 /// 获取高亮长度
@@ -711,4 +879,193 @@ pub fn print_warning(message: &str) {
 pub fn print_warning_with_location(message: &str, filename: &str, line: usize, column: usize) {
     eprintln!("  ⚠ cavvy::warning: {}", message);
     eprintln!("     位置: {}:{}:{}", filename, line, column);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::diagnostic::{Diagnostic, DiagnosticCollector, ErrorCodes, CompilationPhase, Severity};
+
+    // ============================================================
+    // CompilerError 创建测试
+    // ============================================================
+
+    #[test]
+    fn test_compiler_error_creation() {
+        let loc = SourceLocation::new(Some("test.cay".into()), 10, 5);
+        let err = error(ErrorCodes::SEMANTIC_TYPE_MISMATCH, CompilationPhase::Semantic, "类型不匹配", loc);
+        assert_eq!(err.0.code, "E4003");
+        assert_eq!(err.0.severity, Severity::Error);
+        assert_eq!(err.0.message, "类型不匹配");
+        assert_eq!(err.0.location.line, 10);
+        assert_eq!(err.0.location.column, 5);
+    }
+
+    #[test]
+    fn test_warning_creation() {
+        let loc = SourceLocation::new(None, 1, 1);
+        let warn = warning("W4001", CompilationPhase::Semantic, "未使用的变量", loc);
+        assert_eq!(warn.0.severity, Severity::Warning);
+        assert_eq!(warn.0.code, "W4001");
+    }
+
+    #[test]
+    fn test_error_with_suggestion() {
+        let loc = SourceLocation::new(None, 3, 8);
+        let err = error_with_suggestion(
+            ErrorCodes::SEMANTIC_TYPE_MISMATCH,
+            CompilationPhase::Semantic,
+            "类型不匹配: 期望 int, 实际 String",
+            loc,
+            "请使用 Integer.parseInt() 转换"
+        );
+        assert_eq!(err.0.suggestions.len(), 1);
+        assert_eq!(err.0.suggestions[0].description, "请使用 Integer.parseInt() 转换");
+    }
+
+    // ============================================================
+    // 双向转换测试
+    // ============================================================
+
+    #[test]
+    fn test_cay_error_to_compiler_error() {
+        let cay = lexer_error(1, 3, "Unexpected character: '@'");
+        let compiler: CompilerError = cay.into();
+        assert!(compiler.0.code.starts_with('E'));
+        assert_eq!(compiler.0.phase, CompilationPhase::Lexer);
+        assert!(compiler.0.message.contains("Unexpected character"));
+    }
+
+    #[test]
+    fn test_compiler_error_to_cay_error() {
+        let loc = SourceLocation::new(None, 5, 2);
+        let compiler = error(ErrorCodes::SEMANTIC_TYPE_MISMATCH, CompilationPhase::Semantic, "类型错误", loc);
+        let cay: cayError = compiler.into();
+        match cay {
+            cayError::Semantic { line, column, .. } => {
+                assert_eq!(line, 5);
+                assert_eq!(column, 2);
+            }
+            _ => panic!("Expected Semantic error"),
+        }
+    }
+
+    #[test]
+    fn test_roundtrip_cay_compiler_cay() {
+        let original = lexer_error(2, 7, "未闭合的字符串字面量");
+        let compiler: CompilerError = original.clone().into();
+        let roundtrip: cayError = compiler.into();
+        // 验证关键信息保留
+        let msg = format!("{}", roundtrip);
+        assert!(msg.contains("未闭合") || msg.contains("2"));
+    }
+
+    // ============================================================
+    // 旧构造函数兼容性测试
+    // ============================================================
+
+    #[test]
+    fn test_codegen_error_uses_error_code() {
+        let err = codegen_error("Unsupported feature: lambda in static context");
+        let compiler: CompilerError = err.into();
+        assert_eq!(compiler.0.code, "E5001"); // CODEGEN_UNSUPPORTED_FEATURE
+    }
+
+    #[test]
+    fn test_semantic_error_uses_error_code() {
+        let err = semantic_error(10, 5, "Undefined variable 'x'");
+        let compiler: CompilerError = err.into();
+        assert_eq!(compiler.0.code, "E4001"); // SEMANTIC_UNDEFINED_IDENTIFIER
+    }
+
+    #[test]
+    fn test_type_mismatch_error_uses_error_code() {
+        let err = type_mismatch_error(3, 1, "int", "String");
+        let compiler: CompilerError = err.into();
+        assert_eq!(compiler.0.code, "E4003"); // SEMANTIC_TYPE_MISMATCH
+    }
+
+    #[test]
+    fn test_parser_error_uses_error_code() {
+        let err = parser_error(7, 1, "Expected ';' after expression");
+        let compiler: CompilerError = err.into();
+        assert_eq!(compiler.0.code, "E3002"); // PARSER_EXPECTED_SEMICOLON
+    }
+
+    #[test]
+    fn test_undefined_identifier_error_uses_error_code() {
+        let err = undefined_identifier_error(4, 2, "foo");
+        let compiler: CompilerError = err.into();
+        assert_eq!(compiler.0.code, "E4001"); // SEMANTIC_UNDEFINED_IDENTIFIER
+    }
+
+    #[test]
+    fn test_duplicate_definition_error_uses_error_code() {
+        let err = duplicate_definition_error(6, 3, "MyClass");
+        let compiler: CompilerError = err.into();
+        assert_eq!(compiler.0.code, "E4002"); // SEMANTIC_DUPLICATE_DEFINITION
+    }
+
+    // ============================================================
+    // SourceLocation 测试
+    // ============================================================
+
+    #[test]
+    fn test_source_location_default() {
+        let loc = SourceLocation::default();
+        assert_eq!(loc.line, 1);
+        assert_eq!(loc.column, 1);
+        assert_eq!(loc.file, None);
+    }
+
+    #[test]
+    fn test_source_location_display() {
+        let loc = SourceLocation::new(Some("main.cay".into()), 42, 7);
+        let display = format!("{}", loc);
+        assert!(display.contains("main.cay"));
+        assert!(display.contains("42"));
+        assert!(display.contains("7"));
+    }
+
+    // ============================================================
+    // DiagnosticCollector 集成测试
+    // ============================================================
+
+    #[test]
+    fn test_diagnostic_collector_add_cay_error() {
+        let mut collector = DiagnosticCollector::new();
+        let cay = lexer_error(1, 1, "Unexpected character");
+        collector.add_cay_error(&cay);
+        assert!(collector.has_errors());
+        assert_eq!(collector.error_count(), 1);
+    }
+
+    #[test]
+    fn test_diagnostic_collector_with_warnings() {
+        let mut collector = DiagnosticCollector::new();
+        
+        // 添加警告
+        let loc = SourceLocation::default();
+        let warning = warning("W4001", CompilationPhase::Semantic, "未使用的变量 'x'", loc);
+        collector.add(warning.0);
+        
+        assert!(!collector.has_errors());
+        assert_eq!(collector.warning_count(), 1);
+        assert_eq!(collector.error_count(), 0);
+    }
+
+    #[test]
+    fn test_diagnostic_collector_multiple_errors() {
+        let mut collector = DiagnosticCollector::new();
+        let loc = SourceLocation::default();
+        
+        collector.add(Diagnostic::error("E4001", CompilationPhase::Semantic, "err1", loc.clone()));
+        collector.add(Diagnostic::error("E4002", CompilationPhase::Semantic, "err2", loc.clone()));
+        collector.add(Diagnostic::warning("W4001", CompilationPhase::Semantic, "warn1", loc));
+        
+        assert!(collector.has_errors());
+        assert_eq!(collector.error_count(), 2);
+        assert_eq!(collector.warning_count(), 1);
+        assert_eq!(collector.diagnostics().len(), 3);
+    }
 }

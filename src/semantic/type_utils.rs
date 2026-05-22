@@ -245,7 +245,7 @@ impl SemanticAnalyzer {
 
             // 检查固定参数
             for i in 0..last_idx {
-                let arg_type = self.infer_expr_type(&args[i]).map_err(|e| e.to_string())?;
+                let arg_type = self.infer_expr_type_collect_errors(&args[i]);
                 if !self.types_compatible(&arg_type, &params[i].param_type) {
                     return Err(format!("Argument {} type mismatch: expected {}, got {}",
                         i + 1, params[i].param_type, arg_type));
@@ -262,7 +262,7 @@ impl SemanticAnalyzer {
 
             // 如果只有一个参数且类型匹配数组类型，直接接受（传递数组给可变参数）
             if args.len() == last_idx + 1 {
-                let arg_type = self.infer_expr_type(&args[last_idx]).map_err(|e| e.to_string())?;
+                let arg_type = self.infer_expr_type_collect_errors(&args[last_idx]);
                 if self.types_compatible(&arg_type, vararg_param_type) {
                     // 参数类型与可变参数的数组类型匹配，直接接受
                     return Ok(());
@@ -271,7 +271,7 @@ impl SemanticAnalyzer {
 
             // 否则，按元素类型检查每个参数
             for i in last_idx..args.len() {
-                let arg_type = self.infer_expr_type(&args[i]).map_err(|e| e.to_string())?;
+                let arg_type = self.infer_expr_type_collect_errors(&args[i]);
                 if !self.types_compatible(&arg_type, vararg_element_type) {
                     return Err(format!("Varargs argument {} type mismatch: expected {}, got {}",
                         i + 1, vararg_element_type, arg_type));
@@ -284,7 +284,7 @@ impl SemanticAnalyzer {
             }
 
             for (i, (arg, param)) in args.iter().zip(params.iter()).enumerate() {
-                let arg_type = self.infer_expr_type(arg).map_err(|e| e.to_string())?;
+                let arg_type = self.infer_expr_type_collect_errors(arg);
                 if !self.types_compatible(&arg_type, &param.param_type) {
                     return Err(format!("Argument {} type mismatch: expected {}, got {}",
                         i + 1, param.param_type, arg_type));
@@ -310,7 +310,7 @@ impl SemanticAnalyzer {
                 }
                 // 检查参数类型
                 for (i, arg) in args.iter().enumerate() {
-                    let arg_type = self.infer_expr_type(arg)?;
+                    let arg_type = self.infer_expr_type_collect_errors(arg);
                     if !arg_type.is_integer() {
                         return Err(self.report_error(line, column, format!("Argument {} of substring() must be integer, got {}", i + 1, arg_type)));
                     }
@@ -321,7 +321,7 @@ impl SemanticAnalyzer {
                 if args.len() != 1 {
                     return Err(self.report_error(line, column, "String.indexOf() takes 1 argument".to_string()));
                 }
-                let arg_type = self.infer_expr_type(&args[0])?;
+                let arg_type = self.infer_expr_type_collect_errors(&args[0]);
                 if arg_type != Type::String {
                     return Err(self.report_error(line, column, format!("Argument of indexOf() must be string, got {}", arg_type)));
                 }
@@ -331,7 +331,7 @@ impl SemanticAnalyzer {
                 if args.len() != 1 {
                     return Err(self.report_error(line, column, "String.lastIndexOf() takes 1 argument".to_string()));
                 }
-                let arg_type = self.infer_expr_type(&args[0])?;
+                let arg_type = self.infer_expr_type_collect_errors(&args[0]);
                 if arg_type != Type::String {
                     return Err(self.report_error(line, column, format!("Argument of lastIndexOf() must be string, got {}", arg_type)));
                 }
@@ -341,7 +341,7 @@ impl SemanticAnalyzer {
                 if args.len() != 1 {
                     return Err(self.report_error(line, column, "String.charAt() takes 1 argument".to_string()));
                 }
-                let arg_type = self.infer_expr_type(&args[0])?;
+                let arg_type = self.infer_expr_type_collect_errors(&args[0]);
                 if !arg_type.is_integer() {
                     return Err(self.report_error(line, column, format!("Argument of charAt() must be integer, got {}", arg_type)));
                 }
@@ -352,7 +352,7 @@ impl SemanticAnalyzer {
                     return Err(self.report_error(line, column, "String.replace() takes 2 arguments".to_string()));
                 }
                 for (i, arg) in args.iter().enumerate() {
-                    let arg_type = self.infer_expr_type(arg)?;
+                    let arg_type = self.infer_expr_type_collect_errors(arg);
                     if arg_type != Type::String {
                         return Err(self.report_error(line, column, format!("Argument {} of replace() must be string, got {}", i + 1, arg_type)));
                     }
@@ -369,7 +369,7 @@ impl SemanticAnalyzer {
                 if args.len() != 1 {
                     return Err(self.report_error(line, column, "String.equals() takes 1 argument".to_string()));
                 }
-                let arg_type = self.infer_expr_type(&args[0])?;
+                let arg_type = self.infer_expr_type_collect_errors(&args[0]);
                 if arg_type != Type::String {
                     return Err(self.report_error(line, column, format!("Argument of equals() must be string, got {}", arg_type)));
                 }
@@ -385,7 +385,7 @@ impl SemanticAnalyzer {
                 if args.len() != 1 {
                     return Err(self.report_error(line, column, "String.startsWith() takes 1 argument".to_string()));
                 }
-                let arg_type = self.infer_expr_type(&args[0])?;
+                let arg_type = self.infer_expr_type_collect_errors(&args[0]);
                 if arg_type != Type::String {
                     return Err(self.report_error(line, column, format!("Argument of startsWith() must be string, got {}", arg_type)));
                 }
@@ -395,7 +395,7 @@ impl SemanticAnalyzer {
                 if args.len() != 1 {
                     return Err(self.report_error(line, column, "String.endsWith() takes 1 argument".to_string()));
                 }
-                let arg_type = self.infer_expr_type(&args[0])?;
+                let arg_type = self.infer_expr_type_collect_errors(&args[0]);
                 if arg_type != Type::String {
                     return Err(self.report_error(line, column, format!("Argument of endsWith() must be string, got {}", arg_type)));
                 }

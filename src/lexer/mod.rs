@@ -1,5 +1,5 @@
 use logos::Logos;
-use crate::error::{cayResult, lexer_error};
+use crate::error::{cayResult};
 use crate::error::SourceLocation;
 use crate::diagnostic::{Diagnostic, DiagnosticCollector, ErrorCodes, CompilationPhase, SourceSpan, FixSuggestion};
 
@@ -507,7 +507,7 @@ impl<'a> Lexer<'a> {
     /// 创建详细的词法错误诊断
     fn create_lexer_diagnostic(&self, error_type: LexerErrorType, span: std::ops::Range<usize>) -> Diagnostic {
         let error_char = &self.source[span.clone()];
-        let location = crate::diagnostic::SourceLocation::new(self.line, self.column);
+        let location = crate::diagnostic::SourceLocation::new(self.current_source_file.clone(), self.line, self.column);
 
         match error_type {
             LexerErrorType::InvalidCharacter => {
@@ -586,10 +586,13 @@ impl<'a> Lexer<'a> {
                     let span = self.inner.span();
                     token_count += 1;
                     
+                    // 从字节偏移量计算真实列号（计入被logos跳过的空白字符）
+                    let column = compute_column(self.source, span.start);
+                    
                     let loc = SourceLocation {
                         file: None,  // 将由source_map填充
                         line: self.line,
-                        column: self.column,
+                        column,
                     };
 
                     // 处理多行注释 - 更新行号但不保留token
@@ -674,24 +677,18 @@ impl<'a> Lexer<'a> {
                         // 跳过这个字符继续
                         self.column += span.end - span.start;
                     } else {
-                        // 立即返回错误（保持向后兼容）
-                        if is_unterminated_string {
-                            return Err(lexer_error(
-                                error_line,
-                                self.column,
-                                "未闭合的字符串字面量".to_string()
-                            ));
-                        }
-                        let error_msg = if let Some(ref file) = error_file {
-                            format!("Unexpected character: '{}' in {}:{}", error_char, file, error_line)
+                        // 未启用错误收集模式时，也尝试收集诊断信息后再继续
+                        let error_type = if is_unterminated_string {
+                            LexerErrorType::UnterminatedString
                         } else {
-                            format!("Unexpected character: '{}' at line {}", error_char, error_line)
+                            LexerErrorType::InvalidCharacter
                         };
-                        return Err(lexer_error(
-                            error_line,
-                            self.column,
-                            error_msg
-                        ));
+                        let diagnostic = self.create_lexer_diagnostic(
+                            error_type,
+                            span.clone()
+                        );
+                        self.diagnostics.add(diagnostic);
+                        self.column += span.end - span.start;
                     }
                 }
             }
@@ -699,11 +696,18 @@ impl<'a> Lexer<'a> {
 
         // 检查是否有收集到的错误
         if self.diagnostics.has_errors() {
-            return Err(lexer_error(
-                self.line,
-                self.column,
-                format!("词法分析发现 {} 个错误", self.diagnostics.error_count())
-            ));
+            let diagnostics = self.diagnostics.clone();
+            let first = diagnostics.diagnostics().first()
+                .map(|d| d.clone())
+                .unwrap_or_else(|| {
+                    crate::diagnostic::Diagnostic::error(
+                        crate::diagnostic::ErrorCodes::LEXER_INVALID_CHARACTER,
+                        crate::diagnostic::CompilationPhase::Lexer,
+                        format!("词法分析发现 {} 个错误", diagnostics.error_count()),
+                        SourceLocation::new(None, self.line, self.column),
+                    )
+                });
+            return Err(crate::error::CompilerError(first).into());
         }
 
         Ok(tokens)
@@ -777,11 +781,14 @@ impl<'a> Lexer<'a> {
                     format!("Unexpected character: '{}' at line {}", error_char, error_line)
                 };
 
-                Some(Err(lexer_error(
-                    error_line,
-                    self.column,
-                    error_msg
-                )))
+                let diagnostic = crate::diagnostic::Diagnostic::error(
+                    crate::diagnostic::ErrorCodes::LEXER_INVALID_CHARACTER,
+                    crate::diagnostic::CompilationPhase::Lexer,
+                    error_msg,
+                    SourceLocation::new(error_file.clone(), error_line, self.column),
+                );
+                self.diagnostics.add(diagnostic.clone());
+                Some(Err(crate::error::CompilerError(diagnostic).into()))
             }
             None => None,
         }
@@ -792,13 +799,14 @@ impl<'a> Lexer<'a> {
 fn process_escape_sequences(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();
-    
+
     while let Some(c) = chars.next() {
         if c == '\\' {
             match chars.next() {
                 Some('n') => result.push('\n'),
                 Some('t') => result.push('\t'),
                 Some('r') => result.push('\r'),
+                Some('f') => result.push('\x0C'),
                 Some('\\') => result.push('\\'),
                 Some('"') => result.push('"'),
                 Some('\'') => result.push('\''),
@@ -817,7 +825,7 @@ fn process_escape_sequences(s: &str) -> String {
             result.push(c);
         }
     }
-    
+
     result
 }
 
@@ -828,6 +836,7 @@ fn process_char_escape(s: &str) -> Option<char> {
             Some('n') => Some('\n'),
             Some('t') => Some('\t'),
             Some('r') => Some('\r'),
+            Some('f') => Some('\x0C'),
             Some('\\') => Some('\\'),
             Some('"') => Some('"'),
             Some('\'') => Some('\''),
@@ -868,6 +877,19 @@ pub fn lex_with_diagnostics(source: &str) -> (Vec<TokenWithLocation>, Diagnostic
 /// 检查源字符串是否包含有效的Cavvy代码（无词法错误）
 pub fn is_valid_source(source: &str) -> bool {
     tokenize(source).is_ok()
+}
+
+/// 从字节偏移量计算列号（计入空白字符）
+/// 列号从 1 开始计数
+fn compute_column(source: &str, byte_offset: usize) -> usize {
+    // 从 byte_offset 往前找最近的一个换行符
+    let line_start = source[..byte_offset.min(source.len())]
+        .rfind('\n')
+        .map(|pos| pos + 1)  // 换行符之后的位置
+        .unwrap_or(0);        // 第一行从位置 0 开始
+    
+    // 列号 = 偏移量 - 行起始位置 + 1（1-indexed）
+    byte_offset.saturating_sub(line_start) + 1
 }
 
 /// 获取token的显示名称
@@ -1103,6 +1125,19 @@ mod tests {
     }
 
     #[test]
+    fn test_string_escape_sequences_all() {
+        // 测试所有支持的字符串转义序列
+        let source = r#""\n\t\r\f\\\"\'\0""#;
+        let tokens = tokenize(source).unwrap();
+        assert_eq!(tokens.len(), 1);
+        if let Token::StringLiteral(Some(s)) = &tokens[0].token {
+            assert_eq!(s, "\n\t\r\x0C\\\"'\0");
+        } else {
+            panic!("Expected string literal with all escapes");
+        }
+    }
+
+    #[test]
     fn test_char_literal() {
         let source = r#"'a'"#;
         let tokens = tokenize(source).unwrap();
@@ -1111,6 +1146,31 @@ mod tests {
             assert_eq!(*c, 'a');
         } else {
             panic!("Expected char literal");
+        }
+    }
+
+    #[test]
+    fn test_char_literal_with_escapes() {
+        // 测试所有支持的字符转义序列
+        let test_cases = vec![
+            (r#"'\n'"#, '\n'),
+            (r#"'\t'"#, '\t'),
+            (r#"'\r'"#, '\r'),
+            (r#"'\f'"#, '\x0C'),  // 换页符
+            (r#"'\\'"#, '\\'),
+            (r#"'\"'"#, '"'),
+            (r#"'\''"#, '\''),
+            (r#"'\0'"#, '\0'),
+        ];
+
+        for (source, expected) in test_cases {
+            let tokens = tokenize(source).unwrap();
+            assert_eq!(tokens.len(), 1, "Failed for source: {}", source);
+            if let Token::CharLiteral(Some(c)) = &tokens[0].token {
+                assert_eq!(*c, expected, "Failed for source: {}", source);
+            } else {
+                panic!("Expected char literal for source: {}", source);
+            }
         }
     }
 

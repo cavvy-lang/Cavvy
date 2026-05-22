@@ -60,27 +60,11 @@ impl fmt::Display for CompilationPhase {
     }
 }
 
-/// 源代码位置
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct SourceLocation {
-    pub line: usize,
-    pub column: usize,
-}
-
-impl SourceLocation {
-    pub fn new(line: usize, column: usize) -> Self {
-        Self { line, column }
-    }
-}
-
-impl fmt::Display for SourceLocation {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:{}", self.line, self.column)
-    }
-}
+/// 源代码位置 - 使用 error 模块中的定义
+pub use crate::error::SourceLocation;
 
 /// 源代码范围
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceSpan {
     pub start: SourceLocation,
     pub end: SourceLocation,
@@ -89,15 +73,15 @@ pub struct SourceSpan {
 impl SourceSpan {
     pub fn new(start_line: usize, start_col: usize, end_line: usize, end_col: usize) -> Self {
         Self {
-            start: SourceLocation::new(start_line, start_col),
-            end: SourceLocation::new(end_line, end_col),
+            start: SourceLocation::new(None, start_line, start_col),
+            end: SourceLocation::new(None, end_line, end_col),
         }
     }
 
     pub fn single(line: usize, column: usize) -> Self {
         Self {
-            start: SourceLocation::new(line, column),
-            end: SourceLocation::new(line, column),
+            start: SourceLocation::new(None, line, column),
+            end: SourceLocation::new(None, line, column),
         }
     }
 }
@@ -570,6 +554,174 @@ pub fn format_all_diagnostics(collector: &DiagnosticCollector, source: &str, fil
     output
 }
 
+// ============================================================
+// 统一诊断输出函数（基于 miette 的漂亮终端展示）
+// ============================================================
+
+use miette::{Report, GraphicalReportHandler, NamedSource, LabeledSpan, SourceSpan as MietteSpan};
+
+/// 用于 miette 展示的临时诊断包装结构体
+/// 结合了 Diagnostic 数据和源代码，以正确计算字节偏移量
+#[derive(Debug)]
+struct DisplayDiagnostic {
+    code: String,
+    severity: miette::Severity,
+    message: String,
+    help: Option<String>,
+    source: String,
+    filename: String,
+    line: usize,
+    column: usize,
+    /// 错误阶段描述（用于标签文本）
+    phase_label: String,
+    /// 错误相关的标识符名称（用于计算高亮宽度）
+    token_name: Option<String>,
+}
+
+impl std::fmt::Display for DisplayDiagnostic {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{}] {}", self.code, self.message)
+    }
+}
+
+impl std::error::Error for DisplayDiagnostic {}
+
+impl miette::Diagnostic for DisplayDiagnostic {
+    fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        // 错误代码已包含在 Display 消息中 [E4003]，不重复显示
+        None
+    }
+
+    fn severity(&self) -> Option<miette::Severity> {
+        Some(self.severity)
+    }
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        self.help.as_ref().map(|h| Box::new(h.as_str()) as Box<dyn std::fmt::Display>)
+    }
+
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
+        if self.line == 0 {
+            return None;
+        }
+        let offset = line_col_to_offset(&self.source, self.line, self.column);
+        // 计算高亮宽度：如果有 token 名，用其长度；否则取到行尾或下一个空白
+        let span_len = if let Some(ref name) = self.token_name {
+            name.len().max(1)
+        } else {
+            // 取当前位置到下一个空白/行尾的长度
+            let rest = &self.source[offset.min(self.source.len())..];
+            rest.chars().take_while(|c| !c.is_whitespace()).count().max(1)
+        };
+
+        let label = LabeledSpan::new_with_span(
+            Some(self.phase_label.clone()),
+            MietteSpan::new(offset.into(), span_len),
+        );
+        Some(Box::new(std::iter::once(label)))
+    }
+
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        None
+    }
+}
+
+/// 获取错误阶段的简短中文描述
+fn phase_short_label(phase: &CompilationPhase) -> String {
+    match phase {
+        CompilationPhase::Lexer => "词法错误".to_string(),
+        CompilationPhase::Parser => "语法错误".to_string(),
+        CompilationPhase::Semantic => "类型错误".to_string(),
+        CompilationPhase::CodeGen => "代码生成错误".to_string(),
+        CompilationPhase::Preprocessor => "预处理错误".to_string(),
+        CompilationPhase::Linker => "链接错误".to_string(),
+    }
+}
+
+/// 尝试从错误消息中提取相关的标识符/标记名
+fn extract_token_from_message(msg: &str) -> Option<String> {
+    // 提取单引号中的名称: 'foo', 'MyClass' 等
+    if let Some(start) = msg.find('\'') {
+        let after_quote = &msg[start + 1..];
+        if let Some(end) = after_quote.find('\'') {
+            let name = &after_quote[..end];
+            if !name.is_empty() && name.len() < 50 {
+                return Some(name.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// 使用 miette 打印所有诊断信息到 stderr
+pub fn print_diagnostics(collector: &DiagnosticCollector, source: &str, filename: &str) {
+    if collector.diagnostics().is_empty() {
+        return;
+    }
+
+    let src = NamedSource::new(filename, source.to_string());
+    let diagnostics = collector.diagnostics();
+    
+    let error_count = diagnostics.iter().filter(|d| d.severity == Severity::Error || d.severity == Severity::Fatal).count();
+    let warning_count = diagnostics.iter().filter(|d| d.severity == Severity::Warning).count();
+
+    eprintln!();
+
+    for diag in diagnostics {
+        let severity = match diag.severity {
+            Severity::Error | Severity::Fatal => miette::Severity::Error,
+            Severity::Warning => miette::Severity::Warning,
+            _ => miette::Severity::Advice,
+        };
+
+        let display = DisplayDiagnostic {
+            code: diag.code.clone(),
+            severity,
+            message: diag.message.clone(),
+            help: diag.suggestions.first().map(|s| s.description.clone()),
+            source: source.to_string(),
+            filename: filename.to_string(),
+            line: diag.location.line,
+            column: diag.location.column,
+            phase_label: phase_short_label(&diag.phase),
+            token_name: extract_token_from_message(&diag.message),
+        };
+
+        let report = Report::new(display).with_source_code(src.clone());
+        let mut handler = GraphicalReportHandler::new();
+        let mut output = String::new();
+        handler.render_report(&mut output, report.as_ref()).unwrap();
+        eprintln!("{}", output);
+    }
+
+    // 统计
+    let summary = match (error_count, warning_count) {
+        (e, 0) if e > 0 => format!("{} 个错误", e),
+        (0, w) if w > 0 => format!("{} 个警告", w),
+        (e, w) => format!("{} 个错误, {} 个警告", e, w),
+    };
+    eprintln!("  编译结果: {}\n", summary);
+}
+
+/// 将行号列号转换为字节偏移量（用于 miette SourceSpan）
+fn line_col_to_offset(source: &str, line: usize, column: usize) -> usize {
+    let mut current_line = 1;
+    let mut current_col = 1;
+
+    for (offset, ch) in source.char_indices() {
+        if current_line == line && current_col == column {
+            return offset;
+        }
+        if ch == '\n' {
+            current_line += 1;
+            current_col = 1;
+        } else {
+            current_col += 1;
+        }
+    }
+    source.len()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -582,7 +734,7 @@ mod tests {
             ErrorCodes::SEMANTIC_TYPE_MISMATCH,
             CompilationPhase::Semantic,
             "类型不匹配",
-            SourceLocation::new(10, 5),
+            SourceLocation::new(None, 10, 5),
         );
 
         collector.add(diag);
@@ -594,5 +746,152 @@ mod tests {
     fn test_error_codes() {
         assert_eq!(ErrorCodes::get_description("E4001"), "未定义的标识符");
         assert_eq!(ErrorCodes::get_description("E9999"), "未知错误");
+    }
+
+    // ============================================================
+    // print_diagnostics 输出格式测试
+    // ============================================================
+
+    #[test]
+    fn test_print_diagnostics_single_error() {
+        let mut collector = DiagnosticCollector::new();
+        let diag = Diagnostic::error(
+            ErrorCodes::SEMANTIC_TYPE_MISMATCH,
+            CompilationPhase::Semantic,
+            "类型不匹配: 期望 int, 实际 String",
+            SourceLocation::new(None, 3, 8),
+        ).with_suggestion(FixSuggestion::new("请使用 Integer.parseInt() 转换"));
+        collector.add(diag);
+
+        let source = "int x = \"hello\";\nint y = 42;\n";
+        
+        // print_diagnostics 直接输出到 stderr，验证不崩溃
+        print_diagnostics(&collector, source, "test.cay");
+        assert!(collector.has_errors());
+        assert_eq!(collector.error_count(), 1);
+    }
+
+    #[test]
+    fn test_print_diagnostics_multiple_errors() {
+        let mut collector = DiagnosticCollector::new();
+        let loc1 = SourceLocation::new(None, 1, 1);
+        let loc2 = SourceLocation::new(None, 2, 1);
+        
+        collector.add(Diagnostic::error("E4001", CompilationPhase::Semantic, "未定义变量 'x'", loc1));
+        collector.add(Diagnostic::error("E4002", CompilationPhase::Semantic, "重复定义 'y'", loc2));
+        
+        assert_eq!(collector.error_count(), 2);
+        assert_eq!(collector.diagnostics().len(), 2);
+    }
+
+    #[test]
+    fn test_print_diagnostics_empty_collector() {
+        let collector = DiagnosticCollector::new();
+        // 空收集器不应该 panic
+        print_diagnostics(&collector, "", "empty.cay");
+        assert!(!collector.has_errors());
+    }
+
+    #[test]
+    fn test_print_diagnostics_with_warnings() {
+        let mut collector = DiagnosticCollector::new();
+        let loc = SourceLocation::new(None, 1, 1);
+        
+        collector.add(Diagnostic::warning("W4001", CompilationPhase::Semantic, "未使用的变量", loc));
+        
+        assert!(!collector.has_errors());
+        assert_eq!(collector.warning_count(), 1);
+    }
+
+    // ============================================================
+    // line_col_to_offset 测试
+    // ============================================================
+
+    #[test]
+    fn test_line_col_to_offset_basic() {
+        let source = "abc\ndef\nghi";
+        // line 1, col 1 -> 'a' at offset 0
+        assert_eq!(line_col_to_offset(source, 1, 1), 0);
+        // line 2, col 1 -> 'd' at offset 4
+        assert_eq!(line_col_to_offset(source, 2, 1), 4);
+        // line 3, col 2 -> 'h' at offset 9
+        assert_eq!(line_col_to_offset(source, 3, 2), 9);
+    }
+
+    #[test]
+    fn test_line_col_to_offset_multibyte() {
+        let source = "你好\n世界";
+        // line 1, col 1 -> '你' (3 bytes)
+        assert_eq!(line_col_to_offset(source, 1, 1), 0);
+        // line 2, col 1 -> '世' after newline
+        assert_eq!(line_col_to_offset(source, 2, 1), 7); // "你好\n" = 7 bytes
+    }
+
+    // ============================================================
+    // Diagnostic builder 测试
+    // ============================================================
+
+    #[test]
+    fn test_diagnostic_builder_chain() {
+        let diag = Diagnostic::error("E4001", CompilationPhase::Semantic, "错误", SourceLocation::default())
+            .with_details("详细说明")
+            .with_suggestion(FixSuggestion::new("建议1"))
+            .with_suggestion(FixSuggestion::new("建议2"))
+            .with_span(SourceSpan::single(1, 5));
+
+        assert_eq!(diag.code, "E4001");
+        assert_eq!(diag.severity, Severity::Error);
+        assert_eq!(diag.details, Some("详细说明".into()));
+        assert_eq!(diag.suggestions.len(), 2);
+        assert!(diag.span.is_some());
+    }
+
+    #[test]
+    fn test_diagnostic_related_info() {
+        let diag = Diagnostic::error("E4001", CompilationPhase::Semantic, "主错误", SourceLocation::new(None, 5, 1))
+            .with_related_info("在这里定义", SourceLocation::new(None, 2, 1))
+            .with_related_info("这里使用", SourceLocation::new(None, 5, 1));
+
+        assert_eq!(diag.related_info.len(), 2);
+    }
+
+    // ============================================================
+    // ErrorCodes 完整性测试
+    // ============================================================
+
+    #[test]
+    fn test_all_error_codes_have_descriptions() {
+        // 验证所有预定义的错误代码都有描述
+        let codes = [
+            ErrorCodes::PREPROCESSOR_DEFINE_ERROR,
+            ErrorCodes::LEXER_INVALID_CHARACTER,
+            ErrorCodes::PARSER_UNEXPECTED_TOKEN,
+            ErrorCodes::SEMANTIC_UNDEFINED_IDENTIFIER,
+            ErrorCodes::SEMANTIC_DUPLICATE_DEFINITION,
+            ErrorCodes::SEMANTIC_TYPE_MISMATCH,
+            ErrorCodes::CODEGEN_UNSUPPORTED_FEATURE,
+            ErrorCodes::CODEGEN_LLVM_ERROR,
+            ErrorCodes::LINKER_SYMBOL_NOT_FOUND,
+        ];
+        for code in &codes {
+            let desc = ErrorCodes::get_description(code);
+            assert!(!desc.is_empty(), "Missing description for {}", code);
+            assert_ne!(desc, "未知错误", "Unknown error for {}", code);
+        }
+    }
+
+    #[test]
+    fn test_all_error_codes_have_suggestions() {
+        // 验证关键错误代码有修复建议
+        let codes_with_suggestions = [
+            ErrorCodes::LEXER_INVALID_CHARACTER,
+            ErrorCodes::PARSER_EXPECTED_SEMICOLON,
+            ErrorCodes::SEMANTIC_UNDEFINED_IDENTIFIER,
+            ErrorCodes::SEMANTIC_TYPE_MISMATCH,
+        ];
+        for code in &codes_with_suggestions {
+            let suggestion = ErrorCodes::get_suggestion(code);
+            assert!(!suggestion.is_empty(), "Missing suggestion for {}", code);
+        }
     }
 }

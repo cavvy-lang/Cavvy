@@ -89,21 +89,18 @@ impl SemanticAnalyzer {
         self.type_check_program(program)?;
 
         if !self.errors.is_empty() {
-            // 使用第一个错误的行号/列号，后续错误拼接在消息中
-            let first = &self.errors[0];
-            let mut message = first.message.clone();
-            for err in &self.errors[1..] {
-                message.push('\n');
-                message.push_str(&err.message);
+            // 将所有错误转换为 cayError 并返回 MultipleErrors
+            let mut cay_errors: Vec<crate::error::cayError> = Vec::new();
+            for err in &self.errors {
+                cay_errors.push(crate::error::cayError::Semantic {
+                    file: err.file.clone(),
+                    line: err.line,
+                    column: err.column,
+                    message: err.message.clone(),
+                    suggestion: "请检查代码语义".to_string(),
+                });
             }
-            // 使用第一个错误中存储的文件路径（现在每个错误都包含自己的文件路径）
-            let error_file = first.file.clone();
-            return Err(semantic_error_with_file(
-                error_file,
-                first.line,
-                first.column,
-                message
-            ));
+            return Err(crate::error::cayError::MultipleErrors { errors: cay_errors });
         }
 
         Ok(())
@@ -289,5 +286,18 @@ impl SemanticAnalyzer {
             Expr::Alloc(e) => (e.loc.line, e.loc.column),
             Expr::Dealloc(e) => (e.loc.line, e.loc.column),
         }
+    }
+
+    /// 报告语义错误并返回默认类型（用于表达式类型推断）
+    /// 这样可以让分析继续，收集更多错误
+    pub fn report_semantic_error(&mut self, line: usize, column: usize, message: impl Into<String>) -> Type {
+        self.errors.push(self.create_error_info(line, column, message));
+        Type::Int32 // 返回默认类型继续分析
+    }
+
+    /// 报告语义错误并返回默认类型（带文件路径）
+    pub fn report_semantic_error_with_file(&mut self, file: Option<String>, line: usize, column: usize, message: impl Into<String>) -> Type {
+        self.errors.push(self.create_error_info_with_file(file, line, column, message));
+        Type::Int32 // 返回默认类型继续分析
     }
 }

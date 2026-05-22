@@ -1,0 +1,81 @@
+// 测试 switch 语句支持字符常量 case
+// 验证 switch 可以使用字符作为 case 标签
+
+public class Test {
+    public static void main(string[] args) {
+        // 测试1: 基本字符 case
+        char op = '+';
+        string result1 = "";
+        switch (op) {
+            case '+':
+                result1 = "plus";
+                break;
+            case '-':
+                result1 = "minus";
+                break;
+            case '*':
+                result1 = "multiply";
+                break;
+            case '/':
+                result1 = "divide";
+                break;
+            default:
+                result1 = "unknown";
+        }
+        println("Test1: " + result1);
+
+        // 测试2: 字符与整数混合使用
+        char c = 'A';
+        int code = 0;
+        switch (c) {
+            case 'A':
+                code = 65;
+                break;
+            case 'B':
+                code = 66;
+                break;
+            case 'C':
+                code = 67;
+                break;
+            default:
+                code = 0;
+        }
+        println("Test2 code: " + code);
+
+        // 测试3: 转义字符作为 case
+        char esc = '\n';
+        string escName = "";
+        switch (esc) {
+            case '\n':
+                escName = "newline";
+                break;
+            case '\t':
+                escName = "tab";
+                break;
+            case '\r':
+                escName = "carriage return";
+                break;
+            default:
+                escName = "other";
+        }
+        println("Test3: " + escName);
+
+        // 测试4: fallthrough 行为
+        char f = 'X';
+        string fall = "";
+        switch (f) {
+            case 'X':
+                fall = fall + "X";
+            case 'Y':
+                fall = fall + "Y";
+            case 'Z':
+                fall = fall + "Z";
+                break;
+            default:
+                fall = "other";
+        }
+        println("Test4 fallthrough: " + fall);
+
+        println("All switch char tests passed!");
+    }
+}

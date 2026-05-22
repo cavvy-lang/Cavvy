@@ -315,6 +315,7 @@ pub fn parse_for_statement(parser: &mut Parser) -> cayResult<Stmt> {
     parser.consume(&crate::lexer::Token::LParen, "期望 '('\n提示: for 后应跟 '(' 开始循环头，例如: for (int i = 0; i < 10; i++) { ... }")?;
 
     let init = if parser.check(&crate::lexer::Token::Semicolon) {
+        parser.advance(); // consume ';'
         None
     } else {
         Some(Box::new(parse_statement(parser)?))
@@ -384,10 +385,15 @@ pub fn parse_switch_statement(parser: &mut Parser) -> cayResult<Stmt> {
     
     while !parser.check(&crate::lexer::Token::RBrace) && !parser.is_at_end() {
         if parser.match_token(&crate::lexer::Token::Case) {
-            // 解析 case 值
+            // 解析 case 值（支持整数和字符常量）
             let value = match *parser.current_token() {
                 crate::lexer::Token::IntegerLiteral(Some((v, _))) => {
                     let val = v;  // v 是 i64
+                    parser.advance();
+                    val
+                }
+                crate::lexer::Token::CharLiteral(Some(c)) => {
+                    let val = c as i64;  // 字符转换为整数
                     parser.advance();
                     val
                 }

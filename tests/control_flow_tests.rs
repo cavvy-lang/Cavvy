@@ -131,3 +131,21 @@ fn test_control_flow_complex() {
     let output = compile_and_run_eol("examples/test_control_flow_complex.cay").expect("control flow complex should compile and run");
     assert!(output.contains("completed"), "Control flow complex test should complete, got: {}", output);
 }
+
+#[test]
+fn test_for_empty_init() {
+    let output = compile_and_run_eol("examples/test_for_empty_init.cay").expect("for empty init example should compile and run");
+    assert!(output.contains("All for-loop empty init tests passed!"),
+            "For loop with empty init should work, got: {}", output);
+}
+
+#[test]
+fn test_switch_char() {
+    let output = compile_and_run_eol("examples/test_switch_char.cay").expect("switch char example should compile and run");
+    assert!(output.contains("Test1: plus"), "Switch char case '+' should work, got: {}", output);
+    assert!(output.contains("Test2 code: 65"), "Switch char case 'A' should work, got: {}", output);
+    assert!(output.contains("Test3: newline"), "Switch char case '\\n' should work, got: {}", output);
+    assert!(output.contains("Test4 fallthrough: XYZ"), "Switch char fallthrough should work, got: {}", output);
+    assert!(output.contains("All switch char tests passed!"),
+            "Switch char test should complete, got: {}", output);
+}

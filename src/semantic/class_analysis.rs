@@ -111,7 +111,12 @@ impl SemanticAnalyzer {
                 interface_info.add_method(method_info);
             }
 
-            self.type_registry.register_interface(interface_info)?;
+            self.type_registry.register_interface(
+                interface_info,
+                interface.loc.file.clone(),
+                interface.loc.line,
+                interface.loc.column,
+            )?;
         }
 
         // 然后收集类定义
@@ -168,7 +173,12 @@ impl SemanticAnalyzer {
                 }
             }
 
-            self.type_registry.register_class(class_info)?;
+            self.type_registry.register_class(
+                class_info,
+                class.loc.file.clone(),
+                class.loc.line,
+                class.loc.column,
+            )?;
         }
         Ok(())
     }

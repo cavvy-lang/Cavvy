@@ -1,0 +1,38 @@
+// 测试字符转义序列
+// 这个测试验证所有支持的字符转义序列都能正确解析
+
+public class Test {
+    public static void main(string[] args) {
+        // 测试字符字面量转义
+        char newline = '\n';
+        char tab = '\t';
+        char carriageReturn = '\r';
+        char formFeed = '\f';
+        char backslash = '\\';
+        char doubleQuote = '"';
+        char singleQuote = '\'';
+        char nullChar = '\0';
+
+        // 验证转义字符的值
+        assert(newline == 10);
+        assert(tab == 9);
+        assert(carriageReturn == 13);
+        assert(formFeed == 12);
+        assert(backslash == 92);
+        assert(doubleQuote == 34);
+        assert(singleQuote == 39);
+        assert(nullChar == 0);
+
+        // 测试字符串中的转义序列
+        string s1 = "Hello\nWorld";
+        string s2 = "Tab\tHere";
+        string s3 = "Form\fFeed";
+
+        // 验证字符串长度（转义序列算作一个字符）
+        assert(s1.length() == 11);  // "Hello" + \n + "World"
+        assert(s2.length() == 8);   // "Tab" + \t + "Here"
+        assert(s3.length() == 10);  // "Form" + \f + "Feed"
+
+        println("All escape sequence tests passed!");
+    }
+}

@@ -1,0 +1,55 @@
+// 测试 for 循环空初始化语句
+// 验证 for 循环支持空的初始化部分
+
+public class Test {
+    public static void main(string[] args) {
+        // 测试1: 空初始化语句
+        int i = 0;
+        int sum = 0;
+        for (; i < 5; i = i + 1) {
+            sum = sum + i;
+        }
+        // sum should be 10 (0+1+2+3+4)
+        println("Test1 sum: " + sum);
+
+        // 测试2: 空条件语句（无限循环，用break退出）
+        int count = 0;
+        for (int j = 0; ; j = j + 1) {
+            count = count + 1;
+            if (j >= 3) {
+                break;
+            }
+        }
+        // count should be 4 (0,1,2,3)
+        println("Test2 count: " + count);
+
+        // 测试3: 空更新语句
+        int k = 0;
+        for (; k < 3; ) {
+            k = k + 1;
+        }
+        // k should be 3
+        println("Test3 k: " + k);
+
+        // 测试4: 全部为空（无限循环）
+        int x = 0;
+        for (;;) {
+            x = x + 1;
+            if (x >= 5) {
+                break;
+            }
+        }
+        // x should be 5
+        println("Test4 x: " + x);
+
+        // 测试5: 常规 for 循环（确保没有破坏原有功能）
+        int total = 0;
+        for (int n = 1; n <= 3; n = n + 1) {
+            total = total + n;
+        }
+        // total should be 6 (1+2+3)
+        println("Test5 total: " + total);
+
+        println("All for-loop empty init tests passed!");
+    }
+}

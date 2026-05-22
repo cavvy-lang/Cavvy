@@ -18,6 +18,12 @@ pub mod idle;
 // Cavly 包管理器模块
 pub mod cavly;
 
+/// 新的统一错误类型（推荐使用）
+pub use error::CompilerError;
+pub use error::CompilerResult;
+pub use diagnostic::print_diagnostics;
+pub use diagnostic::DiagnosticCollector;
+
 use std::path::{Path, PathBuf};
 use error::cayResult;
 

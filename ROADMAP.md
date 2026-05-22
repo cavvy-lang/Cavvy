@@ -13,11 +13,11 @@ Cavvy (原Ethernos Object Language) 是一个始终编译为原生机器码的�
 
 ---
 
-## 版本号规范 (0.B.M.P)
+## 版本号规范 (GB.M.P)
 
 | 位置 | 名称       | 含义         | 示例                                  |
 | ---- | ---------- | ------------ | ------------------------------------- |
-| 0    | Generation | 架构代际     | 0=LLVM后端, 1=自托管, 2=内存安全      |
+| G    | Generation | 架构代际     | 0=LLVM后端, 1=自托管, 2=内存安全      |
 | B    | Big        | 功能域里程碑 | 0.1=原型, 0.2=当前, 0.3=控制流完善... |
 | M    | Middle     | 特性集群     | 0.3.1.x=循环家族                      |
 | P    | Patch      | 每日构建修复 | 0.3.1.0->0.3.1.1                      |
@@ -264,17 +264,17 @@ Cavvy (原Ethernos Object Language) 是一个始终编译为原生机器码的�
 - [X] **Arena 分配器** - 线性分配器，支持批量释放（适合编译器、游戏帧分配）
 - [X] **栈分配标记** - `scope` 关键字或注解，支持栈上对象（值类型语义准备）
 
-#### 0.5.1.x 基础类型与字符串（无 Object 根类）
+#### 05.1.x 基础类型与字符串（无 Object 根类）
 
 - [ ] **基础值类型** - 明确 `int`, `long`, `float`, `double`, `bool` 的内存布局（固定宽度，如 i32/i64）
 - [X] **String 设计（不可变）** - 结构体 `{ char* data; usize len; }`，支持 SSO（短字符串优化，16/23 字节内栈存储）
 - [X] **StringBuilder** - 基于 Arena 或显式容量预分配的可变字符串
 - [ ] **Optional `<T>`** - 取代 null，显式空值处理 `Option<String>`，编译期非空检查基础
-- [x] **FFI 基础类型包** - 标准库新增 `std.ffi` 模块
+- [X] **FFI 基础类型包** - 标准库新增 `std.ffi` 模块
   - `CInt`, `CLong`, `SizeT` 等跨平台固定宽度别名
   - `RawPtr<T>` 裸指针类型（不参与 GC，用于接 C 指针）
 
-#### 0.5.2.x 泛型集合（单态化实现）
+#### 05.2.x 泛型集合（单态化实现）
 
 - [ ] **泛型基础** - `class ArrayList<T, A: Allocator>`，单态化生成专用代码（如 `ArrayList_i32`）
 - [ ] **显式分配器参数** - 所有集合必须携带分配器：`ArrayList<int> list = new ArrayList<>(arena);`
@@ -284,14 +284,14 @@ Cavvy (原Ethernos Object Language) 是一个始终编译为原生机器码的�
   - `HashSet<T>` - 基于 HashMap 的特化
 - [ ] **迭代器** - 基础迭代器协议 `interface Iterator<T> { bool hasNext(); T next(); }`，支持范围 for 循环
 
-#### 0.5.3.x 智能指针与资源管理
+#### 05.3.x 智能指针与资源管理
 
 - [ ] **UniquePtr `<T>`** - 独占所有权，可移动（move），不可复制，自动调用析构
 - [ ] **ScopedPtr `<T>`** - 栈作用域指针，禁止堆分配
 - [ ] **Rc `<T>`**（引用计数）- 循环依赖检测（debug 模式），为 G2 的借用检查做过渡
 - [ ] **弱引用基础** - `WeakPtr<T>`，解决循环引用（此时需手动打破循环）
 
-#### 0.5.4.x 系统级 I/O
+#### 05.4.x 系统级 I/O
 
 - [ ] **File 与 Path** - 封装系统调用（Windows: HANDLE, Linux: fd），支持 RAII 关闭
 - [ ] **缓冲区 I/O** - `BufferedReader/Writer`，显式缓冲区大小参数
@@ -306,7 +306,7 @@ Cavvy (原Ethernos Object Language) 是一个始终编译为原生机器码的�
 
 **目标**：建立系统级的错误传播机制和零成本并发抽象。
 
-#### 0.6.1.x 错误处理机制（非异常体系）
+#### 06.1.x 错误处理机制（非异常体系）
 
 - [ ] **Result<T, E> 泛型** - 显式错误传播 `Result<File, IOError>`
 - [ ] **问号运算符** - `file.read()?` 自动展开错误传播（类似 Rust 的 `?` 或 Zig 的 `try`）
@@ -315,14 +315,14 @@ Cavvy (原Ethernos Object Language) 是一个始终编译为原生机器码的�
 
 *设计决策*：取消 Java 式异常，采用类似 Rust/Zig 的错误码机制，确保无运行时异常处理开销。
 
-#### 0.6.2.x 轻量级并发（1:1 线程模型）
+#### 06.2.x 轻量级并发（1:1 线程模型）
 
 - [ ] **OS 线程封装** - `Thread` 类，直接映射 pthread/Windows Thread
 - [ ] **线程参数传递** - 必须显式指定数据所有权转移（为 G2 所有权系统做铺垫）
 - [ ] **原子操作** - `AtomicI32`, `AtomicPtr<T>`，封装 C++11 风格内存序（Relaxed/Release/Acquire/SeqCst）
 - [ ] **互斥锁** - `Mutex<T>`，封装 OS 层 mutex（futex 或 CriticalSection），非语言级 synchronized
 
-#### 0.6.3.x 异步 I/O 基础（非协程，基于 epoll/io_uring）
+#### 06.3.x 异步 I/O 基础（非协程，基于 epoll/io_uring）
 
 - [ ] **Reactor 模式** - 单线程事件循环，支持 Linux epoll/Windows IOCP
 - [ ] **异步文件 I/O** - 基于 io_uring（Linux）或 Overlapped I/O（Windows）
@@ -336,20 +336,20 @@ Cavvy (原Ethernos Object Language) 是一个始终编译为原生机器码的�
 
 **目标**：建立生产级工程能力，支持中大型项目开发。
 
-#### 0.7.1.x 包管理器（cavly）
+#### 07.1.x 包管理器（cavly）
 
 - [ ] **包声明** - `package com.ethernos.std;`
 - [ ] **模块清单** - `cavly.toml`（类似 Cargo），声明依赖、版本、编译选项
 - [ ] **语义化版本** - 严格遵循 SemVer，支持 lock 文件确保可复现构建
 - [ ] **本地/远程仓库** - 支持 Git 依赖和中央仓库（registry）
 
-#### 0.7.2.x 编译单元与链接
+#### 07.2.x 编译单元与链接
 
 - [ ] **模块化编译** - 增量编译，接口文件（.cai）生成，类似 C++ 模块或 Swift 模块
 - [ ] **静态/动态链接** - 生成 .a/.so/.lib/.dll，支持 C ABI 导出
 - [ ] **LTO（链接时优化）** - 跨模块内联，基于 LLVM LTO
 
-#### 0.7.3.x 开发工具
+#### 07.3.x 开发工具
 
 - [ ] **LSP 服务器** - 基于编译器前端，支持跳转、补全、重构
 - [ ] **调试信息** - DWARF/PDB 生成，支持 GDB/LLDB/VS Debugger
@@ -364,7 +364,7 @@ Cavvy (原Ethernos Object Language) 是一个始终编译为原生机器码的�
 
 **目标**：提供底层硬件控制能力和极致性能优化。
 
-#### 0.8.1.x Unsafe 子集（为 G2 做准备）
+#### 08.1.x Unsafe 子集（为 G2 做准备）
 
 - [ ] **unsafe 块** - `unsafe { ... }`，内部允许：原始指针解引用、union 访问、调用 C 函数
 - [ ] **原始指针** - `*T` 和 `*mut T`，支持指针运算
@@ -373,14 +373,14 @@ Cavvy (原Ethernos Object Language) 是一个始终编译为原生机器码的�
 - [ ] **内联IR** - `inline!()` 宏，支持内联 IR 代码
 - [ ] **内联汇编** - `asm!()` 宏，支持 x86_64/ARM64 内联汇编（类似 Rust 的 asm!）
 
-#### 0.8.2.x 编译器优化与 SIMD
+#### 08.2.x 编译器优化与 SIMD
 
 - [ ] **自动向量化** - LLVM auto-vectorization 调优，支持 AVX2/AVX-512/NEON
 - [ ] **显式 SIMD** - `std.simd.Vec4f` 等类型，封装 SIMD 指令
 - [ ] **内存布局控制** - `#[repr(C)]`, `#[repr(packed)]`, `#[align(N)]` 属性
 - [ ] **零成本抽象验证** - 确保泛型、迭代器等抽象最终编译为与手写 C 等价的机器码
 
-#### 0.8.3.x 嵌入式与裸机支持
+#### 08.3.x 嵌入式与裸机支持
 
 - [ ] **no_std** - 支持无标准库环境，不链接 libc
 - [ ] **启动代码** - 自定义 `_start`，支持裸机 ARM/RISC-V 编程
@@ -394,35 +394,35 @@ Cavvy (原Ethernos Object Language) 是一个始终编译为原生机器码的�
 
 **目标**：用 Cavvy 重写自身编译器，引入现代语言特性，提升表达力。
 
-### 1.0.x 编译器自举（里程碑版本）
+### 10.x 编译器自举（里程碑版本）
 
 - [ ] **前端迁移** - 词法分析器、语法分析器、AST 生成全部用 Cavvy 编写
 - [ ] **LLVM IR 生成** - 继续使用 LLVM 后端，但驱动代码为 Cavvy
 - [ ] **引导编译** - 使用 G0 编译器（0.8.x）编译 G1 编译器，再用 G1 编译器自举验证
 - [ ] **性能基准** - 自举编译速度不低于 G0 版本的 90%
 
-### 1.1.x 语法糖与提升开发体验
+### 11.x 语法糖与提升开发体验
 
 - [ ] **类型推断增强** - `var` 关键字局部变量推断，`auto` 返回值推断（限于单 return）
 - [ ] **解构赋值** - `val (x, y) = point;`，支持元组和结构体
 - [ ] **范围与迭代** - `for i in 0..100 { ... }`（半开区间），支持自定义迭代器
 - [ ] **字符串模板** - `"Hello, \(name)"` 或 `"Hello, ${name}"`，编译期解析
 
-### 1.2.x 函数式编程支持
+### 12.x 函数式编程支持
 
 - [ ] **Lambda 表达式** - `(x: int) => x * 2`，支持闭包（捕获环境）
 - [ ] **高阶函数** - 函数作为一等公民，支持函数类型 `fn(int) -> int`
 - [ ] **不可变集合** - `ImmutableList<T>`，基于持久化数据结构（HAMT 等）
 - [ ] **管道操作符** - `value |> transform |> filter`，左结合
 
-### 1.3.x 高级类型系统
+### 13.x 高级类型系统
 
 - [ ] **代数数据类型（ADT）** - `enum Option<T> { Some(T), None }`，支持模式匹配
 - [ ] **模式匹配基础** - `match` 表达式，支持常量、范围、元组匹配
 - [ ] **泛型约束** - `where T: Comparable`，泛型边界细化
 - [ ] **关联类型** - `interface Container { type Item; }`
 
-### 1.4.x 异步与并发语法糖（基于 G0 的 I/O 基础）
+### 14.x 异步与并发语法糖（基于 G0 的 I/O 基础）
 
 - [ ] **async/await** - 基于 G0 阶段的手动 Future，编译器生成状态机
 - [ ] **协程（绿色线程）** - `async fn` 支持，M:N 线程模型可选
@@ -434,7 +434,7 @@ Cavvy (原Ethernos Object Language) 是一个始终编译为原生机器码的�
 
 **目标**：引入所有权与借用检查系统，实现编译期内存安全，消除 use-after-free 和数据竞争。
 
-### 2.0.x 所有权系统核心（代际升级标记）
+### 20.x 所有权系统核心（代际升级标记）
 
 - [ ] **所有权语义** - 默认移动语义，复制需显式实现 `Copy` trait
 - [ ] **借用检查器（Borrow Checker）** - 编译期跟踪引用生命周期
@@ -442,20 +442,20 @@ Cavvy (原Ethernos Object Language) 是一个始终编译为原生机器码的�
 - [ ] **生命周期标注** - 显式生命周期 `'a`，函数签名如 `fn max<'a>(x: &'a T, y: &'a T) -> &'a T`
 - [ ] **RAII 强化** - Drop trait 自动调用，与所有权转移结合
 
-### 2.1.x 高级内存安全
+### 21.x 高级内存安全
 
 - [ ] **非词法生命周期（NLL）** - 更精确的借用范围分析
 - [ ] **内部可变性** - `Cell<T>`, `RefCell<T>`（单线程），`Mutex<T>`, `RwLock<T>`（多线程）的 unsafe 内部实现
 - [ ] **智能指针集成** - `Box<T>`（堆唯一所有权），`Arc<T>`（原子引用计数，线程安全共享）
 - [ ] **弱引用与循环检测** - `Weak<T>`，编译期警告潜在循环引用（辅助 lint）
 
-### 2.2.x 并发安全
+### 22.x 并发安全
 
 - [ ] **Send/Sync trait** - 标记类型是否可跨线程发送/共享，编译期数据竞争检测
 - [ ] **通道（Channels）** - `Sender<T>/Receiver<T>`，所有权转移实现无锁消息传递
 - [ ] **无锁数据结构** - `AtomicQueue<T>`, `AtomicStack<T>`，基于 CAS 操作
 
-### 2.3.x 编译期计算与元编程
+### 23.x 编译期计算与元编程
 
 - [ ] **常量泛型** - `Array<T, N>` 其中 N 为编译期常量
 - [ ] **编译期函数执行** - `const fn`，可在编译期计算复杂逻辑

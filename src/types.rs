@@ -638,25 +638,31 @@ impl TypeRegistry {
         self.classes.insert("Integer".to_string(), integer_class);
     }
 
-    pub fn register_class(&mut self, class_info: ClassInfo) -> crate::error::cayResult<()> {
+    pub fn register_class(&mut self, class_info: ClassInfo, file: Option<String>, line: usize, column: usize) -> crate::error::cayResult<()> {
         let name = class_info.name.clone();
         if self.classes.contains_key(&name) {
-            return Err(crate::error::semantic_error(
-                0, 0,
-                format!("Class '{}' already defined", name)
-            ));
+            return Err(crate::error::cayError::DuplicateDefinition {
+                file,
+                line,
+                column,
+                name: name.clone(),
+                suggestion: format!("'{}' 已被定义，请使用不同的名称", name),
+            });
         }
         self.classes.insert(name, class_info);
         Ok(())
     }
 
-    pub fn register_interface(&mut self, interface_info: InterfaceInfo) -> crate::error::cayResult<()> {
+    pub fn register_interface(&mut self, interface_info: InterfaceInfo, file: Option<String>, line: usize, column: usize) -> crate::error::cayResult<()> {
         let name = interface_info.name.clone();
         if self.interfaces.contains_key(&name) {
-            return Err(crate::error::semantic_error(
-                0, 0,
-                format!("Interface '{}' already defined", name)
-            ));
+            return Err(crate::error::cayError::DuplicateDefinition {
+                file,
+                line,
+                column,
+                name: name.clone(),
+                suggestion: format!("'{}' 已被定义，请使用不同的名称", name),
+            });
         }
         self.interfaces.insert(name, interface_info);
         Ok(())

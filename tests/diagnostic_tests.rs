@@ -16,7 +16,7 @@ fn test_diagnostic_collector_basic() {
         ErrorCodes::SEMANTIC_TYPE_MISMATCH,
         CompilationPhase::Semantic,
         "类型不匹配",
-        SourceLocation::new(10, 5),
+        SourceLocation::new(None::<String>, 10, 5),
     );
     
     collector.add(diag);
@@ -33,21 +33,21 @@ fn test_diagnostic_collector_multiple_errors() {
         ErrorCodes::SEMANTIC_UNDEFINED_IDENTIFIER,
         CompilationPhase::Semantic,
         "未定义变量 x",
-        SourceLocation::new(5, 10),
+        SourceLocation::new(None::<String>, 5, 10),
     ));
     
     collector.add(Diagnostic::error(
         ErrorCodes::SEMANTIC_TYPE_MISMATCH,
         CompilationPhase::Semantic,
         "类型不匹配",
-        SourceLocation::new(8, 15),
+        SourceLocation::new(None::<String>, 8, 15),
     ));
     
     collector.add(Diagnostic::warning(
         ErrorCodes::SEMANTIC_UNUSED_VARIABLE,
         CompilationPhase::Semantic,
         "未使用的变量",
-        SourceLocation::new(12, 5),
+        SourceLocation::new(None::<String>, 12, 5),
     ));
     
     assert!(collector.has_errors());
@@ -65,7 +65,7 @@ fn test_diagnostic_collector_max_errors() {
             ErrorCodes::SEMANTIC_UNDEFINED_IDENTIFIER,
             CompilationPhase::Semantic,
             format!("错误 {}", i),
-            SourceLocation::new(i + 1, 1),
+            SourceLocation::new(None::<String>, i + 1, 1),
         ));
     }
     
@@ -79,7 +79,7 @@ fn test_diagnostic_with_suggestions() {
         ErrorCodes::PARSER_EXPECTED_SEMICOLON,
         CompilationPhase::Parser,
         "缺少分号",
-        SourceLocation::new(5, 20),
+        SourceLocation::new(None::<String>, 5, 20),
     )
     .with_details("语句必须以分号结束")
     .with_suggestion(FixSuggestion::new("在语句末尾添加分号").with_replacement(";", SourceSpan::single(5, 20)));
@@ -95,9 +95,9 @@ fn test_diagnostic_with_related_info() {
         ErrorCodes::SEMANTIC_DUPLICATE_DEFINITION,
         CompilationPhase::Semantic,
         "重复定义变量 x",
-        SourceLocation::new(10, 5),
+        SourceLocation::new(None::<String>, 10, 5),
     )
-    .with_related_info("变量 x 首次定义在这里", SourceLocation::new(5, 5));
+    .with_related_info("变量 x 首次定义在这里", SourceLocation::new(None::<String>, 5, 5));
     
     assert_eq!(diag.related_info.len(), 1);
     assert_eq!(diag.related_info[0].message, "变量 x 首次定义在这里");
@@ -157,7 +157,7 @@ fn test_compilation_phase_display() {
 
 #[test]
 fn test_source_location() {
-    let loc = SourceLocation::new(10, 5);
+    let loc = SourceLocation::new(None::<String>, 10, 5);
     assert_eq!(loc.line, 10);
     assert_eq!(loc.column, 5);
     assert_eq!(format!("{}", loc), "10:5");
@@ -207,7 +207,7 @@ fn test_format_diagnostic() {
         ErrorCodes::SEMANTIC_UNDEFINED_IDENTIFIER,
         CompilationPhase::Semantic,
         "未定义变量 x",
-        SourceLocation::new(2, 9),
+        SourceLocation::new(None::<String>, 2, 9),
     );
     
     let formatted = format_diagnostic(&diag, source, "test.cay");
@@ -228,14 +228,14 @@ fn test_format_all_diagnostics() {
         ErrorCodes::SEMANTIC_TYPE_MISMATCH,
         CompilationPhase::Semantic,
         "类型不匹配",
-        SourceLocation::new(1, 5),
+        SourceLocation::new(None::<String>, 1, 5),
     ));
     
     collector.add(Diagnostic::warning(
         ErrorCodes::SEMANTIC_UNUSED_VARIABLE,
         CompilationPhase::Semantic,
         "未使用的变量",
-        SourceLocation::new(1, 5),
+        SourceLocation::new(None::<String>, 1, 5),
     ));
     
     let formatted = format_all_diagnostics(&collector, source, "test.cay");
@@ -257,14 +257,14 @@ fn test_diagnostic_collector_merge() {
         ErrorCodes::SEMANTIC_UNDEFINED_IDENTIFIER,
         CompilationPhase::Semantic,
         "错误1",
-        SourceLocation::new(1, 1),
+        SourceLocation::new(None::<String>, 1, 1),
     ));
     
     collector2.add(Diagnostic::error(
         ErrorCodes::SEMANTIC_TYPE_MISMATCH,
         CompilationPhase::Semantic,
         "错误2",
-        SourceLocation::new(2, 1),
+        SourceLocation::new(None::<String>, 2, 1),
     ));
     
     collector1.merge(collector2);
@@ -281,7 +281,7 @@ fn test_diagnostic_collector_clear() {
         ErrorCodes::SEMANTIC_UNDEFINED_IDENTIFIER,
         CompilationPhase::Semantic,
         "错误",
-        SourceLocation::new(1, 1),
+        SourceLocation::new(None::<String>, 1, 1),
     ));
     
     assert!(collector.has_errors());
@@ -327,7 +327,7 @@ fn test_comprehensive_error_scenario() {
         ErrorCodes::LEXER_INVALID_CHARACTER,
         CompilationPhase::Lexer,
         "非法字符 '@'",
-        SourceLocation::new(1, 10),
+        SourceLocation::new(None::<String>, 1, 10),
     ).with_suggestion(FixSuggestion::new("删除非法字符")));
     
     // 语法错误
@@ -335,7 +335,7 @@ fn test_comprehensive_error_scenario() {
         ErrorCodes::PARSER_EXPECTED_SEMICOLON,
         CompilationPhase::Parser,
         "缺少分号",
-        SourceLocation::new(3, 15),
+        SourceLocation::new(None::<String>, 3, 15),
     ).with_suggestion(FixSuggestion::new("在语句末尾添加分号 ';'")));
     
     // 语义错误
@@ -343,7 +343,7 @@ fn test_comprehensive_error_scenario() {
         ErrorCodes::SEMANTIC_UNDEFINED_IDENTIFIER,
         CompilationPhase::Semantic,
         "未定义变量 'foo'",
-        SourceLocation::new(5, 8),
+        SourceLocation::new(None::<String>, 5, 8),
     ).with_suggestion(FixSuggestion::new("声明变量 'foo' 或检查拼写")));
     
     // 警告
@@ -351,7 +351,7 @@ fn test_comprehensive_error_scenario() {
         ErrorCodes::SEMANTIC_UNUSED_VARIABLE,
         CompilationPhase::Semantic,
         "变量 'bar' 未使用",
-        SourceLocation::new(7, 5),
+        SourceLocation::new(None::<String>, 7, 5),
     ));
     
     assert_eq!(collector.error_count(), 3);
@@ -371,8 +371,8 @@ fn test_comprehensive_error_scenario() {
 #[test]
 fn test_empty_source_location() {
     let loc = SourceLocation::default();
-    assert_eq!(loc.line, 0);
-    assert_eq!(loc.column, 0);
+    assert_eq!(loc.line, 1);
+    assert_eq!(loc.column, 1);
 }
 
 #[test]
@@ -381,7 +381,7 @@ fn test_diagnostic_without_details() {
         ErrorCodes::SEMANTIC_TYPE_MISMATCH,
         CompilationPhase::Semantic,
         "类型不匹配",
-        SourceLocation::new(1, 1),
+        SourceLocation::new(None::<String>, 1, 1),
     );
     
     assert!(diag.details.is_none());
@@ -396,7 +396,7 @@ fn test_fatal_error_detection() {
         Severity::Fatal,
         CompilationPhase::CodeGen,
         "LLVM致命错误",
-        SourceLocation::new(1, 1),
+        SourceLocation::new(None::<String>, 1, 1),
     ));
     
     assert!(collector.has_fatal_errors());

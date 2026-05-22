@@ -177,7 +177,7 @@ impl SemanticAnalyzer {
     pub fn type_check_statement(&mut self, stmt: &Stmt, expected_return: Option<&Type>) -> cayResult<()> {
         match stmt {
             Stmt::Expr(expr) => {
-                self.infer_expr_type(expr)?;
+                self.infer_expr_type_collect_errors(expr);
             }
             Stmt::VarDecl(var) => {
                 // 检查当前作用域中是否已存在同名变量
@@ -198,7 +198,7 @@ impl SemanticAnalyzer {
                 // 处理 auto 类型推断
                 if var_type == Type::Auto {
                     if let Some(init) = &var.initializer {
-                        var_type = self.infer_expr_type(init)?;
+                        var_type = self.infer_expr_type_collect_errors(init);
                     } else {
                         self.errors.push(self.create_error_info(
                             var.loc.line,
@@ -210,7 +210,7 @@ impl SemanticAnalyzer {
                 }
                 
                 if let Some(init) = &var.initializer {
-                    let init_type = self.infer_expr_type(init)?;
+                    let init_type = self.infer_expr_type_collect_errors(init);
                     if !self.types_compatible(&init_type, &var_type) {
                         self.errors.push(self.create_error_info_with_file(
                             var.loc.file.clone(),
@@ -236,7 +236,7 @@ impl SemanticAnalyzer {
             }
             Stmt::Return(expr) => {
                 let return_type = if let Some(e) = expr {
-                    self.infer_expr_type(e)?
+                    self.infer_expr_type_collect_errors(e)
                 } else {
                     Type::Void
                 };
