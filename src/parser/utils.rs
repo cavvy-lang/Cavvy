@@ -275,6 +275,7 @@ pub fn get_token_name(token: &Token) -> String {
         Token::Null => "null".to_string(),
         Token::AtMain => "@main".to_string(),
         Token::AtOverride => "@Override".to_string(),
+        Token::At => "@".to_string(),
         Token::LParen => "(".to_string(),
         Token::RParen => ")".to_string(),
         Token::LBrace => "{".to_string(),

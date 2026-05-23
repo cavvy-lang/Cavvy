@@ -36,6 +36,7 @@ pub struct CompilerOptions {
     pub defines: Vec<String>,
     pub undefines: Vec<String>,
     pub obfuscate: bool,
+    pub debug: bool,               // 生成 DWARF 调试信息
     /// 额外的包含路径（供 #include 搜索）
     pub include_paths: Vec<String>,
 }
@@ -49,6 +50,7 @@ impl Default for CompilerOptions {
             defines: Vec::new(),
             undefines: Vec::new(),
             obfuscate: false,
+            debug: false,
             include_paths: Vec::new(),
         }
     }
@@ -104,6 +106,10 @@ impl Compiler {
         ir_gen.set_platform_config(&self.options);
         // 传递类型注册表以支持正确的方法名生成
         ir_gen.set_type_registry(analyzer.get_type_registry().clone());
+        // 启用 DWARF 调试信息
+        if self.options.debug {
+            ir_gen.enable_debug_info();
+        }
         // 注意：compile方法没有源文件路径，使用空字符串
         let mut ir = ir_gen.generate(&ast, "")?;
 
@@ -183,6 +189,10 @@ impl Compiler {
         ir_gen.set_type_registry(analyzer.get_type_registry().clone());
         // 设置预处理器源映射（用于多文件include场景）
         ir_gen.set_preprocessor_source_map(source_map_for_analyzer.clone());
+        // 启��� DWARF 调试信息
+        if self.options.debug {
+            ir_gen.enable_debug_info();
+        }
         // 设置源文件路径以启用源映射
         let source_file = main_file.as_deref().unwrap_or("");
         let mut ir = ir_gen.generate(&ast, source_file)?;

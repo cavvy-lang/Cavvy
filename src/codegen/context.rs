@@ -219,6 +219,22 @@ pub struct IRGenerator {
     pub enable_source_map: bool, // 是否启用源映射
     pub preprocessor_source_map: Option<std::collections::HashMap<usize, (String, usize)>>, // 预处理器源映射 (输出行 -> (文件, 源行))
     pub reverse_source_map: Option<std::collections::HashMap<(String, usize), usize>>, // 反向映射 ((文件, 源行) -> 输出行)
+    // DWARF 调试信息
+    pub debug_info: bool,                     // 是否生成 DWARF 调试信息
+    debug_node_counter: usize,                // 调试元数据节点计数器
+    debug_file_node: usize,                   // DIFile 节点编号
+    debug_empty_node: usize,                   // 空元组节点编号
+    debug_subprograms: Vec<DebugSubprogram>,   // 记录所有子程序元数据
+}
+
+/// DWARF 子程序元数据
+#[derive(Debug, Clone)]
+struct DebugSubprogram {
+    func_name: String,    // 函数名（LLVM 中的名称）
+    source_file: String,  // 源文件路径
+    source_line: usize,   // 源行号
+    node_id: usize,       // DISubprogram 节点编号
+    type_node_id: usize,  // DISubroutineType 节点编号
 }
 
 impl IRGenerator {
@@ -267,6 +283,12 @@ impl IRGenerator {
             enable_source_map: true, // 默认启用
             preprocessor_source_map: None,
             reverse_source_map: None,
+            // DWARF 调试信息初始化
+            debug_info: false,
+            debug_node_counter: 5,         // 0=DICompileUnit, 1=DebugInfoVersion, 2=DwarfVersion, 3=DIFile, 4=empty tuple
+            debug_file_node: 3,
+            debug_empty_node: 4,
+            debug_subprograms: Vec::new(),
         }
     }
 
@@ -416,10 +438,48 @@ impl IRGenerator {
             }
         }
         
-        if !line.is_empty() {
+        // DWARF 调试信息: 为 define 行注入 !dbg 注解
+        let actual_line = if self.debug_info && line.trim_start().starts_with("define ") {
+            let trimmed = line.trim_start();
+            if let Some(at_pos) = trimmed.find('@') {
+                let after_at = &trimmed[at_pos + 1..];
+                let func_name = if let Some(paren_pos) = after_at.find('(') {
+                    after_at[..paren_pos].to_string()
+                } else {
+                    after_at.to_string()
+                };
+                
+                let has_source = !self.source_file.is_empty();
+                if has_source {
+                    let sf = self.source_file.clone();
+                    let sl = self.source_line;
+                    let node_id = self.allocate_debug_subprogram(
+                        &func_name,
+                        &sf,
+                        sl,
+                    );
+                    
+                    if let Some(brace_pos) = line.rfind('{') {
+                        let before_brace = &line[..brace_pos];
+                        let after_brace = &line[brace_pos..];
+                        format!("{}!dbg !{} {}", before_brace, node_id, after_brace)
+                    } else {
+                        line.to_string()
+                    }
+                } else {
+                    line.to_string()
+                }
+            } else {
+                line.to_string()
+            }
+        } else {
+            line.to_string()
+        };
+        
+        if !actual_line.is_empty() {
             self.code.push_str(&"  ".repeat(self.indent));
         }
-        self.code.push_str(line);
+        self.code.push_str(&actual_line);
         self.code.push('\n');
         self.current_ir_line += 1;
     }
@@ -433,6 +493,43 @@ impl IRGenerator {
                 self.output.push_str(&format!("; !source {}:{}:{}\n", 
                     source_file, source_line, source_column));
                 self.current_ir_line += 1;
+            }
+        }
+        
+        // DWARF 调试信息: 为 define 行注入 !dbg 注解
+        if self.debug_info && line.trim_start().starts_with("define ") {
+            // 提取函数名: "define <type> @<name>(...)" -> "<name>"
+            let trimmed = line.trim_start();
+            if let Some(at_pos) = trimmed.find('@') {
+                let after_at = &trimmed[at_pos + 1..];
+                let func_name = if let Some(paren_pos) = after_at.find('(') {
+                    after_at[..paren_pos].to_string()
+                } else {
+                    after_at.to_string()
+                };
+                
+                // 查找该函数是否已分配子程序节点
+                // 检查是否来自运行时（没有源文件位置），跳过
+                let has_source = !self.source_file.is_empty();
+                
+                if has_source {
+                    let sf = self.source_file.clone();
+                    let sl = self.source_line;
+                    let node_id = self.allocate_debug_subprogram(
+                        &func_name,
+                        &sf,
+                        sl,
+                    );
+                    
+                    // 在 { 之前注入 !dbg !N
+                    if let Some(brace_pos) = line.rfind('{') {
+                        let before_brace = &line[..brace_pos];
+                        let after_brace = &line[brace_pos..];
+                        self.output.push_str(&format!("{}!dbg !{} {}\n", before_brace, node_id, after_brace));
+                        self.current_ir_line += 1;
+                        return;
+                    }
+                }
             }
         }
         
@@ -1015,5 +1112,111 @@ impl IRGenerator {
     /// 获取当前函数的参数顺序（用于内联IR）
     pub fn get_current_param_order(&self) -> &[String] {
         &self.current_param_order
+    }
+
+    // ============================================================
+    // DWARF 调试信息支持
+    // ============================================================
+
+    /// 启用 DWARF 调试信息生成
+    pub fn enable_debug_info(&mut self) {
+        self.debug_info = true;
+    }
+
+    /// 为函数定义分配 DWARF 子程序元数据节点
+    /// 返回用于 `!dbg !N` 注解的节点编号
+    pub fn allocate_debug_subprogram(&mut self, func_name: &str, source_file: &str, source_line: usize) -> usize {
+        let subprogram_node = self.debug_node_counter;
+        let type_node = self.debug_node_counter + 1;
+        self.debug_node_counter += 2;
+
+        self.debug_subprograms.push(DebugSubprogram {
+            func_name: func_name.to_string(),
+            source_file: source_file.to_string(),
+            source_line,
+            node_id: subprogram_node,
+            type_node_id: type_node,
+        });
+
+        subprogram_node
+    }
+
+    /// 发射 DWARF 模块级引用（在 emit_header 中 target triple 之后调用）
+    pub fn emit_debug_header(&mut self) {
+        if !self.debug_info {
+            return;
+        }
+        // 模块级 DWARF 引用 — 节点定义在末尾的 emit_debug_metadata 中
+        self.output.push_str(&format!(
+            "!llvm.dbg.cu = !{{!{}}}\n",
+            self.debug_file_node - 3  // !0 = DICompileUnit
+        ));
+        self.output.push_str("!llvm.module.flags = !{!1, !2}\n");
+        self.output.push('\n');
+    }
+
+    /// 发射所有 DWARF 调试元数据节点（在 IR 生成最后调用）
+    pub fn emit_debug_metadata(&mut self) {
+        if !self.debug_info {
+            return;
+        }
+
+        let source_file = if self.source_file.is_empty() {
+            "unknown.cay"
+        } else {
+            &self.source_file
+        };
+
+        // 转义路径中的反斜杠（Windows 路径等）
+        let escaped_file = source_file.replace('\\', "\\\\");
+
+        // !0 = distinct !DICompileUnit
+        self.output.push_str(&format!(
+            "!0 = distinct !DICompileUnit(language: DW_LANG_C_plus_plus, file: !{}, producer: \"Cavvy Compiler\", isOptimized: false, runtimeVersion: 0, emissionKind: FullDebug, enums: !{}, splitDebugInlining: false)\n",
+            self.debug_file_node, self.debug_empty_node
+        ));
+
+        // !1 = Debug Info Version
+        self.output.push_str("!1 = !{i32 2, !\"Debug Info Version\", i32 3}\n");
+
+        // !2 = Dwarf Version
+        self.output.push_str("!2 = !{i32 2, !\"Dwarf Version\", i32 4}\n");
+
+        // !3 = !DIFile
+        self.output.push_str(&format!(
+            "!{} = !DIFile(filename: \"{}\", directory: \".\")\n",
+            self.debug_file_node, escaped_file
+        ));
+
+        // !4 = empty tuple
+        self.output.push_str(&format!("!{} = !{{}}\n", self.debug_empty_node));
+        self.output.push('\n');
+
+        // 发射所有子程序元数据
+        let cu_node = self.debug_file_node - 3; // !0
+
+        for sp in &self.debug_subprograms {
+            let escaped_sp_file = sp.source_file.replace('\\', "\\\\");
+            let sp_file_node = if sp.source_file == source_file {
+                self.debug_file_node
+            } else {
+                // 对于来自不同文件的函数，使用相同的 DIFile（简化处理）
+                self.debug_file_node
+            };
+
+            // DISubroutineType
+            self.output.push_str(&format!(
+                "!{} = !DISubroutineType(types: !{})\n",
+                sp.type_node_id, self.debug_empty_node
+            ));
+
+            // DISubprogram
+            self.output.push_str(&format!(
+                "!{} = distinct !DISubprogram(name: \"{}\", linkageName: \"{}\", scope: !{}, file: !{}, line: {}, type: !{}, scopeLine: {}, spFlags: DISPFlagDefinition, unit: !{})\n",
+                sp.node_id, sp.func_name, sp.func_name,
+                cu_node, sp_file_node, sp.source_line,
+                sp.type_node_id, sp.source_line, cu_node
+            ));
+        }
     }
 }

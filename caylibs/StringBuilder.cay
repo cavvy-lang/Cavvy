@@ -8,13 +8,8 @@
 #ifndef CAY_STRINGBUILDER_H
 #define CAY_STRINGBUILDER_H
 
-/* 外部辅助函数声明 */
+/* 运行时内存操作函数 */
 extern {
-    /* 内存分配函数 */
-    long malloc(int size);
-    void free(long ptr);
-
-    /* 内存操作函数（运行时提供） */
     void __cay_memcpy_byte(long dest, long src, int n);
     void __cay_memset_byte(long ptr, int value, int n);
 }
@@ -24,7 +19,7 @@ extern {
  * 用于高效地构建和拼接字符串
  */
 public class StringBuilder {
-    /* 内部缓冲区指针 */
+    /* 内部缓冲区指针（long 类型以支持位运算） */
     private long buffer;
     /* 当前长度 */
     private int length;
@@ -36,12 +31,34 @@ public class StringBuilder {
     /* 容量增长因子 */
     private static final int GROWTH_FACTOR = 2;
     
+    /* 
+     * 使用 inline IR 封装 malloc/free，绕过 Cavvy 类型系统，
+     * 避免与 std/ffi.cay 中 c_void* 声明冲突。
+     */
+    private static long __buf_alloc(int size) {
+        long result;
+        __ir {
+            %s64 = sext i32 %size to i64
+            %p = call i8* @malloc(i64 %s64)
+            %v = ptrtoint i8* %p to i64
+            store i64 %v, i64* %result
+        }
+        return result;
+    }
+    
+    private static void __buf_free(long buf) {
+        __ir {
+            %p = inttoptr i64 %buf to i8*
+            call void @free(i8* %p)
+        }
+    }
+    
     /**
      * 默认构造函数
      */
     public StringBuilder() {
         this.capacity = DEFAULT_CAPACITY;
-        this.buffer = malloc(this.capacity);
+        this.buffer = __buf_alloc(this.capacity);
         this.length = 0;
         /* 初始化为空字符串 */
         if (this.buffer != 0) {
@@ -58,7 +75,7 @@ public class StringBuilder {
             initialCapacity = DEFAULT_CAPACITY;
         }
         this.capacity = initialCapacity;
-        this.buffer = malloc(this.capacity);
+        this.buffer = __buf_alloc(this.capacity);
         this.length = 0;
         if (this.buffer != 0) {
             __cay_memset_byte(this.buffer, 0, 1);
@@ -81,7 +98,7 @@ public class StringBuilder {
      */
     public void finalize() {
         if (this.buffer != 0) {
-            free(this.buffer);
+            __buf_free(this.buffer);
             this.buffer = 0;
         }
     }
@@ -91,6 +108,21 @@ public class StringBuilder {
      * @param minCapacity 最小需要的容量
      */
     private void ensureCapacity(int minCapacity) {
+        /* 如果缓冲区为空（malloc 在构造时失败），尝试重新分配 */
+        if (this.buffer == 0) {
+            int allocSize = minCapacity;
+            if (allocSize < DEFAULT_CAPACITY) {
+                allocSize = DEFAULT_CAPACITY;
+            }
+            this.capacity = allocSize;
+            this.buffer = __buf_alloc(this.capacity);
+            this.length = 0;
+            if (this.buffer != 0) {
+                __cay_memset_byte(this.buffer, 0, 1);
+            }
+            return;
+        }
+        
         if (minCapacity <= this.capacity) {
             return;
         }
@@ -102,7 +134,7 @@ public class StringBuilder {
         }
         
         /* 分配新缓冲区 */
-        long newBuffer = malloc(newCapacity);
+        long newBuffer = __buf_alloc(newCapacity);
         if (newBuffer == 0) {
             return; /* 内存分配失败 */
         }
@@ -114,7 +146,7 @@ public class StringBuilder {
         
         /* 释放旧缓冲区 */
         if (this.buffer != 0) {
-            free(this.buffer);
+            __buf_free(this.buffer);
         }
         
         this.buffer = newBuffer;
@@ -139,6 +171,11 @@ public class StringBuilder {
         /* 确保容量足够（包括null terminator） */
         this.ensureCapacity(this.length + strLen + 1);
         
+        /* 如果缓冲区分配失败，无法追加 */
+        if (this.buffer == 0) {
+            return this;
+        }
+        
         /* 复制字符串内容 - 使用外部辅助函数 */
         __cay_memcpy_byte(this.buffer + this.length, str.c_str(), strLen);
         
@@ -157,6 +194,11 @@ public class StringBuilder {
      */
     public StringBuilder append(char c) {
         this.ensureCapacity(this.length + 2);
+        
+        /* 如果缓冲区分配失败，无法追加 */
+        if (this.buffer == 0) {
+            return this;
+        }
         
         /* 使用外部辅助函数写入字符 */
         __cay_memset_byte(this.buffer + this.length, (int)c, 1);
@@ -379,6 +421,9 @@ public class StringBuilder {
      * @return this，支持链式调用
      */
     public StringBuilder delete(int start, int end) {
+        if (this.buffer == 0) {
+            return this;
+        }
         if (start < 0) {
             start = 0;
         }
@@ -436,6 +481,11 @@ public class StringBuilder {
         
         /* 确保容量 */
         this.ensureCapacity(this.length + strLen + 1);
+        
+        /* 如果缓冲区分配失败，无法插入 */
+        if (this.buffer == 0) {
+            return this;
+        }
         
         /* 移动后面的字符 */
         int moveLen = this.length - offset;
@@ -497,6 +547,10 @@ public class StringBuilder {
             return;
         }
         
+        if (this.buffer == 0) {
+            return;
+        }
+        
         if (newLength > this.length) {
             /* 扩展 - 填充null字符 */
             this.ensureCapacity(newLength + 1);
@@ -543,6 +597,10 @@ public class StringBuilder {
             return "";
         }
         
+        if (this.buffer == 0) {
+            return "";
+        }
+        
         int len = end - start;
         char[] chars = new char[len]();
         
@@ -564,6 +622,10 @@ public class StringBuilder {
      */
     public int indexOf(String str) {
         if (str == null || this.length == 0) {
+            return -1;
+        }
+        
+        if (this.buffer == 0) {
             return -1;
         }
         

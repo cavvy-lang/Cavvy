@@ -37,6 +37,7 @@ struct CompileOptions {
     optimization: String,    // -O0, -O1, -O2, -O3, -Os, -Oz
     optimize_ir: bool,       // --opt-ir: 使用 clang 优化 IR
     emit_optimized: bool,    // --emit-optimized: 输出发优化后的 IR
+    debug: bool,             // -g: 生成 DWARF 调试信息
     target_os: String,       // --target: 目标操作系统
     features: Vec<String>,   // -f:XX 或 --feature:XX 开启特性
     no_features: Vec<String>, // -No:XX 关闭特性
@@ -53,6 +54,7 @@ impl Default for CompileOptions {
             optimization: "-O2".to_string(),
             optimize_ir: false,
             emit_optimized: false,
+            debug: false,
             target_os: std::env::consts::OS.to_string(),
             features: Vec::new(),
             no_features: Vec::new(),
@@ -70,6 +72,7 @@ fn print_usage() {
     println!("Options:");
     println!("  -O0, -O1, -O2, -O3    编译器优化级别 (默认: -O2)");
     println!("  -Os, -Oz              优化代码大小");
+    println!("  -g                    生成 DWARF 调试信息");
     println!("  --opt-ir              使用 LLVM 优化 IR (增加编译时间，提高运行时性能)");
     println!("  --emit-optimized      输出优化后的 IR (与 --opt-ir 一起使用)");
     println!("  --target <os>         目标操作系统 (windows, linux, macos)");
@@ -126,6 +129,9 @@ fn parse_args(args: &[String]) -> Result<(CompileOptions, String, String), Strin
             }
             "--obfuscate" => {
                 options.obfuscate = true;
+            }
+            "-g" => {
+                options.debug = true;
             }
             "-o" => {
                 if i + 1 < args.len() {
@@ -262,6 +268,7 @@ fn main() {
         defines: options.defines,
         undefines: options.undefines,
         obfuscate: options.obfuscate,
+        debug: options.debug,
         include_paths: Vec::new(),
     };
 

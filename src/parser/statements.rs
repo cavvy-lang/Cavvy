@@ -693,7 +693,7 @@ fn parse_inline_ir_from_tokens(parser: &mut Parser) -> cayResult<Vec<String>> {
         
         // 如果行号变化，保存当前行并开始新行
         if token_line != current_line_num && !current_line.is_empty() {
-            let line = current_line.join(" ");
+            let line = join_ir_tokens(&current_line);
             if !line.trim().is_empty() {
                 raw_lines.push(line);
             }
@@ -928,6 +928,18 @@ fn parse_inline_ir_from_tokens(parser: &mut Parser) -> cayResult<Vec<String>> {
                 current_line.push("*".to_string());
                 parser.advance();
             }
+            crate::lexer::Token::At => {
+                current_line.push("@".to_string());
+                parser.advance();
+            }
+            crate::lexer::Token::LParen => {
+                current_line.push("(".to_string());
+                parser.advance();
+            }
+            crate::lexer::Token::RParen => {
+                current_line.push(")".to_string());
+                parser.advance();
+            }
             crate::lexer::Token::Assign => {
                 current_line.push("=".to_string());
                 parser.advance();
@@ -938,6 +950,23 @@ fn parse_inline_ir_from_tokens(parser: &mut Parser) -> cayResult<Vec<String>> {
             }
             crate::lexer::Token::Double => {
                 current_line.push("double".to_string());
+                parser.advance();
+            }
+            // LLVM IR 类型关键词（Cavvy 关键词，但在 IR 中是普通标识符）
+            crate::lexer::Token::Void => {
+                current_line.push("void".to_string());
+                parser.advance();
+            }
+            crate::lexer::Token::Int => {
+                current_line.push("int".to_string());
+                parser.advance();
+            }
+            crate::lexer::Token::Long => {
+                current_line.push("long".to_string());
+                parser.advance();
+            }
+            crate::lexer::Token::Bool => {
+                current_line.push("bool".to_string());
                 parser.advance();
             }
             crate::lexer::Token::Semicolon => {
@@ -960,7 +989,7 @@ fn parse_inline_ir_from_tokens(parser: &mut Parser) -> cayResult<Vec<String>> {
                 }
                 // 如果当前行不为空，保存当前行
                 if !current_line.is_empty() {
-                    let line = current_line.join(" ");
+                    let line = join_ir_tokens(&current_line);
                     if !line.trim().is_empty() {
                         raw_lines.push(line);
                     }
@@ -982,11 +1011,41 @@ fn parse_inline_ir_from_tokens(parser: &mut Parser) -> cayResult<Vec<String>> {
 
     // 处理最后一行
     if !current_line.is_empty() {
-        let line = current_line.join(" ");
+        let line = join_ir_tokens(&current_line);
         if !line.trim().is_empty() {
             raw_lines.push(line);
         }
     }
 
     Ok(raw_lines)
+}
+
+/// 智能拼接内联 IR 的 token，LLVM IR 类型如 i8* 和函数调用 @malloc() 不需要空格
+fn join_ir_tokens(tokens: &[String]) -> String {
+    let mut result = String::new();
+    for (i, token) in tokens.iter().enumerate() {
+        if i > 0 {
+            let prev = &tokens[i - 1];
+            // 不需要在前面加空格的情况:
+            // - 当前是 ) , ( *  时
+            // - 前一个是 @ (  时  
+            let no_space = token == ")"
+                || token == ","
+                || token == "("
+                || prev == "@"
+                || prev == "("
+                || (*token == "*" && is_llvm_type_token(prev));
+            if !no_space {
+                result.push(' ');
+            }
+        }
+        result.push_str(token);
+    }
+    result
+}
+
+/// 判断 token 是否是 LLVM 类型名（后面跟 * 不需要空格）
+fn is_llvm_type_token(token: &str) -> bool {
+    matches!(token, "i1" | "i8" | "i16" | "i32" | "i64" 
+        | "float" | "double" | "void" | "%struct" | "label")
 }

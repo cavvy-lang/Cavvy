@@ -27,6 +27,7 @@
 #define CAY_FILE_H
 
 #include <std/ffi.cay>
+#include <StringBuilder.cay>
 
 /* ============================================================================
  * 常量定义
@@ -1025,77 +1026,6 @@ public class FileWriter {
 
     public bool flush() {
         return this.file.flush();
-    }
-}
-
-/* ============================================================================
- * StringBuilder 类 - 内部使用的字符串构建器
- * ============================================================================ */
-
-/**
- * 简单的字符串构建器，用于优化writeInterpolated性能
- * 使用char数组而不是c_char*指针，以支持数组索引
- */
-private class StringBuilder {
-    private char[] buffer;
-    private int capacity;
-    private int length;
-    
-    public StringBuilder() {
-        this.capacity = 256;
-        this.length = 0;
-        this.buffer = new char[this.capacity]();
-    }
-    
-    public void append(String s) {
-        if (s == null) return;
-        
-        int sLen = s.length();
-        this.ensureCapacity(this.length + sLen);
-        
-        int i = 0;
-        while (i < sLen) {
-            this.buffer[this.length + i] = s.charAt(i);
-            i = i + 1;
-        }
-        this.length = this.length + sLen;
-    }
-    
-    public void append(char c) {
-        this.ensureCapacity(this.length + 1);
-        this.buffer[this.length] = c;
-        this.length = this.length + 1;
-    }
-    
-    private void ensureCapacity(int minCapacity) {
-        if (minCapacity > this.capacity) {
-            int newCapacity = this.capacity * 2;
-            if (newCapacity < minCapacity) {
-                newCapacity = minCapacity;
-            }
-            char[] newBuffer = new char[newCapacity]();
-            int i = 0;
-            while (i < this.length) {
-                newBuffer[i] = this.buffer[i];
-                i = i + 1;
-            }
-            this.buffer = newBuffer;
-            this.capacity = newCapacity;
-        }
-    }
-    
-    public String toString() {
-        if (this.length == 0) {
-            return "";
-        }
-        // 构建字符串
-        String result = "";
-        int i = 0;
-        while (i < this.length) {
-            result = result + this.buffer[i];
-            i = i + 1;
-        }
-        return result;
     }
 }
 

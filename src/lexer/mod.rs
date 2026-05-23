@@ -34,6 +34,8 @@ pub enum Token {
     AtMain,
     #[token("@Override")]
     AtOverride,
+    #[token("@")]
+    At,
     #[token("class")]
     Class,
     #[token("void")]
@@ -910,6 +912,7 @@ pub fn token_name(token: &Token) -> &'static str {
         Token::Native => "native",
         Token::AtMain => "@main",
         Token::AtOverride => "@Override",
+        Token::At => "@",
         Token::Class => "class",
         Token::Void => "void",
         Token::Int => "int",

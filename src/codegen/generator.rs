@@ -376,6 +376,9 @@ impl IRGenerator {
             self.output.push_str(&self.generate_calling_convention_attributes());
         }
 
+        // DWARF 调试元数据节点（必须在所有 define 之后）
+        self.emit_debug_metadata();
+
         Ok(self.output.clone())
     }
 

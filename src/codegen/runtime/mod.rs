@@ -50,6 +50,9 @@ impl IRGenerator {
         self.emit_raw(&format!("target triple = \"{}\"", target_triple));
         self.emit_raw("");
 
+        // DWARF 调试信息模块级引用
+        self.emit_debug_header();
+
         // 声明外部函数 (printf 和标准C库函数)
         // 注意：这些声明会被标记为已发射，以避免与用户代码中的重复声明冲突
         // 签名格式: 函数名@返回类型@参数1@参数2@...@...
@@ -206,10 +209,18 @@ impl IRGenerator {
         // __cay_memset_byte: 按字节设置内存 (使用i64指针参数，兼容现有代码)
         self.emit_raw("define void @__cay_memset_byte(i64 %ptr, i32 %value, i32 %n) {");
         self.emit_raw("entry:");
+        self.emit_raw("  ; 空指针安全检查");
+        self.emit_raw("  %is_null = icmp eq i64 %ptr, 0");
+        self.emit_raw("  br i1 %is_null, label %return, label %do_memset");
+        self.emit_raw("");
+        self.emit_raw("do_memset:");
         self.emit_raw("  %ptr_i8 = inttoptr i64 %ptr to i8*");
         self.emit_raw("  %val_i8 = trunc i32 %value to i8");
         self.emit_raw("  %n_i64 = sext i32 %n to i64");
         self.emit_raw("  call void @llvm.memset.p0i8.i64(i8* %ptr_i8, i8 %val_i8, i64 %n_i64, i1 false)");
+        self.emit_raw("  ret void");
+        self.emit_raw("");
+        self.emit_raw("return:");
         self.emit_raw("  ret void");
         self.emit_raw("}");
         self.emit_raw("");
@@ -217,10 +228,20 @@ impl IRGenerator {
         // __cay_memcpy_byte: 按字节复制内存 (使用i64指针参数，兼容现有代码)
         self.emit_raw("define void @__cay_memcpy_byte(i64 %dest, i64 %src, i32 %n) {");
         self.emit_raw("entry:");
+        self.emit_raw("  ; 空指针安全检查");
+        self.emit_raw("  %dest_null = icmp eq i64 %dest, 0");
+        self.emit_raw("  %src_null = icmp eq i64 %src, 0");
+        self.emit_raw("  %either_null = or i1 %dest_null, %src_null");
+        self.emit_raw("  br i1 %either_null, label %return, label %do_memcpy");
+        self.emit_raw("");
+        self.emit_raw("do_memcpy:");
         self.emit_raw("  %dest_i8 = inttoptr i64 %dest to i8*");
         self.emit_raw("  %src_i8 = inttoptr i64 %src to i8*");
         self.emit_raw("  %n_i64 = sext i32 %n to i64");
         self.emit_raw("  call void @llvm.memcpy.p0i8.p0i8.i64(i8* %dest_i8, i8* %src_i8, i64 %n_i64, i1 false)");
+        self.emit_raw("  ret void");
+        self.emit_raw("");
+        self.emit_raw("return:");
         self.emit_raw("  ret void");
         self.emit_raw("}");
         self.emit_raw("");

@@ -560,6 +560,7 @@ fn main() {
         defines: Vec::new(),
         undefines: Vec::new(),
         obfuscate: false,
+        debug: options.debug,
         include_paths: options.include_paths.clone(),
     };
     let compiler = cavvy::Compiler::with_options(compiler_options);
