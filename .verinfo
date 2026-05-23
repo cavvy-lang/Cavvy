@@ -1,54 +1,54 @@
 [CAYC]
-version = "5.1.0-Alpha.4"
-build = 38
+version = "5.1.0-Alpha.5"
+build = 39
 
 [CAY-IR]
-version = "5.1.0-Alpha.4"
-build = 38
+version = "5.1.0-Alpha.5"
+build = 39
 
 [IR2EXE]
-version = "5.1.0-Alpha.4"
-build = 38
+version = "5.1.0-Alpha.5"
+build = 39
 
 [CAY-CHECK]
-version = "5.1.0-Alpha.4"
-build = 30
+version = "5.1.0-Alpha.5"
+build = 31
 
 [CAY-RUN]
-version = "5.1.0-Alpha.4"
-build = 15
+version = "5.1.0-Alpha.5"
+build = 16
 
 [CAY-LSP]
-version = "5.1.0-Alpha.4"
-build = 10
+version = "5.1.0-Alpha.5"
+build = 11
 
 [CAVLY]
-version = "5.1.0-Alpha.4"
-build = 4
+version = "5.1.0-Alpha.5"
+build = 5
 
 [CAY-PRE]
-version = "5.1.0-Alpha.4"
-build = 2
+version = "5.1.0-Alpha.5"
+build = 3
 
 [CAY-BCGEN]
-version = "5.1.0-Alpha.4"
+version = "5.1.0-Alpha.5"
 build = 2
 
 [CAY-DT]
-version = "5.1.0-Alpha.4"
+version = "5.1.0-Alpha.5"
 build = 2
 
 [CAY-DP]
-version = "5.1.0-Alpha.4"
+version = "5.1.0-Alpha.5"
 build = 2
 
 [CAY-IDLE]
-version = "5.1.0-Alpha.4"
-build = 2
+version = "5.1.0-Alpha.5"
+build = 3
 
 [CAY-RCPL]
-version = "5.1.0-Alpha.4"
-build = 2
+version = "5.1.0-Alpha.5"
+build = 3
 
 [LLVM-MINIMAL]
 version = "22.1.6"
