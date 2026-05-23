@@ -55,6 +55,19 @@ impl IRGenerator {
     /// * `bin` - 二元表达式
     pub fn generate_binary_expression(&mut self, bin: &BinaryExpr) -> cayResult<String> {
         let left = self.generate_expression(&bin.left)?;
+        
+        // 短路求值：&& 和 || 只先生成左侧，右侧在条件分支中惰性生成
+        if bin.op == BinaryOp::And {
+            let (left_type, left_val) = self.parse_typed_value(&left);
+            let temp = self.new_temp();
+            return self.generate_short_circuit_and(&left_type, &left_val, &bin.right, &temp);
+        }
+        if bin.op == BinaryOp::Or {
+            let (left_type, left_val) = self.parse_typed_value(&left);
+            let temp = self.new_temp();
+            return self.generate_short_circuit_or(&left_type, &left_val, &bin.right, &temp);
+        }
+        
         let right = self.generate_expression(&bin.right)?;
         
         // 解析类型和值
@@ -76,14 +89,13 @@ impl IRGenerator {
             BinaryOp::Le => self.generate_le(&left_type, &left_val, &right_type, &right_val, &temp, &loc),
             BinaryOp::Gt => self.generate_gt(&left_type, &left_val, &right_type, &right_val, &temp, &loc),
             BinaryOp::Ge => self.generate_ge(&left_type, &left_val, &right_type, &right_val, &temp, &loc),
-            BinaryOp::And => self.generate_and(&left_type, &left_val, &right_type, &right_val, &temp, &loc),
-            BinaryOp::Or => self.generate_or(&left_type, &left_val, &right_type, &right_val, &temp, &loc),
             BinaryOp::BitAnd => self.generate_bitand(&left_type, &left_val, &right_type, &right_val, &temp, &loc),
             BinaryOp::BitOr => self.generate_bitor(&left_type, &left_val, &right_type, &right_val, &temp, &loc),
             BinaryOp::BitXor => self.generate_bitxor(&left_type, &left_val, &right_type, &right_val, &temp, &loc),
             BinaryOp::Shl => self.generate_shl(&left_type, &left_val, &right_type, &right_val, &temp, &loc),
             BinaryOp::Shr => self.generate_shr(&left_type, &left_val, &right_type, &right_val, &temp, &loc),
             BinaryOp::UnsignedShr => self.generate_ushr(&left_type, &left_val, &right_type, &right_val, &temp, &loc),
+            _ => unreachable!(), // And/Or handled above with short-circuit
         }
     }
 
@@ -447,47 +459,81 @@ impl IRGenerator {
         Ok(format!("i1 {}", temp))
     }
 
-    /// 生成逻辑与表达式
-    fn generate_and(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str, _loc: &SourceLocation) -> cayResult<String> {
-        // 确保操作数都是 i1 类型
-        let left_i1 = if left_type == "i1" {
-            left_val.to_string()
+    /// 将任意类型转换为 i1（用于短路求值的条件判断）
+    fn convert_to_i1(&mut self, ty: &str, val: &str) -> String {
+        if ty == "i1" {
+            val.to_string()
         } else {
             let cmp_temp = self.new_temp();
-            self.emit_line(&format!("  {} = icmp ne {} {}, 0", cmp_temp, left_type, left_val));
+            self.emit_line(&format!("  {} = icmp ne {} {}, 0", cmp_temp, ty, val));
             cmp_temp
-        };
-        let right_i1 = if right_type == "i1" {
-            right_val.to_string()
-        } else {
-            let cmp_temp = self.new_temp();
-            self.emit_line(&format!("  {} = icmp ne {} {}, 0", cmp_temp, right_type, right_val));
-            cmp_temp
-        };
-        self.emit_line(&format!("  {} = and i1 {}, {}", 
-            temp, left_i1, right_i1));
+        }
+    }
+
+    /// 生成短路求值的 && 表达式
+    /// 
+    /// 左侧已求值，右侧在左侧为 true 时才惰性求值。
+    /// 使用 alloca + store + load 模式生成 phi-free 的控制流。
+    fn generate_short_circuit_and(&mut self, left_type: &str, left_val: &str, right_expr: &Expr, temp: &str) -> cayResult<String> {
+        let left_i1 = self.convert_to_i1(left_type, left_val);
+        let eval_right = self.new_label("and.eval");
+        let set_false = self.new_label("and.false");
+        let merge = self.new_label("and.merge");
+        
+        let slot = self.new_temp();
+        self.emit_line(&format!("  {} = alloca i1", slot));
+        self.emit_line(&format!("  br i1 {}, label %{}, label %{}", left_i1, eval_right, set_false));
+        
+        // 左侧为 false：直接存储 0，跳到合并点
+        self.emit_line(&format!("\n{}:", set_false));
+        self.emit_line(&format!("  store i1 0, i1* {}", slot));
+        self.emit_line(&format!("  br label %{}", merge));
+        
+        // 左侧为 true：惰性求值右侧（关键！右侧在此块内才生成）
+        self.emit_line(&format!("\n{}:", eval_right));
+        let right_result = self.generate_expression(right_expr)?;
+        let (right_type, right_val) = self.parse_typed_value(&right_result);
+        let right_i1 = self.convert_to_i1(&right_type, &right_val);
+        self.emit_line(&format!("  store i1 {}, i1* {}", right_i1, slot));
+        self.emit_line(&format!("  br label %{}", merge));
+        
+        // 合并点
+        self.emit_line(&format!("\n{}:", merge));
+        self.emit_line(&format!("  {} = load i1, i1* {}", temp, slot));
+        
         Ok(format!("i1 {}", temp))
     }
 
-    /// 生成逻辑或表达式
-    fn generate_or(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str, _loc: &SourceLocation) -> cayResult<String> {
-        // 确保操作数都是 i1 类型
-        let left_i1 = if left_type == "i1" {
-            left_val.to_string()
-        } else {
-            let cmp_temp = self.new_temp();
-            self.emit_line(&format!("  {} = icmp ne {} {}, 0", cmp_temp, left_type, left_val));
-            cmp_temp
-        };
-        let right_i1 = if right_type == "i1" {
-            right_val.to_string()
-        } else {
-            let cmp_temp = self.new_temp();
-            self.emit_line(&format!("  {} = icmp ne {} {}, 0", cmp_temp, right_type, right_val));
-            cmp_temp
-        };
-        self.emit_line(&format!("  {} = or i1 {}, {}",
-            temp, left_i1, right_i1));
+    /// 生成短路求值的 || 表达式
+    /// 
+    /// 左侧已求值，右侧在左侧为 false 时才惰性求值。
+    fn generate_short_circuit_or(&mut self, left_type: &str, left_val: &str, right_expr: &Expr, temp: &str) -> cayResult<String> {
+        let left_i1 = self.convert_to_i1(left_type, left_val);
+        let eval_right = self.new_label("or.eval");
+        let set_true = self.new_label("or.true");
+        let merge = self.new_label("or.merge");
+        
+        let slot = self.new_temp();
+        self.emit_line(&format!("  {} = alloca i1", slot));
+        self.emit_line(&format!("  br i1 {}, label %{}, label %{}", left_i1, set_true, eval_right));
+        
+        // 左侧为 true：直接存储 1，跳到合并点
+        self.emit_line(&format!("\n{}:", set_true));
+        self.emit_line(&format!("  store i1 1, i1* {}", slot));
+        self.emit_line(&format!("  br label %{}", merge));
+        
+        // 左侧为 false：惰性求值右侧
+        self.emit_line(&format!("\n{}:", eval_right));
+        let right_result = self.generate_expression(right_expr)?;
+        let (right_type, right_val) = self.parse_typed_value(&right_result);
+        let right_i1 = self.convert_to_i1(&right_type, &right_val);
+        self.emit_line(&format!("  store i1 {}, i1* {}", right_i1, slot));
+        self.emit_line(&format!("  br label %{}", merge));
+        
+        // 合并点
+        self.emit_line(&format!("\n{}:", merge));
+        self.emit_line(&format!("  {} = load i1, i1* {}", temp, slot));
+        
         Ok(format!("i1 {}", temp))
     }
 

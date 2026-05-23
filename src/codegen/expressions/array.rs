@@ -90,22 +90,51 @@ impl IRGenerator {
         // 调用 calloc 分配内存（自动零初始化）
         let calloc_temp = self.new_temp();
         self.emit_line(&format!("  {} = call i8* @calloc(i64 1, i64 {})", calloc_temp, total_bytes_temp));
-        
-        // 存储长度（前4字节）- calloc 已零初始化，只需设置长度
+
+        // calloc 失败保护：返回 null 而非崩溃
+        let is_null = self.new_temp();
+        self.emit_line(&format!("  {} = icmp eq i8* {}, null", is_null, calloc_temp));
+        let ok_label = self.new_label("arr.alloc.ok");
+        let fail_label = self.new_label("arr.alloc.fail");
+        let merge_label = self.new_label("arr.alloc.merge");
+
+        // 结果槽（alloca + store 模式，避免 phi 标签问题）
+        // 注意：alloca 必须在 br 之前，位于当前基本块内
+        let arr_ptr_type = format!("{}*", elem_type);
+        let result_slot = self.new_temp();
+        self.emit_line(&format!("  {} = alloca {}", result_slot, arr_ptr_type));
+
+        self.emit_line(&format!("  br i1 {}, label %{}, label %{}", is_null, fail_label, ok_label));
+
+        // calloc 失败：返回 null
+        self.emit_line(&format!("\n{}:", fail_label));
+        self.emit_line(&format!("  store {} null, {}* {}", arr_ptr_type, arr_ptr_type, result_slot));
+        self.emit_line(&format!("  br label %{}", merge_label));
+
+        // calloc 成功：正常分配
+        self.emit_line(&format!("\n{}:", ok_label));
+        // 存储长度（前4字节）
         let len_ptr = self.new_temp();
         self.emit_line(&format!("  {} = bitcast i8* {} to i32*", len_ptr, calloc_temp));
         self.emit_line(&format!("  store i32 {}, i32* {}, align 4", size_i32, len_ptr));
-        
+
         // 计算数据起始地址（跳过8字节长度头）
         let data_ptr = self.new_temp();
         self.emit_line(&format!("  {} = getelementptr i8, i8* {}, i64 8", data_ptr, calloc_temp));
-        
+
         // 将 i8* 转换为元素类型指针
         let cast_temp = self.new_temp();
         self.emit_line(&format!("  {} = bitcast i8* {} to {}*", cast_temp, data_ptr, elem_type));
-        
-        // 返回数组指针（指向数据，长度在指针前8字节）
-        Ok(format!("{}* {}", elem_type, cast_temp))
+        self.emit_line(&format!("  store {}* {}, {}* {}", arr_ptr_type, cast_temp, arr_ptr_type, result_slot));
+        self.emit_line(&format!("  br label %{}", merge_label));
+
+        // 合并点：加载结果
+        self.emit_line(&format!("\n{}:", merge_label));
+        let result_temp = self.new_temp();
+        self.emit_line(&format!("  {} = load {}*, {}* {}", result_temp, arr_ptr_type, arr_ptr_type, result_slot));
+
+        // 返回数组指针（指向数据，长度在指针前8字节；失败时返回 null）
+        Ok(format!("{}* {}", elem_type, result_temp))
     }
 
     /// 生成多维数组创建: new Type[size1][size2]...[sizeN] 或 new Type[size][] (不规则数组)

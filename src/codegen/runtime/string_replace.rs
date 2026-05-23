@@ -26,6 +26,14 @@ impl IRGenerator {
         self.emit_raw("  %str_len_copy = call i64 @strlen(i8* %str)");
         self.emit_raw("  %copy_size = add i64 %str_len_copy, 1");
         self.emit_raw("  %copy = call i8* @calloc(i64 1, i64 %copy_size)");
+        self.emit_raw("  ; calloc 失败保护：返回空字符串而非崩溃");
+        self.emit_raw("  %copy_null = icmp eq i8* %copy, null");
+        self.emit_raw("  br i1 %copy_null, label %copy_fail, label %do_copy");
+        self.emit_raw("");
+        self.emit_raw("copy_fail:");
+        self.emit_raw("  ret i8* getelementptr ([1 x i8], [1 x i8]* @.cay_empty_str, i64 0, i64 0)");
+        self.emit_raw("");
+        self.emit_raw("do_copy:");
         self.emit_raw("  call void @llvm.memcpy.p0i8.p0i8.i64(i8* %copy, i8* %str, i64 %str_len_copy, i1 false)");
         self.emit_raw("  %copy_end = getelementptr i8, i8* %copy, i64 %str_len_copy");
         self.emit_raw("  store i8 0, i8* %copy_end");
@@ -73,7 +81,12 @@ impl IRGenerator {
         self.emit_raw("  %result_size = add i64 %str_len, %size_diff");
         self.emit_raw("  %result_buf_size = add i64 %result_size, 1");
         self.emit_raw("  %result = call i8* @calloc(i64 1, i64 %result_buf_size)");
-        self.emit_raw("  br label %build_loop");
+        self.emit_raw("  ; calloc 失败保护：返回空字符串而非崩溃");
+        self.emit_raw("  %result_null = icmp eq i8* %result, null");
+        self.emit_raw("  br i1 %result_null, label %result_fail, label %build_loop");
+        self.emit_raw("");
+        self.emit_raw("result_fail:");
+        self.emit_raw("  ret i8* getelementptr ([1 x i8], [1 x i8]* @.cay_empty_str, i64 0, i64 0)");
         self.emit_raw("");
         self.emit_raw("build_loop:");
         self.emit_raw("  %src_pos = phi i64 [0, %allocate_result], [%src_pos_next, %build_continue]");

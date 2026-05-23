@@ -23,6 +23,25 @@ impl IRGenerator {
         let calloc_temp = self.new_temp();
         self.emit_line(&format!("  {} = call i8* @calloc(i64 1, i64 {})", calloc_temp, obj_size));
 
+        // calloc 失败保护：返回 null 而非崩溃（跳过构造函数调用）
+        let is_null_new = self.new_temp();
+        self.emit_line(&format!("  {} = icmp eq i8* {}, null", is_null_new, calloc_temp));
+        let new_ok = self.new_label("new.ok");
+        let new_fail = self.new_label("new.fail");
+        let new_merge = self.new_label("new.merge");
+
+        // 结果槽（alloca 必须在 br 之前）
+        let new_result_slot = self.new_temp();
+        self.emit_line(&format!("  {} = alloca i8*", new_result_slot));
+
+        self.emit_line(&format!("  br i1 {}, label %{}, label %{}", is_null_new, new_fail, new_ok));
+
+        self.emit_line(&format!("\n{}:", new_fail));
+        self.emit_line(&format!("  store i8* null, i8** {}", new_result_slot));
+        self.emit_line(&format!("  br label %{}", new_merge));
+
+        self.emit_line(&format!("\n{}:", new_ok));
+
         let type_id_ptr = self.new_temp();
         self.emit_line(&format!("  {} = bitcast i8* {} to i32*", type_id_ptr, calloc_temp));
         self.emit_line(&format!("  store i32 {}, i32* {}", type_id_value, type_id_ptr));
@@ -55,7 +74,13 @@ impl IRGenerator {
 
         let cast_temp = self.new_temp();
         self.emit_line(&format!("  {} = bitcast i8* {} to i8*", cast_temp, calloc_temp));
-        Ok(format!("i8* {}", cast_temp))
+        self.emit_line(&format!("  store i8* {}, i8** {}", cast_temp, new_result_slot));
+        self.emit_line(&format!("  br label %{}", new_merge));
+
+        self.emit_line(&format!("\n{}:", new_merge));
+        let result_temp = self.new_temp();
+        self.emit_line(&format!("  {} = load i8*, i8** {}", result_temp, new_result_slot));
+        Ok(format!("i8* {}", result_temp))
     }
     
     /// 推断参数类型（返回类型签名）

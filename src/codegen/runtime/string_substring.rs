@@ -33,6 +33,14 @@ impl IRGenerator {
         self.emit_raw("  %buf_size = add i64 %sub_len_i64, 1");
         self.emit_raw("  ; 分配内存");
         self.emit_raw("  %result = call i8* @calloc(i64 1, i64 %buf_size)");
+        self.emit_raw("  ; calloc 失败保护：返回空字符串而非崩溃");
+        self.emit_raw("  %result_null = icmp eq i8* %result, null");
+        self.emit_raw("  br i1 %result_null, label %alloc_fail, label %do_memcpy");
+        self.emit_raw("");
+        self.emit_raw("alloc_fail:");
+        self.emit_raw("  ret i8* getelementptr ([1 x i8], [1 x i8]* @.cay_empty_str, i64 0, i64 0)");
+        self.emit_raw("");
+        self.emit_raw("do_memcpy:");
         self.emit_raw("  ; 计算源地址偏移");
         self.emit_raw("  %begin_i64 = sext i32 %begin_clamped to i64");
         self.emit_raw("  %src_ptr = getelementptr i8, i8* %str, i64 %begin_i64");
