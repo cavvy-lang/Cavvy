@@ -370,18 +370,39 @@ public class StringBuilder {
             return "";
         }
         
-        /* 使用字符数组构建字符串 */
-        char[] chars = new char[this.length]();
+        long buf = this.buffer;
+        int len = this.length;
+        long result_ptr;
         
-        int i = 0;
-        while (i < this.length) {
-            long ptr = this.buffer + i;
-            int pi = (int)(ptr & 0xFF);
-            chars[i] = (char)pi;
-            i = i + 1;
+        // Step 1: allocate memory via calloc
+        __ir {
+            %lv = load i32, i32* %len
+            %l = sext i32 %lv to i64
+            %size = add i64 %l, 1
+            %p = call i8* @calloc(i64 1, i64 %size)
+            %v = ptrtoint i8* %p to i64
+            store i64 %v, i64* %result_ptr
         }
         
-        return charsToString(chars, this.length);
+        if (result_ptr == 0) {
+            return "";
+        }
+        
+        // Step 2: copy buffer data to new memory
+        __cay_memcpy_byte(result_ptr, buf, len);
+        
+        // Step 3: add null terminator
+        __cay_memset_byte(result_ptr + len, 0, 1);
+        
+        // Step 4: convert i64 pointer back to String
+        String result;
+        __ir {
+            %rv = load i64, i64* %result_ptr
+            %sp = inttoptr i64 %rv to i8*
+            store i8* %sp, i8** %result
+        }
+        
+        return result;
     }
     
     /**
