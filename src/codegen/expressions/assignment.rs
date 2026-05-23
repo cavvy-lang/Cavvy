@@ -123,6 +123,13 @@ impl IRGenerator {
         if let Ok((field_llvm_type, field_ptr)) = self.get_nested_field_pointer(member) {
             let align = self.get_type_align(&field_llvm_type);
             
+            // 计算指针类型：如果llvm_type已经是指针类型，则不需要再加*
+            let ptr_type = if field_llvm_type.ends_with('*') {
+                field_llvm_type.clone()
+            } else {
+                format!("{}*", field_llvm_type)
+            };
+            
             // 如果值类型与字段类型不匹配，需要转换
             let final_val = if value_type != field_llvm_type {
                 let temp = self.new_temp();
@@ -182,8 +189,8 @@ impl IRGenerator {
             };
             
             // 存储值到字段
-            self.emit_line(&format!("  store {} {}, {}* {}, align {}", 
-                field_llvm_type, final_val, field_llvm_type, field_ptr, align));
+            self.emit_line(&format!("  store {} {}, {} {}, align {}", 
+                field_llvm_type, final_val, ptr_type, field_ptr, align));
             return Ok(value.to_string());
         }
         

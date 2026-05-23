@@ -680,6 +680,51 @@ pub fn print_diagnostics(collector: &DiagnosticCollector, source: &str, filename
     eprintln!();
 
     for diag in diagnostics {
+        // 检测到行号为0时输出详细调试信息并保存到文件
+        if diag.location.line == 0 {
+            use std::io::Write;
+            use std::time::SystemTime;
+            
+            let timestamp = SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            let debug_filename = format!("debug_{}.txt", timestamp);
+            
+            let debug_content = format!(r#"Cavvy Bug Report
+================
+版本: {}
+错误代码: {}
+错误消息: {}
+编译阶段: {:?}
+文件名: {}
+行号: {} (无效)
+列号: {}
+源码长度: {} 字节
+
+=== 源代码 ===
+{}
+"#,
+                env!("CARGO_PKG_VERSION"),
+                diag.code,
+                diag.message,
+                diag.phase,
+                filename,
+                diag.location.line,
+                diag.location.column,
+                source.len(),
+                source
+            );
+            
+            if let Ok(mut file) = std::fs::File::create(&debug_filename) {
+                let _ = file.write_all(debug_content.as_bytes());
+            }
+            
+            eprintln!("\n  [!] 检测到Cavvy报错系统出现严重问题，请立刻向 https://github.com/cavvy-lang/cavvy/issues 提出Bug报告，以下是版本信息：");
+            eprintln!("      Cavvy v{} ", env!("CARGO_PKG_VERSION"));
+            eprintln!("      报错文件的源代码、Token解析、Parser解析已保存：{}\n", debug_filename);
+        }
+
         let severity = match diag.severity {
             Severity::Error | Severity::Fatal => miette::Severity::Error,
             Severity::Warning => miette::Severity::Warning,

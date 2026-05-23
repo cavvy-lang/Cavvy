@@ -311,9 +311,15 @@ impl IRGenerator {
                     field_ptr_i8, obj_ptr, field_info.offset));
 
                 // 将字段指针转换为正确类型的指针
+                // 注意：如果llvm_type已经是指针类型（如i8**），则不需要再加*
                 let field_ptr = self.new_temp();
-                self.emit_line(&format!("  {} = bitcast i8* {} to {}*",
-                    field_ptr, field_ptr_i8, field_info.llvm_type));
+                let ptr_type = if field_info.llvm_type.ends_with('*') {
+                    field_info.llvm_type.clone()
+                } else {
+                    format!("{}*", field_info.llvm_type)
+                };
+                self.emit_line(&format!("  {} = bitcast i8* {} to {}",
+                    field_ptr, field_ptr_i8, ptr_type));
 
                 // 返回字段类型和指针
                 return Ok((field_info.llvm_type, field_ptr));
@@ -428,9 +434,15 @@ impl IRGenerator {
                     field_ptr_i8, obj_ptr, field_info.offset));
 
                 // 将字段指针转换为正确类型的指针
+                // 注意：如果llvm_type已经是指针类型（如i8**），则不需要再加*
                 let field_ptr = self.new_temp();
-                self.emit_line(&format!("  {} = bitcast i8* {} to {}*",
-                    field_ptr, field_ptr_i8, field_info.llvm_type));
+                let ptr_type = if field_info.llvm_type.ends_with('*') {
+                    field_info.llvm_type.clone()
+                } else {
+                    format!("{}*", field_info.llvm_type)
+                };
+                self.emit_line(&format!("  {} = bitcast i8* {} to {}",
+                    field_ptr, field_ptr_i8, ptr_type));
 
                 // 返回字段类型和指针
                 return Ok((field_info.llvm_type, field_ptr));
@@ -502,9 +514,15 @@ impl IRGenerator {
                     field_ptr_i8, obj_ptr, field_info.offset));
 
                 // 将字段指针转换为正确类型的指针
+                // 注意：如果llvm_type已经是指针类型（如i8**），则不需要再加*
                 let field_ptr = self.new_temp();
-                self.emit_line(&format!("  {} = bitcast i8* {} to {}*",
-                    field_ptr, field_ptr_i8, field_info.llvm_type));
+                let ptr_type = if field_info.llvm_type.ends_with('*') {
+                    field_info.llvm_type.clone()
+                } else {
+                    format!("{}*", field_info.llvm_type)
+                };
+                self.emit_line(&format!("  {} = bitcast i8* {} to {}",
+                    field_ptr, field_ptr_i8, ptr_type));
 
                 // 返回字段类型、指针和字段信息
                 let field_info_clone = field_info.clone();

@@ -253,15 +253,12 @@ impl IRGenerator {
     pub fn get_array_element_ptr(&mut self, arr: &ArrayAccessExpr) -> cayResult<(String, String, String)> {
         // 生成数组表达式
         // 特殊处理：如果数组表达式是 MemberAccess（如 this.stack），我们需要获取指针而不是值
-        let (array_type, array_val) = match arr.array.as_ref() {
-            Expr::MemberAccess(member) => {
-                // 获取成员字段的指针而不是加载的值
-                self.get_member_field_pointer(member)?
-            }
-            _ => {
-                let array_expr = self.generate_expression(&arr.array)?;
-                self.parse_typed_value(&array_expr)
-            }
+        // 使用 generate_expression 获取数组指针的值（已加载）
+        // 对 MemberAccess（如 this.tokens、Fibonacci.memo）和 Identifier（如 tokens）
+        // 都会正确返回加载后的数组数据指针值
+        let (array_type, array_val) = {
+            let array_expr = self.generate_expression(&arr.array)?;
+            self.parse_typed_value(&array_expr)
         };
 
         // 生成索引表达式

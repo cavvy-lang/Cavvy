@@ -175,8 +175,10 @@ impl SemanticAnalyzer {
                 }
             }
 
-            // 将预处理行号映射为原始文件行号（支持 #include 后的正确错误定位）
-            let (file, line) = self.resolve_file_and_line(class.loc.line);
+            // 使用类定义的实际文件位置（支持 #include 后的正确错误定位）
+            // class.loc.file 包含了类定义所在的实际文件路径
+            let file = class.loc.file.clone().or_else(|| self.current_file.clone());
+            let line = class.loc.line;
             self.type_registry.register_class(
                 class_info,
                 file,

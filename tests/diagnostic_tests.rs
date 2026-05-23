@@ -398,6 +398,85 @@ fn test_fatal_error_detection() {
         "LLVM致命错误",
         SourceLocation::new(None::<String>, 1, 1),
     ));
-    
+
     assert!(collector.has_fatal_errors());
+}
+
+// ==================== 行号为0调试信息测试 ====================
+
+/// 测试当诊断信息的行号为0时，系统应输出调试信息并保存到文件
+/// 这是为了检测和报告编译器内部的定位问题
+#[test]
+fn test_zero_line_debug_info() {
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let mut collector = DiagnosticCollector::new();
+    let source = "public class Test {}";
+
+    // 创建一个行号为0的诊断（模拟内部错误定位失败）
+    collector.add(Diagnostic::error(
+        ErrorCodes::SEMANTIC_DUPLICATE_DEFINITION,
+        CompilationPhase::Semantic,
+        "重复定义: 'Test'",
+        SourceLocation::new(Some("test.cay".to_string()), 0, 1),
+    ));
+
+    // 获取当前时间戳用于查找生成的调试文件
+    let before_timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    // 调用 print_diagnostics 触发调试信息输出
+    // 注意：这会输出到 stderr 并可能创建 debug_*.txt 文件
+    print_diagnostics(&collector, source, "test.cay");
+
+    // 验证：查找是否生成了调试文件
+    let entries = fs::read_dir(".").expect("无法读取当前目录");
+    let mut found_debug_file = false;
+
+    for entry in entries {
+        if let Ok(entry) = entry {
+            let filename = entry.file_name();
+            let filename_str = filename.to_string_lossy();
+
+            // 检查是否是 debug_*.txt 文件且创建时间在测试之后
+            if filename_str.starts_with("debug_") && filename_str.ends_with(".txt") {
+                if let Ok(metadata) = entry.metadata() {
+                    if let Ok(modified) = metadata.modified() {
+                        if let Ok(elapsed) = modified.duration_since(SystemTime::UNIX_EPOCH) {
+                            let file_timestamp = elapsed.as_secs();
+                            // 文件是在测试开始之后创建的
+                            if file_timestamp >= before_timestamp {
+                                found_debug_file = true;
+
+                                // 验证文件内容
+                                let content = fs::read_to_string(entry.path())
+                                    .expect("无法读取调试文件");
+                                assert!(content.contains("Cavvy Bug Report"));
+                                assert!(content.contains("错误代码:"));
+                                assert!(content.contains("E4002"));
+                                assert!(content.contains("重复定义"));
+                                assert!(content.contains("行号: 0 (无效)"));
+                                assert!(content.contains("=== 源代码 ==="));
+                                assert!(content.contains("public class Test {}"));
+
+                                // 清理测试文件
+                                let _ = fs::remove_file(entry.path());
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 如果 stderr 被捕获，可能无法验证输出，但至少验证文件被创建
+    // 注意：在测试环境中，stderr 可能被捕获，所以主要验证文件创建
+    assert!(
+        found_debug_file,
+        "应该生成 debug_*.txt 调试文件当行号为0时"
+    );
 }
