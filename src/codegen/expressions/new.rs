@@ -107,6 +107,10 @@ impl IRGenerator {
                     "i".to_string() // 默认int
                 }
             }
+            Expr::New(new_expr) => {
+                // new 表达式返回对象类型
+                format!("o{}", new_expr.class_name)
+            }
             _ => "i".to_string(), // 默认int
         }
     }

@@ -4,7 +4,7 @@
 
 use crate::codegen::context::IRGenerator;
 use crate::ast::*;
-use crate::error::{cayResult, codegen_error};
+use crate::error::{cayResult, codegen_error_at, SourceLocation};
 
 /// 检查类型是否为整数类型（不包括指针）
 fn is_integer_type(ty: &str) -> bool {
@@ -62,32 +62,33 @@ impl IRGenerator {
         let (right_type, right_val) = self.parse_typed_value(&right);
         
         let temp = self.new_temp();
+        let loc = bin.loc.clone();
         
         match bin.op {
-            BinaryOp::Add => self.generate_add(&left_type, &left_val, &right_type, &right_val, &temp),
-            BinaryOp::Sub => self.generate_sub(&left_type, &left_val, &right_type, &right_val, &temp),
-            BinaryOp::Mul => self.generate_mul(&left_type, &left_val, &right_type, &right_val, &temp),
-            BinaryOp::Div => self.generate_div(&left_type, &left_val, &right_type, &right_val, &temp),
-            BinaryOp::Mod => self.generate_mod(&left_type, &left_val, &right_type, &right_val, &temp),
-            BinaryOp::Eq => self.generate_eq(&left_type, &left_val, &right_type, &right_val, &temp),
-            BinaryOp::Ne => self.generate_ne(&left_type, &left_val, &right_type, &right_val, &temp),
-            BinaryOp::Lt => self.generate_lt(&left_type, &left_val, &right_type, &right_val, &temp),
-            BinaryOp::Le => self.generate_le(&left_type, &left_val, &right_type, &right_val, &temp),
-            BinaryOp::Gt => self.generate_gt(&left_type, &left_val, &right_type, &right_val, &temp),
-            BinaryOp::Ge => self.generate_ge(&left_type, &left_val, &right_type, &right_val, &temp),
-            BinaryOp::And => self.generate_and(&left_type, &left_val, &right_type, &right_val, &temp),
-            BinaryOp::Or => self.generate_or(&left_type, &left_val, &right_type, &right_val, &temp),
-            BinaryOp::BitAnd => self.generate_bitand(&left_type, &left_val, &right_type, &right_val, &temp),
-            BinaryOp::BitOr => self.generate_bitor(&left_type, &left_val, &right_type, &right_val, &temp),
-            BinaryOp::BitXor => self.generate_bitxor(&left_type, &left_val, &right_type, &right_val, &temp),
-            BinaryOp::Shl => self.generate_shl(&left_type, &left_val, &right_type, &right_val, &temp),
-            BinaryOp::Shr => self.generate_shr(&left_type, &left_val, &right_type, &right_val, &temp),
-            BinaryOp::UnsignedShr => self.generate_ushr(&left_type, &left_val, &right_type, &right_val, &temp),
+            BinaryOp::Add => self.generate_add(&left_type, &left_val, &right_type, &right_val, &temp, &loc),
+            BinaryOp::Sub => self.generate_sub(&left_type, &left_val, &right_type, &right_val, &temp, &loc),
+            BinaryOp::Mul => self.generate_mul(&left_type, &left_val, &right_type, &right_val, &temp, &loc),
+            BinaryOp::Div => self.generate_div(&left_type, &left_val, &right_type, &right_val, &temp, &loc),
+            BinaryOp::Mod => self.generate_mod(&left_type, &left_val, &right_type, &right_val, &temp, &loc),
+            BinaryOp::Eq => self.generate_eq(&left_type, &left_val, &right_type, &right_val, &temp, &loc),
+            BinaryOp::Ne => self.generate_ne(&left_type, &left_val, &right_type, &right_val, &temp, &loc),
+            BinaryOp::Lt => self.generate_lt(&left_type, &left_val, &right_type, &right_val, &temp, &loc),
+            BinaryOp::Le => self.generate_le(&left_type, &left_val, &right_type, &right_val, &temp, &loc),
+            BinaryOp::Gt => self.generate_gt(&left_type, &left_val, &right_type, &right_val, &temp, &loc),
+            BinaryOp::Ge => self.generate_ge(&left_type, &left_val, &right_type, &right_val, &temp, &loc),
+            BinaryOp::And => self.generate_and(&left_type, &left_val, &right_type, &right_val, &temp, &loc),
+            BinaryOp::Or => self.generate_or(&left_type, &left_val, &right_type, &right_val, &temp, &loc),
+            BinaryOp::BitAnd => self.generate_bitand(&left_type, &left_val, &right_type, &right_val, &temp, &loc),
+            BinaryOp::BitOr => self.generate_bitor(&left_type, &left_val, &right_type, &right_val, &temp, &loc),
+            BinaryOp::BitXor => self.generate_bitxor(&left_type, &left_val, &right_type, &right_val, &temp, &loc),
+            BinaryOp::Shl => self.generate_shl(&left_type, &left_val, &right_type, &right_val, &temp, &loc),
+            BinaryOp::Shr => self.generate_shr(&left_type, &left_val, &right_type, &right_val, &temp, &loc),
+            BinaryOp::UnsignedShr => self.generate_ushr(&left_type, &left_val, &right_type, &right_val, &temp, &loc),
         }
     }
 
     /// 生成加法表达式
-    fn generate_add(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str) -> cayResult<String> {
+    fn generate_add(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str, loc: &SourceLocation) -> cayResult<String> {
         // 字符串拼接处理
         if left_type == "i8*" && right_type == "i8*" {
             // 调用内建的字符串拼接函数
@@ -211,12 +212,12 @@ impl IRGenerator {
                 temp, promoted_type, promoted_left, converted_right));
             return Ok(format!("{} {}", promoted_type, temp));
         } else {
-            return Err(codegen_error(format!("Unsupported addition types: {} and {}", left_type, right_type)));
+            return Err(codegen_error_at(loc.clone(), format!("Unsupported addition types: {} and {}", left_type, right_type)));
         }
     }
 
     /// 生成减法表达式
-    fn generate_sub(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str) -> cayResult<String> {
+    fn generate_sub(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str, loc: &SourceLocation) -> cayResult<String> {
         if is_integer_type(left_type) && is_integer_type(right_type) {
             // 整数减法，需要类型提升
             let (promoted_type, promoted_left, promoted_right) = self.promote_integer_operands(left_type, left_val, right_type, right_val);
@@ -235,12 +236,12 @@ impl IRGenerator {
                 temp, promoted_type, promoted_left, promoted_right));
             return Ok(format!("{} {}", promoted_type, temp));
         } else {
-            return Err(codegen_error(format!("Unsupported subtraction types: {} and {}", left_type, right_type)));
+            return Err(codegen_error_at(loc.clone(), format!("Unsupported subtraction types: {} and {}", left_type, right_type)));
         }
     }
 
     /// 生成乘法表达式
-    fn generate_mul(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str) -> cayResult<String> {
+    fn generate_mul(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str, loc: &SourceLocation) -> cayResult<String> {
         if is_integer_type(left_type) && is_integer_type(right_type) {
             // 整数乘法，需要类型提升
             let (promoted_type, promoted_left, promoted_right) = self.promote_integer_operands(left_type, left_val, right_type, right_val);
@@ -259,12 +260,12 @@ impl IRGenerator {
                 temp, promoted_type, promoted_left, promoted_right));
             return Ok(format!("{} {}", promoted_type, temp));
         } else {
-            return Err(codegen_error(format!("Unsupported multiplication types: {} and {}", left_type, right_type)));
+            return Err(codegen_error_at(loc.clone(), format!("Unsupported multiplication types: {} and {}", left_type, right_type)));
         }
     }
 
     /// 生成除法表达式
-    fn generate_div(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str) -> cayResult<String> {
+    fn generate_div(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str, loc: &SourceLocation) -> cayResult<String> {
         if is_integer_type(left_type) && is_integer_type(right_type) {
             // 整数除法，需要类型提升
             let (promoted_type, promoted_left, promoted_right) = self.promote_integer_operands(left_type, left_val, right_type, right_val);
@@ -285,12 +286,12 @@ impl IRGenerator {
                 temp, promoted_type, promoted_left, promoted_right));
             return Ok(format!("{} {}", promoted_type, temp));
         } else {
-            return Err(codegen_error(format!("Unsupported division types: {} and {}", left_type, right_type)));
+            return Err(codegen_error_at(loc.clone(), format!("Unsupported division types: {} and {}", left_type, right_type)));
         }
     }
 
     /// 生成取模表达式
-    fn generate_mod(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str) -> cayResult<String> {
+    fn generate_mod(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str, loc: &SourceLocation) -> cayResult<String> {
         if is_integer_type(left_type) && is_integer_type(right_type) {
             // 整数取模，需要类型提升
             let (promoted_type, promoted_left, promoted_right) = self.promote_integer_operands(left_type, left_val, right_type, right_val);
@@ -300,12 +301,12 @@ impl IRGenerator {
                 temp, promoted_type, promoted_left, promoted_right));
             return Ok(format!("{} {}", promoted_type, temp));
         } else {
-            return Err(codegen_error(format!("Unsupported modulo types: {} and {}", left_type, right_type)));
+            return Err(codegen_error_at(loc.clone(), format!("Unsupported modulo types: {} and {}", left_type, right_type)));
         }
     }
 
     /// 生成等于比较表达式
-    fn generate_eq(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str) -> cayResult<String> {
+    fn generate_eq(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str, loc: &SourceLocation) -> cayResult<String> {
         // 处理任意指针类型的比较（包括 i8*, i64*, i32* 等）
         if left_type.ends_with("*") && right_type.ends_with("*") {
             self.emit_line(&format!("  {} = icmp eq {} {}, {}", temp, left_type, left_val, right_val));
@@ -331,12 +332,12 @@ impl IRGenerator {
             self.emit_line(&format!("  {} = fcmp oeq {} {}, {}", temp, promoted_type, promoted_left, promoted_right));
             return Ok(format!("i1 {}", temp));
         } else {
-            return Err(codegen_error(format!("Unsupported equality comparison types: {} and {}", left_type, right_type)));
+            return Err(codegen_error_at(loc.clone(), format!("Unsupported equality comparison types: {} and {}", left_type, right_type)));
         }
     }
 
     /// 生成不等于比较表达式
-    fn generate_ne(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str) -> cayResult<String> {
+    fn generate_ne(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str, loc: &SourceLocation) -> cayResult<String> {
         // 处理任意指针类型的比较（包括 i8*, i64*, i32* 等）
         if left_type.ends_with("*") && right_type.ends_with("*") {
             self.emit_line(&format!("  {} = icmp ne {} {}, {}", temp, left_type, left_val, right_val));
@@ -362,12 +363,12 @@ impl IRGenerator {
             self.emit_line(&format!("  {} = fcmp one {} {}, {}", temp, promoted_type, promoted_left, promoted_right));
             return Ok(format!("i1 {}", temp));
         } else {
-            return Err(codegen_error(format!("Unsupported inequality comparison types: {} and {}", left_type, right_type)));
+            return Err(codegen_error_at(loc.clone(), format!("Unsupported inequality comparison types: {} and {}", left_type, right_type)));
         }
     }
 
     /// 生成小于比较表达式
-    fn generate_lt(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str) -> cayResult<String> {
+    fn generate_lt(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str, loc: &SourceLocation) -> cayResult<String> {
         if is_integer_type(left_type) && is_integer_type(right_type) {
             let (promoted_type, promoted_left, promoted_right) = self.promote_integer_operands(left_type, left_val, right_type, right_val);
             self.emit_line(&format!("  {} = icmp slt {} {}, {}", temp, promoted_type, promoted_left, promoted_right));
@@ -381,12 +382,12 @@ impl IRGenerator {
             self.emit_line(&format!("  {} = fcmp olt {} {}, {}", temp, promoted_type, promoted_left, promoted_right));
             return Ok(format!("i1 {}", temp));
         } else {
-            return Err(codegen_error(format!("Unsupported less-than comparison types: {} and {}", left_type, right_type)));
+            return Err(codegen_error_at(loc.clone(), format!("Unsupported less-than comparison types: {} and {}", left_type, right_type)));
         }
     }
 
     /// 生成小于等于比较表达式
-    fn generate_le(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str) -> cayResult<String> {
+    fn generate_le(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str, loc: &SourceLocation) -> cayResult<String> {
         if is_integer_type(left_type) && is_integer_type(right_type) {
             let (promoted_type, promoted_left, promoted_right) = self.promote_integer_operands(left_type, left_val, right_type, right_val);
             self.emit_line(&format!("  {} = icmp sle {} {}, {}", temp, promoted_type, promoted_left, promoted_right));
@@ -400,12 +401,12 @@ impl IRGenerator {
             self.emit_line(&format!("  {} = fcmp ole {} {}, {}", temp, promoted_type, promoted_left, promoted_right));
             return Ok(format!("i1 {}", temp));
         } else {
-            return Err(codegen_error(format!("Unsupported less-or-equal comparison types: {} and {}", left_type, right_type)));
+            return Err(codegen_error_at(loc.clone(), format!("Unsupported less-or-equal comparison types: {} and {}", left_type, right_type)));
         }
     }
 
     /// 生成大于比较表达式
-    fn generate_gt(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str) -> cayResult<String> {
+    fn generate_gt(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str, loc: &SourceLocation) -> cayResult<String> {
         if is_integer_type(left_type) && is_integer_type(right_type) {
             // 整数大于比较，需要类型提升
             let (promoted_type, promoted_left, promoted_right) = self.promote_integer_operands(left_type, left_val, right_type, right_val);
@@ -420,13 +421,13 @@ impl IRGenerator {
             // 混合类型：整数和浮点数
             self.emit_line(&format!("  {} = fcmp ogt {} {}, {}", temp, promoted_type, promoted_left, promoted_right));
         } else {
-            return Err(codegen_error(format!("Unsupported greater-than comparison types: {} and {}", left_type, right_type)));
+            return Err(codegen_error_at(loc.clone(), format!("Unsupported greater-than comparison types: {} and {}", left_type, right_type)));
         }
         Ok(format!("i1 {}", temp))
     }
 
     /// 生成大于等于比较表达式
-    fn generate_ge(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str) -> cayResult<String> {
+    fn generate_ge(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str, loc: &SourceLocation) -> cayResult<String> {
         if is_integer_type(left_type) && is_integer_type(right_type) {
             // 整数大于等于比较，需要类型提升
             let (promoted_type, promoted_left, promoted_right) = self.promote_integer_operands(left_type, left_val, right_type, right_val);
@@ -441,13 +442,13 @@ impl IRGenerator {
             // 混合类型：整数和浮点数
             self.emit_line(&format!("  {} = fcmp oge {} {}, {}", temp, promoted_type, promoted_left, promoted_right));
         } else {
-            return Err(codegen_error(format!("Unsupported greater-than-or-equal comparison types: {} and {}", left_type, right_type)));
+            return Err(codegen_error_at(loc.clone(), format!("Unsupported greater-than-or-equal comparison types: {} and {}", left_type, right_type)));
         }
         Ok(format!("i1 {}", temp))
     }
 
     /// 生成逻辑与表达式
-    fn generate_and(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str) -> cayResult<String> {
+    fn generate_and(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str, _loc: &SourceLocation) -> cayResult<String> {
         // 确保操作数都是 i1 类型
         let left_i1 = if left_type == "i1" {
             left_val.to_string()
@@ -469,7 +470,7 @@ impl IRGenerator {
     }
 
     /// 生成逻辑或表达式
-    fn generate_or(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str) -> cayResult<String> {
+    fn generate_or(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str, _loc: &SourceLocation) -> cayResult<String> {
         // 确保操作数都是 i1 类型
         let left_i1 = if left_type == "i1" {
             left_val.to_string()
@@ -491,7 +492,7 @@ impl IRGenerator {
     }
 
     /// 生成位与表达式
-    fn generate_bitand(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str) -> cayResult<String> {
+    fn generate_bitand(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str, loc: &SourceLocation) -> cayResult<String> {
         if is_integer_type(left_type) && is_integer_type(right_type) {
             // 位与，需要类型提升
             let (promoted_type, promoted_left, promoted_right) = self.promote_integer_operands(left_type, left_val, right_type, right_val);
@@ -499,12 +500,12 @@ impl IRGenerator {
                 temp, promoted_type, promoted_left, promoted_right));
             return Ok(format!("{} {}", promoted_type, temp));
         } else {
-            return Err(codegen_error(format!("Bitwise AND requires integer operands, got {} and {}", left_type, right_type)));
+            return Err(codegen_error_at(loc.clone(), format!("Bitwise AND requires integer operands, got {} and {}", left_type, right_type)));
         }
     }
 
     /// 生成位或表达式
-    fn generate_bitor(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str) -> cayResult<String> {
+    fn generate_bitor(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str, loc: &SourceLocation) -> cayResult<String> {
         if is_integer_type(left_type) && is_integer_type(right_type) {
             // 位或，需要类型提升
             let (promoted_type, promoted_left, promoted_right) = self.promote_integer_operands(left_type, left_val, right_type, right_val);
@@ -512,12 +513,12 @@ impl IRGenerator {
                 temp, promoted_type, promoted_left, promoted_right));
             return Ok(format!("{} {}", promoted_type, temp));
         } else {
-            return Err(codegen_error(format!("Bitwise OR requires integer operands, got {} and {}", left_type, right_type)));
+            return Err(codegen_error_at(loc.clone(), format!("Bitwise OR requires integer operands, got {} and {}", left_type, right_type)));
         }
     }
 
     /// 生成位异或表达式
-    fn generate_bitxor(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str) -> cayResult<String> {
+    fn generate_bitxor(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str, loc: &SourceLocation) -> cayResult<String> {
         if is_integer_type(left_type) && is_integer_type(right_type) {
             // 位异或，需要类型提升
             let (promoted_type, promoted_left, promoted_right) = self.promote_integer_operands(left_type, left_val, right_type, right_val);
@@ -525,12 +526,12 @@ impl IRGenerator {
                 temp, promoted_type, promoted_left, promoted_right));
             return Ok(format!("{} {}", promoted_type, temp));
         } else {
-            return Err(codegen_error(format!("Bitwise XOR requires integer operands, got {} and {}", left_type, right_type)));
+            return Err(codegen_error_at(loc.clone(), format!("Bitwise XOR requires integer operands, got {} and {}", left_type, right_type)));
         }
     }
 
     /// 生成左移表达式
-    fn generate_shl(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str) -> cayResult<String> {
+    fn generate_shl(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str, loc: &SourceLocation) -> cayResult<String> {
         if is_integer_type(left_type) && is_integer_type(right_type) {
             // 左移，需要类型提升
             let (promoted_type, promoted_left, promoted_right) = self.promote_integer_operands(left_type, left_val, right_type, right_val);
@@ -538,12 +539,12 @@ impl IRGenerator {
                 temp, promoted_type, promoted_left, promoted_right));
             return Ok(format!("{} {}", promoted_type, temp));
         } else {
-            return Err(codegen_error(format!("Shift left requires integer operands, got {} and {}", left_type, right_type)));
+            return Err(codegen_error_at(loc.clone(), format!("Shift left requires integer operands, got {} and {}", left_type, right_type)));
         }
     }
 
     /// 生成算术右移表达式
-    fn generate_shr(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str) -> cayResult<String> {
+    fn generate_shr(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str, loc: &SourceLocation) -> cayResult<String> {
         if is_integer_type(left_type) && is_integer_type(right_type) {
             // 算术右移，需要类型提升
             let (promoted_type, promoted_left, promoted_right) = self.promote_integer_operands(left_type, left_val, right_type, right_val);
@@ -551,12 +552,12 @@ impl IRGenerator {
                 temp, promoted_type, promoted_left, promoted_right));
             return Ok(format!("{} {}", promoted_type, temp));
         } else {
-            return Err(codegen_error(format!("Arithmetic shift right requires integer operands, got {} and {}", left_type, right_type)));
+            return Err(codegen_error_at(loc.clone(), format!("Arithmetic shift right requires integer operands, got {} and {}", left_type, right_type)));
         }
     }
 
     /// 生成逻辑右移表达式
-    fn generate_ushr(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str) -> cayResult<String> {
+    fn generate_ushr(&mut self, left_type: &str, left_val: &str, right_type: &str, right_val: &str, temp: &str, loc: &SourceLocation) -> cayResult<String> {
         if is_integer_type(left_type) && is_integer_type(right_type) {
             // 逻辑右移，需要类型提升
             let (promoted_type, promoted_left, promoted_right) = self.promote_integer_operands(left_type, left_val, right_type, right_val);
@@ -564,7 +565,7 @@ impl IRGenerator {
                 temp, promoted_type, promoted_left, promoted_right));
             return Ok(format!("{} {}", promoted_type, temp));
         } else {
-            return Err(codegen_error(format!("Unsigned shift right requires integer operands, got {} and {}", left_type, right_type)));
+            return Err(codegen_error_at(loc.clone(), format!("Unsigned shift right requires integer operands, got {} and {}", left_type, right_type)));
         }
     }
 }

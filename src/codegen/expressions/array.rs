@@ -5,7 +5,7 @@
 use crate::codegen::context::IRGenerator;
 use crate::ast::*;
 use crate::types::Type;
-use crate::error::{cayResult, codegen_error};
+use crate::error::{cayResult, codegen_error_at};
 
 impl IRGenerator {
     /// 生成数组创建表达式代码: new Type[size] 或 new Type[size1][size2]...
@@ -15,10 +15,10 @@ impl IRGenerator {
     pub fn generate_array_creation(&mut self, arr: &ArrayCreationExpr) -> cayResult<String> {
         if arr.sizes.len() == 1 {
             // 一维数组
-            self.generate_1d_array_creation(&arr.element_type, &arr.sizes[0])
+            self.generate_1d_array_creation(&arr.element_type, &arr.sizes[0], &arr.loc)
         } else {
             // 多维数组
-            self.generate_md_array_creation(&arr.element_type, &arr.sizes)
+            self.generate_md_array_creation(&arr.element_type, &arr.sizes, &arr.loc)
         }
     }
 
@@ -29,14 +29,15 @@ impl IRGenerator {
     /// # Arguments
     /// * `element_type` - 元素类型
     /// * `size_expr` - 大小表达式
-    fn generate_1d_array_creation(&mut self, element_type: &Type, size_expr: &Expr) -> cayResult<String> {
+    /// * `loc` - 源码位置
+    fn generate_1d_array_creation(&mut self, element_type: &Type, size_expr: &Expr, loc: &crate::error::SourceLocation) -> cayResult<String> {
         // 生成数组大小表达式
         let size_val_expr = self.generate_expression(size_expr)?;
         let (size_type, size_val) = self.parse_typed_value(&size_val_expr);
         
         // 确保大小是整数类型
         if !size_type.starts_with("i") {
-            return Err(codegen_error(format!("Array size must be integer, got {}", size_type)));
+            return Err(codegen_error_at(loc.clone(), format!("Array size must be integer, got {}", size_type)));
         }
         
         // 将大小转换为 i64（用于内存分配）
@@ -53,7 +54,7 @@ impl IRGenerator {
             let temp = self.new_temp();
             // 防御性检查：size_type 必须是纯整数类型
             if size_type.ends_with("*") {
-                return Err(codegen_error(format!("Array size must be an integer type, got {}", size_type)));
+                return Err(codegen_error_at(loc.clone(), format!("Array size must be an integer type, got {}", size_type)));
             }
             self.emit_line(&format!("  {} = trunc {} {} to i32", temp, size_type, size_val));
             temp
@@ -112,7 +113,8 @@ impl IRGenerator {
     /// # Arguments
     /// * `element_type` - 元素类型
     /// * `sizes` - 各维度大小表达式列表
-    fn generate_md_array_creation(&mut self, element_type: &Type, sizes: &[Expr]) -> cayResult<String> {
+    /// * `loc` - 源码位置
+    fn generate_md_array_creation(&mut self, element_type: &Type, sizes: &[Expr], loc: &crate::error::SourceLocation) -> cayResult<String> {
         // 多维数组实现：分配一个指针数组，每个指针指向子数组
         // 例如 new int[3][4][5]:
         // 1. 分配 3 个指针的数组 (int**)
@@ -124,7 +126,7 @@ impl IRGenerator {
         // 2. 不自动分配子数组，由用户后续手动分配
 
         if sizes.len() < 2 {
-            return Err(codegen_error("Multidimensional array needs at least 2 dimensions".to_string()));
+            return Err(codegen_error_at(loc.clone(), "Multidimensional array needs at least 2 dimensions".to_string()));
         }
 
         // 检查是否有空维度（不规则数组）
@@ -202,10 +204,10 @@ impl IRGenerator {
         // 分配子数组
         let sub_array = if sub_sizes.len() == 1 {
             // 最后一维，创建一维数组
-            self.generate_1d_array_creation(element_type, &sub_sizes[0])?
+            self.generate_1d_array_creation(element_type, &sub_sizes[0], loc)?
         } else {
             // 还有多个维度，递归创建多维数组
-            self.generate_md_array_creation(element_type, sub_sizes)?
+            self.generate_md_array_creation(element_type, sub_sizes, loc)?
         };
         let (_, sub_array_val) = self.parse_typed_value(&sub_array);
 
@@ -254,7 +256,7 @@ impl IRGenerator {
         let (array_type, array_val) = match arr.array.as_ref() {
             Expr::MemberAccess(member) => {
                 // 获取成员字段的指针而不是加载的值
-                self.get_member_array_pointer(member)?
+                self.get_member_field_pointer(member)?
             }
             _ => {
                 let array_expr = self.generate_expression(&arr.array)?;
@@ -268,7 +270,7 @@ impl IRGenerator {
 
         // 确保索引是整数类型
         if !index_type.starts_with("i") {
-            return Err(codegen_error(format!("Array index must be integer, got {}", index_type)));
+            return Err(codegen_error_at(arr.loc.clone(), format!("Array index must be integer, got {}", index_type)));
         }
 
         // 将索引转换为 i64
@@ -321,7 +323,7 @@ impl IRGenerator {
     /// * `init` - 数组初始化表达式
     pub fn generate_array_init(&mut self, init: &ArrayInitExpr) -> cayResult<String> {
         if init.elements.is_empty() {
-            return Err(codegen_error("Cannot generate code for empty array initializer".to_string()));
+            return Err(codegen_error_at(init.loc.clone(), "Cannot generate code for empty array initializer".to_string()));
         }
         
         // 推断元素类型（从第一个元素）
@@ -389,7 +391,7 @@ impl IRGenerator {
     /// * `target_type` - 目标数组类型
     pub fn generate_array_init_with_type(&mut self, init: &ArrayInitExpr, target_type: &Type) -> cayResult<String> {
         if init.elements.is_empty() {
-            return Err(codegen_error("Cannot generate code for empty array initializer".to_string()));
+            return Err(codegen_error_at(init.loc.clone(), "Cannot generate code for empty array initializer".to_string()));
         }
 
         // 从目标类型获取元素类型
@@ -450,47 +452,45 @@ impl IRGenerator {
                     && (elem_llvm_type == "float" || elem_llvm_type == "double") {
                     self.emit_line(&format!("  {} = sitofp {} {} to {}",
                         temp, elem_value_type, val, elem_llvm_type));
+                    temp.clone()
                 }
                 // 浮点数到整数转换
                 else if (elem_value_type == "float" || elem_value_type == "double") && elem_llvm_type.starts_with("i") {
                     self.emit_line(&format!("  {} = fptosi {} {} to {}",
                         temp, elem_value_type, val, elem_llvm_type));
+                    temp.clone()
                 }
                 // 浮点数类型转换
                 else if elem_value_type == "double" && elem_llvm_type == "float" {
                     self.emit_line(&format!("  {} = fptrunc double {} to float", temp, val));
+                    temp.clone()
                 }
                 else if elem_value_type == "float" && elem_llvm_type == "double" {
                     self.emit_line(&format!("  {} = fpext float {} to double", temp, val));
+                    temp.clone()
                 }
                 // 指针到整数转换 (ptrtoint)
                 else if elem_value_type.ends_with("*") && elem_llvm_type.starts_with("i") && !elem_llvm_type.ends_with("*") {
                     self.emit_line(&format!("  {} = ptrtoint {} {} to {}",
                         temp, elem_value_type, val, elem_llvm_type));
+                    temp.clone()
                 }
                 // 整数到指针转换 (inttoptr)
-                else if elem_value_type.starts_with("i") && !elem_value_type.ends_with("*") && elem_llvm_type.ends_with("*") {
+                else if elem_llvm_type.ends_with("*") && elem_value_type.starts_with("i") && !elem_value_type.ends_with("*") {
                     self.emit_line(&format!("  {} = inttoptr {} {} to {}",
                         temp, elem_value_type, val, elem_llvm_type));
+                    temp.clone()
                 }
-                // 整数类型转换
-                else if elem_value_type.starts_with("i") && elem_llvm_type.starts_with("i")
-                    && !elem_value_type.ends_with("*") && !elem_llvm_type.ends_with("*") {
-                    let from_bits: u32 = elem_value_type.trim_start_matches('i').parse().unwrap_or(64);
-                    let to_bits: u32 = elem_llvm_type.trim_start_matches('i').parse().unwrap_or(64);
-                    if to_bits > from_bits {
-                        self.emit_line(&format!("  {} = sext {} {} to {}",
-                            temp, elem_value_type, val, elem_llvm_type));
-                    } else {
-                        self.emit_line(&format!("  {} = trunc {} {} to {}",
-                            temp, elem_value_type, val, elem_llvm_type));
-                    }
+                // 指针类型转换 (bitcast)
+                else if elem_value_type.ends_with("*") && elem_llvm_type.ends_with("*") {
+                    self.emit_line(&format!("  {} = bitcast {} {} to {}",
+                        temp, elem_value_type, val, elem_llvm_type));
+                    temp.clone()
                 }
                 else {
-                    // 无法转换，直接使用原值
-                    self.emit_line(&format!("  {} = add {} {}, 0", temp, elem_value_type, val));
+                    // 无法转换，使用原值（可能导致编译错误）
+                    val.to_string()
                 }
-                temp
             } else {
                 val.to_string()
             };
@@ -506,105 +506,5 @@ impl IRGenerator {
 
         // 返回数组指针（指向数据，长度在指针前8字节）
         Ok(format!("{}* {}", elem_llvm_type, cast_temp))
-    }
-
-    /// 获取成员数组字段的指针（而不是加载的值）
-    /// 用于数组访问时作为左值，支持实例字段和静态字段
-    ///
-    /// # Arguments
-    /// * `member` - 成员访问表达式（如 this.stack 或 ClassName.staticArray）
-    ///
-    /// # Returns
-    /// (LLVM类型字符串, LLVM值字符串)
-    fn get_member_array_pointer(&mut self, member: &MemberAccessExpr) -> cayResult<(String, String)> {
-        // 首先检查是否是静态字段访问: ClassName.fieldName
-        if let Expr::Identifier(class_name) = member.object.as_ref() {
-            let static_key = format!("{}.{}", class_name, member.member);
-            if let Some(field_info) = self.static_field_map.get(&static_key).cloned() {
-                // 静态数组字段 - 需要从全局变量加载得到数组指针
-                // field_info.llvm_type 已经是 i64**（数组指针的指针）
-                // 加载后得到 i64*（数组指针）
-                let is_array = matches!(field_info.field_type, crate::types::Type::Array(_));
-                if is_array {
-                    // 从静态字段加载数组指针
-                    let arr_ptr = self.new_temp();
-                    let elem_ptr_type = field_info.llvm_type.trim_end_matches('*').to_string();
-                    self.emit_line(&format!("  {} = load {}, {}* {}, align {}",
-                        arr_ptr, field_info.llvm_type, field_info.llvm_type, field_info.name,
-                        self.get_type_align(&field_info.llvm_type)));
-                    // 返回元素类型指针（如 i64*）和加载的数组指针
-                    return Ok((elem_ptr_type, arr_ptr));
-                } else {
-                    // 非数组静态字段 - 直接返回全局变量指针
-                    return Ok((format!("{}*", field_info.llvm_type), field_info.name));
-                }
-            }
-        }
-
-        // 确定对象所属的类（实例字段）
-        let class_name_opt: Option<String> = if let Expr::Identifier(name) = member.object.as_ref() {
-            let name_str = name.as_ref();
-            if name_str == "this" {
-                Some(self.current_class.clone())
-            } else {
-                self.var_class_map.get(name_str).cloned()
-            }
-        } else {
-            None
-        };
-
-        if let Some(class_name) = class_name_opt {
-            if let Some(field_info) = self.get_instance_field(&class_name, &member.member).cloned() {
-                // 获取对象指针
-                let obj_ptr = if let Expr::Identifier(name) = member.object.as_ref() {
-                    let name_str = name.as_ref();
-                    if name_str == "this" {
-                        "%this".to_string()
-                    } else {
-                        let obj = self.generate_expression(member.object.as_ref())?;
-                        let (_, obj_val) = self.parse_typed_value(&obj);
-                        obj_val
-                    }
-                } else {
-                    let obj = self.generate_expression(member.object.as_ref())?;
-                    let (_, obj_val) = self.parse_typed_value(&obj);
-                    obj_val
-                };
-
-                // 检查是否是数组类型
-                let is_array = matches!(field_info.field_type, crate::types::Type::Array(_));
-                
-                // 计算字段地址
-                let field_ptr_i8 = self.new_temp();
-                self.emit_line(&format!("  {} = getelementptr i8, i8* {}, i64 {}",
-                    field_ptr_i8, obj_ptr, field_info.offset));
-
-                if is_array {
-                    // 对于数组字段，llvm_type 已经是元素指针类型（如 i8*）
-                    // 字段存储的是数组指针，我们需要加载它
-                    let field_ptr = self.new_temp();
-                    self.emit_line(&format!("  {} = bitcast i8* {} to {}*",
-                        field_ptr, field_ptr_i8, field_info.llvm_type));
-                    
-                    // 加载数组指针值
-                    let arr_ptr = self.new_temp();
-                    self.emit_line(&format!("  {} = load {}, {}* {}, align {}",
-                        arr_ptr, field_info.llvm_type, field_info.llvm_type, field_ptr,
-                        self.get_type_align(&field_info.llvm_type)));
-                    
-                    // 返回元素类型指针和加载的数组指针
-                    let elem_type = field_info.llvm_type.trim_end_matches('*').to_string();
-                    return Ok((elem_type, arr_ptr));
-                } else {
-                    // 非数组字段，直接返回字段指针
-                    let field_ptr = self.new_temp();
-                    self.emit_line(&format!("  {} = bitcast i8* {} to {}*",
-                        field_ptr, field_ptr_i8, field_info.llvm_type));
-                    return Ok((format!("{}*", field_info.llvm_type), field_ptr));
-                }
-            }
-        }
-
-        Err(codegen_error(format!("Cannot get array pointer for member access: {}", member.member)))
     }
 }

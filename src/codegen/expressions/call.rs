@@ -4,7 +4,7 @@
 
 use crate::codegen::context::IRGenerator;
 use crate::ast::*;
-use crate::error::{cayResult, codegen_error};
+use crate::error::{cayResult, codegen_error_at};
 
 impl IRGenerator {
     /// 生成函数调用表达式代码
@@ -15,20 +15,20 @@ impl IRGenerator {
         // 处理 print 和 println 函数
         if let Expr::Identifier(name) = call.callee.as_ref() {
             match name.as_str() {
-                "print" => return self.generate_print_call(&call.args, false),
-                "println" => return self.generate_print_call(&call.args, true),
-                "readInt" => return self.generate_read_int_call(&call.args),
-                "readLong" => return self.generate_read_long_call(&call.args),
-                "readFloat" => return self.generate_read_float_call(&call.args),
-                "readDouble" => return self.generate_read_double_call(&call.args),
-                "readLine" => return self.generate_read_line_call(&call.args),
-                "readChar" => return self.generate_read_char_call(&call.args),
+                "print" => return self.generate_print_call(&call.args, false, &call.loc),
+                "println" => return self.generate_print_call(&call.args, true, &call.loc),
+                "readInt" => return self.generate_read_int_call(&call.args, &call.loc),
+                "readLong" => return self.generate_read_long_call(&call.args, &call.loc),
+                "readFloat" => return self.generate_read_float_call(&call.args, &call.loc),
+                "readDouble" => return self.generate_read_double_call(&call.args, &call.loc),
+                "readLine" => return self.generate_read_line_call(&call.args, &call.loc),
+                "readChar" => return self.generate_read_char_call(&call.args, &call.loc),
                 // 运行时辅助函数
-                "__cay_read_ptr" => return self.generate_read_ptr_call(&call.args),
-                "__cay_ptr_to_string" => return self.generate_ptr_to_string_call(&call.args),
-                "__cay_write_ptr" => return self.generate_write_ptr_call(&call.args),
-                "__cay_write_int" => return self.generate_write_int_call(&call.args),
-                "__cay_read_int" => return self.generate_cay_read_int_call(&call.args),
+                "__cay_read_ptr" => return self.generate_read_ptr_call(&call.args, &call.loc),
+                "__cay_ptr_to_string" => return self.generate_ptr_to_string_call(&call.args, &call.loc),
+                "__cay_write_ptr" => return self.generate_write_ptr_call(&call.args, &call.loc),
+                "__cay_write_int" => return self.generate_write_int_call(&call.args, &call.loc),
+                "__cay_read_int" => return self.generate_cay_read_int_call(&call.args, &call.loc),
                 _ => {}
             }
         }
@@ -54,14 +54,14 @@ impl IRGenerator {
             // 处理 String.valueOf() 静态方法
             if let Expr::Identifier(class_name) = member.object.as_ref() {
                 if class_name == "String" && member.member == "valueOf" {
-                    return self.generate_string_valueof_call(&call.args);
+                    return self.generate_string_valueof_call(&call.args, &call.loc);
                 }
             }
 
             // 处理 Integer.parseInt() 静态方法
             if let Expr::Identifier(class_name) = member.object.as_ref() {
                 if class_name == "Integer" && member.member == "parseInt" {
-                    return self.generate_integer_parseint_call(&call.args);
+                    return self.generate_integer_parseint_call(&call.args, &call.loc);
                 }
             }
         }
@@ -70,7 +70,7 @@ impl IRGenerator {
         if let Expr::Identifier(name) = call.callee.as_ref() {
             let func_name = name.as_ref();
             if self.is_extern_function(func_name) {
-                return self.generate_extern_function_call(func_name, &call.args);
+                return self.generate_extern_function_call(func_name, &call.args, &call.loc);
             }
         }
 
@@ -83,12 +83,12 @@ impl IRGenerator {
                 let name_str = name.as_ref();
                 // 检查是否是全局 extern 函数
                 if let Some(_extern_func) = self.get_extern_function(name_str) {
-                    return self.generate_extern_function_call(name_str, &call.args);
+                    return self.generate_extern_function_call(name_str, &call.args, &call.loc);
                 }
                 // 检查是否是函数指针变量
                 if let Some(var_type) = self.get_variable_type(name_str) {
                     if matches!(var_type, crate::types::Type::Function(_)) {
-                        return self.generate_function_pointer_call(name_str, &call.args, &var_type);
+                        return self.generate_function_pointer_call(name_str, &call.args, &var_type, &call.loc);
                     }
                 }
                 // 检查是否是顶层函数
@@ -117,7 +117,7 @@ impl IRGenerator {
                             if let Some(field_type) = self.get_field_type(&self.current_class, &member.member) {
                                 if matches!(field_type, crate::types::Type::Function(_)) {
                                     // 是函数指针字段调用
-                                    return self.generate_member_func_ptr_call(member, &call.args, &field_type);
+                                    return self.generate_member_func_ptr_call(member, &call.args, &field_type, &call.loc);
                                 }
                             }
                             // 不是函数指针字段，按普通方法处理
@@ -154,21 +154,21 @@ impl IRGenerator {
                                     if let Some(field_type) = self.get_field_type(&class_name, &member.member) {
                                         if matches!(field_type, crate::types::Type::Function(_)) {
                                             // 是函数指针字段调用，生成函数指针调用代码
-                                            return self.generate_member_func_ptr_call(member, &call.args, &field_type);
+                                            return self.generate_member_func_ptr_call(member, &call.args, &field_type, &call.loc);
                                         }
                                     }
                                     // 不是函数指针字段，按普通方法处理
                                     (class_name, member.member.clone(), Some(member.object.clone()), false)
                                 }
                                 _ => {
-                                    return Err(codegen_error(format!(
+                                    return Err(codegen_error_at(member.loc.clone(), format!(
                                         "Cannot call method '{}' on non-class type",
                                         member.member
                                     )));
                                 }
                             }
                         } else {
-                            return Err(codegen_error(format!(
+                            return Err(codegen_error_at(member.loc.clone(), format!(
                                 "Cannot determine type for method call '{}'",
                                 member.member
                             )));
@@ -176,7 +176,7 @@ impl IRGenerator {
                     }
                 }
             }
-            _ => return Err(codegen_error("Invalid function call".to_string())),
+            _ => return Err(codegen_error_at(call.loc.clone(), "Invalid function call".to_string())),
         };
 
         // 检查是否是可变参数方法（根据方法名推断）
@@ -861,19 +861,20 @@ impl IRGenerator {
     /// # Arguments
     /// * `func_name` - extern 函数名称
     /// * `args` - 函数参数
-    fn generate_extern_function_call(&mut self, func_name: &str, args: &[Expr]) -> cayResult<String> {
+    /// * `loc` - 源码位置
+    fn generate_extern_function_call(&mut self, func_name: &str, args: &[Expr], loc: &crate::error::SourceLocation) -> cayResult<String> {
         // 特殊处理运行时函数 __cay_buffer_to_string
         // 这个函数在运行时模块中已经定义，不需要从 extern 声明中查找
         if func_name == "__cay_buffer_to_string" {
-            return self.generate_buffer_to_string_call(args);
+            return self.generate_buffer_to_string_call(args, loc);
         }
         
         // 特殊处理指针操作运行时函数
         match func_name {
-            "__cay_read_ptr" => return self.generate_read_ptr_call(args),
-            "__cay_ptr_to_string" => return self.generate_ptr_to_string_call(args),
-            "__cay_write_ptr" => return self.generate_write_ptr_call(args),
-            "__cay_write_int" => return self.generate_write_int_call(args),
+            "__cay_read_ptr" => return self.generate_read_ptr_call(args, loc),
+            "__cay_ptr_to_string" => return self.generate_ptr_to_string_call(args, loc),
+            "__cay_write_ptr" => return self.generate_write_ptr_call(args, loc),
+            "__cay_write_int" => return self.generate_write_int_call(args, loc),
             _ => {}
         }
 
@@ -882,7 +883,7 @@ impl IRGenerator {
             let found = self.get_extern_function(func_name);
             match found {
                 Some(f) => f.clone(),
-                None => return Err(codegen_error(format!("Extern function '{}' not found", func_name))),
+                None => return Err(codegen_error_at(loc.clone(), format!("Extern function '{}' not found", func_name))),
             }
         };
 
@@ -965,9 +966,9 @@ impl IRGenerator {
 
     /// 生成 __cay_buffer_to_string 运行时函数调用
     /// 这个函数在运行时模块中已经定义，返回 i8* (String)
-    fn generate_buffer_to_string_call(&mut self, args: &[Expr]) -> cayResult<String> {
+    fn generate_buffer_to_string_call(&mut self, args: &[Expr], loc: &crate::error::SourceLocation) -> cayResult<String> {
         if args.len() != 2 {
-            return Err(codegen_error("__cay_buffer_to_string requires 2 arguments".to_string()));
+            return Err(codegen_error_at(loc.clone(), "__cay_buffer_to_string requires 2 arguments".to_string()));
         }
 
         // 生成参数
@@ -991,9 +992,9 @@ impl IRGenerator {
     
     /// 生成 __cay_read_ptr 运行时函数调用
     /// 这个函数在运行时模块中已经定义，返回 i64
-    fn generate_read_ptr_call(&mut self, args: &[Expr]) -> cayResult<String> {
+    fn generate_read_ptr_call(&mut self, args: &[Expr], loc: &crate::error::SourceLocation) -> cayResult<String> {
         if args.len() != 1 {
-            return Err(codegen_error("__cay_read_ptr requires 1 argument".to_string()));
+            return Err(codegen_error_at(loc.clone(), "__cay_read_ptr requires 1 argument".to_string()));
         }
 
         // 生成参数
@@ -1014,9 +1015,9 @@ impl IRGenerator {
     
     /// 生成 __cay_ptr_to_string 运行时函数调用
     /// 这个函数在运行时模块中已经定义，返回 i8* (String)
-    fn generate_ptr_to_string_call(&mut self, args: &[Expr]) -> cayResult<String> {
+    fn generate_ptr_to_string_call(&mut self, args: &[Expr], loc: &crate::error::SourceLocation) -> cayResult<String> {
         if args.len() != 1 {
-            return Err(codegen_error("__cay_ptr_to_string requires 1 argument".to_string()));
+            return Err(codegen_error_at(loc.clone(), "__cay_ptr_to_string requires 1 argument".to_string()));
         }
 
         // 生成参数
@@ -1037,9 +1038,9 @@ impl IRGenerator {
     
     /// 生成 __cay_write_ptr 运行时函数调用
     /// 这个函数在运行时模块中已经定义，返回 void
-    fn generate_write_ptr_call(&mut self, args: &[Expr]) -> cayResult<String> {
+    fn generate_write_ptr_call(&mut self, args: &[Expr], loc: &crate::error::SourceLocation) -> cayResult<String> {
         if args.len() != 2 {
-            return Err(codegen_error("__cay_write_ptr requires 2 arguments".to_string()));
+            return Err(codegen_error_at(loc.clone(), "__cay_write_ptr requires 2 arguments".to_string()));
         }
 
         // 生成参数
@@ -1064,9 +1065,9 @@ impl IRGenerator {
     
     /// 生成 __cay_write_int 运行时函数调用
     /// 这个函数在运行时模块中已经定义，返回 void
-    fn generate_write_int_call(&mut self, args: &[Expr]) -> cayResult<String> {
+    fn generate_write_int_call(&mut self, args: &[Expr], loc: &crate::error::SourceLocation) -> cayResult<String> {
         if args.len() != 2 {
-            return Err(codegen_error("__cay_write_int requires 2 arguments".to_string()));
+            return Err(codegen_error_at(loc.clone(), "__cay_write_int requires 2 arguments".to_string()));
         }
 
         // 生成参数
@@ -1091,9 +1092,9 @@ impl IRGenerator {
 
     /// 生成 __cay_read_int 运行时函数调用
     /// 这个函数在运行时模块中已经定义，返回 i32
-    fn generate_cay_read_int_call(&mut self, args: &[Expr]) -> cayResult<String> {
+    fn generate_cay_read_int_call(&mut self, args: &[Expr], loc: &crate::error::SourceLocation) -> cayResult<String> {
         if args.len() != 1 {
-            return Err(codegen_error("__cay_read_int requires 1 argument".to_string()));
+            return Err(codegen_error_at(loc.clone(), "__cay_read_int requires 1 argument".to_string()));
         }
 
         // 生成参数
@@ -1116,9 +1117,9 @@ impl IRGenerator {
 
     /// 生成 String.valueOf() 静态方法调用
     /// 支持多种类型：int, long, float, double, bool, char
-    fn generate_string_valueof_call(&mut self, args: &[Expr]) -> cayResult<String> {
+    fn generate_string_valueof_call(&mut self, args: &[Expr], loc: &crate::error::SourceLocation) -> cayResult<String> {
         if args.len() != 1 {
-            return Err(codegen_error("String.valueOf() takes exactly 1 argument".to_string()));
+            return Err(codegen_error_at(loc.clone(), "String.valueOf() takes exactly 1 argument".to_string()));
         }
 
         // 生成参数
@@ -1164,7 +1165,7 @@ impl IRGenerator {
                 return Ok(format!("i8* {}", arg_val));
             }
             _ => {
-                return Err(codegen_error(format!("String.valueOf() does not support type: {}", arg_type)));
+                return Err(codegen_error_at(loc.clone(), format!("String.valueOf() does not support type: {}", arg_type)));
             }
         }
 
@@ -1173,9 +1174,9 @@ impl IRGenerator {
 
     /// 生成 Integer.parseInt() 静态方法调用
     /// 将 String 转换为 int
-    fn generate_integer_parseint_call(&mut self, args: &[Expr]) -> cayResult<String> {
+    fn generate_integer_parseint_call(&mut self, args: &[Expr], loc: &crate::error::SourceLocation) -> cayResult<String> {
         if args.len() != 1 {
-            return Err(codegen_error("Integer.parseInt() takes exactly 1 argument".to_string()));
+            return Err(codegen_error_at(loc.clone(), "Integer.parseInt() takes exactly 1 argument".to_string()));
         }
 
         // 生成参数（String）
@@ -1184,7 +1185,7 @@ impl IRGenerator {
 
         // 检查参数类型是否为 String (i8*)
         if arg_type != "i8*" {
-            return Err(codegen_error(format!("Integer.parseInt() expects String, got {}", arg_type)));
+            return Err(codegen_error_at(loc.clone(), format!("Integer.parseInt() expects String, got {}", arg_type)));
         }
 
         let temp = self.new_temp();
@@ -1202,19 +1203,20 @@ impl IRGenerator {
     /// * `var_name` - 函数指针变量名
     /// * `args` - 参数表达式列表
     /// * `func_type` - 函数指针类型
-    fn generate_function_pointer_call(&mut self, var_name: &str, args: &[Expr], func_type: &crate::types::Type) -> cayResult<String> {
+    /// * `loc` - 源码位置
+    fn generate_function_pointer_call(&mut self, var_name: &str, args: &[Expr], func_type: &crate::types::Type, loc: &crate::error::SourceLocation) -> cayResult<String> {
         use crate::types::{Type, FunctionType};
         
         // 获取函数类型信息
         let (param_types, ret_type) = if let Type::Function(func) = func_type {
             (func.params.clone(), *func.return_type.clone())
         } else {
-            return Err(codegen_error(format!("Variable '{}' is not a function pointer", var_name)));
+            return Err(codegen_error_at(loc.clone(), format!("Variable '{}' is not a function pointer", var_name)));
         };
         
         // 检查参数数量
         if args.len() != param_types.len() {
-            return Err(codegen_error(format!(
+            return Err(codegen_error_at(loc.clone(), format!(
                 "Function pointer call requires {} arguments, but got {}",
                 param_types.len(), args.len()
             )));
@@ -1232,7 +1234,7 @@ impl IRGenerator {
         
         // 获取函数指针变量
         let llvm_name = self.scope_manager.get_llvm_name(var_name)
-            .ok_or_else(|| codegen_error(format!("Undefined function pointer variable: {}", var_name)))?;
+            .ok_or_else(|| codegen_error_at(loc.clone(), format!("Undefined function pointer variable: {}", var_name)))?;
         
         // 加载函数指针
         let func_ptr_temp = self.new_temp();
@@ -1267,7 +1269,7 @@ impl IRGenerator {
     }
 
     /// 生成成员函数指针字段调用
-    fn generate_member_func_ptr_call(&mut self, member: &crate::ast::MemberAccessExpr, args: &[Expr], func_type: &crate::types::Type) -> cayResult<String> {
+    fn generate_member_func_ptr_call(&mut self, member: &crate::ast::MemberAccessExpr, args: &[Expr], func_type: &crate::types::Type, loc: &crate::error::SourceLocation) -> cayResult<String> {
         use crate::types::{Type, FunctionType};
         use crate::ast::Expr;
 
@@ -1275,12 +1277,12 @@ impl IRGenerator {
         let (param_types, ret_type) = if let Type::Function(func) = func_type {
             (func.params.clone(), *func.return_type.clone())
         } else {
-            return Err(codegen_error(format!("Field '{}' is not a function pointer", member.member)));
+            return Err(codegen_error_at(loc.clone(), format!("Field '{}' is not a function pointer", member.member)));
         };
 
         // 检查参数数量
         if args.len() != param_types.len() {
-            return Err(codegen_error(format!(
+            return Err(codegen_error_at(loc.clone(), format!(
                 "Function pointer call requires {} arguments, but got {}",
                 param_types.len(), args.len()
             )));
@@ -1309,26 +1311,26 @@ impl IRGenerator {
                 if let Type::Object(name) = obj_type {
                     name
                 } else {
-                    return Err(codegen_error("Object is not a class instance".to_string()));
+                    return Err(codegen_error_at(loc.clone(), "Object is not a class instance".to_string()));
                 }
             } else {
-                return Err(codegen_error("Cannot determine object type".to_string()));
+                return Err(codegen_error_at(loc.clone(), "Cannot determine object type".to_string()));
             }
         } else if let Some(obj_type) = self.get_expression_type(&member.object) {
             if let Type::Object(name) = obj_type {
                 name
             } else {
-                return Err(codegen_error("Object is not a class instance".to_string()));
+                return Err(codegen_error_at(loc.clone(), "Object is not a class instance".to_string()));
             }
         } else {
-            return Err(codegen_error("Cannot determine object type".to_string()));
+            return Err(codegen_error_at(loc.clone(), "Cannot determine object type".to_string()));
         };
 
         // 获取字段信息（使用类布局信息获取偏移量）
         let field_offset = if let Some(field_info) = self.get_instance_field(&class_name, &member.member) {
             field_info.offset
         } else {
-            return Err(codegen_error(format!("Field '{}' not found in class '{}'", member.member, class_name)));
+            return Err(codegen_error_at(loc.clone(), format!("Field '{}' not found in class '{}'", member.member, class_name)));
         };
 
         // 计算字段地址

@@ -20,7 +20,7 @@ impl IRGenerator {
                 self.generate_member_assignment(member, &value_type, &val, &value)
             }
             Expr::Identifier(name) => {
-                self.generate_variable_assignment(name.as_ref(), &value_type, &val, &value)
+                self.generate_variable_assignment(name.as_ref(), &value_type, &val, &value, &assign.loc)
             }
             Expr::ArrayAccess(arr_access) => {
                 self.generate_array_assignment(arr_access, &value_type, &val, &value)
@@ -191,7 +191,7 @@ impl IRGenerator {
     }
 
     /// 生成变量赋值
-    fn generate_variable_assignment(&mut self, name: &str, value_type: &str, val: &str, value: &str) -> cayResult<String> {
+    fn generate_variable_assignment(&mut self, name: &str, value_type: &str, val: &str, value: &str, loc: &crate::error::SourceLocation) -> cayResult<String> {
         // 优先使用作用域管理器获取变量类型和 LLVM 名称
         let (var_type, llvm_name) = if let Some(scope_type) = self.scope_manager.get_var_type(name) {
             let llvm_name = self.scope_manager.get_llvm_name(name).unwrap_or_else(|| name.to_string());
@@ -209,7 +209,7 @@ impl IRGenerator {
             }
             // 回退到旧系统
             let var_type = self.var_types.get(name)
-                .ok_or_else(|| codegen_error(format!("Variable '{}' not found", name)))?
+                .ok_or_else(|| codegen_error_at(loc.clone(), format!("Variable '{}' not found", name)))?
                 .clone();
             (var_type, name.to_string())
         };

@@ -4,7 +4,7 @@
 
 use crate::codegen::context::IRGenerator;
 use crate::ast::*;
-use crate::error::{cayResult, codegen_error};
+use crate::error::{cayResult, codegen_error, codegen_error_at};
 
 impl IRGenerator {
     /// 提升整数操作数到相同类型
@@ -266,13 +266,28 @@ impl IRGenerator {
             if name_str == "this" {
                 Some(self.current_class.clone())
             } else {
-                self.var_class_map.get(name_str).cloned()
+                // 首先检查是否是变量对应的类
+                let var_class = self.var_class_map.get(name_str).cloned();
+                if var_class.is_some() {
+                    var_class
+                } else {
+                    // 检查是否是直接的类名（用于静态字段访问如 Fibonacci.memo）
+                    // 通过检查 static_field_map 中是否有该类的静态字段来确定
+                    let static_key_prefix = format!("{}.", name_str);
+                    let has_static_fields = self.static_field_map.keys().any(|k| k.starts_with(&static_key_prefix));
+                    if has_static_fields {
+                        Some(name_str.to_string())
+                    } else {
+                        None
+                    }
+                }
             }
         } else {
             None
         };
 
         if let Some(class_name) = class_name_opt {
+            // 首先尝试获取实例字段
             if let Some(field_info) = self.get_instance_field(&class_name, &member.member).cloned() {
                 // 获取对象指针
                 let obj_ptr = if let Expr::Identifier(name) = member.object.as_ref() {
@@ -303,9 +318,30 @@ impl IRGenerator {
                 // 返回字段类型和指针
                 return Ok((field_info.llvm_type, field_ptr));
             }
+            
+            // 尝试获取静态字段
+            let static_key = format!("{}.{}", class_name, member.member);
+            if let Some(field_info) = self.static_field_map.get(&static_key).cloned() {
+                // 静态字段使用全局变量名（包含 _s 后缀）
+                let llvm_type = field_info.llvm_type.clone();
+                
+                // 对于数组类型的静态字段，需要加载指针值
+                // 因为静态数组字段存储的是指向数组数据的指针
+                let is_array = matches!(field_info.field_type, crate::types::Type::Array(_));
+                if is_array {
+                    // 加载数组指针
+                    let ptr_temp = self.new_temp();
+                    self.emit_line(&format!("  {} = load {}, {}* {}, align 8",
+                        ptr_temp, llvm_type, llvm_type, field_info.name));
+                    return Ok((llvm_type.clone(), ptr_temp));
+                } else {
+                    // 非数组类型，返回全局变量地址
+                    return Ok((llvm_type.clone(), field_info.name.clone()));
+                }
+            }
         }
 
-        Err(codegen_error(format!("Cannot get field pointer for member access: {}", member.member)))
+        Err(codegen_error_at(member.loc.clone(), format!("Cannot get field pointer for member access: {}", member.member)))
     }
 
     /// 获取嵌套成员字段的指针（用于链式成员访问赋值，如 obj.field1.field2）

@@ -4,7 +4,7 @@
 
 use crate::codegen::context::IRGenerator;
 use crate::ast::*;
-use crate::error::{cayResult, codegen_error};
+use crate::error::{cayResult, codegen_error_at};
 
 /// 格式化字符串占位符类型
 #[derive(Debug, Clone)]
@@ -30,7 +30,8 @@ impl IRGenerator {
     /// # Arguments
     /// * `args` - 参数列表
     /// * `newline` - 是否打印换行符
-    pub fn generate_print_call(&mut self, args: &[Expr], newline: bool) -> cayResult<String> {
+    /// * `loc` - 源码位置
+    pub fn generate_print_call(&mut self, args: &[Expr], newline: bool, loc: &crate::error::SourceLocation) -> cayResult<String> {
         if args.is_empty() {
             // 无参数，仅打印换行符（如果是 println）或什么都不做（如果是 print）
             if newline {
@@ -51,7 +52,7 @@ impl IRGenerator {
         }
 
         // 多个参数：第一个参数是 format 字符串
-        self.generate_format_print(args, newline)
+        self.generate_format_print(args, newline, loc)
     }
 
     /// 生成简单的单参数打印（保持向后兼容）
@@ -182,7 +183,7 @@ impl IRGenerator {
     /// 1. C风格: %d, %s, %f 等
     /// 2. 顺序占位符: {} - 按顺序填充
     /// 3. 标签占位符: {name} - 通过变量名引用（仅适用于变量参数）
-    fn generate_format_print(&mut self, args: &[Expr], newline: bool) -> cayResult<String> {
+    fn generate_format_print(&mut self, args: &[Expr], newline: bool, loc: &crate::error::SourceLocation) -> cayResult<String> {
         // 第一个参数必须是 format 字符串
         let format_arg = &args[0];
         let format_str = match format_arg {
@@ -198,7 +199,7 @@ impl IRGenerator {
 
         // 检查参数数量是否匹配
         if placeholders.len() != args.len() - 1 {
-            return Err(codegen_error(format!(
+            return Err(codegen_error_at(loc.clone(), format!(
                 "Format string expects {} arguments, but {} provided",
                 placeholders.len(),
                 args.len() - 1
@@ -569,10 +570,11 @@ impl IRGenerator {
     ///
     /// # Arguments
     /// * `args` - 参数列表（应该为空）
-    pub fn generate_read_int_call(&mut self, args: &[Expr]) -> cayResult<String> {
+    /// * `loc` - 源码位置
+    pub fn generate_read_int_call(&mut self, args: &[Expr], loc: &crate::error::SourceLocation) -> cayResult<String> {
         // readInt 应该没有参数
         if !args.is_empty() {
-            return Err(codegen_error("readInt() takes no arguments".to_string()));
+            return Err(codegen_error_at(loc.clone(), "readInt() takes no arguments".to_string()));
         }
 
         // 为输入缓冲区分配空间
@@ -612,10 +614,11 @@ impl IRGenerator {
     ///
     /// # Arguments
     /// * `args` - 参数列表（应该为空）
-    pub fn generate_read_float_call(&mut self, args: &[Expr]) -> cayResult<String> {
+    /// * `loc` - 源码位置
+    pub fn generate_read_float_call(&mut self, args: &[Expr], loc: &crate::error::SourceLocation) -> cayResult<String> {
         // readFloat 应该没有参数
         if !args.is_empty() {
-            return Err(codegen_error("readFloat() takes no arguments".to_string()));
+            return Err(codegen_error_at(loc.clone(), "readFloat() takes no arguments".to_string()));
         }
 
         // 为输入缓冲区分配空间
@@ -655,10 +658,11 @@ impl IRGenerator {
     ///
     /// # Arguments
     /// * `args` - 参数列表（应该为空）
-    pub fn generate_read_double_call(&mut self, args: &[Expr]) -> cayResult<String> {
+    /// * `loc` - 源码位置
+    pub fn generate_read_double_call(&mut self, args: &[Expr], loc: &crate::error::SourceLocation) -> cayResult<String> {
         // readDouble 应该没有参数
         if !args.is_empty() {
-            return Err(codegen_error("readDouble() takes no arguments".to_string()));
+            return Err(codegen_error_at(loc.clone(), "readDouble() takes no arguments".to_string()));
         }
 
         // 为输入缓冲区分配空间
@@ -698,19 +702,21 @@ impl IRGenerator {
     ///
     /// # Arguments
     /// * `args` - 参数列表（应该为空）
-    pub fn generate_read_long_call(&mut self, args: &[Expr]) -> cayResult<String> {
+    /// * `loc` - 源码位置
+    pub fn generate_read_long_call(&mut self, args: &[Expr], loc: &crate::error::SourceLocation) -> cayResult<String> {
         // readLong 与 readInt 相同，都返回 i64
-        self.generate_read_int_call(args)
+        self.generate_read_int_call(args, loc)
     }
 
     /// 生成 readChar 调用代码
     ///
     /// # Arguments
     /// * `args` - 参数列表（应该为空）
-    pub fn generate_read_char_call(&mut self, args: &[Expr]) -> cayResult<String> {
+    /// * `loc` - 源码位置
+    pub fn generate_read_char_call(&mut self, args: &[Expr], loc: &crate::error::SourceLocation) -> cayResult<String> {
         // readChar 应该没有参数
         if !args.is_empty() {
-            return Err(codegen_error("readChar() takes no arguments".to_string()));
+            return Err(codegen_error_at(loc.clone(), "readChar() takes no arguments".to_string()));
         }
 
         // 为输入缓冲区分配空间
@@ -750,10 +756,11 @@ impl IRGenerator {
     ///
     /// # Arguments
     /// * `args` - 参数列表（应该为空）
-    pub fn generate_read_line_call(&mut self, args: &[Expr]) -> cayResult<String> {
+    /// * `loc` - 源码位置
+    pub fn generate_read_line_call(&mut self, args: &[Expr], loc: &crate::error::SourceLocation) -> cayResult<String> {
         // readLine 应该没有参数
         if !args.is_empty() {
-            return Err(codegen_error("readLine() takes no arguments".to_string()));
+            return Err(codegen_error_at(loc.clone(), "readLine() takes no arguments".to_string()));
         }
 
         // 分配缓冲区
