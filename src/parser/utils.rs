@@ -42,12 +42,12 @@ pub fn previous_full_loc(parser: &Parser) -> crate::error::SourceLocation {
 }
 
 /// 获取当前位置（向后兼容）
-/// 使用 source_line（原始源文件行号）而不是 loc.line（预处理后的行号）
+/// 使用预处理后的行号（loc.line），语义分析器负责映射到原始源文件
 pub fn current_loc(parser: &Parser) -> crate::error::SourceLocation {
     let token = &parser.tokens[parser.pos];
     crate::error::SourceLocation {
         file: token.source_file.clone(),
-        line: token.loc.line,  // 使用预处理后的行号，让语义分析器来映射
+        line: token.loc.line,
         column: token.loc.column,
     }
 }

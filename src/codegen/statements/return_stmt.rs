@@ -39,8 +39,21 @@ impl IRGenerator {
                     let align = self.get_type_align("double");
                     self.emit_line(&format!("  ret double {}", temp));
                 }
+                // 指针到整数转换 (ptrtoint)
+                else if value_type.ends_with("*") && ret_type.starts_with("i") && !ret_type.ends_with("*") {
+                    self.emit_line(&format!("  {} = ptrtoint {} {} to {}",
+                        temp, value_type, val, ret_type));
+                    self.emit_line(&format!("  ret {} {}", ret_type, temp));
+                }
+                // 整数到指针转换 (inttoptr)
+                else if value_type.starts_with("i") && !value_type.ends_with("*") && ret_type.ends_with("*") {
+                    self.emit_line(&format!("  {} = inttoptr {} {} to {}",
+                        temp, value_type, val, ret_type));
+                    self.emit_line(&format!("  ret {} {}", ret_type, temp));
+                }
                 // 整数类型转换
-                else if value_type.starts_with("i") && ret_type.starts_with("i") {
+                else if value_type.starts_with("i") && ret_type.starts_with("i")
+                    && !value_type.ends_with("*") && !ret_type.ends_with("*") {
                     let from_bits: u32 = value_type.trim_start_matches('i').parse().unwrap_or(64);
                     let to_bits: u32 = ret_type.trim_start_matches('i').parse().unwrap_or(64);
 
@@ -56,7 +69,8 @@ impl IRGenerator {
                     self.emit_line(&format!("  ret {} {}", ret_type, temp));
                 }
                 // 整数到浮点数转换
-                else if value_type.starts_with("i") && (ret_type == "float" || ret_type == "double") {
+                else if value_type.starts_with("i") && !value_type.ends_with("*")
+                    && (ret_type == "float" || ret_type == "double") {
                     self.emit_line(&format!("  {} = sitofp {} {} to {}",
                         temp, value_type, val, ret_type));
                     self.emit_line(&format!("  ret {} {}", ret_type, temp));

@@ -51,6 +51,10 @@ impl IRGenerator {
         // 同时保存为 i32 用于存储长度
         let size_i32 = if size_type != "i32" {
             let temp = self.new_temp();
+            // 防御性检查：size_type 必须是纯整数类型
+            if size_type.ends_with("*") {
+                return Err(codegen_error(format!("Array size must be an integer type, got {}", size_type)));
+            }
             self.emit_line(&format!("  {} = trunc {} {} to i32", temp, size_type, size_val));
             temp
         } else {
@@ -442,7 +446,8 @@ impl IRGenerator {
             let final_val = if elem_value_type != elem_llvm_type {
                 let temp = self.new_temp();
                 // 整数到浮点数转换
-                if elem_value_type.starts_with("i") && (elem_llvm_type == "float" || elem_llvm_type == "double") {
+                if elem_value_type.starts_with("i") && !elem_value_type.ends_with("*")
+                    && (elem_llvm_type == "float" || elem_llvm_type == "double") {
                     self.emit_line(&format!("  {} = sitofp {} {} to {}",
                         temp, elem_value_type, val, elem_llvm_type));
                 }
@@ -458,8 +463,19 @@ impl IRGenerator {
                 else if elem_value_type == "float" && elem_llvm_type == "double" {
                     self.emit_line(&format!("  {} = fpext float {} to double", temp, val));
                 }
+                // 指针到整数转换 (ptrtoint)
+                else if elem_value_type.ends_with("*") && elem_llvm_type.starts_with("i") && !elem_llvm_type.ends_with("*") {
+                    self.emit_line(&format!("  {} = ptrtoint {} {} to {}",
+                        temp, elem_value_type, val, elem_llvm_type));
+                }
+                // 整数到指针转换 (inttoptr)
+                else if elem_value_type.starts_with("i") && !elem_value_type.ends_with("*") && elem_llvm_type.ends_with("*") {
+                    self.emit_line(&format!("  {} = inttoptr {} {} to {}",
+                        temp, elem_value_type, val, elem_llvm_type));
+                }
                 // 整数类型转换
-                else if elem_value_type.starts_with("i") && elem_llvm_type.starts_with("i") {
+                else if elem_value_type.starts_with("i") && elem_llvm_type.starts_with("i")
+                    && !elem_value_type.ends_with("*") && !elem_llvm_type.ends_with("*") {
                     let from_bits: u32 = elem_value_type.trim_start_matches('i').parse().unwrap_or(64);
                     let to_bits: u32 = elem_llvm_type.trim_start_matches('i').parse().unwrap_or(64);
                     if to_bits > from_bits {

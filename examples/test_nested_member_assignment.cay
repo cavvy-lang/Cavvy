@@ -1,0 +1,54 @@
+// 测试链式成员访问赋值
+// 修复: 支持 obj.field1.field2 = value 形式的赋值
+
+public class InnerClass {
+    public int value;
+    public string name;
+
+    public void init(int v, string n) {
+        this.value = v;
+        this.name = n;
+    }
+}
+
+public class OuterClass {
+    public InnerClass inner;
+    public int directField;
+
+    public void init() {
+        this.inner = new InnerClass();
+        this.inner.init(100, "test");
+        this.directField = 50;
+    }
+}
+
+public class NestedMemberTest {
+    public static void main() {
+        // 测试单层成员访问赋值
+        OuterClass outer = new OuterClass();
+        outer.init();
+
+        // 测试链式成员访问赋值: outer.inner.value = 200
+        outer.inner.value = 200;
+        println("After outer.inner.value = 200:");
+        println("outer.inner.value = " + outer.inner.value);
+
+        // 测试链式成员访问赋值: outer.inner.name = "updated"
+        outer.inner.name = "updated";
+        println("After outer.inner.name = 'updated':");
+        println("outer.inner.name = " + outer.inner.name);
+
+        // 测试单层成员访问赋值: outer.directField = 100
+        outer.directField = 100;
+        println("After outer.directField = 100:");
+        println("outer.directField = " + outer.directField);
+
+        // 测试多层嵌套
+        OuterClass outer2 = new OuterClass();
+        outer2.init();
+        outer2.inner.value = 999;
+        println("outer2.inner.value = " + outer2.inner.value);
+
+        println("All nested member assignment tests passed!");
+    }
+}

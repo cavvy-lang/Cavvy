@@ -696,6 +696,10 @@ impl IrBuilder {
         
         if inline_ir.raw_lines.is_empty() {
             return Err(crate::error::cayError::CodeGen {
+                code: "E5004".to_string(),
+                file: None,
+                line: 0,
+                column: 0,
                 message: "Inline IR block has no lines".to_string(),
                 suggestion: "Check parser implementation".to_string(),
             });
@@ -714,6 +718,10 @@ impl IrBuilder {
         let raw_text = inline_ir.raw_lines.join("\n");
         let block = parser.parse(&raw_text, &inputs, &[])
             .map_err(|e| crate::error::cayError::CodeGen { 
+                code: "E5004".to_string(),
+                file: None,
+                line: 0,
+                column: 0,
                 message: format!("Inline IR error: {}", e),
                 suggestion: "Check your inline IR syntax".to_string(),
             })?;

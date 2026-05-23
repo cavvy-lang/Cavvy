@@ -99,6 +99,7 @@ impl IRGenerator {
         }
 
         // 处理实例字段访问: this.fieldName 或 obj.fieldName 或 super.fieldName
+        // 也支持嵌套成员访问: obj.field1.field2
         
         // 确定对象所属的类
         let class_name_opt: Option<String> = if let Expr::Identifier(name) = &*member.object {
@@ -115,6 +116,13 @@ impl IRGenerator {
             } else {
                 // 尝试从变量类型推断类名
                 self.var_class_map.get(name_str).cloned()
+            }
+        } else if let Expr::MemberAccess(nested_member) = &*member.object {
+            // 嵌套成员访问: 需要递归处理并获取字段类型
+            // 先生成嵌套成员访问代码，然后从结果类型推断类名
+            match self.generate_member_access_with_class_info(nested_member) {
+                Ok((_, Some(class_name))) => Some(class_name),
+                _ => None
             }
         } else {
             None
@@ -211,5 +219,88 @@ impl IRGenerator {
         let obj = self.generate_expression(&member.object)?;
         let (_, obj_val) = self.parse_typed_value(&obj);
         Ok(format!("i8* {}", obj_val))
+    }
+
+    /// 生成成员访问表达式代码，同时返回类名信息
+    ///
+    /// # Arguments
+    /// * `member` - 成员访问表达式
+    ///
+    /// # Returns
+    /// (LLVM值字符串, Option<类名>)
+    fn generate_member_access_with_class_info(&mut self, member: &MemberAccessExpr) -> cayResult<(String, Option<String>)> {
+        // 确定对象所属的类
+        let class_name_opt: Option<String> = if let Expr::Identifier(name) = &*member.object {
+            let name_str = name.as_ref();
+            if name_str == "this" {
+                Some(self.current_class.clone())
+            } else if name_str == "super" {
+                self.get_parent_class(&self.current_class)
+            } else {
+                self.var_class_map.get(name_str).cloned()
+            }
+        } else if let Expr::MemberAccess(nested_member) = &*member.object {
+            // 递归处理嵌套成员访问
+            match self.generate_member_access_with_class_info(nested_member) {
+                Ok((_, Some(class_name))) => Some(class_name),
+                _ => None
+            }
+        } else {
+            None
+        };
+
+        if let Some(ref class_name) = class_name_opt {
+            if let Some(field_info) = self.get_instance_field(class_name, &member.member).cloned() {
+                // 获取对象指针
+                let obj_ptr = if let Expr::Identifier(name) = &*member.object {
+                    if name == "this" || name == "super" {
+                        let this_llvm_name = self.scope_manager.get_llvm_name("this")
+                            .unwrap_or_else(|| "this_s1".to_string());
+                        let temp = self.new_temp();
+                        self.emit_line(&format!("  {} = load i8*, i8** %{}, align 8", 
+                            temp, this_llvm_name));
+                        temp
+                    } else {
+                        let obj = self.generate_expression(&member.object)?;
+                        let (_, obj_val) = self.parse_typed_value(&obj);
+                        obj_val
+                    }
+                } else {
+                    // 对于嵌套成员访问，递归生成对象表达式
+                    let obj = self.generate_expression(&member.object)?;
+                    let (_, obj_val) = self.parse_typed_value(&obj);
+                    obj_val
+                };
+                
+                // 计算字段地址
+                let field_ptr_i8 = self.new_temp();
+                self.emit_line(&format!("  {} = getelementptr i8, i8* {}, i64 {}", 
+                    field_ptr_i8, obj_ptr, field_info.offset));
+                
+                // 将字段指针转换为正确类型的指针
+                let field_ptr = self.new_temp();
+                self.emit_line(&format!("  {} = bitcast i8* {} to {}*", 
+                    field_ptr, field_ptr_i8, field_info.llvm_type));
+                
+                // 加载字段值
+                let field_val = self.new_temp();
+                self.emit_line(&format!("  {} = load {}, {}* {}, align {}", 
+                    field_val, field_info.llvm_type, field_info.llvm_type, field_ptr,
+                    self.get_type_align(&field_info.llvm_type)));
+                
+                // 从字段类型推断类名
+                let result_class_name = if let crate::types::Type::Object(ref inner_class) = field_info.field_type {
+                    Some(inner_class.clone())
+                } else {
+                    None
+                };
+                
+                return Ok((format!("{} {}", field_info.llvm_type, field_val), result_class_name));
+            }
+        }
+
+        // 无法处理，回退到普通表达式生成
+        let result = self.generate_expression(&Expr::MemberAccess(member.clone()))?;
+        Ok((result, None))
     }
 }

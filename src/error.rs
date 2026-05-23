@@ -32,8 +32,12 @@ pub enum cayError {
         suggestion: String,
     },
     
-    #[error("代码生成错误: {message}")]
+    #[error("代码生成错误 [{}:{line}:{column}]: {message}", file.as_deref().unwrap_or("<unknown>"))]
     CodeGen { 
+        code: String,
+        file: Option<String>,
+        line: usize, 
+        column: usize, 
         message: String,
         suggestion: String,
     },
@@ -199,12 +203,15 @@ impl From<cayError> for CompilerError {
                     SourceLocation { file: file.clone(), line: *line, column: *column },
                 ).with_suggestion(crate::diagnostic::FixSuggestion::new(suggestion.clone()))
             }
-            cayError::CodeGen { message, suggestion } => {
+            cayError::CodeGen { code, file, line, column, message, suggestion } => {
+                // line 为 0 时退回到 1，确保诊断显示有源码上下文
+                let display_line = if *line == 0 { 1 } else { *line };
+                let display_column = if *column == 0 { 1 } else { *column };
                 crate::diagnostic::Diagnostic::error(
-                    crate::diagnostic::ErrorCodes::CODEGEN_UNSUPPORTED_FEATURE,
+                    code.clone(),
                     crate::diagnostic::CompilationPhase::CodeGen,
                     message.clone(),
-                    SourceLocation::default(),
+                    SourceLocation { file: file.clone(), line: display_line, column: display_column },
                 ).with_suggestion(crate::diagnostic::FixSuggestion::new(suggestion.clone()))
             }
             cayError::Io(msg) => {
@@ -313,6 +320,10 @@ impl From<CompilerError> for cayError {
                 suggestion,
             },
             _ => cayError::CodeGen {
+                code: d.code.clone(),
+                file,
+                line: d.location.line,
+                column: d.location.column,
                 message,
                 suggestion,
             },
@@ -458,15 +469,20 @@ pub fn semantic_error_with_file(file: Option<String>, line: usize, column: usize
     ).into()
 }
 
-// 代码生成错误
-pub fn codegen_error(message: impl Into<String>) -> cayError {
+// 代码生成错误（带源码位置）
+pub fn codegen_error_at(loc: SourceLocation, message: impl Into<String>) -> cayError {
     let msg = message.into();
     let code = if msg.contains("Unsupported") { ErrorCodes::CODEGEN_UNSUPPORTED_FEATURE }
               else if msg.contains("not found") { ErrorCodes::CODEGEN_SYMBOL_NOT_FOUND }
               else { ErrorCodes::CODEGEN_INVALID_OPERATION };
     CompilerError(
-        CavvyDiagnostic::error(code, CompilationPhase::CodeGen, msg, SourceLocation::default())
+        CavvyDiagnostic::error(code, CompilationPhase::CodeGen, msg, loc)
     ).into()
+}
+
+// 代码生成错误（无源码位置 — 用于无法获取 AST 节点位置的场景）
+pub fn codegen_error(message: impl Into<String>) -> cayError {
+    codegen_error_at(SourceLocation::default(), message)
 }
 
 // 类型不匹配错误

@@ -111,10 +111,12 @@ impl SemanticAnalyzer {
                 interface_info.add_method(method_info);
             }
 
+            // 将预处理行号映射为原始文件行号（支持 #include 后的正确错误定位）
+            let (file, line) = self.resolve_file_and_line(interface.loc.line);
             self.type_registry.register_interface(
                 interface_info,
-                interface.loc.file.clone(),
-                interface.loc.line,
+                file,
+                line,
                 interface.loc.column,
             )?;
         }
@@ -173,10 +175,12 @@ impl SemanticAnalyzer {
                 }
             }
 
+            // 将预处理行号映射为原始文件行号（支持 #include 后的正确错误定位）
+            let (file, line) = self.resolve_file_and_line(class.loc.line);
             self.type_registry.register_class(
                 class_info,
-                class.loc.file.clone(),
-                class.loc.line,
+                file,
+                line,
                 class.loc.column,
             )?;
         }

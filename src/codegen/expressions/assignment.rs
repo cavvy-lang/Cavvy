@@ -4,7 +4,7 @@
 
 use crate::codegen::context::IRGenerator;
 use crate::ast::*;
-use crate::error::{cayResult, codegen_error};
+use crate::error::{cayResult, codegen_error, codegen_error_at};
 
 impl IRGenerator {
     /// 生成赋值表达式代码
@@ -25,7 +25,7 @@ impl IRGenerator {
             Expr::ArrayAccess(arr_access) => {
                 self.generate_array_assignment(arr_access, &value_type, &val, &value)
             }
-            _ => Err(codegen_error("Invalid assignment target".to_string()))
+            _ => Err(codegen_error_at(assign.loc.clone(), "Invalid assignment target"))
         }
     }
 
@@ -117,124 +117,77 @@ impl IRGenerator {
             }
         }
         
-        // 处理实例字段赋值: this.fieldName = value 或 obj.fieldName = value
+        // 处理实例字段赋值: this.fieldName = value 或 obj.fieldName = value 或 obj.field1.field2 = value
         
-        // 确定对象所属的类
-        let class_name_opt: Option<String> = if let Expr::Identifier(name) = &*member.object {
-            let name_str = name.as_ref();
-            if name_str == "this" {
-                Some(self.current_class.clone())
-            } else {
-                self.var_class_map.get(name_str).cloned()
-            }
-        } else {
-            None
-        };
-        
-        if let Some(class_name) = class_name_opt {
-            if let Some(field_info) = self.get_instance_field(&class_name, &member.member).cloned() {
-                // 实例字段赋值
-                let align = self.get_type_align(&field_info.llvm_type);
-                
-                // 获取对象指针
-                // 对于 this，从作用域管理器获取 this 的 LLVM 名称；对于其他变量，加载其值
-                let obj_ptr = if let Expr::Identifier(name) = &*member.object {
-                    if name == "this" {
-                        // 从作用域管理器获取 this 的 LLVM 名称，然后加载其值
-                        let this_llvm_name = self.scope_manager.get_llvm_name("this")
-                            .unwrap_or_else(|| "this_s1".to_string());
-                        let temp = self.new_temp();
-                        self.emit_line(&format!("  {} = load i8*, i8** %{}, align 8", 
-                            temp, this_llvm_name));
-                        temp
+        // 尝试使用 get_nested_field_pointer 处理链式成员访问
+        if let Ok((field_llvm_type, field_ptr)) = self.get_nested_field_pointer(member) {
+            let align = self.get_type_align(&field_llvm_type);
+            
+            // 如果值类型与字段类型不匹配，需要转换
+            let final_val = if value_type != field_llvm_type {
+                let temp = self.new_temp();
+                // 整数类型之间的转换
+                if value_type.starts_with("i") && field_llvm_type.starts_with("i")
+                    && !value_type.ends_with("*") && !field_llvm_type.ends_with("*") {
+                    let from_bits: u32 = value_type.trim_start_matches('i').parse().unwrap_or(64);
+                    let to_bits: u32 = field_llvm_type.trim_start_matches('i').parse().unwrap_or(64);
+                    if to_bits > from_bits {
+                        self.emit_line(&format!("  {} = sext {} {} to {}",
+                            temp, value_type, val, field_llvm_type));
                     } else {
-                        // 其他变量：生成表达式并提取值
-                        let obj = self.generate_expression(&member.object)?;
-                        let (_, obj_val) = self.parse_typed_value(&obj);
-                        obj_val
+                        self.emit_line(&format!("  {} = trunc {} {} to {}",
+                            temp, value_type, val, field_llvm_type));
                     }
-                } else {
-                    let obj = self.generate_expression(&member.object)?;
-                    let (_, obj_val) = self.parse_typed_value(&obj);
-                    obj_val
-                };
-                
-                // 计算字段地址: obj_ptr + offset
-                let field_ptr_i8 = self.new_temp();
-                self.emit_line(&format!("  {} = getelementptr i8, i8* {}, i64 {}", 
-                    field_ptr_i8, obj_ptr, field_info.offset));
-                
-                // 将字段指针转换为正确类型的指针
-                let field_ptr = self.new_temp();
-                self.emit_line(&format!("  {} = bitcast i8* {} to {}*", 
-                    field_ptr, field_ptr_i8, field_info.llvm_type));
-                
-                // 如果值类型与字段类型不匹配，需要转换
-                let final_val = if value_type != field_info.llvm_type {
-                    let temp = self.new_temp();
-                    // 整数类型之间的转换
-                    if value_type.starts_with("i") && field_info.llvm_type.starts_with("i")
-                        && !value_type.ends_with("*") && !field_info.llvm_type.ends_with("*") {
-                        let from_bits: u32 = value_type.trim_start_matches('i').parse().unwrap_or(64);
-                        let to_bits: u32 = field_info.llvm_type.trim_start_matches('i').parse().unwrap_or(64);
-                        if to_bits > from_bits {
-                            self.emit_line(&format!("  {} = sext {} {} to {}",
-                                temp, value_type, val, field_info.llvm_type));
-                        } else {
-                            self.emit_line(&format!("  {} = trunc {} {} to {}",
-                                temp, value_type, val, field_info.llvm_type));
-                        }
-                        temp
-                    }
-                    // 整数到浮点数转换
-                    else if value_type.starts_with("i") && !value_type.ends_with("*") &&
-                            (field_info.llvm_type == "float" || field_info.llvm_type == "double") {
-                        self.emit_line(&format!("  {} = sitofp {} {} to {}",
-                            temp, value_type, val, field_info.llvm_type));
-                        temp
-                    }
-                    // 浮点数到整数转换
-                    else if (value_type == "float" || value_type == "double") &&
-                            field_info.llvm_type.starts_with("i") && !field_info.llvm_type.ends_with("*") {
-                        self.emit_line(&format!("  {} = fptosi {} {} to {}",
-                            temp, value_type, val, field_info.llvm_type));
-                        temp
-                    }
-                    // 浮点数类型转换
-                    else if value_type == "double" && field_info.llvm_type == "float" {
-                        self.emit_line(&format!("  {} = fptrunc double {} to float", temp, val));
-                        temp
-                    }
-                    else if value_type == "float" && field_info.llvm_type == "double" {
-                        self.emit_line(&format!("  {} = fpext float {} to double", temp, val));
-                        temp
-                    }
-                    // 整数到指针转换（用于字符串等引用类型）
-                    else if value_type.starts_with("i") && !value_type.ends_with("*") &&
-                            field_info.llvm_type.ends_with("*") {
-                        self.emit_line(&format!("  {} = inttoptr {} {} to {}",
-                            temp, value_type, val, field_info.llvm_type));
-                        temp
-                    }
-                    else {
-                        // 其他不支持的类型转换，报错
-                        return Err(codegen_error(format!(
-                            "Cannot convert {} to {} for field assignment (field: {}, class: {})",
-                            value_type, field_info.llvm_type, field_info.name, class_name
-                        )));
-                    }
-                } else {
-                    val.to_string()
-                };
-                
-                // 存储值到字段
-                self.emit_line(&format!("  store {} {}, {}* {}, align {}", 
-                    field_info.llvm_type, final_val, field_info.llvm_type, field_ptr, align));
-                return Ok(value.to_string());
-            }
+                    temp
+                }
+                // 整数到浮点数转换
+                else if value_type.starts_with("i") && !value_type.ends_with("*") &&
+                        (field_llvm_type == "float" || field_llvm_type == "double") {
+                    self.emit_line(&format!("  {} = sitofp {} {} to {}",
+                        temp, value_type, val, field_llvm_type));
+                    temp
+                }
+                // 浮点数到整数转换
+                else if (value_type == "float" || value_type == "double") &&
+                        field_llvm_type.starts_with("i") && !field_llvm_type.ends_with("*") {
+                    self.emit_line(&format!("  {} = fptosi {} {} to {}",
+                        temp, value_type, val, field_llvm_type));
+                    temp
+                }
+                // 浮点数类型转换
+                else if value_type == "double" && field_llvm_type == "float" {
+                    self.emit_line(&format!("  {} = fptrunc double {} to float", temp, val));
+                    temp
+                }
+                else if value_type == "float" && field_llvm_type == "double" {
+                    self.emit_line(&format!("  {} = fpext float {} to double", temp, val));
+                    temp
+                }
+                // 整数到指针转换（用于字符串等引用类型）
+                else if value_type.starts_with("i") && !value_type.ends_with("*") &&
+                        field_llvm_type.ends_with("*") {
+                    self.emit_line(&format!("  {} = inttoptr {} {} to {}",
+                        temp, value_type, val, field_llvm_type));
+                    temp
+                }
+                else {
+                    // 其他不支持的类型转换，报错
+                    return Err(codegen_error_at(member.loc.clone(), format!(
+                        "Cannot convert {} to {} for field assignment",
+                        value_type, field_llvm_type
+                    )));
+                }
+            } else {
+                val.to_string()
+            };
+            
+            // 存储值到字段
+            self.emit_line(&format!("  store {} {}, {}* {}, align {}", 
+                field_llvm_type, final_val, field_llvm_type, field_ptr, align));
+            return Ok(value.to_string());
         }
         
-        Err(codegen_error("Invalid member access assignment target".to_string()))
+        Err(codegen_error_at(member.loc.clone(), "Invalid member access assignment target"))
     }
 
     /// 生成变量赋值
@@ -307,15 +260,34 @@ impl IRGenerator {
             return Ok(format!("double {}", temp));
         }
         // 整数到浮点数转换
-        else if value_type.starts_with("i") && (var_type == "float" || var_type == "double") {
+        else if value_type.starts_with("i") && !value_type.ends_with("*")
+            && (var_type == "float" || var_type == "double") {
             // 整数 -> 浮点数转换
             self.emit_line(&format!("  {} = sitofp {} {} to {}", temp, value_type, val, var_type));
             let align = self.get_type_align(var_type);
             self.emit_line(&format!("  store {} {}, {}* %{}, align {}", var_type, temp, var_type, llvm_name, align));
             return Ok(format!("{} {}", var_type, temp));
         }
+
+        // 指针到整数转换 (ptrtoint)
+        else if value_type.ends_with("*") && var_type.starts_with("i") && !var_type.ends_with("*") {
+            self.emit_line(&format!("  {} = ptrtoint {} {} to {}",
+                temp, value_type, val, var_type));
+            let align = self.get_type_align(var_type);
+            self.emit_line(&format!("  store {} {}, {}* %{}, align {}", var_type, temp, var_type, llvm_name, align));
+            return Ok(format!("{} {}", var_type, temp));
+        }
+        // 整数到指针转换 (inttoptr)
+        else if value_type.starts_with("i") && !value_type.ends_with("*") && var_type.ends_with("*") {
+            self.emit_line(&format!("  {} = inttoptr {} {} to {}",
+                temp, value_type, val, var_type));
+            let align = self.get_type_align(var_type);
+            self.emit_line(&format!("  store {} {}, {}* %{}, align {}", var_type, temp, var_type, llvm_name, align));
+            return Ok(format!("{} {}", var_type, temp));
+        }
         // 整数类型转换
-        else if value_type.starts_with("i") && var_type.starts_with("i") {
+        else if value_type.starts_with("i") && var_type.starts_with("i")
+            && !value_type.ends_with("*") && !var_type.ends_with("*") {
             let from_bits: u32 = value_type.trim_start_matches('i').parse().unwrap_or(64);
             let to_bits: u32 = var_type.trim_start_matches('i').parse().unwrap_or(64);
 
@@ -358,15 +330,33 @@ impl IRGenerator {
             return Ok(format!("double {}", temp));
         }
         // 整数到浮点数转换
-        else if value_type.starts_with("i") && (elem_type == "float" || elem_type == "double") {
+        else if value_type.starts_with("i") && !value_type.ends_with("*")
+            && (elem_type == "float" || elem_type == "double") {
             // 整数 -> 浮点数转换
             self.emit_line(&format!("  {} = sitofp {} {} to {}", temp, value_type, val, elem_type));
             let align = self.get_type_align(elem_type);
             self.emit_line(&format!("  store {} {}, {}* {}, align {}", elem_type, temp, elem_type, elem_ptr, align));
             return Ok(format!("{} {}", elem_type, temp));
         }
+        // 指针到整数转换 (ptrtoint)
+        else if value_type.ends_with("*") && elem_type.starts_with("i") && !elem_type.ends_with("*") {
+            self.emit_line(&format!("  {} = ptrtoint {} {} to {}",
+                temp, value_type, val, elem_type));
+            let align = self.get_type_align(elem_type);
+            self.emit_line(&format!("  store {} {}, {}* {}, align {}", elem_type, temp, elem_type, elem_ptr, align));
+            return Ok(format!("{} {}", elem_type, temp));
+        }
+        // 整数到指针转换 (inttoptr)
+        else if value_type.starts_with("i") && !value_type.ends_with("*") && elem_type.ends_with("*") {
+            self.emit_line(&format!("  {} = inttoptr {} {} to {}",
+                temp, value_type, val, elem_type));
+            let align = self.get_type_align(elem_type);
+            self.emit_line(&format!("  store {} {}, {}* {}, align {}", elem_type, temp, elem_type, elem_ptr, align));
+            return Ok(format!("{} {}", elem_type, temp));
+        }
         // 整数类型转换
-        else if value_type.starts_with("i") && elem_type.starts_with("i") {
+        else if value_type.starts_with("i") && elem_type.starts_with("i")
+            && !value_type.ends_with("*") && !elem_type.ends_with("*") {
             let from_bits: u32 = value_type.trim_start_matches('i').parse().unwrap_or(64);
             let to_bits: u32 = elem_type.trim_start_matches('i').parse().unwrap_or(64);
 

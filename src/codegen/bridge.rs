@@ -111,6 +111,10 @@ impl InlineIrBridge {
         eprintln!("DEBUG bridge: raw_text = '{}'", raw_text);
         let parsed_block = self.parser.parse(&raw_text, &ir_inputs, &[])
             .map_err(|e| crate::error::cayError::CodeGen {
+                code: "E5004".to_string(),
+                file: None,
+                line: 0,
+                column: 0,
                 message: format!("Inline IR parse error: {}", e),
                 suggestion: "Check your inline IR syntax and variable references".to_string(),
             })?;

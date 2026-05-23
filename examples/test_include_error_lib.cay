@@ -1,0 +1,10 @@
+public class Foo {
+    public int x;
+    public static Foo make() { return new Foo(); }
+}
+
+public class TestIncludeError {
+    public static void main() {
+        Foo.make().x = 5;
+    }
+}

@@ -255,7 +255,7 @@ impl SemanticAnalyzer {
     }
 
     /// 根据预处理后的行号解析原始文件和原始行号
-    fn resolve_file_and_line(&self, line: usize) -> (Option<String>, usize) {
+    pub(super) fn resolve_file_and_line(&self, line: usize) -> (Option<String>, usize) {
         if let Some(ref map) = self.source_map {
             if let Some((file, original_line)) = map.get(&line) {
                 return (Some(file.clone()), *original_line);

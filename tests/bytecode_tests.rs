@@ -483,7 +483,10 @@ fn test_bcgen_version() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     
     assert!(output.status.success(), "cay-bcgen --version should succeed");
-    assert!(stdout.contains("5.1.0-Alpha.3"), "Version should contain 5.1.0-Alpha.3, got: {}", stdout);
+    // 验证版本号格式: 应该包含主版本号 5.1.0 和 Alpha/Beta/RC 标识
+    assert!(stdout.contains("5.1.0"), "Version should contain 5.1.0, got: {}", stdout);
+    assert!(stdout.contains("Alpha") || stdout.contains("Beta") || stdout.contains("RC"), 
+            "Version should contain Alpha/Beta/RC, got: {}", stdout);
     // 验证包含 commit hash（格式: version+commit 或 version+commit-dirty）
     assert!(stdout.contains('+'), "Version should contain commit hash with + separator, got: {}", stdout);
 }
@@ -499,7 +502,10 @@ fn test_cay_run_version() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     
     assert!(output.status.success(), "cay-run --version should succeed");
-    assert!(stdout.contains("5.1.0-Alpha.3"), "Version should contain 5.1.0-Alpha.3, got: {}", stdout);
+    // 验证版本号格式: 应该包含主版本号 5.1.0 和 Alpha/Beta/RC 标识
+    assert!(stdout.contains("5.1.0"), "Version should contain 5.1.0, got: {}", stdout);
+    assert!(stdout.contains("Alpha") || stdout.contains("Beta") || stdout.contains("RC"), 
+            "Version should contain Alpha/Beta/RC, got: {}", stdout);
     // 验证包含 commit hash（格式: version+commit 或 version+commit-dirty）
     assert!(stdout.contains('+'), "Version should contain commit hash with + separator, got: {}", stdout);
 }

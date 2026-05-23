@@ -605,14 +605,26 @@ impl miette::Diagnostic for DisplayDiagnostic {
             return None;
         }
         let offset = line_col_to_offset(&self.source, self.line, self.column);
+
+        // 防御性检查：当 line_col_to_offset 找不到对应位置时会返回 source.len()，
+        // 此时 offset 超出或等于源码长度，miette 渲染 span 会导致 OutOfBounds，
+        // 直接返回 None 避免崩溃。
+        if offset >= self.source.len() {
+            return None;
+        }
+
+        let source_len = self.source.len();
         // 计算高亮宽度：如果有 token 名，用其长度；否则取到行尾或下一个空白
         let span_len = if let Some(ref name) = self.token_name {
             name.len().max(1)
         } else {
             // 取当前位置到下一个空白/行尾的长度
-            let rest = &self.source[offset.min(self.source.len())..];
+            let rest = &self.source[offset..];
             rest.chars().take_while(|c| !c.is_whitespace()).count().max(1)
         };
+
+        // 防止 span_len 超出源码边界（比如 token 名较长但源码已结束）
+        let span_len = span_len.min(source_len - offset).max(1);
 
         let label = LabeledSpan::new_with_span(
             Some(self.phase_label.clone()),

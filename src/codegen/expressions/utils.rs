@@ -308,4 +308,178 @@ impl IRGenerator {
         Err(codegen_error(format!("Cannot get field pointer for member access: {}", member.member)))
     }
 
+    /// 获取嵌套成员字段的指针（用于链式成员访问赋值，如 obj.field1.field2）
+    ///
+    /// # Arguments
+    /// * `member` - 成员访问表达式（如 s.returnStmt.value）
+    ///
+    /// # Returns
+    /// (LLVM类型字符串, 指针字符串)
+    pub fn get_nested_field_pointer(&mut self, member: &MemberAccessExpr) -> cayResult<(String, String)> {
+        // 递归处理链式成员访问
+        self.get_nested_field_pointer_recursive(member, true)
+    }
+
+    /// 递归获取嵌套成员字段的指针
+    ///
+    /// # Arguments
+    /// * `member` - 成员访问表达式
+    /// * `is_root` - 是否为最顶层调用（用于确定是否需要加载对象指针）
+    fn get_nested_field_pointer_recursive(&mut self, member: &MemberAccessExpr, is_root: bool) -> cayResult<(String, String)> {
+        // 获取对象指针和类型
+        let (obj_ptr, obj_class_name) = match member.object.as_ref() {
+            Expr::Identifier(name) => {
+                let name_str = name.as_ref();
+                if name_str == "this" {
+                    // this 指针直接使用
+                    let ptr = if is_root {
+                        // 需要加载 this 指针
+                        let this_llvm_name = self.scope_manager.get_llvm_name("this")
+                            .unwrap_or_else(|| "this_s1".to_string());
+                        let temp = self.new_temp();
+                        self.emit_line(&format!("  {} = load i8*, i8** %{}, align 8", temp, this_llvm_name));
+                        temp
+                    } else {
+                        // 嵌套情况下直接使用 %this
+                        "%this".to_string()
+                    };
+                    (ptr, Some(self.current_class.clone()))
+                } else {
+                    // 普通变量 - 总是需要加载变量值作为对象指针
+                    let class_name = self.var_class_map.get(name_str).cloned();
+                    let obj = self.generate_expression(member.object.as_ref())?;
+                    let (_, obj_val) = self.parse_typed_value(&obj);
+                    (obj_val, class_name)
+                }
+            }
+            Expr::MemberAccess(nested_member) => {
+                // 递归处理嵌套成员访问 - 这里的 is_root 应该为 true，因为我们需要加载最外层对象的值
+                // 同时获取字段信息以确定对象类型
+                let (nested_type, nested_ptr, field_info_opt) = self.get_nested_field_pointer_recursive_with_info(nested_member, true)?;
+                
+                // 从嵌套字段加载对象指针
+                let obj_ptr = self.new_temp();
+                self.emit_line(&format!("  {} = load {}, {}* {}, align {}",
+                    obj_ptr, nested_type, nested_type, nested_ptr, self.get_type_align(&nested_type)));
+                
+                // 从字段信息中提取类名
+                let class_name = if let Some(ref field_info) = field_info_opt {
+                    if let crate::types::Type::Object(class_name) = &field_info.field_type {
+                        Some(class_name.clone())
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+                
+                (obj_ptr, class_name)
+            }
+            _ => {
+                // 其他表达式类型，尝试直接生成
+                let obj = self.generate_expression(member.object.as_ref())?;
+                let (_, obj_val) = self.parse_typed_value(&obj);
+                (obj_val, None)
+            }
+        };
+
+        // 获取字段信息
+        if let Some(ref class_name) = obj_class_name {
+            if let Some(field_info) = self.get_instance_field(class_name, &member.member).cloned() {
+                // 计算字段地址
+                let field_ptr_i8 = self.new_temp();
+                self.emit_line(&format!("  {} = getelementptr i8, i8* {}, i64 {}",
+                    field_ptr_i8, obj_ptr, field_info.offset));
+
+                // 将字段指针转换为正确类型的指针
+                let field_ptr = self.new_temp();
+                self.emit_line(&format!("  {} = bitcast i8* {} to {}*",
+                    field_ptr, field_ptr_i8, field_info.llvm_type));
+
+                // 返回字段类型和指针
+                return Ok((field_info.llvm_type, field_ptr));
+            }
+        }
+
+        Err(codegen_error(format!(
+            "Cannot get nested field pointer for member access: {} (object class: {:?})",
+            member.member, obj_class_name
+        )))
+    }
+
+    /// 递归获取嵌套成员字段的指针，同时返回字段信息
+    ///
+    /// # Arguments
+    /// * `member` - 成员访问表达式
+    /// * `is_root` - 是否为最顶层调用
+    ///
+    /// # Returns
+    /// (LLVM类型字符串, 指针字符串, 字段信息Option)
+    fn get_nested_field_pointer_recursive_with_info(&mut self, member: &MemberAccessExpr, is_root: bool) 
+        -> cayResult<(String, String, Option<crate::codegen::context::InstanceFieldInfo>)> 
+    {
+        // 获取对象指针和类型
+        let (obj_ptr, obj_class_name) = match member.object.as_ref() {
+            Expr::Identifier(name) => {
+                let name_str = name.as_ref();
+                if name_str == "this" {
+                    let ptr = if is_root {
+                        let this_llvm_name = self.scope_manager.get_llvm_name("this")
+                            .unwrap_or_else(|| "this_s1".to_string());
+                        let temp = self.new_temp();
+                        self.emit_line(&format!("  {} = load i8*, i8** %{}, align 8", temp, this_llvm_name));
+                        temp
+                    } else {
+                        "%this".to_string()
+                    };
+                    (ptr, Some(self.current_class.clone()))
+                } else {
+                    let class_name = self.var_class_map.get(name_str).cloned();
+                    let obj = self.generate_expression(member.object.as_ref())?;
+                    let (_, obj_val) = self.parse_typed_value(&obj);
+                    (obj_val, class_name)
+                }
+            }
+            Expr::MemberAccess(nested_member) => {
+                let (nested_type, nested_ptr, _) = self.get_nested_field_pointer_recursive_with_info(nested_member, true)?;
+                
+                let obj_ptr = self.new_temp();
+                self.emit_line(&format!("  {} = load {}, {}* {}, align {}",
+                    obj_ptr, nested_type, nested_type, nested_ptr, self.get_type_align(&nested_type)));
+                
+                let class_name = None;
+                (obj_ptr, class_name)
+            }
+            _ => {
+                let obj = self.generate_expression(member.object.as_ref())?;
+                let (_, obj_val) = self.parse_typed_value(&obj);
+                (obj_val, None)
+            }
+        };
+
+        // 获取字段信息
+        if let Some(ref class_name) = obj_class_name {
+            if let Some(field_info) = self.get_instance_field(class_name, &member.member).cloned() {
+                // 计算字段地址
+                let field_ptr_i8 = self.new_temp();
+                self.emit_line(&format!("  {} = getelementptr i8, i8* {}, i64 {}",
+                    field_ptr_i8, obj_ptr, field_info.offset));
+
+                // 将字段指针转换为正确类型的指针
+                let field_ptr = self.new_temp();
+                self.emit_line(&format!("  {} = bitcast i8* {} to {}*",
+                    field_ptr, field_ptr_i8, field_info.llvm_type));
+
+                // 返回字段类型、指针和字段信息
+                let field_info_clone = field_info.clone();
+                return Ok((field_info.llvm_type, field_ptr, Some(field_info_clone)));
+            }
+        }
+
+        Err(codegen_error(format!(
+            "Cannot get nested field pointer for member access: {} (object class: {:?})",
+            member.member, obj_class_name
+        )))
+    }
+
 }

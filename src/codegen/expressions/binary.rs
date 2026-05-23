@@ -27,6 +27,10 @@ fn generate_int_cast(
     val: &str,
     to_bits: u32,
 ) -> String {
+    // 指针类型不参与整数位宽转换，直接返回原值
+    if from_type.ends_with("*") {
+        return val.to_string();
+    }
     let from_bits = get_int_bit_width(from_type).unwrap_or(32);
     
     if from_bits == to_bits {

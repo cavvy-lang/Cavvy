@@ -270,7 +270,8 @@ impl IRGenerator {
                         self.emit_line(&format!("  store {} {}, {}* %{}, align {}", var_type, temp, var_type, llvm_name, align));
                     }
                     // 整数到浮点数转换
-                    else if value_type.starts_with("i") && (var_type == "float" || var_type == "double") {
+                    else if value_type.starts_with("i") && !value_type.ends_with("*")
+                        && (var_type == "float" || var_type == "double") {
                         self.emit_line(&format!("  {} = sitofp {} {} to {}",
                             temp, value_type, val, var_type));
                         self.emit_line(&format!("  store {} {}, {}* %{}, align {}", var_type, temp, var_type, llvm_name, align));

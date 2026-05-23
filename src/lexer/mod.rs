@@ -624,10 +624,11 @@ impl<'a> Lexer<'a> {
                         (self.current_source_file.clone(), Some(self.line))
                     };
 
-                    // 更新loc中的file字段为原始文件路径，但保持line为预处理后的行号
+                    // 更新loc中的file和line为原始源文件信息
+                    // source_line 来自 source_map（原始行号），回退到预处理行号
                     let loc = SourceLocation {
                         file: source_file.clone(),
-                        line: self.line,  // 保持预处理后的行号，让语义分析器来映射
+                        line: source_line.unwrap_or(self.line),
                         column: loc.column,
                     };
 
@@ -750,10 +751,10 @@ impl<'a> Lexer<'a> {
                     (self.current_source_file.clone(), Some(self.line))
                 };
 
-                // 更新loc中的file字段为原始文件路径，但保持line为预处理后的行号
+                // 更新loc中的file和line为原始源文件信息
                 let loc = SourceLocation {
                     file: source_file.clone(),
-                    line: self.line,  // 保持预处理后的行号，让语义分析器来映射
+                    line: source_line.unwrap_or(self.line),
                     column: loc.column,
                 };
 
