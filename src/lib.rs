@@ -148,8 +148,8 @@ impl Compiler {
         // 保留一份源映射用于语义分析错误定位
         let source_map_for_analyzer = source_map.clone();
 
-        // 1. 词法分析（带源映射）
-        let tokens = lexer::lex_with_source_map(source, source_map)?;
+        // 1. 词法分析（带源映射和当前文件路径）
+        let tokens = lexer::lex_with_source_map_and_file(source, source_map, main_file.clone())?;
 
         // 调试：打印所有token
         #[cfg(debug_assertions)]

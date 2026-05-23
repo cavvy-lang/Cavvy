@@ -2,7 +2,7 @@
 
 use crate::ast::{Program, ClassMember, Modifier, MethodDecl};
 use crate::types::{ClassInfo, FieldInfo, MethodInfo, ParameterInfo, Type};
-use crate::error::{cayResult, semantic_error};
+use crate::error::{cayResult, semantic_error, semantic_error_with_file};
 use super::analyzer::SemanticAnalyzer;
 
 impl SemanticAnalyzer {
@@ -56,8 +56,8 @@ impl SemanticAnalyzer {
                         let class_names: Vec<String> = main_classes.iter()
                             .map(|(name, _)| name.clone())
                             .collect();
-                        Err(crate::error::semantic_error(
-                            0, 0,
+                        Err(semantic_error_with_file(
+                            None, 0, 0,
                             format!(
                                 "多个类包含 main 方法: {}。请使用 @main 标记指定主类，例如：\n@main public class {} {{ ... }}",
                                 class_names.join(", "),
@@ -74,8 +74,8 @@ impl SemanticAnalyzer {
                         let marked_names: Vec<String> = marked_classes.iter()
                             .map(|(name, _)| name.clone())
                             .collect();
-                        Err(crate::error::semantic_error(
-                            0, 0,
+                        Err(semantic_error_with_file(
+                            None, 0, 0,
                             format!(
                                 "多个类标记了 @main: {}。只能有一个主类。",
                                 marked_names.join(", ")
@@ -228,7 +228,8 @@ impl SemanticAnalyzer {
         for class in &program.classes {
             if let Some(ref parent_name) = class.parent {
                 if !self.type_registry.class_exists(parent_name) {
-                    return Err(semantic_error(
+                    return Err(semantic_error_with_file(
+                        class.loc.file.clone(),
                         class.loc.line,
                         class.loc.column,
                         format!("Class '{}' extends undefined class '{}'", class.name, parent_name)
@@ -242,7 +243,8 @@ impl SemanticAnalyzer {
             if let Some(ref parent_name) = class.parent {
                 if let Some(parent_class) = self.type_registry.get_class(parent_name) {
                     if parent_class.is_final {
-                        return Err(semantic_error(
+                        return Err(semantic_error_with_file(
+                            class.loc.file.clone(),
                             class.loc.line,
                             class.loc.column,
                             format!("Class '{}' cannot inherit from final class '{}'", class.name, parent_name)
@@ -269,8 +271,8 @@ impl SemanticAnalyzer {
     /// 递归检查循环继承
     fn check_circular_inheritance(&self, original: &str, current: &str, visited: &mut Vec<String>) -> cayResult<()> {
         if visited.contains(&current.to_string()) {
-            return Err(semantic_error(
-                0, 0,
+            return Err(semantic_error_with_file(
+                None, 0, 0,
                 format!("Circular inheritance detected involving class '{}'", original)
             ));
         }
@@ -294,7 +296,8 @@ impl SemanticAnalyzer {
                     let parent_name = match &class.parent {
                         Some(p) => p,
                         None => {
-                            return Err(semantic_error(
+                            return Err(semantic_error_with_file(
+                                method.loc.file.clone(),
                                 method.loc.line,
                                 method.loc.column,
                                 format!("Method '{}' has @Override annotation but class '{}' does not extend any class", 
@@ -305,10 +308,11 @@ impl SemanticAnalyzer {
 
                     // 检查父类中是否存在同名方法
                     if !self.method_exists_in_parent(parent_name, &method.name, &method.params, &method.return_type) {
-                        return Err(semantic_error(
+                        return Err(semantic_error_with_file(
+                            method.loc.file.clone(),
                             method.loc.line,
                             method.loc.column,
-                            format!("Method '{}' has @Override annotation but does not override any method from parent class '{}'",
+                            format!("Method '{}' has @Override annotation but does not override any method from parent class '{}'", 
                                 method.name, parent_name)
                         ));
                     }
@@ -398,9 +402,8 @@ impl SemanticAnalyzer {
                         if self.types_match(&parent_param_types, param_types) {
                             // 找到匹配的方法，检查是否是 final
                             if method.is_final {
-                                return Err(semantic_error(
-                                    line,
-                                    column,
+                                return Err(semantic_error_with_file(
+                                    None, line, column,
                                     format!(
                                         "Method '{}' cannot override final method from class '{}'",
                                         method_name, parent_name

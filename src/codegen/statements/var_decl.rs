@@ -5,7 +5,7 @@
 use crate::codegen::context::IRGenerator;
 use crate::ast::*;
 use crate::types::Type;
-use crate::error::cayResult;
+use crate::error::{cayResult, semantic_error_with_file};
 
 impl IRGenerator {
     /// 从表达式推断类型
@@ -191,8 +191,8 @@ impl IRGenerator {
             if let Some(init) = &var.initializer {
                 self.infer_type_from_expr(init).unwrap_or(Type::Int32)
             } else {
-                return Err(crate::error::semantic_error(
-                    var.loc.line, var.loc.column,
+                return Err(semantic_error_with_file(
+                    var.loc.file.clone(), var.loc.line, var.loc.column,
                     "'auto' variable declaration requires an initializer".to_string()
                 ));
             }

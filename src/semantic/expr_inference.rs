@@ -50,8 +50,8 @@ impl SemanticAnalyzer {
                 if name == "this" {
                     // 检查是否在静态上下文中访问 this
                     if self.current_method_is_static {
-                        return Err(crate::error::semantic_error(
-                            loc.line, loc.column,
+                        return Err(semantic_error_at_loc(
+                            loc,
                             "non-static variable this cannot be referenced from a static context".to_string()
                         ));
                     }
@@ -59,8 +59,8 @@ impl SemanticAnalyzer {
                     if let Some(current_class_name) = &self.current_class {
                         return Ok(Type::Object(current_class_name.clone()));
                     }
-                    return Err(crate::error::semantic_error(
-                        loc.line, loc.column,
+                    return Err(semantic_error_at_loc(
+                        loc,
                         "this can only be used inside a class".to_string()
                     ));
                 }
@@ -69,8 +69,8 @@ impl SemanticAnalyzer {
                 if name == "super" {
                     // 检查是否在静态上下文中访问 super
                     if self.current_method_is_static {
-                        return Err(crate::error::semantic_error(
-                            loc.line, loc.column,
+                        return Err(semantic_error_at_loc(
+                            loc,
                             "non-static variable super cannot be referenced from a static context".to_string()
                         ));
                     }
@@ -82,8 +82,8 @@ impl SemanticAnalyzer {
                             }
                         }
                     }
-                    return Err(crate::error::semantic_error(
-                        loc.line, loc.column,
+                    return Err(semantic_error_at_loc(
+                        loc,
                         "super can only be used in a class that extends another class".to_string()
                     ));
                 }
@@ -101,8 +101,8 @@ impl SemanticAnalyzer {
                                 return Ok(field_info.field_type.clone());
                             } else if self.current_method_is_static {
                                 // 静态方法中不能访问非静态字段
-                                return Err(crate::error::semantic_error(
-                                    loc.line, loc.column,
+                                return Err(semantic_error_at_loc(
+                                    loc,
                                     format!("non-static variable {} cannot be referenced from a static context", name)
                                 ));
                             }
@@ -116,8 +116,8 @@ impl SemanticAnalyzer {
                                     if field_info.is_static {
                                         return Ok(field_info.field_type.clone());
                                     } else if self.current_method_is_static {
-                                        return Err(crate::error::semantic_error(
-                                            loc.line, loc.column,
+                                        return Err(semantic_error_at_loc(
+                                            loc,
                                             format!("non-static variable {} cannot be referenced from a static context", name)
                                         ));
                                     }
@@ -180,9 +180,8 @@ impl SemanticAnalyzer {
                     // 类型提升
                     Ok(self.promote_types(&left_type, &right_type))
                 } else {
-                    Err(semantic_error(
-                        bin.loc.line,
-                        bin.loc.column,
+                    Err(semantic_error_at_loc(
+                        &bin.loc,
                         format!("Cannot add {} and {}: addition requires both operands to be numeric or both to be strings", left_type, right_type)
                     ))
                 }
@@ -192,16 +191,14 @@ impl SemanticAnalyzer {
                     // 检查除零和模零（仅当右操作数是字面量0时）
                     if matches!(bin.op, BinaryOp::Div | BinaryOp::Mod) {
                         if let Expr::Literal(LiteralValue::Int32(0)) = bin.right.as_ref() {
-                            return Err(semantic_error(
-                                bin.loc.line,
-                                bin.loc.column,
+                            return Err(semantic_error_at_loc(
+                                &bin.loc,
                                 "/ by zero".to_string()
                             ));
                         }
                         if let Expr::Literal(LiteralValue::Int64(0)) = bin.right.as_ref() {
-                            return Err(semantic_error(
-                                bin.loc.line,
-                                bin.loc.column,
+                            return Err(semantic_error_at_loc(
+                                &bin.loc,
                                 "/ by zero".to_string()
                             ));
                         }
@@ -209,9 +206,8 @@ impl SemanticAnalyzer {
                     // 类型提升
                     Ok(self.promote_types(&left_type, &right_type))
                 } else {
-                    Err(semantic_error(
-                        bin.loc.line,
-                        bin.loc.column,
+                    Err(semantic_error_at_loc(
+                        &bin.loc,
                         format!("Cannot apply {:?} to {} and {}: operator requires numeric operands", bin.op, left_type, right_type)
                     ))
                 }
@@ -223,9 +219,8 @@ impl SemanticAnalyzer {
                 if left_type == Type::Bool && right_type == Type::Bool {
                     Ok(Type::Bool)
                 } else {
-                    Err(semantic_error(
-                        bin.loc.line,
-                        bin.loc.column,
+                    Err(semantic_error_at_loc(
+                        &bin.loc,
                         "Logical operators require boolean operands"
                     ))
                 }
@@ -234,9 +229,8 @@ impl SemanticAnalyzer {
                 if left_type.is_integer() && right_type.is_integer() {
                     Ok(self.promote_integer_types(&left_type, &right_type))
                 } else {
-                    Err(semantic_error(
-                        bin.loc.line,
-                        bin.loc.column,
+                    Err(semantic_error_at_loc(
+                        &bin.loc,
                         format!("Bitwise operator {:?} requires integer operands, got {} and {}",
                                bin.op, left_type, right_type)
                     ))
@@ -247,9 +241,8 @@ impl SemanticAnalyzer {
                     // 移位运算符的结果类型与左操作数相同（经过整数提升）
                     Ok(self.promote_integer_types(&left_type, &right_type))
                 } else {
-                    Err(semantic_error(
-                        bin.loc.line,
-                        bin.loc.column,
+                    Err(semantic_error_at_loc(
+                        &bin.loc,
                         format!("Shift operator {:?} requires integer operands, got {} and {}",
                                bin.op, left_type, right_type)
                     ))
@@ -268,9 +261,8 @@ impl SemanticAnalyzer {
                 if operand_type == Type::Bool {
                     Ok(Type::Bool)
                 } else {
-                    Err(semantic_error(
-                        unary.loc.line,
-                        unary.loc.column,
+                    Err(semantic_error_at_loc(
+                        &unary.loc,
                         "Cannot apply '!' to non-boolean"
                     ))
                 }
@@ -296,9 +288,8 @@ impl SemanticAnalyzer {
                     }
                     _ => {
                         // 对于其他类型，报错
-                        Err(semantic_error(
-                            unary.loc.line,
-                            unary.loc.column,
+                        Err(semantic_error_at_loc(
+                            &unary.loc,
                             format!("Cannot dereference non-pointer type '{}'", operand_type)
                         ))
                     }
@@ -651,16 +642,14 @@ impl SemanticAnalyzer {
                         if !field_info.is_public {
                             if let Some(current_class) = &self.current_class {
                                 if current_class != class_name.as_ref() {
-                                    return Err(semantic_error(
-                                        member.loc.line,
-                                        member.loc.column,
+                                    return Err(semantic_error_at_loc(
+                                        &member.loc,
                                         format!("{} has private access in {}", member.member, class_name)
                                     ));
                                 }
                             } else {
-                                return Err(semantic_error(
-                                    member.loc.line,
-                                    member.loc.column,
+                                return Err(semantic_error_at_loc(
+                                    &member.loc,
                                     format!("{} has private access in {}", member.member, class_name)
                                 ));
                             }
@@ -678,16 +667,14 @@ impl SemanticAnalyzer {
                         if !method_info.is_public {
                             if let Some(current_class) = &self.current_class {
                                 if current_class != class_name.as_ref() {
-                                    return Err(semantic_error(
-                                        member.loc.line,
-                                        member.loc.column,
+                                    return Err(semantic_error_at_loc(
+                                        &member.loc,
                                         format!("{} has private access in {}", member.member, class_name)
                                     ));
                                 }
                             } else {
-                                return Err(semantic_error(
-                                    member.loc.line,
-                                    member.loc.column,
+                                return Err(semantic_error_at_loc(
+                                    &member.loc,
                                     format!("{} has private access in {}", member.member, class_name)
                                 ));
                             }
@@ -731,9 +718,8 @@ impl SemanticAnalyzer {
             // 检查是否是 this 访问
             if let Expr::Identifier(name) = &*member.object {
                 if name == "this" {
-                    return Err(semantic_error(
-                        member.loc.line,
-                        member.loc.column,
+                    return Err(semantic_error_at_loc(
+                        &member.loc,
                         format!("non-static variable {} cannot be referenced from a static context", member.member)
                     ));
                 }
@@ -748,16 +734,14 @@ impl SemanticAnalyzer {
                     if !field_info.is_public {
                         if let Some(current_class) = &self.current_class {
                             if current_class != &class_name {
-                                return Err(semantic_error(
-                                    member.loc.line,
-                                    member.loc.column,
+                                return Err(semantic_error_at_loc(
+                                    &member.loc,
                                     format!("{} has private access in {}", member.member, class_name)
                                 ));
                             }
                         } else {
-                            return Err(semantic_error(
-                                member.loc.line,
-                                member.loc.column,
+                            return Err(semantic_error_at_loc(
+                                &member.loc,
                                 format!("{} has private access in {}", member.member, class_name)
                             ));
                         }
@@ -765,16 +749,14 @@ impl SemanticAnalyzer {
                     return Ok(field_info.field_type.clone());
                 }
             }
-            return Err(semantic_error(
-                member.loc.line,
-                member.loc.column,
+            return Err(semantic_error_at_loc(
+                &member.loc,
                 format!("Unknown member '{}' for class {}", member.member, class_name)
             ));
         }
 
-        Err(semantic_error(
-            member.loc.line,
-            member.loc.column,
+        Err(semantic_error_at_loc(
+            &member.loc,
             format!("Cannot access member '{}' on type {}", member.member, obj_type)
         ))
     }
@@ -784,17 +766,15 @@ impl SemanticAnalyzer {
         if let Some(class_info) = self.type_registry.get_class(&new_expr.class_name) {
             // 检查是否是抽象类
             if class_info.is_abstract {
-                return Err(semantic_error(
-                    new_expr.loc.line,
-                    new_expr.loc.column,
+                return Err(semantic_error_at_loc(
+                    &new_expr.loc,
                     format!("Cannot instantiate abstract class '{}'", new_expr.class_name)
                 ));
             }
             Ok(Type::Object(new_expr.class_name.clone()))
         } else {
-            Err(semantic_error(
-                new_expr.loc.line,
-                new_expr.loc.column,
+            Err(semantic_error_at_loc(
+                &new_expr.loc,
                 format!("Unknown class: {}", new_expr.class_name)
             ))
         }
@@ -806,9 +786,8 @@ impl SemanticAnalyzer {
         if let Expr::Identifier(name) = &assign.target.as_ref() {
             if let Some(info) = self.symbol_table.lookup(name.as_ref()) {
                 if info.is_final {
-                    return Err(semantic_error(
-                        assign.loc.line,
-                        assign.loc.column,
+                    return Err(semantic_error_at_loc(
+                        &assign.loc,
                         format!("Cannot assign a value to final variable '{}'", name)
                     ));
                 }
@@ -1077,9 +1056,8 @@ impl SemanticAnalyzer {
             
             let size_type = self.infer_expr_type_internal(size)?;
             if !size_type.is_integer() {
-                return Err(semantic_error(
-                    arr.loc.line,
-                    arr.loc.column,
+                return Err(semantic_error_at_loc(
+                    &arr.loc,
                     format!("Array size at dimension {} must be integer, got {}", i + 1, size_type)
                 ));
             }
@@ -1087,18 +1065,16 @@ impl SemanticAnalyzer {
             // 支持直接负数字面量如 -5（被解析为 Unary(Neg, Literal(5))）
             if let Expr::Literal(LiteralValue::Int32(n)) = size {
                 if *n < 0 {
-                    return Err(semantic_error(
-                        arr.loc.line,
-                        arr.loc.column,
+                    return Err(semantic_error_at_loc(
+                        &arr.loc,
                         format!("Array size cannot be negative: {}", n)
                     ));
                 }
             }
             if let Expr::Literal(LiteralValue::Int64(n)) = size {
                 if *n < 0 {
-                    return Err(semantic_error(
-                        arr.loc.line,
-                        arr.loc.column,
+                    return Err(semantic_error_at_loc(
+                        &arr.loc,
                         format!("Array size cannot be negative: {}", n)
                     ));
                 }
@@ -1107,16 +1083,14 @@ impl SemanticAnalyzer {
             if let Expr::Unary(unary) = size {
                 if let UnaryOp::Neg = unary.op {
                     if let Expr::Literal(LiteralValue::Int32(n)) = unary.operand.as_ref() {
-                        return Err(semantic_error(
-                            arr.loc.line,
-                            arr.loc.column,
+                        return Err(semantic_error_at_loc(
+                            &arr.loc,
                             format!("Array size cannot be negative: -{}", n)
                         ));
                     }
                     if let Expr::Literal(LiteralValue::Int64(n)) = unary.operand.as_ref() {
-                        return Err(semantic_error(
-                            arr.loc.line,
-                            arr.loc.column,
+                        return Err(semantic_error_at_loc(
+                            &arr.loc,
                             format!("Array size cannot be negative: -{}", n)
                         ));
                     }
@@ -1132,9 +1106,8 @@ impl SemanticAnalyzer {
         // 需要上下文来推断类型，这里返回一个占位符类型
         // 实际类型会在变量声明时根据声明类型确定
         if init.elements.is_empty() {
-            return Err(semantic_error(
-                init.loc.line,
-                init.loc.column,
+            return Err(semantic_error_at_loc(
+                &init.loc,
                 "Cannot infer type of empty array initializer".to_string()
             ));
         }
@@ -1173,9 +1146,8 @@ impl SemanticAnalyzer {
         if let Some(ref class_name) = method_ref.class_name {
             // 检查类是否存在
             if !self.type_registry.class_exists(class_name) {
-                return Err(semantic_error(
-                    method_ref.loc.line,
-                    method_ref.loc.column,
+                return Err(semantic_error_at_loc(
+                    &method_ref.loc,
                     format!("Unknown class: {}", class_name)
                 ));
             }
@@ -1196,9 +1168,8 @@ impl SemanticAnalyzer {
                         })));
                     }
                 } else {
-                    return Err(semantic_error(
-                        method_ref.loc.line,
-                        method_ref.loc.column,
+                    return Err(semantic_error_at_loc(
+                        &method_ref.loc,
                         format!("Unknown method '{}' for class {}", method_ref.method_name, class_name)
                     ));
                 }
@@ -1293,9 +1264,8 @@ impl SemanticAnalyzer {
 
         // 条件必须是布尔类型
         if cond_type != Type::Bool {
-            return Err(semantic_error(
-                ternary.loc.line,
-                ternary.loc.column,
+            return Err(semantic_error_at_loc(
+                &ternary.loc,
                 format!("Ternary operator condition must be boolean, got {}", cond_type)
             ));
         }
@@ -1311,9 +1281,8 @@ impl SemanticAnalyzer {
             // 数值类型进行类型提升
             Ok(self.promote_types(&true_type, &false_type))
         } else {
-            Err(semantic_error(
-                ternary.loc.line,
-                ternary.loc.column,
+            Err(semantic_error_at_loc(
+                &ternary.loc,
                 format!("Ternary operator branches must have compatible types, got {} and {}", true_type, false_type)
             ))
         }
@@ -1328,18 +1297,16 @@ impl SemanticAnalyzer {
         match &instanceof.target_type {
             Type::Object(class_name) => {
                 if !self.type_registry.class_exists(class_name) && !self.type_registry.interface_exists(class_name) {
-                    return Err(semantic_error(
-                        instanceof.loc.line,
-                        instanceof.loc.column,
+                    return Err(semantic_error_at_loc(
+                        &instanceof.loc,
                         format!("Unknown type in instanceof: {}", class_name)
                     ));
                 }
             }
             _ => {
                 // instanceof 只能用于引用类型
-                return Err(semantic_error(
-                    instanceof.loc.line,
-                    instanceof.loc.column,
+                return Err(semantic_error_at_loc(
+                    &instanceof.loc,
                     format!("instanceof can only be used with reference types, got {}", instanceof.target_type)
                 ));
             }

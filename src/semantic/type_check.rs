@@ -194,34 +194,38 @@ impl SemanticAnalyzer {
                 }
 
                 let mut var_type = var.var_type.clone();
+                let mut init_type_opt: Option<Type> = None;
                 
-                // 处理 auto 类型推断
-                if var_type == Type::Auto {
-                    if let Some(init) = &var.initializer {
-                        var_type = self.infer_expr_type_collect_errors(init);
-                    } else {
-                        self.errors.push(self.create_error_info(
-                            var.loc.line,
-                            var.loc.column,
-                            "'auto' variable declaration requires an initializer",
-                        ));
-                        var_type = Type::Int32; // 默认回退类型
-                    }
-                }
-                
+                // 处理 auto 类型推断或类型检查（只分析初始化器一次）
                 if let Some(init) = &var.initializer {
                     let init_type = self.infer_expr_type_collect_errors(init);
-                    if !self.types_compatible(&init_type, &var_type) {
-                        self.errors.push(self.create_error_info_with_file(
-                            var.loc.file.clone(),
-                            var.loc.line,
-                            var.loc.column,
-                            format!(
-                                "Cannot assign {} to {}",
-                                init_type, var_type
-                            ),
-                        ));
+                    init_type_opt = Some(init_type.clone());
+                    
+                    if var_type == Type::Auto {
+                        // auto 类型推断：使用初始化器的类型
+                        var_type = init_type;
+                    } else {
+                        // 非 auto：检查类型兼容性
+                        if !self.types_compatible(&init_type, &var_type) {
+                            self.errors.push(self.create_error_info_with_file(
+                                var.loc.file.clone(),
+                                var.loc.line,
+                                var.loc.column,
+                                format!(
+                                    "Cannot assign {} to {}",
+                                    init_type, var_type
+                                ),
+                            ));
+                        }
                     }
+                } else if var_type == Type::Auto {
+                    // auto 类型但没有初始化器
+                    self.errors.push(self.create_error_info(
+                        var.loc.line,
+                        var.loc.column,
+                        "'auto' variable declaration requires an initializer",
+                    ));
+                    var_type = Type::Int32; // 默认回退类型
                 }
                 
                 self.symbol_table.declare(

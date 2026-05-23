@@ -429,6 +429,11 @@ impl<'a> Lexer<'a> {
 
     /// 创建带源映射的词法分析器
     pub fn with_source_map(source: &'a str, source_map: std::collections::HashMap<usize, (String, usize)>) -> Self {
+        Self::with_source_map_and_file(source, source_map, None)
+    }
+
+    /// 创建带源映射和当前文件路径的词法分析器
+    pub fn with_source_map_and_file(source: &'a str, source_map: std::collections::HashMap<usize, (String, usize)>, current_file: Option<String>) -> Self {
         Self {
             source,
             inner: Token::lexer(source),
@@ -436,7 +441,7 @@ impl<'a> Lexer<'a> {
             column: 1,
             diagnostics: DiagnosticCollector::new(),
             collect_all_errors: false,
-            current_source_file: None,
+            current_source_file: current_file,
             source_map,
             preserve_newlines: false,
         }
@@ -1058,7 +1063,12 @@ pub fn lex(source: &str) -> cayResult<Vec<TokenWithLocation>> {
 
 /// 带源映射的词法分析函数
 pub fn lex_with_source_map(source: &str, source_map: std::collections::HashMap<usize, (String, usize)>) -> cayResult<Vec<TokenWithLocation>> {
-    let mut lexer = Lexer::with_source_map(source, source_map);
+    lex_with_source_map_and_file(source, source_map, None)
+}
+
+/// 词法分析（带源映射和当前文件路径）
+pub fn lex_with_source_map_and_file(source: &str, source_map: std::collections::HashMap<usize, (String, usize)>, current_file: Option<String>) -> cayResult<Vec<TokenWithLocation>> {
+    let mut lexer = Lexer::with_source_map_and_file(source, source_map, current_file);
     lexer.tokenize()
 }
 

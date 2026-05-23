@@ -144,7 +144,8 @@ impl SemanticAnalyzer {
         if !top_level_enabled {
             for func in &program.top_level_functions {
                 if func.name != "main" {
-                    return Err(crate::error::semantic_error(
+                    return Err(crate::error::semantic_error_with_file(
+                        func.loc.file.clone(),
                         func.loc.line,
                         func.loc.column,
                         format!("Cavvy是面向对象语言，不允许顶层函数 '{}'。请将函数定义在类中，或使用 -F=top_level_function 启用该特性。", func.name)
@@ -156,7 +157,8 @@ impl SemanticAnalyzer {
         for func in &program.top_level_functions {
             // 检查函数名是否已存在（在当前作用域）
             if self.symbol_table.lookup_current(&func.name).is_some() {
-                return Err(crate::error::semantic_error(
+                return Err(crate::error::semantic_error_with_file(
+                    func.loc.file.clone(),
                     func.loc.line,
                     func.loc.column,
                     format!("顶层函数 '{}' 已定义", func.name)
@@ -232,36 +234,26 @@ impl SemanticAnalyzer {
     }
     
     /// 创建语义分析错误信息（带文件路径）
+    /// 注意：line 已经是原始行号，不需要再通过 source_map 转换
     pub fn create_error_info_with_file(&self, file: Option<String>, line: usize, column: usize, message: impl Into<String>) -> SemanticErrorInfo {
-        let (resolved_file, original_line) = if let Some(ref f) = file {
-            if let Some(ref map) = self.source_map {
-                if let Some((_, original_line)) = map.get(&line) {
-                    (Some(f.clone()), *original_line)
-                } else {
-                    (Some(f.clone()), line)
-                }
-            } else {
-                (Some(f.clone()), line)
-            }
-        } else {
-            self.resolve_file_and_line(line)
-        };
+        // line 已经是原始行号，直接使用
+        // file 如果为 None，则使用 current_file
+        let resolved_file = file.or_else(|| self.current_file.clone());
         SemanticErrorInfo {
-            line: original_line,
+            line,
             column,
             message: message.into(),
             file: resolved_file,
         }
     }
 
-    /// 根据预处理后的行号解析原始文件和原始行号
-    pub(super) fn resolve_file_and_line(&self, line: usize) -> (Option<String>, usize) {
-        if let Some(ref map) = self.source_map {
-            if let Some((file, original_line)) = map.get(&line) {
-                return (Some(file.clone()), *original_line);
-            }
-        }
-        (self.current_file.clone(), line)
+    /// 根据行号解析文件路径
+    /// 注意：line 已经是原始行号（来自 token.loc.line），不需要再通过 source_map 转换
+    pub(super) fn resolve_file_and_line(&self, _line: usize) -> (Option<String>, usize) {
+        // line 已经是原始行号，直接返回 current_file
+        // source_map 用于词法分析阶段将预处理后的行号转换为原始行号
+        // 在语义分析阶段，AST 节点中的行号已经是原始行号
+        (self.current_file.clone(), _line)
     }
 
     /// 从表达式中提取源代码位置
