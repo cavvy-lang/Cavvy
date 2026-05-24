@@ -290,3 +290,10 @@ fn test_ns_err_i_namespace() {
         .expect("应该编译失败");
     assert!(err.contains("Unknown"));
 }
+
+#[test]
+fn test_ns_err_xd() {
+    let err = compile_eol_expect_error("examples/test_ns_err_xd.cay")
+        .expect("应该编译失败");
+    assert!(err.contains("未定义的标识符"));
+}

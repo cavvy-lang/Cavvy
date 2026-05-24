@@ -143,6 +143,8 @@ impl SemanticAnalyzer {
         }
 
         // 类型检查顶层函数
+        // 重置命名空间上下文，防止从类处理中泄漏
+        self.type_registry.current_namespace.clear();
         for func in &program.top_level_functions {
             self.current_class = None;  // 顶层函数不属于任何类
             self.current_method = Some(func.name.clone());

@@ -785,19 +785,24 @@ impl IRGenerator {
     /// 获取带命名空间的类名（用于 LLVM IR 标识符）
     /// 使用 Itanium ABI 名称改编: _ZN<len>ns1<len>ns2<len>classNameE
     pub(crate) fn get_qualified_class_name(&self, class_name: &str) -> String {
-        // 如果 class_name 已经包含 ::，解析出简单名称
-        let simple_name = if class_name.contains("::") {
-            class_name.split("::").last().unwrap_or(class_name)
+        // 如果 class_name 已经包含 ::，直接从中提取命名空间和简单名
+        if class_name.contains("::") {
+            let parts: Vec<&str> = class_name.split("::").collect();
+            let simple_name = parts.last().unwrap_or(&class_name);
+            let namespace: Vec<String> = parts[..parts.len()-1].iter().map(|s| s.to_string()).collect();
+            if namespace.is_empty() {
+                simple_name.to_string()
+            } else {
+                self.mangle_namespace(&namespace, simple_name)
+            }
         } else {
-            class_name
-        };
-        
-        let namespace = self.get_class_namespace(simple_name);
-        if namespace.is_empty() {
-            simple_name.to_string()
-        } else {
-            // 使用 Itanium ABI 格式
-            self.mangle_namespace(&namespace, simple_name)
+            let namespace = self.get_class_namespace(class_name);
+            if namespace.is_empty() {
+                class_name.to_string()
+            } else {
+                // 使用 Itanium ABI 格式
+                self.mangle_namespace(&namespace, class_name)
+            }
         }
     }
 
@@ -823,7 +828,26 @@ impl IRGenerator {
 
     /// 获取类的命名空间路径
     pub(crate) fn get_class_namespace(&self, class_name: &str) -> Vec<String> {
-        self.class_namespaces.get(class_name).cloned().unwrap_or_default()
+        // 直接查找（限定名 key）
+        if let Some(ns) = self.class_namespaces.get(class_name) {
+            return ns.clone();
+        }
+        // 回退：在当前命名空间上下文中查找
+        if let Some(ref registry) = self.type_registry {
+            if !registry.current_namespace.is_empty() {
+                let qualified = format!("{}::{}", registry.current_namespace.join("::"), class_name);
+                if let Some(ns) = self.class_namespaces.get(&qualified) {
+                    return ns.clone();
+                }
+            }
+        }
+        // 再回退：遍历查找（通过 :: 后缀匹配简单名）
+        for (qname, ns) in &self.class_namespaces {
+            if qname.ends_with(&format!("::{}", class_name)) {
+                return ns.clone();
+            }
+        }
+        Vec::new()
     }
 
     /// Itanium ABI 名称改编: _ZN<len>ns1<len>ns2<len>classNameE

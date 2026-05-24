@@ -164,11 +164,16 @@ impl IRGenerator {
         }
 
         for class in &program.classes {
-            // 记录类的命名空间路径，用于方法名改编
+            let qname = if class.namespace_path.is_empty() {
+                class.name.clone()
+            } else {
+                format!("{}::{}", class.namespace_path.join("::"), class.name)
+            };
+            // 记录类的命名空间路径，用于方法名改编（使用限定名作为 key，避免同名类冲突）
             if !class.namespace_path.is_empty() {
-                self.class_namespaces.insert(class.name.clone(), class.namespace_path.clone());
+                self.class_namespaces.insert(qname.clone(), class.namespace_path.clone());
             }
-            self.collect_static_fields(class)?;
+            self.collect_static_fields(class, &qname)?;
 
             for member in &class.members {
                 if let crate::ast::ClassMember::Method(method) = member {
@@ -176,10 +181,10 @@ impl IRGenerator {
                        method.modifiers.contains(&crate::ast::Modifier::Public) &&
                        method.modifiers.contains(&crate::ast::Modifier::Static) {
                         if class.modifiers.contains(&crate::ast::Modifier::Main) {
-                            main_class = Some(class.name.clone());
+                            main_class = Some(qname.clone());
                             main_method = Some(method.clone());
                         } else if fallback_main_class.is_none() {
-                            fallback_main_class = Some(class.name.clone());
+                            fallback_main_class = Some(qname.clone());
                             fallback_main_method = Some(method.clone());
                         }
                     }
@@ -395,11 +400,11 @@ impl IRGenerator {
         Ok(self.output.clone())
     }
 
-    fn collect_static_fields(&mut self, class: &ClassDecl) -> cayResult<()> {
+    fn collect_static_fields(&mut self, class: &ClassDecl, qname: &str) -> cayResult<()> {
         for member in &class.members {
             if let ClassMember::Field(field) = member {
                 if field.modifiers.contains(&Modifier::Static) {
-                    self.register_static_field(&class.name, field)?;
+                    self.register_static_field(qname, field)?;
                 }
             }
         }
@@ -432,7 +437,13 @@ impl IRGenerator {
             field_name: field.name.clone(),
         };
 
-        let key = format!("{}.{}", class_name, field.name);
+        // 提取简单类名用于 static_field_map key（与 self.current_class 查找一致）
+        let simple_class = if class_name.contains("::") {
+            class_name.split("::").last().unwrap().to_string()
+        } else {
+            class_name.to_string()
+        };
+        let key = format!("{}.{}", simple_class, field.name);
         self.static_field_map.insert(key, field_info.clone());
         self.static_fields.push(field_info);
 
@@ -630,6 +641,13 @@ impl IRGenerator {
             registry.current_namespace = class.namespace_path.clone();
         }
 
+        // 构建限定名（用于 LLVM 名称改编）
+        let qname = if class.namespace_path.is_empty() {
+            class.name.clone()
+        } else {
+            format!("{}::{}", class.namespace_path.join("::"), class.name)
+        };
+
         // 检查是否有显式构造函数
         let has_explicit_ctor = class.members.iter().any(|m| matches!(m, ClassMember::Constructor(_)));
         
@@ -639,7 +657,7 @@ impl IRGenerator {
                     // 跳过 native 和 abstract 方法（它们没有方法体）
                     if !method.modifiers.contains(&Modifier::Native) 
                         && !method.modifiers.contains(&Modifier::Abstract) {
-                        self.generate_method(&class.name, method)?;
+                        self.generate_method(&qname, method)?;
                     }
                 }
                 ClassMember::Field(field) => {
@@ -647,22 +665,22 @@ impl IRGenerator {
                     }
                 }
                 ClassMember::Constructor(ctor) => {
-                    self.generate_constructor(&class.name, ctor)?;
+                    self.generate_constructor(&qname, ctor)?;
                 }
                 ClassMember::Destructor(dtor) => {
-                    self.generate_destructor(&class.name, dtor)?;
+                    self.generate_destructor(&qname, dtor)?;
                 }
                 ClassMember::InstanceInitializer(_block) => {
                 }
                 ClassMember::StaticInitializer(block) => {
-                    self.generate_static_initializer(&class.name, block)?;
+                    self.generate_static_initializer(&qname, block)?;
                 }
             }
         }
         
         // 如果没有显式构造函数，生成默认构造函数
         if !has_explicit_ctor {
-            self.generate_default_constructor(&class.name)?;
+            self.generate_default_constructor(&qname)?;
         }
 
         // 清除命名空间上下文
@@ -681,7 +699,12 @@ impl IRGenerator {
 
         let fn_name = self.generate_method_name(class_name, method);
         self.current_function = fn_name.clone();
-        self.current_class = class_name.to_string();
+        // 从可能包含 :: 的限定名中提取简单名用于 current_class
+        self.current_class = if class_name.contains("::") {
+            class_name.split("::").last().unwrap().to_string()
+        } else {
+            class_name.to_string()
+        };
         self.current_return_type = self.type_to_llvm(&method.return_type);
 
         self.temp_counter = 0;
@@ -709,7 +732,7 @@ impl IRGenerator {
             } else {
                 self.type_to_llvm(&param.param_type)
             };
-            params.push(format!("{} %{}.{}", param_llvm_type, class_name, param.name));
+            params.push(format!("{} %{}.{}", param_llvm_type, self.current_class, param.name));
         }
 
         self.emit_line(&format!("define {} @{}({}) {{",
@@ -747,7 +770,7 @@ impl IRGenerator {
                 // 将 i8* 参数转换为正确的数组类型指针
                 let cast_temp = self.new_temp();
                 self.emit_line(&format!("  {} = bitcast i8* %{}.{} to {}",
-                    cast_temp, class_name, param.name, array_type));
+                    cast_temp, self.current_class, param.name, array_type));
                 self.emit_line(&format!("  store {} {}, {}* %{}",
                     array_type, cast_temp, array_type, llvm_name));
                 
@@ -763,7 +786,7 @@ impl IRGenerator {
                 let llvm_name = self.scope_manager.declare_var_with_flag(&param.name, &param_type, true);
                 self.emit_line(&format!("  %{} = alloca {}", llvm_name, param_type));
                 self.emit_line(&format!("  store {} %{}.{}, {}* %{}",
-                    param_type, class_name, param.name, param_type, llvm_name));
+                    param_type, self.current_class, param.name, param_type, llvm_name));
                 self.var_types.insert(param.name.clone(), param_type.clone());
                 // 存储Cavvy类型信息，用于准确的类型推断
                 self.var_cay_types.insert(param.name.clone(), param.param_type.clone());
@@ -797,7 +820,12 @@ impl IRGenerator {
     fn generate_constructor(&mut self, class_name: &str, ctor: &crate::ast::ConstructorDecl) -> cayResult<()> {
         let fn_name = self.generate_constructor_name(class_name, ctor);
         self.current_function = fn_name.clone();
-        self.current_class = class_name.to_string();
+        // 从可能包含 :: 的限定名中提取简单名用于 current_class
+        self.current_class = if class_name.contains("::") {
+            class_name.split("::").last().unwrap().to_string()
+        } else {
+            class_name.to_string()
+        };
         self.current_return_type = "void".to_string();
 
         self.temp_counter = 0;
@@ -806,7 +834,7 @@ impl IRGenerator {
         self.loop_stack.clear();
 
         let params: Vec<String> = ctor.params.iter()
-            .map(|p| format!("{} %{}.{}_param", self.type_to_llvm(&p.param_type), class_name, p.name))
+            .map(|p| format!("{} %{}.{}_param", self.type_to_llvm(&p.param_type), self.current_class, p.name))
             .collect();
 
         let mut all_params = vec![format!("i8* %this")];
@@ -831,7 +859,7 @@ impl IRGenerator {
             let llvm_name = self.scope_manager.declare_var_with_flag(&param.name, &param_type, true);
             self.emit_line(&format!("  %{} = alloca {}", llvm_name, param_type));
             self.emit_line(&format!("  store {} %{}.{}_param, {}* %{}",
-                param_type, class_name, param.name, param_type, llvm_name));
+                param_type, self.current_class, param.name, param_type, llvm_name));
             self.var_types.insert(param.name.clone(), param_type.clone());
             self.var_cay_types.insert(param.name.clone(), param.param_type.clone());
         }
@@ -898,7 +926,12 @@ impl IRGenerator {
         let llvm_class = self.get_qualified_class_name(class_name);
         let fn_name = format!("{}.__ctor", llvm_class);
         self.current_function = fn_name.clone();
-        self.current_class = class_name.to_string();
+        // 从可能包含 :: 的限定名中提取简单名用于 current_class
+        self.current_class = if class_name.contains("::") {
+            class_name.split("::").last().unwrap().to_string()
+        } else {
+            class_name.to_string()
+        };
         self.current_return_type = "void".to_string();
 
         self.temp_counter = 0;
@@ -945,7 +978,12 @@ impl IRGenerator {
         let llvm_class = self.get_qualified_class_name(class_name);
         let fn_name = format!("{}.__dtor", llvm_class);
         self.current_function = fn_name.clone();
-        self.current_class = class_name.to_string();
+        // 从可能包含 :: 的限定名中提取简单名用于 current_class
+        self.current_class = if class_name.contains("::") {
+            class_name.split("::").last().unwrap().to_string()
+        } else {
+            class_name.to_string()
+        };
         self.current_return_type = "void".to_string();
 
         self.temp_counter = 0;
@@ -978,7 +1016,12 @@ impl IRGenerator {
         let llvm_class = self.get_qualified_class_name(class_name);
         let fn_name = format!("{}.__static_init", llvm_class);
         self.current_function = fn_name.clone();
-        self.current_class = class_name.to_string();
+        // 从可能包含 :: 的限定名中提取简单名用于 current_class
+        self.current_class = if class_name.contains("::") {
+            class_name.split("::").last().unwrap().to_string()
+        } else {
+            class_name.to_string()
+        };
         self.current_return_type = "void".to_string();
 
         self.temp_counter = 0;

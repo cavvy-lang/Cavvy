@@ -1,0 +1,11 @@
+namespace A {
+    public class T {
+        public static void print() {
+            print("namespaceA");
+        }
+    }
+}
+
+public int main() {
+    T.print(); // 报错，没有找到 T 类
+}
