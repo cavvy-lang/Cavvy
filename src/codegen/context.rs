@@ -1058,7 +1058,17 @@ impl IRGenerator {
 
     /// 获取类布局信息
     pub fn get_class_layout(&self, class_name: &str) -> Option<&ClassLayoutInfo> {
-        self.class_layouts.get(class_name)
+        // 直接用传入的类名查找
+        if let Some(layout) = self.class_layouts.get(class_name) {
+            return Some(layout);
+        }
+        // 简单名找不到，尝试用限定名（class_layouts 键为 "ns::ClassName"）
+        if let Some(ref registry) = self.type_registry {
+            if let Some(qname) = registry.find_qualified_class(class_name) {
+                return self.class_layouts.get(&qname);
+            }
+        }
+        None
     }
 
     /// 获取实例字段信息
