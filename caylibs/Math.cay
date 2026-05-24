@@ -858,9 +858,9 @@ public class Random {
         }
         double u2 = nextDouble();
 
-        double mag = sqrt(-2.0 * log(u1));
-        double z0 = mag * cos(2.0 * MATH_PI * u2);
-        double z1 = mag * sin(2.0 * MATH_PI * u2);
+        double mag = c_sqrt(-2.0 * c_log(u1));
+        double z0 = mag * c_cos(2.0 * MATH_PI * u2);
+        double z1 = mag * c_sin(2.0 * MATH_PI * u2);
 
         // 缓存第二个值
         nextGaussianValue = z1;

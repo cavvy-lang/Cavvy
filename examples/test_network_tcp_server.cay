@@ -8,6 +8,7 @@
 #include <Network.cay>
 using std::Network;
 using std::NetworkUtils;
+using std::TcpServer;
 using std::TcpSocket;
 
 public int main() {

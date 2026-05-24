@@ -8,6 +8,8 @@
 #include <Network.cay>
 using std::Network;
 using std::NetworkUtils;
+using std::SocketAddr;
+using std::TcpServer;
 using std::TcpSocket;
 using std::UdpSocket;
 
