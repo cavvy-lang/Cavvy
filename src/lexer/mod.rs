@@ -1208,7 +1208,7 @@ mod tests {
 
     #[test]
     fn test_invalid_character() {
-        let source = r#"int x = 42 @;"#;
+        let source = "int x = 42 #;";
         let result = tokenize(source);
         assert!(result.is_err());
     }
