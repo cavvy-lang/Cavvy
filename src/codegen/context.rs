@@ -890,6 +890,7 @@ impl IRGenerator {
             Type::CInt => "ci".to_string(),
             Type::CUInt => "cui".to_string(),
             Type::CLong => "cl".to_string(),
+            Type::CULong => "cul".to_string(),
             Type::CShort => "cs".to_string(),
             Type::CUShort => "cus".to_string(),
             Type::CChar => "cc".to_string(),
@@ -999,7 +1000,15 @@ impl IRGenerator {
 
         // 如果有父类，先复制父类的字段布局
         if let Some(parent) = parent_name {
-            if let Some(parent_layout) = self.class_layouts.get(parent).cloned() {
+            // 先用简单名找，找不到就用限定名（class_layouts 现在用限定名存储）
+            let parent_layout = self.class_layouts.get(parent)
+                .or_else(|| {
+                    self.type_registry.as_ref()
+                        .and_then(|r| r.find_qualified_class(parent))
+                        .and_then(|q| self.class_layouts.get(&q))
+                })
+                .cloned();
+            if let Some(parent_layout) = parent_layout {
                 // 复制父类的所有字段信息
                 for (field_name, field_info) in &parent_layout.fields {
                     field_map.insert(field_name.clone(), field_info.clone());
@@ -1054,7 +1063,19 @@ impl IRGenerator {
 
     /// 获取实例字段信息
     pub fn get_instance_field(&self, class_name: &str, field_name: &str) -> Option<&InstanceFieldInfo> {
-        self.class_layouts.get(class_name)?.fields.get(field_name)
+        // 先用传入的类名直接查找
+        if let Some(layout) = self.class_layouts.get(class_name) {
+            if let Some(result) = layout.fields.get(field_name) {
+                return Some(result);
+            }
+        }
+        // 简单名找不到，尝试用限定名（class_layouts 键为 "ns::ClassName"）
+        if let Some(ref registry) = self.type_registry {
+            if let Some(qname) = registry.find_qualified_class(class_name) {
+                return self.class_layouts.get(&qname)?.fields.get(field_name);
+            }
+        }
+        None
     }
 
     /// 获取类的父类名
@@ -1140,6 +1161,16 @@ impl IRGenerator {
     /// 获取CodeGen的当前类名
     pub fn get_current_class(&self) -> &str {
         &self.current_class
+    }
+
+    /// 将当前简单类名解析为限定名（如 "HttpHeaders" → "http::HttpHeaders"）
+    pub fn resolve_current_qualified_class(&self) -> String {
+        if let Some(ref registry) = self.type_registry {
+            if let Some(qname) = registry.find_qualified_class(&self.current_class) {
+                return qname;
+            }
+        }
+        self.current_class.clone()
     }
 
     /// 获取当前函数的参数顺序（用于内联IR）

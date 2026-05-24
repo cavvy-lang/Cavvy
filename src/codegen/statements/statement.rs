@@ -112,7 +112,7 @@ impl IRGenerator {
         }
 
         // 添加注释标记内联IR块结束
-        self.emit_raw("  ; Inline IR block end");
+        self.emit_line("  ; Inline IR block end");
 
         Ok(())
     }

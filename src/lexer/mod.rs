@@ -122,6 +122,8 @@ pub enum Token {
     CUInt,
     #[token("c_long")]
     CLong,
+    #[token("c_ulong")]
+    CULong,
     #[token("c_short")]
     CShort,
     #[token("c_ushort")]
@@ -958,6 +960,7 @@ pub fn token_name(token: &Token) -> &'static str {
         Token::CInt => "c_int",
         Token::CUInt => "c_uint",
         Token::CLong => "c_long",
+        Token::CULong => "c_ulong",
         Token::CShort => "c_short",
         Token::CUShort => "c_ushort",
         Token::CChar => "c_char",

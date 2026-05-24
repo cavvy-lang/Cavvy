@@ -5,87 +5,81 @@
  * 版本: 0.5.1.0
  */
 
+#include <c/usual/memory.cay>
+
 namespace std {
 
 /* ============================================================================
- * 平台特定的C库函数声明
+ * 平台特定的Socket函数声明
  * ============================================================================ */
 
 /* Windows平台使用ws2_32库 */
 #ifdef _WIN32
 extern {
     /* WSA (Windows Sockets API) 函数 */
-    c_short WSAStartup(c_short wVersionRequired, long lpWSAData);
-    int WSACleanup();
-    int WSAGetLastError();
+    c_short WSAStartup(c_short wVersionRequired, c_void* lpWSAData);
+    c_int WSACleanup();
+    c_int WSAGetLastError();
     
     /* Socket函数 */
-    long socket(int af, int type, int protocol);
-    int closesocket(long s);
-    int bind(long s, long name, int namelen);
-    int listen(long s, int backlog);
-    long accept(long s, long addr, int addrlen);
-    int connect(long s, long name, int namelen);
-    int send(long s, long buf, int len, int flags);
-    int recv(long s, long buf, int len, int flags);
-    int sendto(long s, long buf, int len, int flags, long to, int tolen);
-    int recvfrom(long s, long buf, int len, int flags, long from, long fromlen);
-    int shutdown(long s, int how);
+    c_long socket(c_int af, c_int type, c_int protocol);
+    c_int closesocket(c_long s);
+    c_int bind(c_long s, c_void* name, c_int namelen);
+    c_int listen(c_long s, c_int backlog);
+    c_long accept(c_long s, c_void* addr, c_int* addrlen);
+    c_int connect(c_long s, c_void* name, c_int namelen);
+    c_int send(c_long s, c_void* buf, c_int len, c_int flags);
+    c_int recv(c_long s, c_void* buf, c_int len, c_int flags);
+    c_int sendto(c_long s, c_void* buf, c_int len, c_int flags, c_void* to, c_int tolen);
+    c_int recvfrom(c_long s, c_void* buf, c_int len, c_int flags, c_void* from, c_int* fromlen);
+    c_int shutdown(c_long s, c_int how);
     
     /* 地址转换 */
-    long inet_addr(long cp);
-    long inet_ntoa(long in);
+    c_ulong inet_addr(c_string cp);
+    c_string inet_ntoa(c_ulong in);
     
     /* 主机信息 */
-    long gethostbyname(long name);
-    long gethostbyaddr(long addr, int len, int type);
+    c_void* gethostbyname(c_string name);
+    c_void* gethostbyaddr(c_void* addr, c_int len, c_int type);
     
     /* IO控制 */
-    int ioctlsocket(long s, long cmd, long argp);
-    int setsockopt(long s, int level, int optname, long optval, int optlen);
-    int getsockopt(long s, int level, int optname, long optval, long optlen);
-    
-    /* 内存分配 */
-    long malloc(int size);
-    void free(long ptr);
+    c_int ioctlsocket(c_long s, c_long cmd, c_ulong* argp);
+    c_int setsockopt(c_long s, c_int level, c_int optname, c_void* optval, c_int optlen);
+    c_int getsockopt(c_long s, c_int level, c_int optname, c_void* optval, c_int* optlen);
 }
 #else
 /* Linux/Unix平台 */
 extern {
     /* Socket函数 */
-    int socket(int domain, int type, int protocol);
-    int close(int fd);
-    int bind(int sockfd, long addr, int addrlen);
-    int listen(int sockfd, int backlog);
-    int accept(int sockfd, long addr, int addrlen);
-    int connect(int sockfd, long addr, int addrlen);
-    long send(int sockfd, long buf, long len, int flags);
-    long recv(int sockfd, long buf, long len, int flags);
-    long sendto(int sockfd, long buf, long len, int flags, long dest_addr, int addrlen);
-    long recvfrom(int sockfd, long buf, long len, int flags, long src_addr, long addrlen);
-    int shutdown(int sockfd, int how);
+    c_int socket(c_int domain, c_int type, c_int protocol);
+    c_int close(c_int fd);
+    c_int bind(c_int sockfd, c_void* addr, c_int addrlen);
+    c_int listen(c_int sockfd, c_int backlog);
+    c_int accept(c_int sockfd, c_void* addr, c_int* addrlen);
+    c_int connect(c_int sockfd, c_void* addr, c_int addrlen);
+    c_long send(c_int sockfd, c_void* buf, size_t len, c_int flags);
+    c_long recv(c_int sockfd, c_void* buf, size_t len, c_int flags);
+    c_long sendto(c_int sockfd, c_void* buf, size_t len, c_int flags, c_void* dest_addr, c_int addrlen);
+    c_long recvfrom(c_int sockfd, c_void* buf, size_t len, c_int flags, c_void* src_addr, c_int* addrlen);
+    c_int shutdown(c_int sockfd, c_int how);
 
     /* 地址转换 */
-    int inet_pton(int af, long src, long dst);
-    long inet_ntop(int af, long src, long dst, int size);
-    int inet_aton(long cp, long inp);
-    long inet_addr(long cp);
-    long inet_ntoa(long in);
+    c_int inet_pton(c_int af, c_string src, c_void* dst);
+    c_string inet_ntop(c_int af, c_void* src, c_char* dst, size_t size);
+    c_int inet_aton(c_string cp, c_void* inp);
+    c_ulong inet_addr(c_string cp);
+    c_string inet_ntoa(c_ulong in);
 
     /* 主机信息 */
-    long gethostbyname(long name);
-    long gethostbyaddr(long addr, int len, int type);
-    void herror(long s);
+    c_void* gethostbyname(c_string name);
+    c_void* gethostbyaddr(c_void* addr, c_int len, c_int type);
+    void herror(c_string s);
 
     /* IO控制 */
-    int fcntl(int fd, int cmd, int arg);
-    int setsockopt(int sockfd, int level, int optname, long optval, int optlen);
-    int getsockopt(int sockfd, int level, int optname, long optval, long optlen);
-    int select(int nfds, long readfds, long writefds, long exceptfds, long timeout);
-
-    /* 内存分配 */
-    long malloc(int size);
-    void free(long ptr);
+    c_int fcntl(c_int fd, c_int cmd, c_int arg);
+    c_int setsockopt(c_int sockfd, c_int level, c_int optname, c_void* optval, c_int optlen);
+    c_int getsockopt(c_int sockfd, c_int level, c_int optname, c_void* optval, c_int* optlen);
+    c_int select(c_int nfds, c_void* readfds, c_void* writefds, c_void* exceptfds, c_void* timeout);
 }
 #endif
 
@@ -108,6 +102,8 @@ extern {
 
 /* Socket选项 */
 #define SO_REUSEADDR 0x0004
+#define SO_SNDTIMEO 0x1005
+#define SO_RCVTIMEO 0x1006
 #define SO_BROADCAST 0x0020
 #define SO_SNDBUF 0x1001
 #define SO_RCVBUF 0x1002
@@ -168,8 +164,8 @@ public class SocketAddr {
         SocketAddr addr = new SocketAddr();
         
         /* 解析IP地址 */
-        long ipPtr = ip.c_str();
-        long ipAddr = inet_addr(ipPtr);
+        c_string ipPtr = (c_string)ip.c_str();
+        c_ulong ipAddr = inet_addr(ipPtr);
         
         /* 构建sockaddr_in结构 */
         int family = AF_INET;
@@ -267,8 +263,8 @@ public class NetworkUtils {
         #ifdef _WIN32
         /* Windows需要初始化Winsock */
         c_short version = 0x0202;  /* Winsock 2.2 */
-        long wsadata = malloc(400);  /* WSAData结构约400字节 */
-        if (wsadata == 0) {
+        c_void* wsadata = malloc(400);  /* WSAData结构约400字节 */
+        if (wsadata == null) {
             return false;
         }
         
@@ -348,20 +344,20 @@ public class NetworkUtils {
      * @return IP地址字符串
      */
     public static String resolveHost(String hostname) {
-        long hostent = gethostbyname(hostname.c_str());
-        if (hostent == 0) {
+        c_void* hostent = gethostbyname((c_string)hostname.c_str());
+        if (hostent == null) {
             return "";
         }
         /* hostent结构: h_name(8), h_aliases(8), h_addrtype(4), h_length(4), h_addr_list(8) */
-        long addr_list = __cay_read_ptr(hostent + 24);
-        if (addr_list == 0) {
+        c_void* addr_list = __cay_read_ptr((c_long)hostent + 24);
+        if (addr_list == null) {
             return "";
         }
-        long addr = __cay_read_ptr(addr_list);
+        c_ulong addr = (c_ulong)__cay_read_ptr((c_long)addr_list);
         if (addr == 0) {
             return "";
         }
-        return __cay_ptr_to_string(inet_ntoa(addr));
+        return __cay_ptr_to_string((c_long)inet_ntoa(addr));
     }
     
     /**
@@ -369,20 +365,20 @@ public class NetworkUtils {
      * @param hostnamePtr 主机名C字符串指针
      * @return IP地址字符串
      */
-    private static String resolveHostInternal(long hostnamePtr) {
-        long hostent = gethostbyname(hostnamePtr);
-        if (hostent == 0) {
+    private static String resolveHostInternal(c_long hostnamePtr) {
+        c_void* hostent = gethostbyname((c_string)hostnamePtr);
+        if (hostent == null) {
             return "";
         }
-        long addr_list = __cay_read_ptr(hostent + 24);
-        if (addr_list == 0) {
+        c_void* addr_list = __cay_read_ptr((c_long)hostent + 24);
+        if (addr_list == null) {
             return "";
         }
-        long addr = __cay_read_ptr(addr_list);
+        c_ulong addr = (c_ulong)__cay_read_ptr((c_long)addr_list);
         if (addr == 0) {
             return "";
         }
-        return __cay_ptr_to_string(inet_ntoa(addr));
+        return __cay_ptr_to_string((c_long)inet_ntoa(addr));
     }
     
     /**
@@ -447,7 +443,7 @@ public class NetworkUtils {
  * ============================================================================ */
 
 public class TcpSocket {
-    long handle;
+    c_long handle;
     bool connected;
     
     public TcpSocket() {
@@ -463,7 +459,7 @@ public class TcpSocket {
     /**
      * 包级私有构造函数，用于TcpServer.accept()
      */
-    TcpSocket(long handle, bool connected) {
+    TcpSocket(c_long handle, bool connected) {
         this.handle = handle;
         this.connected = connected;
     }
@@ -491,9 +487,9 @@ public class TcpSocket {
         
         /* 连接 */
         #ifdef _WIN32
-        int result = connect(this.handle, (long)(&addr), 16);
+        c_int result = connect(this.handle, (c_void*)&addr, 16);
         #else
-        int result = connect((int)this.handle, (long)(&addr), 16);
+        c_int result = connect((c_int)this.handle, (c_void*)&addr, 16);
         #endif
         if (result != 0) {
             this.close();
@@ -514,13 +510,13 @@ public class TcpSocket {
             return -1;
         }
         
-        long buf = data.c_str();
-        int len = data.length();
+        c_void* buf = (c_void*)data.c_str();
+        c_int len = data.length();
         
         #ifdef _WIN32
-        int result = send(this.handle, buf, len, 0);
+        c_int result = send(this.handle, buf, len, 0);
         #else
-        int result = (int)send((int)this.handle, buf, len, 0);
+        c_int result = (c_int)send((c_int)this.handle, buf, len, 0);
         #endif
         
         return result;
@@ -536,15 +532,15 @@ public class TcpSocket {
             return null;
         }
         
-        long buf = malloc(maxLen);
-        if (buf == 0) {
+        c_void* buf = malloc(maxLen);
+        if (buf == null) {
             return null;
         }
         
         #ifdef _WIN32
-        int received = recv(this.handle, buf, maxLen, 0);
+        c_int received = recv(this.handle, buf, maxLen, 0);
         #else
-        int received = (int)recv((int)this.handle, buf, maxLen, 0);
+        c_int received = (c_int)recv((c_int)this.handle, buf, maxLen, 0);
         #endif
         
         if (received <= 0) {
@@ -553,7 +549,7 @@ public class TcpSocket {
         }
         
         /* 转换为String */
-        String result = __cay_ptr_to_string(buf);
+        String result = __cay_ptr_to_string((c_long)buf);
         free(buf);
         
         return result;
@@ -577,8 +573,8 @@ public class TcpSocket {
             shutdown(this.handle, 2);  /* SD_BOTH */
             closesocket(this.handle);
             #else
-            shutdown((int)this.handle, 2);  /* SHUT_RDWR */
-            close((int)this.handle);
+            shutdown((c_int)this.handle, 2);  /* SHUT_RDWR */
+            close((c_int)this.handle);
             #endif
             this.handle = INVALID_SOCKET;
         }
@@ -593,9 +589,9 @@ public class TcpSocket {
             return false;
         }
         #ifdef _WIN32
-        int result = shutdown(this.handle, SD_SEND);
+        c_int result = shutdown(this.handle, SD_SEND);
         #else
-        int result = shutdown((int)this.handle, SD_SEND);
+        c_int result = shutdown((c_int)this.handle, SD_SEND);
         #endif
         return result == 0;
     }
@@ -608,9 +604,9 @@ public class TcpSocket {
             return false;
         }
         #ifdef _WIN32
-        int result = shutdown(this.handle, SD_RECEIVE);
+        c_int result = shutdown(this.handle, SD_RECEIVE);
         #else
-        int result = shutdown((int)this.handle, SD_RECEIVE);
+        c_int result = shutdown((c_int)this.handle, SD_RECEIVE);
         #endif
         return result == 0;
     }
@@ -618,14 +614,14 @@ public class TcpSocket {
     /**
      * 关闭所有（shutdown both）
      */
-    public bool shutdown() {
+    public bool shutdownBoth() {
         if (this.handle == INVALID_SOCKET) {
             return false;
         }
         #ifdef _WIN32
-        int result = shutdown(this.handle, SD_BOTH);
+        c_int result = shutdown(this.handle, SD_BOTH);
         #else
-        int result = shutdown((int)this.handle, SD_BOTH);
+        c_int result = shutdown((c_int)this.handle, SD_BOTH);
         #endif
         return result == 0;
     }
@@ -649,11 +645,11 @@ public class TcpSocket {
      */
     public void setReuseAddr(bool enable) {
         if (this.handle != INVALID_SOCKET) {
-            int value = enable ? 1 : 0;
+            c_int value = enable ? 1 : 0;
             #ifdef _WIN32
-            setsockopt(this.handle, SOL_SOCKET, SO_REUSEADDR, (long)(&value), 4);
+            setsockopt(this.handle, SOL_SOCKET, SO_REUSEADDR, (c_void*)&value, 4);
             #else
-            setsockopt((int)this.handle, SOL_SOCKET, SO_REUSEADDR, (long)(&value), 4);
+            setsockopt((c_int)this.handle, SOL_SOCKET, SO_REUSEADDR, (c_void*)&value, 4);
             #endif
         }
     }
@@ -663,11 +659,11 @@ public class TcpSocket {
      */
     public void setTcpNoDelay(bool enable) {
         if (this.handle != INVALID_SOCKET) {
-            int value = enable ? 1 : 0;
+            c_int value = enable ? 1 : 0;
             #ifdef _WIN32
-            setsockopt(this.handle, IPPROTO_TCP, TCP_NODELAY, (long)(&value), 4);
+            setsockopt(this.handle, IPPROTO_TCP, TCP_NODELAY, (c_void*)&value, 4);
             #else
-            setsockopt((int)this.handle, IPPROTO_TCP, TCP_NODELAY, (long)(&value), 4);
+            setsockopt((c_int)this.handle, IPPROTO_TCP, TCP_NODELAY, (c_void*)&value, 4);
             #endif
         }
     }
@@ -678,9 +674,9 @@ public class TcpSocket {
     public void setSendBufferSize(int size) {
         if (this.handle != INVALID_SOCKET) {
             #ifdef _WIN32
-            setsockopt(this.handle, SOL_SOCKET, SO_SNDBUF, (long)(&size), 4);
+            setsockopt(this.handle, SOL_SOCKET, SO_SNDBUF, (c_void*)&size, 4);
             #else
-            setsockopt((int)this.handle, SOL_SOCKET, SO_SNDBUF, (long)(&size), 4);
+            setsockopt((c_int)this.handle, SOL_SOCKET, SO_SNDBUF, (c_void*)&size, 4);
             #endif
         }
     }
@@ -691,9 +687,37 @@ public class TcpSocket {
     public void setRecvBufferSize(int size) {
         if (this.handle != INVALID_SOCKET) {
             #ifdef _WIN32
-            setsockopt(this.handle, SOL_SOCKET, SO_RCVBUF, (long)(&size), 4);
+            setsockopt(this.handle, SOL_SOCKET, SO_RCVBUF, (c_void*)&size, 4);
             #else
-            setsockopt((int)this.handle, SOL_SOCKET, SO_RCVBUF, (long)(&size), 4);
+            setsockopt((c_int)this.handle, SOL_SOCKET, SO_RCVBUF, (c_void*)&size, 4);
+            #endif
+        }
+    }
+
+    /**
+     * 设置发送超时（毫秒）
+     */
+    public void setSendTimeout(int ms) {
+        if (this.handle != INVALID_SOCKET) {
+            c_int timeout = ms;
+            #ifdef _WIN32
+            setsockopt(this.handle, SOL_SOCKET, SO_SNDTIMEO, (c_void*)&timeout, 4);
+            #else
+            setsockopt((c_int)this.handle, SOL_SOCKET, SO_SNDTIMEO, (c_void*)&timeout, 4);
+            #endif
+        }
+    }
+
+    /**
+     * 设置接收超时（毫秒）
+     */
+    public void setRecvTimeout(int ms) {
+        if (this.handle != INVALID_SOCKET) {
+            c_int timeout = ms;
+            #ifdef _WIN32
+            setsockopt(this.handle, SOL_SOCKET, SO_RCVTIMEO, (c_void*)&timeout, 4);
+            #else
+            setsockopt((c_int)this.handle, SOL_SOCKET, SO_RCVTIMEO, (c_void*)&timeout, 4);
             #endif
         }
     }
@@ -704,8 +728,8 @@ public class TcpSocket {
  * ============================================================================ */
 
 public class TcpServer {
-    private long handle;
-    private int port;
+    private c_long handle;
+    private c_int port;
     private bool listening;
     
     public TcpServer() {
@@ -732,22 +756,22 @@ public class TcpServer {
         }
         
         /* 设置地址重用 */
-        int reuse = 1;
+        c_int reuse = 1;
         #ifdef _WIN32
-        setsockopt(this.handle, SOL_SOCKET, SO_REUSEADDR, (long)(&reuse), 4);
+        setsockopt(this.handle, SOL_SOCKET, SO_REUSEADDR, (c_void*)&reuse, 4);
         #else
-        setsockopt((int)this.handle, SOL_SOCKET, SO_REUSEADDR, (long)(&reuse), 4);
+        setsockopt((c_int)this.handle, SOL_SOCKET, SO_REUSEADDR, (c_void*)&reuse, 4);
         #endif
 
         /* 调用系统bind函数 */
         #ifdef _WIN32
-        int sysResult = bind(this.handle, (long)(&addr), 16);
+        c_int sysResult = bind(this.handle, (c_void*)&addr, 16);
         #else
-        int sysResult = bind((int)this.handle, (long)(&addr), 16);
+        c_int sysResult = bind((c_int)this.handle, (c_void*)&addr, 16);
         #endif
         if (sysResult == 0) {
             /* 从word0中提取端口号 (word0 = (port_network << 16) | family) */
-            int portNetwork = (addr.word0 >> 16) & 0xFFFF;
+            c_int portNetwork = (addr.word0 >> 16) & 0xFFFF;
             this.port = NetworkUtils.ntohs(portNetwork);
             return true;
         }
@@ -778,9 +802,9 @@ public class TcpServer {
         }
 
         #ifdef _WIN32
-        int result = listen(this.handle, backlog);
+        c_int result = listen(this.handle, backlog);
         #else
-        int result = listen((int)this.handle, backlog);
+        c_int result = listen((c_int)this.handle, backlog);
         #endif
         if (result == 0) {
             this.listening = true;
@@ -799,13 +823,13 @@ public class TcpServer {
             return null;
         }
 
-        long ca = 0;
-        int al = 16;
+        c_void* ca = null;
+        c_int al = 16;
 
         #ifdef _WIN32
-        long ch = accept(this.handle, ca, al);
+        c_long ch = accept(this.handle, ca, (c_int*)&al);
         #else
-        long ch = accept((int)this.handle, ca, al);
+        c_long ch = accept((c_int)this.handle, ca, (c_int*)&al);
         #endif
 
         if (ch == INVALID_SOCKET) {
@@ -824,7 +848,7 @@ public class TcpServer {
             #ifdef _WIN32
             closesocket(this.handle);
             #else
-            close((int)this.handle);
+            close((c_int)this.handle);
             #endif
             this.handle = INVALID_SOCKET;
         }
@@ -850,7 +874,7 @@ public class TcpServer {
  * ============================================================================ */
 
 public class UdpSocket {
-    private long handle;
+    private c_long handle;
     private bool bound;
     
     public UdpSocket() {
@@ -874,19 +898,19 @@ public class UdpSocket {
         }
         
         /* 设置地址重用 */
-        int reuse = 1;
+        c_int reuse = 1;
         #ifdef _WIN32
-        setsockopt(this.handle, SOL_SOCKET, SO_REUSEADDR, (long)(&reuse), 4);
+        setsockopt(this.handle, SOL_SOCKET, SO_REUSEADDR, (c_void*)&reuse, 4);
         #else
-        setsockopt((int)this.handle, SOL_SOCKET, SO_REUSEADDR, (long)(&reuse), 4);
+        setsockopt((c_int)this.handle, SOL_SOCKET, SO_REUSEADDR, (c_void*)&reuse, 4);
         #endif
 
         /* 绑定地址 */
         SocketAddr addr = new SocketAddr().any(port);
         #ifdef _WIN32
-        int result = bind(this.handle, (long)(&addr), 16);
+        c_int result = bind(this.handle, (c_void*)&addr, 16);
         #else
-        int result = bind((int)this.handle, (long)(&addr), 16);
+        c_int result = bind((c_int)this.handle, (c_void*)&addr, 16);
         #endif
         
         if (result == 0) {
@@ -911,13 +935,13 @@ public class UdpSocket {
         }
         
         SocketAddr addr = new SocketAddr().fromString(ip, port);
-        long buf = data.c_str();
-        int len = data.length();
+        c_void* buf = (c_void*)data.c_str();
+        c_int len = data.length();
         
         #ifdef _WIN32
-        int result = sendto(this.handle, buf, len, 0, (long)(&addr), 16);
+        c_int result = sendto(this.handle, buf, len, 0, (c_void*)&addr, 16);
         #else
-        int result = (int)sendto((int)this.handle, buf, len, 0, (long)(&addr), 16);
+        c_int result = (c_int)sendto((c_int)this.handle, buf, len, 0, (c_void*)&addr, 16);
         #endif
         
         return result;
@@ -934,23 +958,23 @@ public class UdpSocket {
             return null;
         }
         
-        long buf = malloc(maxLen);
-        if (buf == 0) {
+        c_void* buf = malloc(maxLen);
+        if (buf == null) {
             return null;
         }
         
-        long addrBuf = malloc(16);
-        if (addrBuf == 0) {
+        c_void* addrBuf = malloc(16);
+        if (addrBuf == null) {
             free(buf);
             return null;
         }
         
-        long addrlen = 16;
+        c_int addrlen = 16;
         
         #ifdef _WIN32
-        int received = recvfrom(this.handle, buf, maxLen, 0, addrBuf, (long)(&addrlen));
+        c_int received = recvfrom(this.handle, buf, maxLen, 0, addrBuf, (c_int*)&addrlen);
         #else
-        int received = (int)recvfrom(this.handle, buf, maxLen, 0, addrBuf, (long)(&addrlen));
+        c_int received = (c_int)recvfrom((c_int)this.handle, buf, maxLen, 0, addrBuf, (c_int*)&addrlen);
         #endif
         
         if (received <= 0) {
@@ -960,13 +984,13 @@ public class UdpSocket {
         }
         
         /* 复制发送者地址 */
-        senderAddr.word0 = (int)__cay_read_ptr(addrBuf);
-        senderAddr.word1 = (int)__cay_read_ptr(addrBuf + 4);
-        senderAddr.word2 = (int)__cay_read_ptr(addrBuf + 8);
-        senderAddr.word3 = (int)__cay_read_ptr(addrBuf + 12);
+        senderAddr.word0 = (c_int)__cay_read_ptr((c_long)addrBuf);
+        senderAddr.word1 = (c_int)__cay_read_ptr((c_long)addrBuf + 4);
+        senderAddr.word2 = (c_int)__cay_read_ptr((c_long)addrBuf + 8);
+        senderAddr.word3 = (c_int)__cay_read_ptr((c_long)addrBuf + 12);
         
         /* 转换为String */
-        String result = __cay_ptr_to_string(buf);
+        String result = __cay_ptr_to_string((c_long)buf);
         
         free(buf);
         free(addrBuf);
@@ -983,7 +1007,7 @@ public class UdpSocket {
             #ifdef _WIN32
             closesocket(this.handle);
             #else
-            close((int)this.handle);
+            close((c_int)this.handle);
             #endif
             this.handle = INVALID_SOCKET;
         }

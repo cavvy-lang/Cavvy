@@ -54,8 +54,13 @@ impl SemanticAnalyzer {
             (Type::CInt, Type::Int32) | (Type::Int32, Type::CInt) => true,
             // c_uint <-> int
             (Type::CUInt, Type::Int32) | (Type::Int32, Type::CUInt) => true,
-            // c_long <-> long
+            // c_long <-> long 和 int
             (Type::CLong, Type::Int64) | (Type::Int64, Type::CLong) => true,
+            (Type::CLong, Type::Int32) | (Type::Int32, Type::CLong) => true,
+            // c_ulong <-> long/int/c_long
+            (Type::CULong, Type::Int64) | (Type::Int64, Type::CULong) => true,
+            (Type::CULong, Type::Int32) | (Type::Int32, Type::CULong) => true,
+            (Type::CULong, Type::CLong) | (Type::CLong, Type::CULong) => true,
             // c_short <-> int
             (Type::CShort, Type::Int32) | (Type::Int32, Type::CShort) => true,
             // c_char <-> int 或 char
@@ -91,6 +96,11 @@ impl SemanticAnalyzer {
             // 指针类型与 long/int 之间的兼容（用于 FFI）
             (Type::Pointer(_), Type::Int64) | (Type::Int64, Type::Pointer(_)) => true,
             (Type::Pointer(_), Type::Int32) | (Type::Int32, Type::Pointer(_)) => true,
+            // FFI 整数类型 <-> 指针 (用于 c_long/c_ulong 等作为指针值的场景)
+            (Type::Pointer(_), Type::CLong) | (Type::CLong, Type::Pointer(_)) => true,
+            (Type::Pointer(_), Type::CULong) | (Type::CULong, Type::Pointer(_)) => true,
+            (Type::Pointer(_), Type::CInt) | (Type::CInt, Type::Pointer(_)) => true,
+            (Type::Pointer(_), Type::CUInt) | (Type::CUInt, Type::Pointer(_)) => true,
             // ptr (void*) 可以转换为任何其他指针类型（C 语言规则）
             (Type::Pointer(from_inner), Type::Pointer(_)) => {
                 if matches!(from_inner.as_ref(), Type::CVoid) {
@@ -318,12 +328,18 @@ impl SemanticAnalyzer {
                 Ok(Type::String)
             }
             "indexOf" => {
-                if args.len() != 1 {
-                    return Err(self.report_error(line, column, "String.indexOf() takes 1 argument".to_string()));
+                if args.len() < 1 || args.len() > 2 {
+                    return Err(self.report_error(line, column, "String.indexOf() takes 1 or 2 arguments".to_string()));
                 }
                 let arg_type = self.infer_expr_type_collect_errors(&args[0]);
                 if arg_type != Type::String {
-                    return Err(self.report_error(line, column, format!("Argument of indexOf() must be string, got {}", arg_type)));
+                    return Err(self.report_error(line, column, format!("First argument of indexOf() must be string, got {}", arg_type)));
+                }
+                if args.len() == 2 {
+                    let start_type = self.infer_expr_type_collect_errors(&args[1]);
+                    if !start_type.is_integer() {
+                        return Err(self.report_error(line, column, format!("Second argument of indexOf() must be integer, got {}", start_type)));
+                    }
                 }
                 Ok(Type::Int32)
             }
@@ -375,11 +391,21 @@ impl SemanticAnalyzer {
                 }
                 Ok(Type::Bool)
             }
+            "equalsIgnoreCase" => {
+                if args.len() != 1 {
+                    return Err(self.report_error(line, column, "String.equalsIgnoreCase() takes 1 argument".to_string()));
+                }
+                let arg_type = self.infer_expr_type_collect_errors(&args[0]);
+                if arg_type != Type::String {
+                    return Err(self.report_error(line, column, format!("Argument of equalsIgnoreCase() must be string, got {}", arg_type)));
+                }
+                Ok(Type::Bool)
+            }
             "c_str" => {
                 if !args.is_empty() {
                     return Err(self.report_error(line, column, "String.c_str() takes no arguments".to_string()));
                 }
-                Ok(Type::Int64)  // 返回 long 类型，与 StringBuilder.cay 中的使用一致
+                Ok(Type::Pointer(Box::new(Type::CChar)))  // 返回 c_char* 指针类型，与 codegen 中的 i8* 一致
             }
             "startsWith" => {
                 if args.len() != 1 {
@@ -400,6 +426,12 @@ impl SemanticAnalyzer {
                     return Err(self.report_error(line, column, format!("Argument of endsWith() must be string, got {}", arg_type)));
                 }
                 Ok(Type::Bool)
+            }
+            "trim" => {
+                if !args.is_empty() {
+                    return Err(self.report_error(line, column, "String.trim() takes no arguments".to_string()));
+                }
+                Ok(Type::String)
             }
             _ => Err(self.report_error(line, column, format!("Unknown String method '{}'", method_name))),
         }

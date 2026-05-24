@@ -15,11 +15,11 @@
  */
 
 #include <EasyHTTP.cay>
-using std::EasyHTTP;
-using std::HttpHeaders;
-using std::HttpParams;
-using std::HttpRequest;
-using std::HttpResponse;
+using http::EasyHTTP;
+using http::HttpHeaders;
+using http::HttpParams;
+using http::HttpRequest;
+using http::HttpResponse;
 using std::Math;
 
 /**

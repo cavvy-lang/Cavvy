@@ -19,6 +19,7 @@ pub enum Type {
     CInt,       // C int (通常为 i32)
     CUInt,      // C unsigned int (通常为 u32)
     CLong,      // C long (平台相关: Windows i32, Linux/macOS i64)
+    CULong,     // C unsigned long (平台相关)
     CShort,     // C short (i16)
     CUShort,    // C unsigned short (u16)
     CChar,      // C char (i8)
@@ -332,6 +333,7 @@ impl Type {
             Type::CInt => 4,       // C int 通常为 4 字节
             Type::CUInt => 4,      // C unsigned int 通常为 4 字节
             Type::CLong => 8,      // C long: Windows 4, Linux/macOS 8，使用 8 作为保守值
+            Type::CULong => 8,     // C unsigned long，与 CLong 同大小
             Type::CShort => 2,     // C short 为 2 字节
             Type::CUShort => 2,    // C unsigned short 为 2 字节
             Type::CChar => 1,      // C char 为 1 字节
@@ -362,7 +364,7 @@ impl Type {
             Type::Bool | 
             Type::Char |
             // FFI 数值类型
-            Type::CInt | Type::CUInt | Type::CLong |
+            Type::CInt | Type::CUInt | Type::CLong | Type::CULong |
             Type::CShort | Type::CUShort | Type::CChar | Type::CUChar |
             Type::CFloat | Type::CDouble | Type::SizeT | Type::SSizeT |
             Type::UIntPtr | Type::IntPtr | Type::CVoid | Type::CBool
@@ -374,7 +376,7 @@ impl Type {
     }
 
     pub fn is_integer(&self) -> bool {
-        matches!(self, Type::Int32 | Type::Int64)
+        matches!(self, Type::Int32 | Type::Int64 | Type::CULong)
     }
 }
 
@@ -406,6 +408,7 @@ impl fmt::Display for Type {
             Type::CInt => write!(f, "c_int"),
             Type::CUInt => write!(f, "c_uint"),
             Type::CLong => write!(f, "c_long"),
+            Type::CULong => write!(f, "c_ulong"),
             Type::CShort => write!(f, "c_short"),
             Type::CUShort => write!(f, "c_ushort"),
             Type::CChar => write!(f, "c_char"),
@@ -814,6 +817,25 @@ impl TypeRegistry {
     pub fn find_method_in_class(&self, class_name: &str, method_name: &str, arg_types: &[Type]) -> Option<&MethodInfo> {
         self.get_class(class_name)
             .and_then(|c| c.find_method(method_name, arg_types))
+    }
+
+    /// 根据简单名查找命名空间限定名（如 "HttpHeaders" → "http::HttpHeaders"）
+    /// 优先匹配当前命名空间
+    pub fn find_qualified_class(&self, simple_name: &str) -> Option<String> {
+        // 如果有当前命名空间，优先检查
+        if !self.current_namespace.is_empty() {
+            let preferred = format!("{}::{}", self.current_namespace.join("::"), simple_name);
+            if self.classes.contains_key(&preferred) {
+                return Some(preferred);
+            }
+        }
+        // 回退：遍历查找
+        for qname in self.classes.keys() {
+            if qname.ends_with(&format!("::{}", simple_name)) {
+                return Some(qname.clone());
+            }
+        }
+        None
     }
 
     pub fn class_exists(&self, name: &str) -> bool {

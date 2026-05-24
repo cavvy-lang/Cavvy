@@ -4,14 +4,12 @@
 
 #ifndef CAY_ALLOCATOR_H
 #define CAY_ALLOCATOR_H
+#include <c/usual/memory.cay>
 
 namespace std {
 
 /* 声明 C 标准库函数 */
-extern {
-    long malloc(long size);
-    void free(long ptr);
-}
+// 已经在 c/usual/memory.cay 中声明了 malloc/free
 
 public interface Allocator {
     long allocate(long size);

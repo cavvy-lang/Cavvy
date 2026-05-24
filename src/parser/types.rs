@@ -19,6 +19,7 @@ pub fn parse_type(parser: &mut Parser) -> cayResult<Type> {
         crate::lexer::Token::CInt => { parser.advance(); Type::CInt }
         crate::lexer::Token::CUInt => { parser.advance(); Type::CUInt }
         crate::lexer::Token::CLong => { parser.advance(); Type::CLong }
+        crate::lexer::Token::CULong => { parser.advance(); Type::CULong }
         crate::lexer::Token::CShort => { parser.advance(); Type::CShort }
         crate::lexer::Token::CUShort => { parser.advance(); Type::CUShort }
         crate::lexer::Token::CChar => { parser.advance(); Type::CChar }
@@ -174,7 +175,7 @@ pub fn is_type_token(parser: &Parser) -> bool {
         crate::lexer::Token::Char | crate::lexer::Token::Void | crate::lexer::Token::Identifier(_) |
         // FFI 类型
         crate::lexer::Token::CInt | crate::lexer::Token::CUInt | crate::lexer::Token::CLong |
-        crate::lexer::Token::CShort | crate::lexer::Token::CUShort |
+        crate::lexer::Token::CULong | crate::lexer::Token::CShort | crate::lexer::Token::CUShort |
         crate::lexer::Token::CChar | crate::lexer::Token::CUChar |
         crate::lexer::Token::CFloat | crate::lexer::Token::CDouble |
         crate::lexer::Token::SizeT | crate::lexer::Token::SSizeT | crate::lexer::Token::UIntPtr |

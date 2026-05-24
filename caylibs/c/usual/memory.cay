@@ -1,0 +1,7 @@
+extern {
+    // 内存分配
+    c_void* malloc(size_t size);
+    c_void* calloc(size_t nmemb, size_t size);
+    c_void* realloc(c_void* ptr, size_t size);
+    void free(c_void* ptr);
+}

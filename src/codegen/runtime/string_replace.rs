@@ -54,7 +54,7 @@ impl IRGenerator {
         self.emit_raw("");
         self.emit_raw("count_check:");
         self.emit_raw("  %search_ptr = getelementptr i8, i8* %str, i64 %pos");
-        self.emit_raw("  %cmp = call i32 @strncmp(i8* %search_ptr, i8* %old, i64 %old_len)");
+        self.emit_raw("  %cmp = call i32 @__cay_strncmp(i8* %search_ptr, i8* %old, i64 %old_len)");
         self.emit_raw("  %found = icmp eq i32 %cmp, 0");
         self.emit_raw("  br i1 %found, label %count_found, label %count_not_found");
         self.emit_raw("");
@@ -96,7 +96,7 @@ impl IRGenerator {
         self.emit_raw("");
         self.emit_raw("build_check:");
         self.emit_raw("  %src_ptr = getelementptr i8, i8* %str, i64 %src_pos");
-        self.emit_raw("  %cmp2 = call i32 @strncmp(i8* %src_ptr, i8* %old, i64 %old_len)");
+        self.emit_raw("  %cmp2 = call i32 @__cay_strncmp(i8* %src_ptr, i8* %old, i64 %old_len)");
         self.emit_raw("  %found2 = icmp eq i32 %cmp2, 0");
         self.emit_raw("  br i1 %found2, label %do_replace, label %copy_char");
         self.emit_raw("");

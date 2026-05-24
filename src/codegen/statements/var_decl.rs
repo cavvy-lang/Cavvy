@@ -86,6 +86,18 @@ impl IRGenerator {
                 // obj.method() 形式
                 if let Expr::Identifier(obj_name) = &*member.object {
                     let obj_name_str = obj_name.as_ref();
+                    // 处理 this.method() 调用
+                    if obj_name_str == "this" && !self.current_class.is_empty() {
+                        if let Some(method_info) = registry.get_method(&self.current_class, &member.member) {
+                            return Some(method_info.return_type.clone());
+                        }
+                        // 简单名找不到，用限定名重试（处理 namespace 内的类）
+                        if let Some(qname) = registry.find_qualified_class(&self.current_class) {
+                            if let Some(method_info) = registry.get_method(&qname, &member.member) {
+                                return Some(method_info.return_type.clone());
+                            }
+                        }
+                    }
                     // 首先检查是否是已知的类名（静态方法调用）
                     if registry.class_exists(obj_name_str) {
                         // 类名.方法名() 形式，如 Vector2.right()
@@ -111,7 +123,7 @@ impl IRGenerator {
                                 return Some(crate::types::Type::String);
                             } else if member.member == "equals" || member.member == "isEmpty" ||
                                       member.member == "startsWith" || member.member == "endsWith" ||
-                                      member.member == "contains" {
+                                      member.member == "contains" || member.member == "equalsIgnoreCase" {
                                 return Some(crate::types::Type::Bool);
                             } else if member.member == "charAt" {
                                 return Some(crate::types::Type::Char);
@@ -135,7 +147,7 @@ impl IRGenerator {
                                 return Some(crate::types::Type::String);
                             } else if member.member == "equals" || member.member == "isEmpty" ||
                                       member.member == "startsWith" || member.member == "endsWith" ||
-                                      member.member == "contains" {
+                                      member.member == "contains" || member.member == "equalsIgnoreCase" {
                                 return Some(crate::types::Type::Bool);
                             } else if member.member == "charAt" {
                                 return Some(crate::types::Type::Char);

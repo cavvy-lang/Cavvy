@@ -1,0 +1,80 @@
+alias ptr = c_void*;                // 通用指针 (void*)
+alias void_ptr = c_void*;           // void*
+alias const_void_ptr = c_void*;     // const void*
+alias char_ptr = c_char*;           // char*
+alias const_char_ptr = c_char*;     // const char*
+// c_string 现在是内置类型，不需要别名定义
+
+// ============================================
+// FFI 基础类型包 - 跨平台固定宽度别名 (ROADMAP 0.5.1.x)
+// ============================================
+// 提供符合ROADMAP规范的大写风格类型别名
+// 这些类型映射到C标准类型的固定宽度版本
+
+// 核心整数类型
+alias CInt = c_int;                  // C int 类型
+alias CLong = c_long;                // C long 类型
+alias CShort = c_short;              // C short 类型
+alias CChar = c_char;                // C char 类型
+alias CByte = c_byte;                // C signed char 类型
+
+// 无符号整数类型
+alias CUInt = c_uint;                // C unsigned int 类型
+alias CULong = c_ulong;              // C unsigned long 类型
+alias CUShort = c_ushort;            // C unsigned short 类型
+alias CUChar = c_uchar;              // C unsigned char 类型
+
+// 浮点类型
+alias CFloat = c_float;              // C float 类型
+alias CDouble = c_double;            // C double 类型
+
+// 布尔和空类型
+alias CBool = c_bool;                // C99 _Bool 类型
+alias CVoid = c_void;                // C void 类型
+
+// 平台相关整数类型
+alias SizeT = size_t;                // C size_t 类型 (无符号, 平台相关宽度)
+alias SSizeT = ssize_t;              // C ssize_t 类型 (有符号, 平台相关宽度)
+
+// 固定宽度整数类型
+alias Int8T = int8_t;                // 8位有符号整数
+alias Int16T = int16_t;              // 16位有符号整数
+alias Int32T = int32_t;              // 32位有符号整数
+alias Int64T = int64_t;              // 64位有符号整数
+alias UInt8T = uint8_t;              // 8位无符号整数
+alias UInt16T = uint16_t;            // 16位无符号整数
+alias UInt32T = uint32_t;            // 32位无符号整数
+alias UInt64T = uint64_t;            // 64位无符号整数
+
+// 指针整数类型
+alias IntPtrT = intptr_t;            // 可存储指针的有符号整数
+alias UIntPtrT = uintptr_t;          // 可存储指针的无符号整数
+
+// ============================================
+// 裸指针类型 RawPtr<T> (ROADMAP 0.5.1.x)
+// ============================================
+// 不参与GC的裸指针类型，用于接收C指针
+// 注意: Cavvy 当前不支持泛型类型别名，使用具体类型别名代替
+
+// 常用裸指针类型别名 (对应 C++ 的 RawPtr<T> 概念)
+alias RawPtrInt = c_int*;            // int* 裸指针
+alias RawPtrLong = c_long*;          // long* 裸指针
+alias RawPtrVoid = c_void*;          // void* 裸指针
+alias RawPtrChar = c_char*;          // char* 裸指针
+alias RawPtrByte = c_byte*;          // byte* 裸指针
+alias RawPtrFloat = c_float*;        // float* 裸指针
+alias RawPtrDouble = c_double*;      // double* 裸指针
+
+// 大写风格的裸指针别名
+alias RawPtrCInt = c_int*;           // CInt* 裸指针
+alias RawPtrCLong = c_long*;         // CLong* 裸指针
+alias RawPtrCChar = c_char*;         // CChar* 裸指针
+alias RawPtrCFloat = c_float*;       // CFloat* 裸指针
+alias RawPtrCDouble = c_double*;     // CDouble* 裸指针
+
+// ============================================
+// 函数指针类型
+// ============================================
+
+alias CompareFn = fn(c_void*, c_void*) -> c_int;
+alias SortFn = fn(c_void*, size_t, size_t, CompareFn) -> c_void;

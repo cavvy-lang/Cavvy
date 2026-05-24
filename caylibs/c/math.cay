@@ -1,0 +1,45 @@
+// ============================================
+// 标准 C 库函数 - math.h
+// ============================================
+
+extern {
+    // 三角函数
+    c_double sin(c_double x);
+    c_double cos(c_double x);
+    c_double tan(c_double x);
+    c_double asin(c_double x);
+    c_double acos(c_double x);
+    c_double atan(c_double x);
+    c_double atan2(c_double y, c_double x);
+
+    // 双曲函数
+    c_double sinh(c_double x);
+    c_double cosh(c_double x);
+    c_double tanh(c_double x);
+
+    // 指数和对数
+    c_double exp(c_double x);
+    c_double log(c_double x);
+    c_double log10(c_double x);
+    c_double log2(c_double x);
+
+    // 幂函数
+    c_double pow(c_double base, c_double exp);
+    c_double sqrt(c_double x);
+    c_double cbrt(c_double x);
+
+    // 取整函数
+    c_double ceil(c_double x);
+    c_double floor(c_double x);
+    c_double round(c_double x);
+    c_double trunc(c_double x);
+
+    // 绝对值
+    c_double fabs(c_double x);
+
+    // 其他
+    c_double fmod(c_double x, c_double y);
+    c_double modf(c_double x, c_double* iptr);
+    c_double frexp(c_double x, c_int* exp);
+    c_double ldexp(c_double x, c_int exp);
+}

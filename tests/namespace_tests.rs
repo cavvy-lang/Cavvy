@@ -283,3 +283,10 @@ fn test_ns_err_using_non_existent() {
         .expect("应该编译失败");
     assert!(err.contains("未定义") || err.contains("找不到") || err.contains("不存在"));
 }
+
+#[test]
+fn test_ns_err_i_namespace() {
+    let err = compile_eol_expect_error("examples/test_ns_err_i_namespace.cay")
+        .expect("应该编译失败");
+    assert!(err.contains("Unknown"));
+}

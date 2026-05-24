@@ -167,7 +167,7 @@ impl From<&crate::types::Type> for IrType {
             Type::Auto => IrType::I32, // 默认回退
             // FFI 类型
             Type::CInt | Type::CUInt => IrType::I32,
-            Type::CLong | Type::SizeT | Type::SSizeT | Type::UIntPtr | Type::IntPtr => IrType::I64,
+            Type::CLong | Type::CULong | Type::SizeT | Type::SSizeT | Type::UIntPtr | Type::IntPtr => IrType::I64,
             Type::CShort | Type::CUShort => IrType::I16,
             Type::CChar | Type::CUChar | Type::CBool => IrType::I8,
             Type::CFloat => IrType::F32,

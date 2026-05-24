@@ -5,9 +5,10 @@ namespace lib {
     }
 }
 
+using namespace lib;
+
 public class Main {
     public static void main() {
-        using namespace lib;
         Foo.bar();
     }
 }

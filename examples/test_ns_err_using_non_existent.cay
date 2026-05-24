@@ -1,7 +1,9 @@
 // 错误: using 一个不存在的类
+
+using nonexistent::GhostClass;
+
 public class Main {
     public static void main() {
-        using nonexistent::GhostClass;
         // GhostClass 在任何namespace中都不存在
     }
 }

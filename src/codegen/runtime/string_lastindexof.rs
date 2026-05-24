@@ -43,7 +43,7 @@ impl IRGenerator {
         self.emit_raw("");
         self.emit_raw("loop_body:");
         self.emit_raw("  %curr_ptr = getelementptr i8, i8* %str, i64 %i");
-        self.emit_raw("  %cmp_result = call i32 @strncmp(i8* %curr_ptr, i8* %substr, i64 %substr_len)");
+        self.emit_raw("  %cmp_result = call i32 @__cay_strncmp(i8* %curr_ptr, i8* %substr, i64 %substr_len)");
         self.emit_raw("  %found = icmp eq i32 %cmp_result, 0");
         self.emit_raw("  br i1 %found, label %found_match, label %loop_continue");
         self.emit_raw("");
@@ -56,7 +56,7 @@ impl IRGenerator {
         self.emit_raw("  br label %loop_check");
         self.emit_raw("}");
         self.emit_raw("");
-        // strncmp 已在 string_indexof.rs 中声明，这里不需要重复声明
+        // __cay_strncmp 已在 string_indexof.rs 中定义，这里直接调用
         self.emit_raw("");
     }
 }

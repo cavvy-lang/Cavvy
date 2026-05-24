@@ -47,6 +47,7 @@ impl IRGenerator {
             Type::CInt => "i32".to_string(),      // C int 通常为 32 位
             Type::CUInt => "i32".to_string(),     // C unsigned int 通常为 32 位
             Type::CLong => self.c_long_llvm(),    // 平台相关
+            Type::CULong => self.c_long_llvm(),   // 同 CLong
             Type::CShort => "i16".to_string(),    // C short 为 16 位
             Type::CUShort => "i16".to_string(),   // C unsigned short 为 16 位
             Type::CChar => "i8".to_string(),      // C char 为 8 位

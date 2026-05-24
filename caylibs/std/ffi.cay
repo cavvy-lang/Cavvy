@@ -171,7 +171,7 @@ extern {
     void srand(c_uint seed);
 
     // 整数算术
-    // c_int abs(c_int n) as c_abs;  // 暂时删除，测试别名系统
+    c_int abs(c_int n) as c_abs;
     c_long labs(c_long n) as c_labs;
 
     // 字符串转换

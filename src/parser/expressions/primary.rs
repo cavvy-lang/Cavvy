@@ -78,9 +78,46 @@ pub fn parse_primary(parser: &mut Parser) -> cayResult<Expr> {
         }
         crate::lexer::Token::Identifier(name) => {
             let name = name.clone();
+            let loc = parser.current_loc();
             parser.advance();
 
-            // 检查是否是方法引用: ClassName::methodName
+            // 检查是否是方法引用或命名空间限定名: A::B 或 A::B::C
+            if parser.check(&crate::lexer::Token::DoubleColon) {
+                let save_pos = parser.pos;
+                parser.advance(); // 消费 ::
+                let second = parser.consume_identifier("Expected identifier after '::'")?;
+
+                // 构建完整的命名空间限定名
+                let mut qualified = format!("{}::{}", name, second);
+
+                // 继续消费后续的 ::Identifier 段 (支持多层命名空间)
+                while parser.check(&crate::lexer::Token::DoubleColon) {
+                    parser.advance(); // 消费 ::
+                    if let crate::lexer::Token::Identifier(_) = parser.current_token() {
+                        let next = parser.consume_identifier("Expected identifier after '::'")?;
+                        qualified = format!("{}::{}", qualified, next);
+                    } else {
+                        // :: 后不是标识符，回退整个命名空间解析
+                        parser.pos = save_pos;
+                        break;
+                    }
+                }
+
+                // 判断最终语义:
+                // - 如果下一个token是 . 或 ( → 命名空间限定类型名 (如 std::NetworkUtils.cleanup())
+                // - 否则 → 方法引用 (如 String::valueOf, graphics::Circle::draw)
+                if parser.pos != save_pos {
+                    // 成功消费了 :: 段
+                    if parser.check(&crate::lexer::Token::Dot) || parser.check(&crate::lexer::Token::LParen) {
+                        // 命名空间限定名：用于后续 .member 或 (args) 的链式调用
+                        return Ok(Expr::Identifier(IdentifierExpr { name: qualified, loc }));
+                    }
+                    // 方法引用：回退到第一次 :: 后，按 MethodRef 处理
+                    parser.pos = save_pos;
+                }
+            }
+
+            // 单层方法引用: ClassName::methodName (传统语法)
             if parser.match_token(&crate::lexer::Token::DoubleColon) {
                 let method_name = parser.consume_identifier("Expected method name after '::'")?;
                 return Ok(Expr::MethodRef(MethodRefExpr {

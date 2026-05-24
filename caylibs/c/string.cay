@@ -1,0 +1,29 @@
+
+extern {
+    // 内存操作
+    c_void* memcpy(c_void* dest, c_void* src, size_t n);
+    c_void* memmove(c_void* dest, c_void* src, size_t n);
+    c_void* memset(c_void* s, c_int c, size_t n);
+    c_int memcmp(c_void* s1, c_void* s2, size_t n);
+    c_void* memchr(c_void* s, c_int c, size_t n);
+
+    // 字符串操作
+    c_char* strcpy(c_char* dest, c_string src);
+    c_char* strncpy(c_char* dest, c_string src, size_t n);
+    c_char* strcat(c_char* dest, c_string src);
+    c_char* strncat(c_char* dest, c_string src, size_t n);
+
+    // 字符串比较
+    c_int strcmp(c_string s1, c_string s2);
+    c_int strncmp(c_string s1, c_string s2, size_t n);
+
+    // 字符串查询
+    size_t strlen(c_string s);
+    c_char* strchr(c_string s, c_int c);
+    c_char* strrchr(c_string s, c_int c);
+    c_char* strstr(c_string haystack, c_string needle);
+    c_char* strtok(c_char* str, c_string delim);
+
+    // 错误字符串
+    c_string strerror(c_int errnum);
+}

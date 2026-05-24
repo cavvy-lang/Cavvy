@@ -326,6 +326,7 @@ pub fn get_token_name(token: &Token) -> String {
         Token::CInt => "c_int".to_string(),
         Token::CUInt => "c_uint".to_string(),
         Token::CLong => "c_long".to_string(),
+        Token::CULong => "c_ulong".to_string(),
         Token::CShort => "c_short".to_string(),
         Token::CUShort => "c_ushort".to_string(),
         Token::CChar => "c_char".to_string(),

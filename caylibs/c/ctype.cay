@@ -1,0 +1,10 @@
+extern {
+    c_int isalnum(c_int c);
+    c_int isalpha(c_int c);
+    c_int isdigit(c_int c);
+    c_int isspace(c_int c);
+    c_int islower(c_int c);
+    c_int isupper(c_int c);
+    c_int tolower(c_int c);
+    c_int toupper(c_int c);
+}

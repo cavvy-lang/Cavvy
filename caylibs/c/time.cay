@@ -1,0 +1,12 @@
+// ============================================
+// 标准 C 库函数 - time.h
+// ============================================
+
+// 数学常量 (在代码中直接使用数值)
+
+extern {
+    c_int64_t time(c_int64_t* timer);
+    c_double difftime(c_int64_t end, c_int64_t start);
+    c_int64_t clock();
+    c_string ctime(c_int64_t* timer);
+}

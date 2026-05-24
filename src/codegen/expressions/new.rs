@@ -163,15 +163,28 @@ impl IRGenerator {
 
         match obj_type {
             Type::Object(class_name) => {
-                // 首先查找类字段
-                if let Some(class_info) = self.class_layouts.get(&class_name) {
+                // 获取命名空间限定名（用于在 class_layouts 中查找）
+                let qualified_name = {
+                    let ns = self.get_class_namespace(&class_name);
+                    if !ns.is_empty() {
+                        format!("{}::{}", ns.join("::"), class_name)
+                    } else {
+                        class_name.clone()
+                    }
+                };
+                // 首先查找类字段（先试简单名，再试命名空间限定名）
+                let class_layout = self.class_layouts.get(&class_name)
+                    .or_else(|| self.class_layouts.get(&qualified_name));
+                if let Some(class_info) = class_layout {
                     if let Some(field) = class_info.fields.get(&member.member) {
                         return Some(field.field_type.clone());
                     }
                 }
                 // 然后查找静态方法（如 MathUtils.multiply）
                 if let Some(ref registry) = self.type_registry {
-                    if let Some(class_info) = registry.get_class(&class_name) {
+                    let registry_class = registry.get_class(&class_name)
+                        .or_else(|| registry.get_class(&qualified_name));
+                    if let Some(class_info) = registry_class {
                         // 查找静态方法
                         for (method_name, methods) in &class_info.methods {
                             if method_name == &member.member {

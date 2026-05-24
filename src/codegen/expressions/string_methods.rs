@@ -14,19 +14,19 @@ impl IRGenerator {
     /// * `member` - 成员访问表达式
     /// * `args` - 参数列表
     pub fn try_generate_string_method_call(&mut self, member: &MemberAccessExpr, args: &[Expr]) -> cayResult<Option<String>> {
-        // 首先检查对象是否是 String 类型（使用 Cavvy 类型信息）
+        // 生成对象表达式
+        let obj_result = self.generate_expression(&member.object)?;
+        let (obj_type, obj_val) = self.parse_typed_value(&obj_result);
+
+        // 类型检查：先用 Cavvy 类型，再用 LLVM 类型回退（String 底层是 i8*）
         if let Some(obj_cay_type) = self.get_expression_type(&member.object) {
             if !matches!(obj_cay_type, crate::types::Type::String) {
                 return Ok(None);
             }
-        } else {
-            // 无法确定类型，保守处理，不认为是 String
+        } else if obj_type != "i8*" {
+            // Cavvy 类型不可用且 LLVM 不是 i8*（String 的底层表示）
             return Ok(None);
         }
-
-        // 生成对象表达式（字符串）
-        let obj_result = self.generate_expression(&member.object)?;
-        let (obj_type, obj_val) = self.parse_typed_value(&obj_result);
 
         let method_name = member.member.as_str();
         let temp = self.new_temp();
@@ -82,9 +82,9 @@ impl IRGenerator {
                 Ok(Some(format!("i8* {}", temp)))
             }
             "indexOf" => {
-                // indexOf(substr) - 返回子串首次出现的位置
-                if args.len() != 1 {
-                    return Err(codegen_error("String.indexOf() takes 1 argument".to_string()));
+                // indexOf(substr) 或 indexOf(substr, startIndex)
+                if args.len() < 1 || args.len() > 2 {
+                    return Err(codegen_error("String.indexOf() takes 1 or 2 arguments".to_string()));
                 }
 
                 let substr_result = self.generate_expression(&args[0])?;
@@ -94,8 +94,19 @@ impl IRGenerator {
                     return Err(codegen_error("String.indexOf() argument must be a string".to_string()));
                 }
 
-                self.emit_line(&format!("  {} = call i32 @__cay_string_indexof(i8* {}, i8* {})",
-                    temp, obj_val, substr_val));
+                if args.len() == 2 {
+                    // 带起始位置的 indexOf(str, start)
+                    let start_result = self.generate_expression(&args[1])?;
+                    let (start_type, start_val) = self.parse_typed_value(&start_result);
+                    if start_type != "i32" {
+                        return Err(codegen_error("String.indexOf() second argument must be int".to_string()));
+                    }
+                    self.emit_line(&format!("  {} = call i32 @__cay_string_indexof_from(i8* {}, i8* {}, i32 {})",
+                        temp, obj_val, substr_val, start_val));
+                } else {
+                    self.emit_line(&format!("  {} = call i32 @__cay_string_indexof(i8* {}, i8* {})",
+                        temp, obj_val, substr_val));
+                }
                 Ok(Some(format!("i32 {}", temp)))
             }
             "lastIndexOf" => {
@@ -180,6 +191,23 @@ impl IRGenerator {
                     temp, obj_val, other_val));
                 Ok(Some(format!("i1 {}", temp)))
             }
+            "equalsIgnoreCase" => {
+                // equalsIgnoreCase(other) - 忽略大小写比较两个字符串，返回 boolean (i1)
+                if args.len() != 1 {
+                    return Err(codegen_error("String.equalsIgnoreCase() takes 1 argument".to_string()));
+                }
+
+                let other_result = self.generate_expression(&args[0])?;
+                let (other_type, other_val) = self.parse_typed_value(&other_result);
+
+                if other_type != "i8*" {
+                    return Err(codegen_error("String.equalsIgnoreCase() argument must be a string".to_string()));
+                }
+
+                self.emit_line(&format!("  {} = call i1 @__cay_string_equals_ignorecase(i8* {}, i8* {})",
+                    temp, obj_val, other_val));
+                Ok(Some(format!("i1 {}", temp)))
+            }
             "c_str" => {
                 // c_str() - 返回C字符串指针 (i8*)
                 // 在Cavvy中，String本身就是i8*，所以直接返回
@@ -222,6 +250,14 @@ impl IRGenerator {
                 self.emit_line(&format!("  {} = call i1 @__cay_string_endswith(i8* {}, i8* {})",
                     temp, obj_val, suffix_val));
                 Ok(Some(format!("i1 {}", temp)))
+            }
+            "trim" => {
+                if !args.is_empty() {
+                    return Err(codegen_error("String.trim() takes no arguments".to_string()));
+                }
+                self.emit_line(&format!("  {} = call i8* @__cay_string_trim(i8* {})",
+                    temp, obj_val));
+                Ok(Some(format!("i8* {}", temp)))
             }
             _ => Ok(None), // 不是已知的 String 方法
         }

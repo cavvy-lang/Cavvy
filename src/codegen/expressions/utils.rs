@@ -385,7 +385,8 @@ impl IRGenerator {
                         // 嵌套情况下直接使用 %this
                         "%this".to_string()
                     };
-                    (ptr, Some(self.current_class.clone()))
+                    let qualified = self.resolve_current_qualified_class();
+                    (ptr, Some(qualified))
                 } else {
                     // 普通变量 - 总是需要加载变量值作为对象指针
                     let class_name = self.var_class_map.get(name_str).cloned();
@@ -480,7 +481,8 @@ impl IRGenerator {
                     } else {
                         "%this".to_string()
                     };
-                    (ptr, Some(self.current_class.clone()))
+                    let qualified = self.resolve_current_qualified_class();
+                    (ptr, Some(qualified))
                 } else {
                     let class_name = self.var_class_map.get(name_str).cloned();
                     let obj = self.generate_expression(member.object.as_ref())?;

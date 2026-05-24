@@ -930,6 +930,11 @@ impl SemanticAnalyzer {
             // c_long <-> int/long
             (Type::CLong, Type::Int32) | (Type::Int32, Type::CLong) => true,
             (Type::CLong, Type::Int64) | (Type::Int64, Type::CLong) => true,
+            // c_ulong <-> int/long/c_long
+            (Type::CULong, Type::Int32) | (Type::Int32, Type::CULong) => true,
+            (Type::CULong, Type::Int64) | (Type::Int64, Type::CULong) => true,
+            (Type::CULong, Type::CLong) | (Type::CLong, Type::CULong) => true,
+            (Type::CULong, Type::CUInt) | (Type::CUInt, Type::CULong) => true,
             // c_float <-> float/double
             (Type::CFloat, Type::Float32) | (Type::Float32, Type::CFloat) => true,
             (Type::CFloat, Type::Float64) | (Type::Float64, Type::CFloat) => true,
@@ -949,6 +954,14 @@ impl SemanticAnalyzer {
             // ptr <-> uintptr_t/intptr_t (指针与整数类型转换)
             (Type::Pointer(_), Type::UIntPtr) | (Type::UIntPtr, Type::Pointer(_)) => true,
             (Type::Pointer(_), Type::IntPtr) | (Type::IntPtr, Type::Pointer(_)) => true,
+            // ptr <-> long/int (指针与基本整数类型转换，用于 FFI 中 & 和 c_str 等返回 IntPtr 的场景)
+            (Type::Pointer(_), Type::Int64) | (Type::Int64, Type::Pointer(_)) => true,
+            (Type::Pointer(_), Type::Int32) | (Type::Int32, Type::Pointer(_)) => true,
+            // FFI 整数类型 <-> 指针 (用于 c_long/c_ulong 等作为指针值的场景)
+            (Type::Pointer(_), Type::CLong) | (Type::CLong, Type::Pointer(_)) => true,
+            (Type::Pointer(_), Type::CULong) | (Type::CULong, Type::Pointer(_)) => true,
+            (Type::Pointer(_), Type::CInt) | (Type::CInt, Type::Pointer(_)) => true,
+            (Type::Pointer(_), Type::CUInt) | (Type::CUInt, Type::Pointer(_)) => true,
             // c_bool <-> bool 和 int
             (Type::CBool, Type::Bool) | (Type::Bool, Type::CBool) => true,
             (Type::CBool, Type::Int32) | (Type::Int32, Type::CBool) => true,

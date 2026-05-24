@@ -22,10 +22,16 @@
 #ifndef CAY_EASYHTTP_H
 #define CAY_EASYHTTP_H
 
-namespace std {
-
 #include <Network.cay>
 #include <StringBuilder.cay>
+
+namespace http {
+
+
+/* C标准库函数声明 */
+extern {
+    long time(long ptr);
+}
 
 /* ============================================================================
  * HTTP常量定义
@@ -266,7 +272,7 @@ public class HttpHeaders {
      * 时间复杂度: O(n * m) where m = average header length
      */
     public String build() {
-        StringBuilder sb = new StringBuilder();
+        std::StringBuilder sb = new std::StringBuilder();
         int i = 0;
         while (i < this.count) {
             sb.append(this.names[i]);
@@ -452,7 +458,7 @@ public class HttpParams {
             return "";
         }
 
-        StringBuilder sb = new StringBuilder();
+        std::StringBuilder sb = new std::StringBuilder();
         int i = 0;
         while (i < this.count) {
             if (i > 0) {
@@ -503,7 +509,7 @@ public class HttpParams {
             return "";
         }
 
-        StringBuilder sb = new StringBuilder();
+        std::StringBuilder sb = new std::StringBuilder();
         int len = str.length();
         int i = 0;
         while (i < len) {
@@ -770,7 +776,7 @@ public class HttpResponse {
      * @return 格式化字符串
      */
     public String toString() {
-        StringBuilder sb = new StringBuilder();
+        std::StringBuilder sb = new std::StringBuilder();
         sb.append("HTTP/1.1 ");
         sb.append(this.statusCode);
         sb.append(" ");
@@ -1018,7 +1024,7 @@ public class HttpRequest {
         }
 
         /* 初始化网络 */
-        if (!NetworkUtils.init()) {
+        if (!std::NetworkUtils.init()) {
             response.setError("Network initialization failed");
             return response;
         }
@@ -1027,7 +1033,7 @@ public class HttpRequest {
         ParsedUrl parsed = this.parseUrl(this.url);
         if (parsed.host.isEmpty()) {
             response.setError("Invalid URL: " + this.url);
-            NetworkUtils.cleanup();
+            std::NetworkUtils.cleanup();
             return response;
         }
 
@@ -1035,10 +1041,10 @@ public class HttpRequest {
         String fullUrl = this.buildFullUrl(parsed);
 
         /* 创建Socket连接 */
-        TcpSocket socket = new TcpSocket();
+        std::TcpSocket socket = new std::TcpSocket();
         if (!socket.isValid()) {
             response.setError("Failed to create socket");
-            NetworkUtils.cleanup();
+            std::NetworkUtils.cleanup();
             return response;
         }
 
@@ -1050,7 +1056,7 @@ public class HttpRequest {
         if (!socket.connectTo(parsed.host, parsed.port)) {
             response.setError("Failed to connect to server");
             socket.close();
-            NetworkUtils.cleanup();
+            std::NetworkUtils.cleanup();
             return response;
         }
 
@@ -1060,7 +1066,7 @@ public class HttpRequest {
         if (sent <= 0) {
             response.setError("Failed to send request");
             socket.close();
-            NetworkUtils.cleanup();
+            std::NetworkUtils.cleanup();
             return response;
         }
 
@@ -1076,7 +1082,7 @@ public class HttpRequest {
 
         /* 清理资源 */
         socket.close();
-        NetworkUtils.cleanup();
+        std::NetworkUtils.cleanup();
 
         return response;
     }
@@ -1089,7 +1095,7 @@ public class HttpRequest {
      * 时间复杂度: O(n)
      */
     private String buildRequest(ParsedUrl parsed, String fullUrl) {
-        StringBuilder sb = new StringBuilder();
+        std::StringBuilder sb = new std::StringBuilder();
 
         /* 请求行 */
         sb.append(this.method);
@@ -1150,8 +1156,8 @@ public class HttpRequest {
      * 时间复杂度: O(n) where n = response size
      * 空间复杂度: O(n)
      */
-    private String receiveResponse(TcpSocket socket) {
-        StringBuilder sb = new StringBuilder();
+    private String receiveResponse(std::TcpSocket socket) {
+        std::StringBuilder sb = new std::StringBuilder();
         String chunk = "";
 
         /* 循环接收数据直到连接关闭或超时 */
@@ -1356,7 +1362,7 @@ public class HttpRequest {
             return "";
         }
 
-        StringBuilder sb = new StringBuilder();
+        std::StringBuilder sb = new std::StringBuilder();
         int len = str.length();
         int i = 0;
         while (i < len) {
@@ -1376,7 +1382,7 @@ public class HttpRequest {
      * @return 完整URL字符串
      */
     private String buildFullUrl(ParsedUrl parsed) {
-        StringBuilder sb = new StringBuilder();
+        std::StringBuilder sb = new std::StringBuilder();
         sb.append(parsed.protocol);
         sb.append("://");
         sb.append(parsed.host);
@@ -1431,7 +1437,6 @@ public class HttpRequest {
      */
     private long currentTimeMillis() {
         /* 使用C标准库time函数获取秒数，转换为毫秒 */
-        extern long time(long ptr);
         return time(0) * 1000;
     }
 }

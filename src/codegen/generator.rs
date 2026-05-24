@@ -131,7 +131,13 @@ impl IRGenerator {
             computed: &mut std::collections::HashSet<String>,
             generator: &mut IRGenerator
         ) {
-            if computed.contains(&class.name) {
+            // 构建限定名用于追踪和存储
+            let qname = if class.namespace_path.is_empty() {
+                class.name.clone()
+            } else {
+                format!("{}::{}", class.namespace_path.join("::"), class.name)
+            };
+            if computed.contains(&qname) {
                 return;
             }
             
@@ -149,8 +155,8 @@ impl IRGenerator {
                     _ => None,
                 })
                 .collect();
-            generator.compute_class_layout(&class.name, &instance_fields, class.parent.as_deref());
-            computed.insert(class.name.clone());
+            generator.compute_class_layout(&qname, &instance_fields, class.parent.as_deref());
+            computed.insert(qname);
         }
         
         for class in &program.classes {
@@ -619,6 +625,11 @@ impl IRGenerator {
     }
 
     fn generate_class(&mut self, class: &ClassDecl) -> cayResult<()> {
+        // 设置当前命名空间上下文——仅影响 TypeRegistry 的类名查找，不影响其他
+        if let Some(ref mut registry) = self.type_registry {
+            registry.current_namespace = class.namespace_path.clone();
+        }
+
         // 检查是否有显式构造函数
         let has_explicit_ctor = class.members.iter().any(|m| matches!(m, ClassMember::Constructor(_)));
         
@@ -653,7 +664,12 @@ impl IRGenerator {
         if !has_explicit_ctor {
             self.generate_default_constructor(&class.name)?;
         }
-        
+
+        // 清除命名空间上下文
+        if let Some(ref mut registry) = self.type_registry {
+            registry.current_namespace.clear();
+        }
+
         Ok(())
     }
 
@@ -1084,8 +1100,19 @@ impl IRGenerator {
 
         match obj_type {
             crate::types::Type::Object(class_name) => {
-                // 查找类字段
-                if let Some(class_info) = self.class_layouts.get(&class_name) {
+                // 获取命名空间限定名
+                let qualified_name = {
+                    let ns = self.get_class_namespace(&class_name);
+                    if !ns.is_empty() {
+                        format!("{}::{}", ns.join("::"), class_name)
+                    } else {
+                        class_name.clone()
+                    }
+                };
+                // 查找类字段（先试简单名，再试命名空间限定名）
+                let class_layout = self.class_layouts.get(&class_name)
+                    .or_else(|| self.class_layouts.get(&qualified_name));
+                if let Some(class_info) = class_layout {
                     if let Some(field) = class_info.fields.get(&member.member) {
                         return Some(field.field_type.clone());
                     }
@@ -1160,8 +1187,31 @@ impl IRGenerator {
 
         self.generate_block(&func.body)?;
 
+        // 确保函数有返回指令 - 对于非 void 函数，如果没有显式 return，添加默认返回
         if func.return_type == Type::Void {
             self.emit_line("  ret void");
+        } else {
+            // 检查最后一条指令是否已经是 ret
+            let last_lines: Vec<&str> = self.code.lines().rev().take(10).collect();
+            let has_ret = last_lines.iter().any(|line| {
+                let trimmed = line.trim();
+                trimmed.starts_with("ret ") || trimmed == "ret"
+            });
+            if !has_ret {
+                // 添加默认返回值
+                let default_value = match &func.return_type {
+                    Type::Int32 => "i32 0",
+                    Type::Int64 => "i64 0",
+                    Type::Float32 => "float 0.0",
+                    Type::Float64 => "double 0.0",
+                    Type::Bool => "i1 false",
+                    Type::Char => "i8 0",
+                    Type::String => "i8* null",
+                    Type::Pointer(_) => "i8* null",
+                    _ => "i32 0",
+                };
+                self.emit_line(&format!("  ret {}", default_value));
+            }
         }
 
         self.indent -= 1;

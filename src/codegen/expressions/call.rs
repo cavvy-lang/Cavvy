@@ -432,6 +432,7 @@ impl IRGenerator {
             crate::types::Type::CInt => "ci".to_string(),
             crate::types::Type::CUInt => "cu".to_string(),
             crate::types::Type::CLong => "cl".to_string(),
+            crate::types::Type::CULong => "cul".to_string(),
             crate::types::Type::CShort => "cs".to_string(),
             crate::types::Type::CUShort => "cus".to_string(),
             crate::types::Type::CChar => "cc".to_string(),

@@ -1,0 +1,35 @@
+
+extern {
+    // 内存分配
+    c_void* malloc(size_t size);
+    c_void* calloc(size_t nmemb, size_t size);
+    c_void* realloc(c_void* ptr, size_t size);
+    void free(c_void* ptr);
+
+    // 程序控制
+    void exit(c_int status);
+    void abort();
+    // atexit 接受无参数无返回值的函数指针
+    // c_int atexit(fn() -> void);  // 暂不支持此语法
+    void _Exit(c_int status);
+
+    // 搜索和排序
+    void qsort(c_void* base, size_t nmemb, size_t size, CompareFn compar);
+    c_void* bsearch(c_void* key, c_void* base, size_t nmemb, size_t size, CompareFn compar);
+
+    // 随机数
+    c_int rand();
+    void srand(c_uint seed);
+
+    // 整数算术
+    c_int abs(c_int n) as c_abs;
+    c_long labs(c_long n) as c_labs;
+
+    // 字符串转换
+    c_int atoi(c_string nptr);
+    c_long atol(c_string nptr);
+    c_double atof(c_string nptr);
+    c_long strtol(c_string nptr, c_char** endptr, c_int base);
+    c_ulong strtoul(c_string nptr, c_char** endptr, c_int base);
+    c_double strtod(c_string nptr, c_char** endptr);
+}

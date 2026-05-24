@@ -1,0 +1,20 @@
+// 命名空间接口测试
+namespace graphics {
+    public interface Drawable {
+        void draw();
+    }
+
+    public class Circle {
+        public void draw() {
+            println("Interface impl: draw circle");
+        }
+    }
+}
+
+public class Main {
+    public static void main() {
+
+        Circle c = new Circle();
+        c.draw();
+    }
+}
