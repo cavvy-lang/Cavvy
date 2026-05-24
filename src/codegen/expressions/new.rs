@@ -13,10 +13,24 @@ impl IRGenerator {
     /// * `new_expr` - new 表达式
     pub fn generate_new_expression(&mut self, new_expr: &NewExpr) -> cayResult<String> {
         let class_name = &new_expr.class_name;
-        let type_id_value = self.get_type_id_value(class_name).unwrap_or(0);
+        // 如果类是命名空间限定的，解析到TypeRegistry中获取规范名称
+        let canonical_name = if class_name.contains("::") {
+            if let Some(ref registry) = self.type_registry {
+                if let Some(class_info) = registry.get_class(class_name) {
+                    class_info.name.clone()
+                } else {
+                    class_name.clone()
+                }
+            } else {
+                class_name.clone()
+            }
+        } else {
+            class_name.clone()
+        };
+        let type_id_value = self.get_type_id_value(&canonical_name).unwrap_or(0);
 
         // 获取类布局信息，确定对象大小
-        let obj_size = self.get_class_layout(class_name)
+        let obj_size = self.get_class_layout(&canonical_name)
             .map(|layout| layout.total_size as i64)
             .unwrap_or(8i64); // 默认最小大小
 
@@ -62,7 +76,7 @@ impl IRGenerator {
         }
         
         // 生成构造函数名（使用推断的参数类型）
-        let ctor_name = self.generate_constructor_call_name_with_types(class_name, &param_types);
+        let ctor_name = self.generate_constructor_call_name_with_types(&canonical_name, &param_types);
         
         // 生成参数列表
         let mut arg_strs = vec![format!("i8* {}", calloc_temp)];
@@ -86,8 +100,8 @@ impl IRGenerator {
     /// 推断参数类型（返回类型签名）
     fn infer_argument_type(&self, expr: &Expr) -> String {
         match expr {
-            Expr::Literal(lit) => {
-                match lit {
+            Expr::Literal(lit_expr) => {
+                match &lit_expr.value {
                     LiteralValue::Int32(_) => "i".to_string(),
                     LiteralValue::Int64(_) => "l".to_string(),
                     LiteralValue::Float32(_) => "f".to_string(),
@@ -210,8 +224,8 @@ impl IRGenerator {
                 }
                 None
             }
-            Expr::Literal(lit) => {
-                match lit {
+            Expr::Literal(lit_expr) => {
+                match &lit_expr.value {
                     LiteralValue::Int32(_) => Some(Type::Int32),
                     LiteralValue::Int64(_) => Some(Type::Int64),
                     LiteralValue::Float32(_) => Some(Type::Float32),

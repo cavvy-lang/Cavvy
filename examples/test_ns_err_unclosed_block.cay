@@ -1,0 +1,15 @@
+// 错误: namespace 块缺少闭合花括号
+namespace test {
+    public class Foo {
+        public static void bar() {
+            println("test");
+        }
+    }
+// 缺少 }
+
+public class Main {
+    public static void main() {
+        using test::Foo;
+        Foo.bar();
+    }
+}

@@ -32,7 +32,7 @@ impl SemanticAnalyzer {
     /// 推断表达式类型（内部实现）
     fn infer_expr_type_internal(&mut self, expr: &Expr) -> cayResult<Type> {
         match expr {
-            Expr::Literal(lit) => match lit {
+            Expr::Literal(lit_expr) => match &lit_expr.value {
                 LiteralValue::Int32(_) => Ok(Type::Int32),
                 LiteralValue::Int64(_) => Ok(Type::Int64),
                 LiteralValue::Float32(_) => Ok(Type::Float32),
@@ -132,8 +132,8 @@ impl SemanticAnalyzer {
                     // 标识符是类名，返回类类型（用于静态成员访问）
                     Ok(Type::Object(name.clone()))
                 } else {
-                    Err(crate::error::undefined_identifier_error(
-                        loc.line, loc.column, name
+                    Err(crate::error::undefined_identifier_error_with_file(
+                        loc.file.clone(), loc.line, loc.column, name
                     ))
                 }
             }
@@ -190,17 +190,19 @@ impl SemanticAnalyzer {
                 if left_type.is_primitive() && right_type.is_primitive() {
                     // 检查除零和模零（仅当右操作数是字面量0时）
                     if matches!(bin.op, BinaryOp::Div | BinaryOp::Mod) {
-                        if let Expr::Literal(LiteralValue::Int32(0)) = bin.right.as_ref() {
-                            return Err(semantic_error_at_loc(
-                                &bin.loc,
-                                "/ by zero".to_string()
-                            ));
-                        }
-                        if let Expr::Literal(LiteralValue::Int64(0)) = bin.right.as_ref() {
-                            return Err(semantic_error_at_loc(
-                                &bin.loc,
-                                "/ by zero".to_string()
-                            ));
+                        if let Expr::Literal(lit_expr) = bin.right.as_ref() {
+                            if let LiteralValue::Int32(0) = lit_expr.value {
+                                return Err(semantic_error_at_loc(
+                                    &bin.loc,
+                                    "/ by zero".to_string()
+                                ));
+                            }
+                            if let LiteralValue::Int64(0) = lit_expr.value {
+                                return Err(semantic_error_at_loc(
+                                    &bin.loc,
+                                    "/ by zero".to_string()
+                                ));
+                            }
                         }
                     }
                     // 类型提升
@@ -1050,8 +1052,10 @@ impl SemanticAnalyzer {
         // 检查所有维度的大小
         for (i, size) in arr.sizes.iter().enumerate() {
             // 跳过空维度（不规则数组，如 new int[5][]）
-            if matches!(size, Expr::Literal(LiteralValue::Null)) {
-                continue;
+            if let Expr::Literal(lit_expr) = size {
+                if let LiteralValue::Null = lit_expr.value {
+                    continue;
+                }
             }
             
             let size_type = self.infer_expr_type_internal(size)?;
@@ -1063,36 +1067,40 @@ impl SemanticAnalyzer {
             }
             // 检查负数数组大小（仅当大小是字面量或一元负号表达式时）
             // 支持直接负数字面量如 -5（被解析为 Unary(Neg, Literal(5))）
-            if let Expr::Literal(LiteralValue::Int32(n)) = size {
-                if *n < 0 {
-                    return Err(semantic_error_at_loc(
-                        &arr.loc,
-                        format!("Array size cannot be negative: {}", n)
-                    ));
+            if let Expr::Literal(lit_expr) = size {
+                if let LiteralValue::Int32(n) = lit_expr.value {
+                    if n < 0 {
+                        return Err(semantic_error_at_loc(
+                            &arr.loc,
+                            format!("Array size cannot be negative: {}", n)
+                        ));
+                    }
                 }
-            }
-            if let Expr::Literal(LiteralValue::Int64(n)) = size {
-                if *n < 0 {
-                    return Err(semantic_error_at_loc(
-                        &arr.loc,
-                        format!("Array size cannot be negative: {}", n)
-                    ));
+                if let LiteralValue::Int64(n) = lit_expr.value {
+                    if n < 0 {
+                        return Err(semantic_error_at_loc(
+                            &arr.loc,
+                            format!("Array size cannot be negative: {}", n)
+                        ));
+                    }
                 }
             }
             // 检查一元负号表达式如 -5
             if let Expr::Unary(unary) = size {
                 if let UnaryOp::Neg = unary.op {
-                    if let Expr::Literal(LiteralValue::Int32(n)) = unary.operand.as_ref() {
-                        return Err(semantic_error_at_loc(
-                            &arr.loc,
-                            format!("Array size cannot be negative: -{}", n)
-                        ));
-                    }
-                    if let Expr::Literal(LiteralValue::Int64(n)) = unary.operand.as_ref() {
-                        return Err(semantic_error_at_loc(
-                            &arr.loc,
-                            format!("Array size cannot be negative: -{}", n)
-                        ));
+                    if let Expr::Literal(lit_expr) = unary.operand.as_ref() {
+                        if let LiteralValue::Int32(n) = lit_expr.value {
+                            return Err(semantic_error_at_loc(
+                                &arr.loc,
+                                format!("Array size cannot be negative: -{}", n)
+                            ));
+                        }
+                        if let LiteralValue::Int64(n) = lit_expr.value {
+                            return Err(semantic_error_at_loc(
+                                &arr.loc,
+                                format!("Array size cannot be negative: -{}", n)
+                            ));
+                        }
                     }
                 }
             }

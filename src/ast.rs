@@ -15,6 +15,29 @@ pub struct Program {
     pub top_level_functions: Vec<TopLevelFunction>,
     pub extern_declarations: Vec<ExternDecl>,  // FFI extern 声明
     pub type_aliases: Vec<TypeAliasDecl>,      // 类型别名声明 (type X = Y)
+    pub namespace_path: Option<Vec<String>>,   // 文件级 namespace 路径 (namespace std;)
+    pub namespace_decls: Vec<NamespaceDecl>,   // 块级 namespace 声明
+    pub using_decls: Vec<UsingDecl>,           // using 声明
+}
+
+/// namespace 块级声明 - namespace std { ... }
+#[derive(Debug, Clone)]
+pub struct NamespaceDecl {
+    pub path: Vec<String>,               // 命名空间路径，如 ["std", "io"]
+    pub classes: Vec<ClassDecl>,
+    pub interfaces: Vec<InterfaceDecl>,
+    pub top_level_functions: Vec<TopLevelFunction>,
+    pub extern_declarations: Vec<ExternDecl>,
+    pub type_aliases: Vec<TypeAliasDecl>,
+    pub nested_namespaces: Vec<NamespaceDecl>,  // 嵌套 namespace
+    pub loc: SourceLocation,
+}
+
+/// using 声明 - using std::StringBuilder;
+#[derive(Debug, Clone)]
+pub struct UsingDecl {
+    pub path: Vec<String>,  // 完整路径，如 ["std", "StringBuilder"]，最后一个元素是要导入的名字
+    pub loc: SourceLocation,
 }
 
 /// 类型别名声明 - type Name = Type;
@@ -22,6 +45,7 @@ pub struct Program {
 pub struct TypeAliasDecl {
     pub name: String,
     pub target_type: Type,
+    pub namespace_path: Vec<String>,  // 所属命名空间路径
     pub loc: SourceLocation,
 }
 
@@ -33,6 +57,7 @@ pub struct TopLevelFunction {
     pub return_type: Type,
     pub params: Vec<ParameterInfo>,
     pub body: Block,
+    pub namespace_path: Vec<String>,  // 所属命名空间路径
     pub loc: SourceLocation,
 }
 
@@ -41,6 +66,7 @@ pub struct TopLevelFunction {
 pub struct ExternDecl {
     pub calling_convention: CallingConvention,  // 调用约定
     pub functions: Vec<ExternFunction>,         // 声明的函数列表
+    pub namespace_path: Vec<String>,            // 所属命名空间路径
     pub loc: SourceLocation,
 }
 
@@ -69,6 +95,7 @@ pub struct InterfaceDecl {
     pub name: String,
     pub modifiers: Vec<Modifier>,
     pub methods: Vec<MethodDecl>,
+    pub namespace_path: Vec<String>,  // 所属命名空间路径
     pub loc: SourceLocation,
 }
 
@@ -79,6 +106,7 @@ pub struct ClassDecl {
     pub parent: Option<String>,
     pub interfaces: Vec<String>,  // 实现的接口列表
     pub members: Vec<ClassMember>,
+    pub namespace_path: Vec<String>,  // 所属命名空间路径
     pub loc: SourceLocation,
 }
 
@@ -249,7 +277,7 @@ pub struct SwitchStmt {
 
 #[derive(Debug, Clone)]
 pub enum Expr {
-    Literal(LiteralValue),
+    Literal(LiteralExpr),
     Identifier(IdentifierExpr),
     Binary(BinaryExpr),
     Unary(UnaryExpr),
@@ -272,11 +300,7 @@ pub enum Expr {
 impl HasLocation for Expr {
     fn location(&self) -> &SourceLocation {
         match self {
-            Expr::Literal(_) => {
-                // LiteralValue没有位置信息，返回静态默认值
-                static DEFAULT_LOC: std::sync::OnceLock<SourceLocation> = std::sync::OnceLock::new();
-                DEFAULT_LOC.get_or_init(|| SourceLocation { file: None, line: 1, column: 1 })
-            }
+            Expr::Literal(lit) => &lit.loc,
             Expr::Identifier(id) => &id.loc,
             Expr::Binary(bin) => &bin.loc,
             Expr::Unary(unary) => &unary.loc,
@@ -360,6 +384,12 @@ pub enum LiteralValue {
     Bool(bool),
     Char(char),
     Null,
+}
+
+#[derive(Debug, Clone)]
+pub struct LiteralExpr {
+    pub value: LiteralValue,
+    pub loc: SourceLocation,
 }
 
 #[derive(Debug, Clone)]
@@ -547,6 +577,155 @@ impl Program {
             })
         })
     }
+
+    /// 扁平化 namespace 声明：将块级 namespace 和文件级 namespace_path 应用到所有声明
+    pub fn flatten_namespaces(&self) -> Program {
+        let mut classes = self.classes.clone();
+        let mut interfaces = self.interfaces.clone();
+        let mut top_level_functions = self.top_level_functions.clone();
+        let mut extern_declarations = self.extern_declarations.clone();
+        let mut type_aliases = self.type_aliases.clone();
+        let file_namespace = self.namespace_path.clone();
+
+        // 调试信息
+        eprintln!("[DEBUG] flatten_namespaces:");
+        eprintln!("  - self.classes count: {}", self.classes.len());
+        for class in &self.classes {
+            eprintln!("    - self.classes: {}, namespace_path: {:?}", class.name, class.namespace_path);
+        }
+        eprintln!("  - self.namespace_decls count: {}", self.namespace_decls.len());
+        for (i, ns) in self.namespace_decls.iter().enumerate() {
+            eprintln!("  - namespace_decls[{}].path: {:?}", i, ns.path);
+            eprintln!("  - namespace_decls[{}].classes count: {}", i, ns.classes.len());
+            for class in &ns.classes {
+                eprintln!("    - class: {}, namespace_path: {:?}", class.name, class.namespace_path);
+            }
+            eprintln!("  - namespace_decls[{}].nested_namespaces count: {}", i, ns.nested_namespaces.len());
+            for (j, nested) in ns.nested_namespaces.iter().enumerate() {
+                eprintln!("    - nested[{}].path: {:?}", j, nested.path);
+                eprintln!("    - nested[{}].classes count: {}", j, nested.classes.len());
+                for class in &nested.classes {
+                    eprintln!("      - class: {}, namespace_path: {:?}", class.name, class.namespace_path);
+                }
+            }
+        }
+
+        // 递归扁平化块级 namespace
+        fn flatten_ns(
+            ns: &NamespaceDecl,
+            parent_path: &[String],
+            classes: &mut Vec<ClassDecl>,
+            interfaces: &mut Vec<InterfaceDecl>,
+            top_level_functions: &mut Vec<TopLevelFunction>,
+            extern_declarations: &mut Vec<ExternDecl>,
+            type_aliases: &mut Vec<TypeAliasDecl>,
+            depth: usize,
+        ) {
+            let mut full_path = parent_path.to_vec();
+            full_path.extend(ns.path.clone());
+
+            eprintln!("[DEBUG] flatten_ns depth={} ns.path={:?} parent_path={:?} full_path={:?}", 
+                depth, ns.path, parent_path, full_path);
+
+            for mut class in ns.classes.clone() {
+                // 如果类已经有 namespace_path（来自 #include 的文件），则只使用现有的 namespace_path
+                // 否则使用 full_path
+                if class.namespace_path.is_empty() {
+                    class.namespace_path = full_path.clone();
+                }
+                eprintln!("[DEBUG]   Adding class: {} with namespace_path: {:?}", class.name, class.namespace_path);
+                classes.push(class);
+            }
+            for mut interface in ns.interfaces.clone() {
+                if interface.namespace_path.is_empty() {
+                    interface.namespace_path = full_path.clone();
+                }
+                interfaces.push(interface);
+            }
+            for mut func in ns.top_level_functions.clone() {
+                if func.namespace_path.is_empty() {
+                    func.namespace_path = full_path.clone();
+                }
+                top_level_functions.push(func);
+            }
+            for mut extern_decl in ns.extern_declarations.clone() {
+                if extern_decl.namespace_path.is_empty() {
+                    extern_decl.namespace_path = full_path.clone();
+                }
+                extern_declarations.push(extern_decl);
+            }
+            for mut alias in ns.type_aliases.clone() {
+                if alias.namespace_path.is_empty() {
+                    alias.namespace_path = full_path.clone();
+                }
+                type_aliases.push(alias);
+            }
+            for nested in &ns.nested_namespaces {
+                // 对于嵌套的 namespace，如果它的 path 和当前 ns 的 path 相同，
+                // 则使用 parent_path 作为基础，避免重复
+                let nested_parent_path = if nested.path == ns.path {
+                    parent_path.to_vec()
+                } else {
+                    full_path.clone()
+                };
+                eprintln!("[DEBUG]   Processing nested namespace at depth {}: nested.path={:?}, ns.path={:?}, using parent_path={:?}", 
+                    depth, nested.path, ns.path, nested_parent_path);
+                flatten_ns(nested, &nested_parent_path, classes, interfaces, top_level_functions, extern_declarations, type_aliases, depth + 1);
+            }
+        }
+
+        for (i, ns) in self.namespace_decls.iter().enumerate() {
+            eprintln!("[DEBUG] Processing namespace_decls[{}]", i);
+            flatten_ns(ns, &[], &mut classes, &mut interfaces, &mut top_level_functions, &mut extern_declarations, &mut type_aliases, 0);
+        }
+
+        // 如果有文件级 namespace，设置给所有没有 namespace_path 的全局声明
+        if let Some(ref ns_path) = file_namespace {
+            for class in &mut classes {
+                if class.namespace_path.is_empty() {
+                    class.namespace_path = ns_path.clone();
+                }
+            }
+            for interface in &mut interfaces {
+                if interface.namespace_path.is_empty() {
+                    interface.namespace_path = ns_path.clone();
+                }
+            }
+            for func in &mut top_level_functions {
+                if func.namespace_path.is_empty() {
+                    func.namespace_path = ns_path.clone();
+                }
+            }
+            for extern_decl in &mut extern_declarations {
+                if extern_decl.namespace_path.is_empty() {
+                    extern_decl.namespace_path = ns_path.clone();
+                }
+            }
+            for alias in &mut type_aliases {
+                if alias.namespace_path.is_empty() {
+                    alias.namespace_path = ns_path.clone();
+                }
+            }
+        }
+
+        // 调试信息：输出结果
+        eprintln!("[DEBUG] flatten_namespaces result:");
+        eprintln!("  - classes count: {}", classes.len());
+        for class in &classes {
+            eprintln!("    - class: {}, namespace_path: {:?}", class.name, class.namespace_path);
+        }
+
+        Program {
+            classes,
+            interfaces,
+            top_level_functions,
+            extern_declarations,
+            type_aliases,
+            namespace_path: file_namespace,
+            namespace_decls: Vec::new(),
+            using_decls: self.using_decls.clone(),
+        }
+    }
 }
 
 impl Default for Program {
@@ -557,6 +736,9 @@ impl Default for Program {
             top_level_functions: Vec::new(),
             extern_declarations: Vec::new(),
             type_aliases: Vec::new(),
+            namespace_path: None,
+            namespace_decls: Vec::new(),
+            using_decls: Vec::new(),
         }
     }
 }

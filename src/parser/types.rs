@@ -36,8 +36,14 @@ pub fn parse_type(parser: &mut Parser) -> cayResult<Type> {
         crate::lexer::Token::CInt64 => { parser.advance(); Type::Int64 }
         crate::lexer::Token::CUInt64 => { parser.advance(); Type::Int64 }
         crate::lexer::Token::Identifier(name) => {
-            let name = name.clone();
+            let mut name = name.clone();
             parser.advance();
+            // 支持命名空间限定类型名: std::StringBuilder, std::io::File
+            while parser.check(&crate::lexer::Token::DoubleColon) {
+                parser.advance(); // 消费 ::
+                let next = parser.consume_identifier("期望命名空间后的标识符\n提示: 限定类型名格式为 'ns::Type' 或 'ns::sub::Type'")?;
+                name = format!("{}::{}", name, next);
+            }
             // 检查是否是已定义的类型别名
             if let Some(aliased_type) = parser.get_type_alias(&name) {
                 aliased_type

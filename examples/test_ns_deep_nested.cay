@@ -1,0 +1,36 @@
+// 深层嵌套namespace测试 (3级)
+namespace a {
+    namespace b {
+        namespace c {
+            public class Level3 {
+                public static String value() {
+                    return "L3: three";
+                }
+            }
+        }
+        public class Level2 {
+            public static String value() {
+                return "L2: two";
+            }
+        }
+    }
+    public class Level1 {
+        public static String value() {
+            return "L1: one";
+        }
+    }
+}
+
+using a::Level1;
+using a::b::Level2;
+using a::b::c::Level3;
+
+public class Main {
+    public static void main() {
+
+
+        println(Level1.value());
+        println(Level2.value());
+        println(Level3.value());
+    }
+}

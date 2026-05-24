@@ -7,6 +7,9 @@
  * - format(String, String...): 使用位置参数格式化字符串
  * - formatIndexed(String, String...): 使用索引参数格式化字符串
  */
+
+namespace std {
+
 public class StringPlus {
     
     /**
@@ -155,3 +158,5 @@ public class StringPlus {
         return result;
     }
 }
+
+} // namespace std

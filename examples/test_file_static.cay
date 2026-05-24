@@ -1,5 +1,6 @@
 // 只测试 File 静态方法
 #include <File.cay>
+using std::File;
 
 public class TestFileStatic {
     public static void main(String[] args) {

@@ -4,6 +4,8 @@
  */
 #include <IOPlus.cay>
 #include <StringPlus.cay>
+using std::IOPlus;
+using std::StringPlus;
 
 
 @main

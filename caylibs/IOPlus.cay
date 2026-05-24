@@ -9,6 +9,9 @@
  * - input(String): 显示提示并读取用户输入
  * - input(): 读取用户输入
  */
+
+namespace std {
+
 public class IOPlus {
 
     // ==================== 字符串可变参数打印 ====================
@@ -329,3 +332,5 @@ public class IOPlus {
         println();
     }
 }
+
+} // namespace std

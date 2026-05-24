@@ -21,6 +21,8 @@
 #ifndef CAY_MATH_H
 #define CAY_MATH_H
 
+namespace std {
+
 #include <std/ffi.cay>
 
 /* ============================================================================
@@ -1308,5 +1310,7 @@ public class Vector3 {
         return "(" + (String)this.x + ", " + (String)this.y + ", " + (String)this.z + ")";
     }
 }
+
+} // namespace std
 
 #endif /* CAY_MATH_H */

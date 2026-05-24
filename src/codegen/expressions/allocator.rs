@@ -103,14 +103,17 @@ impl IRGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{Expr, LiteralValue};
+    use crate::ast::{Expr, LiteralValue, LiteralExpr};
     use crate::error::SourceLocation;
     
     /// 测试分配表达式结构
     #[test]
     fn test_alloc_expr_structure() {
         let alloc_expr = AllocExpr {
-            size: Box::new(Expr::Literal(LiteralValue::Int64(64))),
+            size: Box::new(Expr::Literal(LiteralExpr { 
+                value: LiteralValue::Int64(64), 
+                loc: SourceLocation { file: None, line: 1, column: 1 } 
+            })),
             align: None,
             loc: SourceLocation { file: None, line: 1, column: 1 },
         };
@@ -124,7 +127,10 @@ mod tests {
     #[test]
     fn test_dealloc_expr_structure() {
         let dealloc_expr = DeallocExpr {
-            ptr: Box::new(Expr::Literal(LiteralValue::Int64(0x1234))),
+            ptr: Box::new(Expr::Literal(LiteralExpr { 
+                value: LiteralValue::Int64(0x1234), 
+                loc: SourceLocation { file: None, line: 1, column: 1 } 
+            })),
             loc: SourceLocation { file: None, line: 1, column: 1 },
         };
         

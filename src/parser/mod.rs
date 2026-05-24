@@ -68,9 +68,39 @@ impl Parser {
         let mut top_level_functions = Vec::new();
         let mut extern_declarations = Vec::new();
         let mut type_aliases = Vec::new();
+        let mut namespace_path: Option<Vec<String>> = None;
+        let mut namespace_decls = Vec::new();
+        let mut using_decls = Vec::new();
+
+        // 检查文件级 namespace 声明 (必须是文件第一个非注释/空行的语句)
+        // 需要 lookahead 区分: namespace path; (文件级) vs namespace path { (块级)
+        if self.check(&crate::lexer::Token::Namespace) {
+            let saved_pos = self.pos;
+            self.advance(); // 消费 namespace
+            // 尝试解析路径
+            if let Ok(_path) = self.parse_namespace_path() {
+                // 检查路径后面是分号（文件级）还是花括号（块级）
+                if self.check(&crate::lexer::Token::Semicolon) {
+                    // 文件级: namespace path;
+                    self.pos = saved_pos; // 回退
+                    namespace_path = Some(self.parse_namespace_file_level()?);
+                } else {
+                    // 块级: namespace path { - 回退，由 while 循环处理
+                    self.pos = saved_pos;
+                }
+            } else {
+                // 解析失败，回退
+                self.pos = saved_pos;
+            }
+        }
 
         while !self.is_at_end() {
-            if self.check(&crate::lexer::Token::Interface)
+            if self.check(&crate::lexer::Token::Namespace) {
+                // 块级 namespace 声明
+                namespace_decls.push(self.parse_namespace_block()?);
+            } else if self.check(&crate::lexer::Token::Using) {
+                using_decls.push(self.parse_using_declaration()?);
+            } else if self.check(&crate::lexer::Token::Interface)
                 || (self.check(&crate::lexer::Token::Public) && self.check_next(&crate::lexer::Token::Interface))
             {
                 interfaces.push(self.parse_interface()?);
@@ -170,7 +200,7 @@ impl Parser {
             }
         }
 
-        Ok(Program { classes, interfaces, top_level_functions, extern_declarations, type_aliases })
+        Ok(Program { classes, interfaces, top_level_functions, extern_declarations, type_aliases, namespace_path, namespace_decls, using_decls })
     }
 
     // 类解析方法
@@ -484,6 +514,7 @@ impl Parser {
             return_type,
             params,
             body,
+            namespace_path: Vec::new(),
             loc,
         })
     }
@@ -533,6 +564,7 @@ impl Parser {
         Ok(crate::ast::ExternDecl {
             calling_convention,
             functions,
+            namespace_path: Vec::new(),
             loc,
         })
     }
@@ -688,6 +720,7 @@ impl Parser {
         Ok(crate::ast::TypeAliasDecl {
             name,
             target_type,
+            namespace_path: Vec::new(),
             loc,
         })
     }
@@ -794,6 +827,135 @@ impl Parser {
             return_type: Box::new(return_type),
             is_static: true,
         })))
+    }
+
+    // ==================== Namespace 和 Using 解析 ====================
+
+    /// 解析文件级 namespace 声明: namespace std;
+    fn parse_namespace_file_level(&mut self) -> cayResult<Vec<String>> {
+        // 消费 namespace 关键字
+        self.advance();
+        // 解析路径
+        let path = self.parse_namespace_path()?;
+        // 消费分号
+        self.consume(&crate::lexer::Token::Semicolon, "期望 ';' 结束文件级 namespace 声明\n提示: 文件级 namespace 格式为 'namespace 路径;'")?;
+        Ok(path)
+    }
+
+    /// 解析块级 namespace 声明: namespace std { ... }
+    fn parse_namespace_block(&mut self) -> cayResult<crate::ast::NamespaceDecl> {
+        let loc = utils::current_loc(self);
+        // 消费 namespace 关键字
+        self.advance();
+        // 解析路径
+        let path = self.parse_namespace_path()?;
+        // 消费 {
+        self.consume(&crate::lexer::Token::LBrace, "期望 '{' 开始 namespace 块\n提示: 块级 namespace 格式为 'namespace 路径 { ... }'")?;
+
+        let mut classes = Vec::new();
+        let mut interfaces = Vec::new();
+        let mut top_level_functions = Vec::new();
+        let mut extern_declarations = Vec::new();
+        let mut type_aliases = Vec::new();
+        let mut nested_namespaces = Vec::new();
+
+        while !self.check(&crate::lexer::Token::RBrace) && !self.is_at_end() {
+            if self.check(&crate::lexer::Token::Namespace) {
+                nested_namespaces.push(self.parse_namespace_block()?);
+            } else if self.check(&crate::lexer::Token::Interface)
+                || (self.check(&crate::lexer::Token::Public) && self.check_next(&crate::lexer::Token::Interface))
+            {
+                interfaces.push(self.parse_interface()?);
+            } else if self.check(&crate::lexer::Token::Class)
+                || self.check(&crate::lexer::Token::Private)
+                || self.check(&crate::lexer::Token::Protected)
+                || self.check(&crate::lexer::Token::AtMain)
+            {
+                classes.push(self.parse_class()?);
+            } else if self.check(&crate::lexer::Token::Public) {
+                if self.check_top_level_function() {
+                    top_level_functions.push(self.parse_top_level_function()?);
+                } else {
+                    classes.push(self.parse_class()?);
+                }
+            } else if self.check_top_level_function_return_type() {
+                top_level_functions.push(self.parse_top_level_function_without_public()?);
+            } else if self.check(&crate::lexer::Token::Extern) {
+                extern_declarations.push(self.parse_extern_declaration()?);
+            } else if self.check(&crate::lexer::Token::Alias) {
+                type_aliases.push(self.parse_type_alias()?);
+            } else {
+                let token_name = utils::get_token_name(utils::current_token(self));
+                return Err(self.error(&format!(
+                    "namespace 块内出现意外的令牌: {}\n提示: namespace 块内只能包含类、接口、函数、extern 和嵌套 namespace 声明",
+                    token_name
+                )));
+            }
+        }
+
+        // 消费 }
+        self.consume(&crate::lexer::Token::RBrace, "期望 '}' 结束 namespace 块\n提示: namespace 块必须以 '}' 结束")?;
+
+        Ok(crate::ast::NamespaceDecl {
+            path,
+            classes,
+            interfaces,
+            top_level_functions,
+            extern_declarations,
+            type_aliases,
+            nested_namespaces,
+            loc,
+        })
+    }
+
+    /// 解析 namespace 路径: Identifier (:: Identifier)*
+    fn parse_namespace_path(&mut self) -> cayResult<Vec<String>> {
+        let mut path = Vec::new();
+        // 第一个标识符
+        let first = self.consume_identifier("期望命名空间标识符\n提示: namespace 路径格式为 'Identifier' 或 'Identifier::Identifier'")?;
+        path.push(first);
+
+        // 后续 ::Identifier
+        while self.match_token(&crate::lexer::Token::DoubleColon) {
+            let next = self.consume_identifier("期望命名空间标识符\n提示: '::' 后应跟标识符")?;
+            path.push(next);
+        }
+
+        Ok(path)
+    }
+
+    /// 解析 using 声明: using std::StringBuilder;
+    fn parse_using_declaration(&mut self) -> cayResult<crate::ast::UsingDecl> {
+        let loc = utils::current_loc(self);
+        // 消费 using 关键字
+        self.advance();
+
+        // 检查是否被禁止的 using namespace 形式
+        if self.check(&crate::lexer::Token::Namespace) {
+            return Err(self.error(
+                "不允许使用 'using namespace' 语法\n提示: Cavvy 只支持 'using 路径::名称;' 的单名导入，不支持 'using namespace'")
+            );
+        }
+
+        // 解析路径（包括最后的名称）
+        let path = self.parse_namespace_path()?;
+
+        // 路径不能为空
+        if path.is_empty() {
+            return Err(self.error("using 声明缺少名称\n提示: using 声明格式为 'using 路径::名称;'"));
+        }
+
+        // 检查通配符导入（路径最后一部分是 *）
+        if path.last().map(|s| s.as_str()) == Some("*") {
+            return Err(self.error(
+                "不允许使用通配符 'using path::*'\n提示: Cavvy 只支持 'using 路径::名称;' 的单名导入")
+            );
+        }
+
+        // 消费分号
+        self.consume(&crate::lexer::Token::Semicolon, "期望 ';' 结束 using 声明\n提示: using 声明格式为 'using 路径::名称;'")?;
+
+        Ok(crate::ast::UsingDecl { path, loc })
     }
 }
 

@@ -6,6 +6,9 @@
  */
 
 #include <Network.cay>
+using std::Network;
+using std::NetworkUtils;
+using std::TcpSocket;
 
 public int main() {
     println("=== TCP服务器测试 ===");

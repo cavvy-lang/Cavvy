@@ -5,6 +5,8 @@
 #ifndef CAY_ALLOCATOR_H
 #define CAY_ALLOCATOR_H
 
+namespace std {
+
 /* 声明 C 标准库函数 */
 extern {
     long malloc(long size);
@@ -125,5 +127,7 @@ public class ScopeAlloc implements Allocator {
 #define GLOBAL_ALLOC GlobalAlloc.getInstance()
 #define ARENA(capacity) Arena.create(capacity)
 #define SCOPE_ALLOC ScopeAlloc.create()
+
+} // namespace std
 
 #endif

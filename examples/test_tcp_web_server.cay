@@ -6,6 +6,8 @@
  */
 
 #include <Network.cay>
+using std::Network;
+using std::NetworkUtils;
 
 public class WebServer {
     private TcpServer server;

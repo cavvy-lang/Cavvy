@@ -1,0 +1,8 @@
+// 错误: 使用了一个不存在于任何namespace的类
+public class Main {
+    public static void main() {
+        // NonExistentClass 从未被定义
+        println(NonExistentClass.value());
+    }
+}
+

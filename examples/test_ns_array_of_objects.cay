@@ -1,0 +1,31 @@
+// 命名空间类对象数组测试
+namespace store {
+    public class Item {
+        private String id;
+
+        public Item(String id) {
+            this.id = id;
+        }
+
+        public String getId() {
+            return this.id;
+        }
+    }
+}
+
+using store::Item;
+
+public class Main {
+    public static void main() {
+
+        Item[] items = new Item[3]();
+        items[0] = new Item("A");
+        items[1] = new Item("B");
+        items[2] = new Item("C");
+        int i = 0;
+        while (i < 3) {
+            println("Item[" + i + "]: " + items[i].getId());
+            i = i + 1;
+        }
+    }
+}

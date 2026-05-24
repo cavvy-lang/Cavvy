@@ -58,6 +58,7 @@ pub fn parse_class(parser: &mut Parser) -> cayResult<ClassDecl> {
         parent,
         interfaces,
         members,
+        namespace_path: Vec::new(),
         loc,
     })
 }
@@ -87,6 +88,7 @@ pub fn parse_interface(parser: &mut Parser) -> cayResult<InterfaceDecl> {
         name,
         modifiers,
         methods,
+        namespace_path: Vec::new(),
         loc,
     })
 }

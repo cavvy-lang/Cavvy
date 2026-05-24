@@ -1,0 +1,9 @@
+// 错误: namespace名称与关键字冲突（测试解析器拒绝非法namespace名）
+using namespace std;
+
+public class Main {
+    public static void main() {
+        println("test");
+    }
+}
+

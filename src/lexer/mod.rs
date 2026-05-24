@@ -106,6 +106,10 @@ pub enum Token {
     Auto,
     #[token("extern")]
     Extern,
+    #[token("namespace")]
+    Namespace,
+    #[token("using")]
+    Using,
     #[token("scope")]
     Scope,
     #[token("__ir")]
@@ -947,6 +951,8 @@ pub fn token_name(token: &Token) -> &'static str {
         Token::Let => "let",
         Token::Auto => "auto",
         Token::Extern => "extern",
+        Token::Namespace => "namespace",
+        Token::Using => "using",
         Token::Scope => "scope",
         Token::InlineIr => "__ir",
         Token::CInt => "c_int",

@@ -1,0 +1,39 @@
+// 命名空间接口测试
+namespace graphics {
+    public interface Drawable {
+        void draw();
+    }
+
+    public class Circle {
+        public void draw() {
+            println("Interface impl: draw circle");
+        }
+    }
+
+    public class Square {
+        public void draw() {
+            println("Interface impl: draw square");
+        }
+    }
+
+    public class Cube {
+        public void draw() {
+            println("Interface impl: draw cube");
+        }
+    }
+}
+
+using graphics::Circle;
+using graphics::Square;
+
+public class Main {
+    public static void main() {
+
+        Circle c = new Circle();
+        c.draw();
+        Square s = new Square();
+        s.draw();
+        graphics::Cube cu = new graphics::Cube();
+        cu.draw();
+    }
+}

@@ -680,8 +680,9 @@ pub fn print_diagnostics(collector: &DiagnosticCollector, source: &str, filename
     eprintln!();
 
     for diag in diagnostics {
-        // 检测到行号为0时输出详细调试信息并保存到文件
-        if diag.location.line == 0 {
+        // 检测到行号为0或行号超出范围时输出详细调试信息并保存到文件
+        let line_count = source.lines().count();
+        if diag.location.line == 0 || diag.location.line > line_count {
             use std::io::Write;
             use std::time::SystemTime;
             
@@ -691,6 +692,15 @@ pub fn print_diagnostics(collector: &DiagnosticCollector, source: &str, filename
                 .unwrap_or(0);
             let debug_filename = format!("debug_{}.txt", timestamp);
             
+            let line_count = source.lines().count();
+            let invalid_reason = if diag.location.line == 0 {
+                "行号为0"
+            } else if diag.location.line > line_count {
+                &format!("行号超出范围(文件共{}行)", line_count)
+            } else {
+                "未知原因"
+            };
+            
             let debug_content = format!(r#"Cavvy Bug Report
 ================
 版本: {}
@@ -698,21 +708,23 @@ pub fn print_diagnostics(collector: &DiagnosticCollector, source: &str, filename
 错误消息: {}
 编译阶段: {:?}
 文件名: {}
-行号: {} (无效)
+行号: {} ({})
 列号: {}
 源码长度: {} 字节
+文件行数: {}
 
 === 源代码 ===
-{}
-"#,
+{}"#,
                 env!("CARGO_PKG_VERSION"),
                 diag.code,
                 diag.message,
                 diag.phase,
                 filename,
                 diag.location.line,
+                invalid_reason,
                 diag.location.column,
                 source.len(),
+                line_count,
                 source
             );
             

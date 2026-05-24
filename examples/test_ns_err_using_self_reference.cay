@@ -1,0 +1,9 @@
+// 错误: using 不存在的namespace
+using nonexistent::Ghost;
+
+public class Main {
+    public static void main() {
+        println("test");
+    }
+}
+

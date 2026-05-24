@@ -30,7 +30,7 @@ pub fn parse_primary(parser: &mut Parser) -> cayResult<Expr> {
                 }
                 _ => unreachable!(),
             };
-            Ok(Expr::Literal(lit))
+            Ok(Expr::Literal(LiteralExpr { value: lit, loc }))
         }
         crate::lexer::Token::FloatLiteral(Some((val, suffix))) => {
             parser.advance();
@@ -39,27 +39,27 @@ pub fn parse_primary(parser: &mut Parser) -> cayResult<Expr> {
                 Some('d') | Some('D') | None => LiteralValue::Float64(val),
                 _ => unreachable!(),
             };
-            Ok(Expr::Literal(lit))
+            Ok(Expr::Literal(LiteralExpr { value: lit, loc }))
         }
         crate::lexer::Token::StringLiteral(Some(s)) => {
             parser.advance();
-            Ok(Expr::Literal(LiteralValue::String(s.clone())))
+            Ok(Expr::Literal(LiteralExpr { value: LiteralValue::String(s.clone()), loc }))
         }
         crate::lexer::Token::CharLiteral(Some(c)) => {
             parser.advance();
-            Ok(Expr::Literal(LiteralValue::Char(c)))
+            Ok(Expr::Literal(LiteralExpr { value: LiteralValue::Char(c), loc }))
         }
         crate::lexer::Token::True => {
             parser.advance();
-            Ok(Expr::Literal(LiteralValue::Bool(true)))
+            Ok(Expr::Literal(LiteralExpr { value: LiteralValue::Bool(true), loc }))
         }
         crate::lexer::Token::False => {
             parser.advance();
-            Ok(Expr::Literal(LiteralValue::Bool(false)))
+            Ok(Expr::Literal(LiteralExpr { value: LiteralValue::Bool(false), loc }))
         }
         crate::lexer::Token::Null => {
             parser.advance();
-            Ok(Expr::Literal(LiteralValue::Null))
+            Ok(Expr::Literal(LiteralExpr { value: LiteralValue::Null, loc }))
         }
         crate::lexer::Token::This => {
             parser.advance();
@@ -393,7 +393,8 @@ pub fn parse_new_expression(parser: &mut Parser, loc: crate::error::SourceLocati
                     has_empty_dimension = true;
                     parser.advance(); // 跳过 ']'
                     // 空维度用 null 表达式表示
-                    sizes.push(Expr::Literal(LiteralValue::Null));
+                    let null_loc = parser.current_loc();
+                    sizes.push(Expr::Literal(LiteralExpr { value: LiteralValue::Null, loc: null_loc }));
                 } else {
                     // 正常维度，解析表达式
                     let size = parse_expression(parser)?;
@@ -487,8 +488,14 @@ pub fn parse_base_type(parser: &mut Parser) -> cayResult<Type> {
         crate::lexer::Token::String => { parser.advance(); Ok(Type::String) }
         crate::lexer::Token::Char => { parser.advance(); Ok(Type::Char) }
         crate::lexer::Token::Identifier(name) => {
-            let name = name.clone();
+            let mut name = name.clone();
             parser.advance();
+            // 支持命名空间限定类型名: std::StringBuilder, graphics::Cube
+            while parser.check(&crate::lexer::Token::DoubleColon) {
+                parser.advance(); // 消费 ::
+                let next = super::super::utils::consume_identifier(parser, "期望命名空间后的标识符\n提示: 限定类型名格式为 'ns::Type'")?;
+                name = format!("{}::{}", name, next);
+            }
             Ok(Type::Object(name))
         }
         _ => {

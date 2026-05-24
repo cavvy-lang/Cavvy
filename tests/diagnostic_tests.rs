@@ -180,7 +180,7 @@ fn test_source_span() {
 
 #[test]
 fn test_lexer_diagnostics_collection() {
-    let source = "int x = 42 @;";  // @ 是非法字符
+    let source = "int x = 42 #;";  // # 是非法字符
     let (_tokens, diagnostics) = lex_with_diagnostics(source);
     
     // 应该产生错误
@@ -458,7 +458,7 @@ fn test_zero_line_debug_info() {
                                 assert!(content.contains("错误代码:"));
                                 assert!(content.contains("E4002"));
                                 assert!(content.contains("重复定义"));
-                                assert!(content.contains("行号: 0 (无效)"));
+                                assert!(content.contains("行号: 0 (行号为0)"));
                                 assert!(content.contains("=== 源代码 ==="));
                                 assert!(content.contains("public class Test {}"));
 

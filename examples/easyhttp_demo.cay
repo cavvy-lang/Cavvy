@@ -15,6 +15,12 @@
  */
 
 #include <EasyHTTP.cay>
+using std::EasyHTTP;
+using std::HttpHeaders;
+using std::HttpParams;
+using std::HttpRequest;
+using std::HttpResponse;
+using std::Math;
 
 /**
  * EasyHTTP演示类

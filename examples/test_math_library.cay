@@ -6,6 +6,7 @@
  */
 
 #include <Math.cay>
+using std::Math;
 
 @main
 public class MathTest {

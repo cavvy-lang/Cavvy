@@ -3,6 +3,9 @@
  */
 
 #include <Network.cay>
+using std::Network;
+using std::NetworkUtils;
+using std::UdpSocket;
 
 public int main() {
     println("=== UDP类测试 ===");

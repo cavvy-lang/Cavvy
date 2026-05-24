@@ -1,5 +1,7 @@
 // 简单的Vector2测试
 #include <Math.cay>
+using std::Math;
+using std::Vector2;
 
 @main
 public class Test {

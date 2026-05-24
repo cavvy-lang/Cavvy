@@ -3,6 +3,7 @@
  */
 
 #include <std/ffi.cay>
+using std::File;
 
 public class DebugTest7 {
     

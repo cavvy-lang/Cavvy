@@ -6,6 +6,8 @@
  */
 
 #include <Math.cay>
+using std::Math;
+using std::Vector3;
 
 @main
 public class Vector3Test {

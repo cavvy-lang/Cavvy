@@ -6,6 +6,8 @@
  */
 
 #include <Math.cay>
+using std::Math;
+using std::Random;
 
 @main
 public class RandomTest {

@@ -1,0 +1,28 @@
+// 跨命名空间引用测试
+namespace alpha {
+    public class ServiceA {
+        public static String hello() {
+            return "CrossNS-A: hello";
+        }
+    }
+}
+
+namespace beta {
+    public class ServiceB {
+        public static String world() {
+            return "CrossNS-B: world";
+        }
+    }
+}
+
+using alpha::ServiceA;
+using beta::ServiceB;
+
+public class Main {
+    public static void main() {
+
+        println(ServiceA.hello());
+        println(ServiceB.world());
+        println("Bridge: A+B");
+    }
+}

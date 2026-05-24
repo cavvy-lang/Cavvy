@@ -56,3 +56,5 @@ sync_docs.py
 *.bak
 *.bak.*
 *.diff
+
+debug_*

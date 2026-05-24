@@ -22,6 +22,8 @@
 #ifndef CAY_EASYHTTP_H
 #define CAY_EASYHTTP_H
 
+namespace std {
+
 #include <Network.cay>
 #include <StringBuilder.cay>
 
@@ -1629,5 +1631,7 @@ public class EasyHTTP {
         return new HttpHeaders();
     }
 }
+
+} // namespace std
 
 #endif /* CAY_EASYHTTP_H */

@@ -1,0 +1,22 @@
+// 块级namespace基本测试
+namespace test {
+    public class Worker {
+        public static String work() {
+            return "Block NS: working";
+        }
+
+        public static int count() {
+            return 100;
+        }
+    }
+}
+
+using test::Worker;
+
+public class Main {
+    public static void main() {
+
+        println(Worker.work());
+        println("Counter: " + Worker.count());
+    }
+}

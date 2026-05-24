@@ -1,5 +1,6 @@
 // 简化版文件测试
 #include <File.cay>
+using std::File;
 
 public class TestSimpleFile {
     public static void main(String[] args) {

@@ -12,6 +12,9 @@ fn test_file_basic_read_write() {
 #include <std/ffi.cay>
 #include <File.cay>
 
+using std::File;
+using std::FileMode;
+
 public class FileTest {
     public static int main() {
         String path = "test_basic.txt";
@@ -83,6 +86,8 @@ fn test_file_read_all_text_static() {
 #include <std/ffi.cay>
 #include <File.cay>
 
+using std::File;
+
 public class FileTest {
     public static int main() {
         String path = "test_static.txt";
@@ -139,6 +144,9 @@ fn test_file_info() {
     let code = r#"
 #include <std/ffi.cay>
 #include <File.cay>
+
+using std::File;
+using std::FileInfo;
 
 public class FileTest {
     public static int main() {
@@ -206,6 +214,9 @@ fn test_file_read_line() {
 #include <std/ffi.cay>
 #include <File.cay>
 
+using std::File;
+using std::FileMode;
+
 public class FileTest {
     public static int main() {
         String path = "test_lines.txt";
@@ -266,6 +277,9 @@ fn test_file_append_mode() {
 #include <std/ffi.cay>
 #include <File.cay>
 
+using std::File;
+using std::FileMode;
+
 public class FileTest {
     public static int main() {
         String path = "test_append.txt";
@@ -325,6 +339,9 @@ fn test_static_and_instance_methods() {
     let code = r#"
 #include <std/ffi.cay>
 #include <File.cay>
+
+using std::File;
+using std::FileMode;
 
 public class FileTest {
     public static int main() {

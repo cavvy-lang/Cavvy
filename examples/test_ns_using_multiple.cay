@@ -1,0 +1,30 @@
+// 多个using声明测试
+namespace math {
+    public class Alpha {
+        public static int val() {
+            return 10;
+        }
+    }
+}
+
+namespace math {
+    public class Beta {
+        public static int val() {
+            return 20;
+        }
+    }
+}
+
+using math::Alpha;
+using math::Beta;
+
+public class Main {
+    public static void main() {
+
+        int a = Alpha.val();
+        int b = Beta.val();
+        println("Alpha: " + a);
+        println("Beta: " + b);
+        println("Combined: " + (a + b));
+    }
+}

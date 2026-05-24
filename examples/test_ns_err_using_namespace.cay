@@ -1,0 +1,13 @@
+// 错误: using namespace 被禁止
+namespace lib {
+    public class Foo {
+        public static void bar() {}
+    }
+}
+
+public class Main {
+    public static void main() {
+        using namespace lib;
+        Foo.bar();
+    }
+}

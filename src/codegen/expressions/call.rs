@@ -289,6 +289,7 @@ impl IRGenerator {
 
     /// 生成函数名 - 优先使用类型注册表中方法定义的参数类型，支持继承
     fn generate_function_name(&self, class_name: &str, method_name: &str, processed_args: &[String], has_varargs_array: bool) -> String {
+        let llvm_class = self.get_qualified_class_name(class_name);
         // 特殊处理运行时 native 方法：直接返回运行时函数名
         if method_name == "__cay_buffer_to_string" {
             return "__cay_buffer_to_string".to_string();
@@ -313,6 +314,7 @@ impl IRGenerator {
         if let Some(ref registry) = self.type_registry {
             // 首先在当前类中查找方法
             let mut current_class_name = class_name.to_string();
+            let llvm_current = self.get_qualified_class_name(&current_class_name);
             loop {
                 if let Some(class_info) = registry.get_class(&current_class_name) {
                     if let Some(methods) = class_info.methods.get(method_name) {
@@ -329,7 +331,7 @@ impl IRGenerator {
                                 if arg_count >= fixed_count {
                                     // 检查固定参数类型是否匹配
                                     let method_sig = self.build_function_name_from_method(&current_class_name, method_name, &method.params, has_varargs_array);
-                                    let expected_sig = format!("{}.__{}_{}", current_class_name, method_name, arg_types.join("_"));
+                                    let expected_sig = format!("{}.__{}_{}", llvm_current, method_name, arg_types.join("_"));
                                     if method_sig == expected_sig {
                                         return method_sig;
                                     }
@@ -337,7 +339,7 @@ impl IRGenerator {
                             } else if param_count == arg_count {
                                 // 非可变参数方法：检查参数类型是否匹配
                                 let method_sig = self.build_function_name_from_method(&current_class_name, method_name, &method.params, has_varargs_array);
-                                let expected_sig = format!("{}.__{}_{}", current_class_name, method_name, arg_types.join("_"));
+                                let expected_sig = format!("{}.__{}_{}", llvm_current, method_name, arg_types.join("_"));
                                 if method_sig == expected_sig {
                                     return method_sig;
                                 }
@@ -376,9 +378,9 @@ impl IRGenerator {
             // 顶层函数命名：__toplevel_func_name
             format!("__toplevel_{}", method_name)
         } else if arg_types.is_empty() {
-            format!("{}.{}", class_name, method_name)
+            format!("{}.{}", llvm_class, method_name)
         } else {
-            format!("{}.__{}_{}", class_name, method_name, arg_types.join("_"))
+            format!("{}.__{}_{}", llvm_class, method_name, arg_types.join("_"))
         }
     }
 
@@ -391,21 +393,21 @@ impl IRGenerator {
     /// * `params` - 参数信息列表
     /// * `has_varargs_array` - 是否有可变参数数组
     pub fn build_function_name_from_method(&self, class_name: &str, method_name: &str, params: &[crate::types::ParameterInfo], has_varargs_array: bool) -> String {
+        let llvm_cls = self.get_qualified_class_name(class_name);
         if params.is_empty() {
-            return format!("{}.{}", class_name, method_name);
+            return format!("{}.{}", llvm_cls, method_name);
         }
 
         let param_types: Vec<String> = params.iter()
             .enumerate()
             .map(|(idx, p)| {
                 let is_last_varargs = has_varargs_array && idx == params.len() - 1 && p.is_varargs;
-                // 解析类型别名后再生成签名
                 let resolved_type = self.resolve_type(&p.param_type);
                 self.param_type_to_signature(&resolved_type, is_last_varargs)
             })
             .collect();
 
-        format!("{}.__{}_{}", class_name, method_name, param_types.join("_"))
+        format!("{}.__{}_{}", llvm_cls, method_name, param_types.join("_"))
     }
 
     /// 将参数类型转换为签名
@@ -501,6 +503,7 @@ impl IRGenerator {
             if let Some(class_info) = registry.get_class(class_name) {
                 if let Some(methods) = class_info.methods.get(method_name) {
                     let arg_count = processed_args.len();
+                    let llvm_class = self.get_qualified_class_name(class_name);
                     
                     // 首先尝试找到参数类型完全匹配的方法
                     for method in methods {
@@ -511,14 +514,14 @@ impl IRGenerator {
                             let fixed_count = param_count.saturating_sub(1);
                             if arg_count >= fixed_count {
                                 let method_sig = self.build_function_name_from_method(class_name, method_name, &method.params, has_varargs_array);
-                                let expected_sig = format!("{}.__{}_{}", class_name, method_name, arg_types.join("_"));
+                                let expected_sig = format!("{}.__{}_{}", llvm_class, method_name, arg_types.join("_"));
                                 if method_sig == expected_sig {
                                     return method.return_type.clone();
                                 }
                             }
                         } else if param_count == arg_count {
                             let method_sig = self.build_function_name_from_method(class_name, method_name, &method.params, has_varargs_array);
-                            let expected_sig = format!("{}.__{}_{}", class_name, method_name, arg_types.join("_"));
+                            let expected_sig = format!("{}.__{}_{}", llvm_class, method_name, arg_types.join("_"));
                             if method_sig == expected_sig {
                                 return method.return_type.clone();
                             }

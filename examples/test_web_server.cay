@@ -9,6 +9,12 @@
 
 #include <Network.cay>
 #include <StringBuilder.cay>
+using std::HttpResponse;
+using std::Network;
+using std::NetworkUtils;
+using std::StringBuilder;
+using std::TcpSocket;
+using std::TcpServer;
 
 /**
  * Cavvy Web Server 测试类

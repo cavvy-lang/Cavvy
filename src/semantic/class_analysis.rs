@@ -176,15 +176,29 @@ impl SemanticAnalyzer {
             }
 
             // 使用类定义的实际文件位置（支持 #include 后的正确错误定位）
-            // class.loc.file 包含了类定义所在的实际文件路径
             let file = class.loc.file.clone().or_else(|| self.current_file.clone());
             let line = class.loc.line;
-            self.type_registry.register_class(
-                class_info,
-                file,
-                line,
-                class.loc.column,
-            )?;
+            
+            // 如果有命名空间路径，使用限定名注册并记录
+            if !class.namespace_path.is_empty() {
+                let qualified_name = format!("{}::{}", class.namespace_path.join("::"), class.name);
+                let mut qualified_class_info = class_info.clone();
+                qualified_class_info.name = qualified_name.clone();
+                self.type_registry.register_class(
+                    qualified_class_info,
+                    file,
+                    line,
+                    class.loc.column,
+                )?;
+                self.type_registry.set_class_namespace(&qualified_name, class.namespace_path.clone());
+            } else {
+                self.type_registry.register_class(
+                    class_info,
+                    file,
+                    line,
+                    class.loc.column,
+                )?;
+            }
         }
         Ok(())
     }
@@ -193,6 +207,7 @@ impl SemanticAnalyzer {
     pub fn analyze_methods(&mut self, program: &Program) -> cayResult<()> {
         for class in &program.classes {
             self.current_class = Some(class.name.clone());
+            self.type_registry.current_namespace = class.namespace_path.clone();
 
             for member in &class.members {
                 if let ClassMember::Method(method) = member {
@@ -210,7 +225,7 @@ impl SemanticAnalyzer {
                         is_final: method.modifiers.contains(&Modifier::Final),
                     };
 
-                    if let Some(class_info) = self.type_registry.classes.get_mut(&class.name) {
+                    if let Some(class_info) = self.type_registry.get_class_mut(&class.name) {
                         class_info.add_method(method_info);
                     }
                 }
@@ -228,6 +243,7 @@ impl SemanticAnalyzer {
     pub fn check_inheritance(&mut self, program: &Program) -> cayResult<()> {
         // 第一遍：验证所有父类存在
         for class in &program.classes {
+            self.type_registry.current_namespace = class.namespace_path.clone();
             if let Some(ref parent_name) = class.parent {
                 if !self.type_registry.class_exists(parent_name) {
                     return Err(semantic_error_with_file(
@@ -242,6 +258,7 @@ impl SemanticAnalyzer {
 
         // 第二遍：检查 final 类不能被继承
         for class in &program.classes {
+            self.type_registry.current_namespace = class.namespace_path.clone();
             if let Some(ref parent_name) = class.parent {
                 if let Some(parent_class) = self.type_registry.get_class(parent_name) {
                     if parent_class.is_final {

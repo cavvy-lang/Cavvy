@@ -457,8 +457,8 @@ fn generate_expression(
     use cavvy::ast::*;
 
     match expr {
-        Expr::Literal(lit) => {
-            match lit {
+        Expr::Literal(lit_expr) => {
+            match &lit_expr.value {
                 LiteralValue::Int32(v) => {
                     if *v >= -128 && *v <= 127 {
                         instructions.push(Instruction::iconst(*v as i8));

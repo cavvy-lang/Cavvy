@@ -1,0 +1,19 @@
+// 文件级namespace基本测试
+namespace std;
+
+public class Greeter {
+    public static String hello() {
+        return "Hello from std namespace";
+    }
+
+    public static int getValue() {
+        return 42;
+    }
+}
+
+public class Main {
+    public static void main() {
+        println(Greeter.hello());
+        println("Value: " + Greeter.getValue());
+    }
+}

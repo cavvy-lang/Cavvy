@@ -19,7 +19,7 @@ impl IRGenerator {
     pub fn generate_expression(&mut self, expr: &Expr) -> cayResult<String> {
         match expr {
             // 字面量
-            Expr::Literal(lit) => self.generate_literal(lit),
+            Expr::Literal(lit_expr) => self.generate_literal(&lit_expr.value),
             
             // 标识符（变量访问）
             Expr::Identifier(name) => self.generate_identifier(name.as_ref()),

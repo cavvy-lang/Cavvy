@@ -1,0 +1,29 @@
+// 命名空间类实例方法测试
+namespace app {
+    public class Person {
+        private String name;
+
+        public Person(String n) {
+            this.name = n;
+        }
+
+        public String getName() {
+            return this.name;
+        }
+
+        public int nameLength() {
+            return this.name.length();
+        }
+    }
+}
+
+using app::Person;
+
+public class Main {
+    public static void main() {
+
+        Person p = new Person("Cavvy");
+        println("Instance: " + p.getName());
+        println("Length: " + p.nameLength());
+    }
+}

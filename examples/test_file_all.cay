@@ -4,6 +4,12 @@
  */
 
 #include <File.cay>
+using std::File;
+using std::FileMode;
+using std::FileReader;
+using std::FileUtils;
+using std::FileWriter;
+using std::SeekOrigin;
 
 public class TestFileAll {
     public static void main() {

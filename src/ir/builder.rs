@@ -1110,7 +1110,7 @@ impl IrBuilder {
 
     fn build_expression(&mut self, expr: &Expr) -> cayResult<IrValue> {
         match expr {
-            Expr::Literal(lit) => self.build_literal(lit),
+            Expr::Literal(lit_expr) => self.build_literal(&lit_expr.value),
             Expr::Identifier(ident) => self.build_identifier(&ident.name),
             Expr::Binary(bin) => self.build_binary(bin),
             Expr::Unary(unary) => self.build_unary(unary),
@@ -1841,13 +1841,16 @@ impl IrBuilder {
 
     fn infer_type_from_expr(&self, expr: Option<&Expr>) -> cayResult<Type> {
         match expr {
-            Some(Expr::Literal(LiteralValue::Int32(_))) => Ok(Type::Int32),
-            Some(Expr::Literal(LiteralValue::Int64(_))) => Ok(Type::Int64),
-            Some(Expr::Literal(LiteralValue::Float32(_))) => Ok(Type::Float32),
-            Some(Expr::Literal(LiteralValue::Float64(_))) => Ok(Type::Float64),
-            Some(Expr::Literal(LiteralValue::Bool(_))) => Ok(Type::Bool),
-            Some(Expr::Literal(LiteralValue::Char(_))) => Ok(Type::Char),
-            Some(Expr::Literal(LiteralValue::String(_))) => Ok(Type::String),
+            Some(Expr::Literal(lit_expr)) => match &lit_expr.value {
+                LiteralValue::Int32(_) => Ok(Type::Int32),
+                LiteralValue::Int64(_) => Ok(Type::Int64),
+                LiteralValue::Float32(_) => Ok(Type::Float32),
+                LiteralValue::Float64(_) => Ok(Type::Float64),
+                LiteralValue::Bool(_) => Ok(Type::Bool),
+                LiteralValue::Char(_) => Ok(Type::Char),
+                LiteralValue::String(_) => Ok(Type::String),
+                LiteralValue::Null => Ok(Type::Object("Object".to_string())),
+            }
             _ => Ok(Type::Int32), // 默认
         }
     }

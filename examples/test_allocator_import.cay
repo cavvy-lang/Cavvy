@@ -3,6 +3,7 @@
  */
 
 #include <Allocator.cay>
+using std::Allocator;
 
 public class TestAllocatorImport {
     public static int main() {

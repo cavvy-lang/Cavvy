@@ -1,0 +1,15 @@
+// 文件级namespace测试(函数改为静态方法)
+namespace std;
+
+public class Calculator {
+    public static int compute() {
+        return 42;
+    }
+}
+
+public class Main {
+    public static void main() {
+        println("Top-level func: " + Calculator.compute());
+        println("Hello from main");
+    }
+}

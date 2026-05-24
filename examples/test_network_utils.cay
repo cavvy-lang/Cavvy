@@ -6,6 +6,10 @@
  */
 
 #include <Network.cay>
+using std::Network;
+using std::NetworkUtils;
+using std::TcpSocket;
+using std::UdpSocket;
 
 public int main() {
     println("=== 网络工具函数测试 ===");

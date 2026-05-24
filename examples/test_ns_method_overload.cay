@@ -1,0 +1,26 @@
+// 命名空间类方法重载测试
+namespace calc {
+    public class Printer {
+        public static String format(int n) {
+            return "Int: " + (String)n;
+        }
+
+        public static String format(String s) {
+            return "String: " + s;
+        }
+
+        public static String format(double d) {
+            return "Double: " + (String)d;
+        }
+    }
+}
+
+using calc::Printer;
+
+public class Main {
+    public static void main() {
+        println(Printer.format(100));
+        println(Printer.format("hello"));
+        println(Printer.format(3.14));
+    }
+}

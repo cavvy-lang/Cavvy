@@ -4,6 +4,10 @@
  */
 
 #include <Network.cay>
+using std::Network;
+using std::NetworkUtils;
+using std::UdpSocket;
+using std::SocketAddr;
 
 public class TestUdpSocket {
     public static int main() {

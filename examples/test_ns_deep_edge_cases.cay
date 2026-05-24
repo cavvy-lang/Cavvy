@@ -1,0 +1,58 @@
+// 深层嵌套边界测试 (5级嵌套 + 同层多类 + using跨越)
+namespace l1 {
+    public class A1 {
+        public static String val() { return "A1: ok"; }
+    }
+
+    namespace l2 {
+        public class B1 {
+            public static String val() { return "B1: ok"; }
+        }
+
+        public class B2 {
+            public static String echo(String s) { return s; }
+        }
+
+        namespace l3 {
+            public class C1 {
+                public static String val() { return "C1: ok"; }
+            }
+
+            namespace l4 {
+                public class D1 {
+                    public static String val() { return "D1: ok"; }
+                }
+
+                namespace l5 {
+                    public class E1 {
+                        public static String val() { return "E1: ok"; }
+                    }
+                }
+            }
+        }
+    }
+}
+
+using l1::A1;
+using l1::l2::B1;
+using l1::l2::B2;
+using l1::l2::l3::C1;
+using l1::l2::l3::l4::D1;
+using l1::l2::l3::l4::l5::E1;
+
+public class Main {
+    public static void main() {
+
+
+
+
+        println("=== Deep Edge Test ===");
+        println(A1.val());
+        println(B1.val());
+        println("B2 echo: " + B2.echo("works"));
+        println(C1.val());
+        println(D1.val());
+        println(E1.val());
+        println("All 5 levels: PASSED");
+    }
+}

@@ -270,6 +270,8 @@ pub fn get_token_name(token: &Token) -> String {
         Token::Let => "let".to_string(),
         Token::Auto => "auto".to_string(),
         Token::Extern => "extern".to_string(),
+        Token::Namespace => "namespace".to_string(),
+        Token::Using => "using".to_string(),
         Token::True => "true".to_string(),
         Token::False => "false".to_string(),
         Token::Null => "null".to_string(),

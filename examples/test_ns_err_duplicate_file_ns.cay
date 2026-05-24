@@ -1,0 +1,10 @@
+// 错误: 重复的文件级 namespace 声明
+namespace first;
+
+namespace second;
+
+public class Main {
+    public static void main() {
+        println("test");
+    }
+}

@@ -3,6 +3,7 @@
  * 使用尖括号包含 caylibs 目录下的库文件
  */
 #include <StringPlus.cay>
+using std::StringPlus;
 
 public class TestIncludeSystem {
     public static void main() {

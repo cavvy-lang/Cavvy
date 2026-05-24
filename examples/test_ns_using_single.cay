@@ -1,0 +1,18 @@
+// 单个using声明测试
+namespace lib {
+    public class Calculator {
+        public static int compute() {
+            return 777;
+        }
+    }
+}
+
+using lib::Calculator;
+
+public class Main {
+    public static void main() {
+
+        println("Using single: OK");
+        println("Value: " + Calculator.compute());
+    }
+}

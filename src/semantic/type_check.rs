@@ -11,6 +11,7 @@ impl SemanticAnalyzer {
     pub fn type_check_program(&mut self, program: &Program) -> cayResult<()> {
         for class in &program.classes {
             self.current_class = Some(class.name.clone());
+            self.type_registry.current_namespace = class.namespace_path.clone();
             
             for member in &class.members {
                 match member {
@@ -248,14 +249,15 @@ impl SemanticAnalyzer {
                 if let Some(expected) = expected_return {
                     if !self.types_compatible(&return_type, expected) {
                         // 尝试从表达式获取位置信息
-                        let (line, column) = if let Some(e) = expr {
-                            self.get_expr_location(e)
+                        let loc = if let Some(e) = expr {
+                            self.get_expr_source_location(e)
                         } else {
-                            (0, 0)
+                            crate::error::SourceLocation::new(self.current_file.clone(), 0, 0)
                         };
-                        self.errors.push(self.create_error_info(
-                            line,
-                            column,
+                        self.errors.push(self.create_error_info_with_file(
+                            loc.file,
+                            loc.line,
+                            loc.column,
                             format!(
                                 "Return type mismatch: expected {}, got {}",
                                 expected, return_type

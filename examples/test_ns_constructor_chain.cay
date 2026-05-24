@@ -1,0 +1,40 @@
+// 命名空间类构造函数链测试
+namespace builder {
+    public class Config {
+        private String name;
+        private String version;
+
+        public Config() {
+            this.name = "Builder";
+            this.version = "1.0";
+        }
+
+        public Config(String n) {
+            this.name = n;
+            this.version = "1.0";
+        }
+
+        public Config(String n, String v) {
+            this.name = n;
+            this.version = v;
+        }
+
+        public String describe() {
+            return this.name + " " + this.version;
+        }
+    }
+}
+
+using builder::Config;
+
+public class Main {
+    public static void main() {
+
+        Config c1 = new Config();
+        println("Default: " + c1.describe());
+        Config c2 = new Config("CavvyBuilder");
+        println("WithName: " + c2.describe());
+        Config c3 = new Config("CavvyBuilder", "v2.0");
+        println("WithAll: " + c3.describe());
+    }
+}

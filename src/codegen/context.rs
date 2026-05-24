@@ -211,6 +211,7 @@ pub struct IRGenerator {
     pub top_level_functions: Vec<crate::ast::TopLevelFunction>,  // 顶层函数列表
     pub current_param_order: Vec<String>,  // 当前函数参数顺序（用于内联IR）
     pub type_aliases: HashMap<String, crate::types::Type>,  // 类型别名映射
+    pub class_namespaces: HashMap<String, Vec<String>>,     // 类名 -> 命名空间路径 映射
     // 源映射相关
     pub current_ir_line: usize,  // 当前IR行号
     pub source_file: String,     // 当前源文件
@@ -275,6 +276,7 @@ impl IRGenerator {
             top_level_functions: Vec::new(),
             current_param_order: Vec::new(),
             type_aliases: HashMap::new(),
+            class_namespaces: HashMap::new(),
             // 源映射初始化
             current_ir_line: 1,
             source_file: String::new(),
@@ -622,7 +624,7 @@ impl IRGenerator {
         use crate::types::Type;
 
         match expr {
-            Expr::Literal(lit) => match lit {
+            Expr::Literal(lit_expr) => match &lit_expr.value {
                 LiteralValue::Int32(_) => Some(Type::Int32),
                 LiteralValue::Int64(_) => Some(Type::Int64),
                 LiteralValue::Float32(_) => Some(Type::Float32),
@@ -780,29 +782,58 @@ impl IRGenerator {
         &self.global_strings
     }
 
-    /// 生成带参数签名的方法名以支持方法重载
-    /// 格式: ClassName.__methodName_param1Type_param2Type
-    /// 注意：LLVM IR 中函数名不能包含 @ 符号，使用 __ 作为分隔符
-    /// 注意：函数名不包含 this 参数，this 在 IR 层面处理
-    /// 注意：可变参数方法使用 ai/as 等签名表示数组类型
-    pub fn generate_method_name(&self, class_name: &str, method: &crate::ast::MethodDecl) -> String {
-        if method.params.is_empty() {
-            // 无参数方法，使用简单名称
-            format!("{}.{}", class_name, method.name)
+    /// 获取带命名空间的类名（用于 LLVM IR 标识符）
+    /// 使用 Itanium ABI 名称改编: _ZN<len>ns1<len>ns2<len>classNameE
+    pub(crate) fn get_qualified_class_name(&self, class_name: &str) -> String {
+        // 如果 class_name 已经包含 ::，解析出简单名称
+        let simple_name = if class_name.contains("::") {
+            class_name.split("::").last().unwrap_or(class_name)
         } else {
-            // 有参数方法，添加参数类型签名
+            class_name
+        };
+        
+        let namespace = self.get_class_namespace(simple_name);
+        if namespace.is_empty() {
+            simple_name.to_string()
+        } else {
+            // 使用 Itanium ABI 格式
+            self.mangle_namespace(&namespace, simple_name)
+        }
+    }
+
+    /// 生成带参数签名的方法名以支持方法重载
+    /// 格式: _ZN<len>ns1<len>ns2<len>classNameE.methodName 或 _ZN<len>ns1<len>ns2<len>classNameE.__methodName_paramTypes
+    pub fn generate_method_name(&self, class_name: &str, method: &crate::ast::MethodDecl) -> String {
+        let cls = self.get_qualified_class_name(class_name);
+        if method.params.is_empty() {
+            format!("{}.{}", cls, method.name)
+        } else {
             let param_types: Vec<String> = method.params.iter()
                 .map(|p| {
                     if p.is_varargs {
-                        // 可变参数使用特殊签名：ai（int数组）、as（string数组）等
                         self.varargs_type_to_signature(&p.param_type)
                     } else {
                         self.type_to_signature(&p.param_type)
                     }
                 })
                 .collect();
-            format!("{}.__{}_{}", class_name, method.name, param_types.join("_"))
+            format!("{}.__{}_{}", cls, method.name, param_types.join("_"))
         }
+    }
+
+    /// 获取类的命名空间路径
+    pub(crate) fn get_class_namespace(&self, class_name: &str) -> Vec<String> {
+        self.class_namespaces.get(class_name).cloned().unwrap_or_default()
+    }
+
+    /// Itanium ABI 名称改编: _ZN<len>ns1<len>ns2<len>classNameE
+    pub(crate) fn mangle_namespace(&self, namespace_path: &[String], name: &str) -> String {
+        let mut result = "_ZN".to_string();
+        for part in namespace_path {
+            result.push_str(&format!("{}{}", part.len(), part));
+        }
+        result.push_str(&format!("{}{}E", name.len(), name));
+        result
     }
 
     /// 将可变参数类型转换为签名
@@ -885,8 +916,9 @@ impl IRGenerator {
 
     /// 注册类型标识符
     pub fn register_type_id(&mut self, class_name: &str, parent_name: Option<&str>, interfaces: Vec<String>) -> String {
-        let type_id = format!("@__type_id_{}", class_name);
-        let parent_type_id = parent_name.map(|p| format!("@__type_id_{}", p));
+        let llvm_name = self.get_qualified_class_name(class_name);
+        let type_id = format!("@__type_id_{}", llvm_name);
+        let parent_type_id = parent_name.map(|p| format!("@__type_id_{}", self.get_qualified_class_name(p)));
         let type_id_value = self.type_id_counter as i32;
         self.type_id_counter += 1;
         
@@ -902,7 +934,7 @@ impl IRGenerator {
         
         type_id
     }
-    
+
     /// 获取类型的整数标识符值
     pub fn get_type_id_value(&self, class_name: &str) -> Option<i32> {
         self.type_id_map.get(class_name).map(|info| info.type_id_value)
@@ -910,7 +942,8 @@ impl IRGenerator {
 
     /// 获取类型标识符
     pub fn get_type_id(&self, class_name: &str) -> Option<String> {
-        self.type_id_map.get(class_name).map(|_| format!("@__type_id_{}", class_name))
+        let llvm_name = self.get_qualified_class_name(class_name);
+        self.type_id_map.get(class_name).map(|_| format!("@__type_id_{}", llvm_name))
     }
 
     /// 检查类型是否是另一个类型的子类或实现了该接口
@@ -944,8 +977,8 @@ impl IRGenerator {
     pub fn emit_type_id_declarations(&self) -> String {
         let mut result = String::new();
         for (class_name, info) in &self.type_id_map {
-            let type_id_name = format!("@__type_id_{}", class_name);
-            // 使用整数标识符作为类型标识符的值
+            let llvm_name = self.get_qualified_class_name(class_name);
+            let type_id_name = format!("@__type_id_{}", llvm_name);
             result.push_str(&format!(
                 "{} = private constant i32 {}, align 4\n",
                 type_id_name, info.type_id_value

@@ -1,0 +1,22 @@
+// 命名空间类静态方法测试
+namespace util {
+    public class StringHelper {
+        public static String greet() {
+            return "Static method: hello";
+        }
+
+        public static int add(int a, int b) {
+            return a + b;
+        }
+    }
+}
+
+using util::StringHelper;
+
+public class Main {
+    public static void main() {
+
+        println(StringHelper.greet());
+        println("Add: " + StringHelper.add(10, 20));
+    }
+}

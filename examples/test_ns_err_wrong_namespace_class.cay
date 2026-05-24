@@ -1,0 +1,15 @@
+// 错误: using声明了一个不存在于指定namespace的类
+namespace alpha {
+    public class Foo {
+        public static String value() { return "alpha"; }
+    }
+}
+
+using beta::Foo; // beta namespace不存在, Foo在alpha中
+
+public class Main {
+    public static void main() {
+        println(Foo.value());
+    }
+}
+

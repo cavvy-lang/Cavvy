@@ -4,6 +4,8 @@
  */
 
 #include <File.cay>
+using std::File;
+using std::FileMode;
 
 public class TestFileBasic {
     public static void main() {

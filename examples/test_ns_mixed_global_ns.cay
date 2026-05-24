@@ -1,0 +1,25 @@
+// 全局和命名空间混合测试
+public class GlobalGreeter {
+    public static String greet() {
+        return "GlobalGreeter: Hi";
+    }
+}
+
+namespace greetings {
+    public class NsGreeter {
+        public static String greet() {
+            return "NsGreeter: Hello";
+        }
+    }
+}
+
+using greetings::NsGreeter;
+
+public class Main {
+    public static void main() {
+
+        println(GlobalGreeter.greet());
+        println(NsGreeter.greet());
+        println("Bridge: Global meets NS");
+    }
+}

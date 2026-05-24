@@ -1,5 +1,8 @@
 /* 引入EasyHTTP库 */
 #include <EasyHTTP.cay>
+using std::EasyHTTP;
+using std::HttpHeaders;
+using std::HttpParams;
 
 /**
  * 简化版EasyHTTP测试

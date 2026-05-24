@@ -1,0 +1,24 @@
+// 全局类和命名空间类共存测试
+public class GlobalClass {
+    public static String run() {
+        return "GlobalClass: running";
+    }
+}
+
+namespace ns {
+    public class NsClass {
+        public static String run() {
+            return "NsClass: also running";
+        }
+    }
+}
+
+using ns::NsClass;
+
+public class Main {
+    public static void main() {
+
+        println(GlobalClass.run());
+        println(NsClass.run());
+    }
+}

@@ -4,6 +4,9 @@
  */
 
 #include <File.cay>
+using std::File;
+using std::FileMode;
+using std::SeekOrigin;
 
 public class TestFileSeek {
     public static void main() {

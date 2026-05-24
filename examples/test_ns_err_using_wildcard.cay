@@ -1,0 +1,13 @@
+// 错误: 通配符 using 被禁止
+namespace lib {
+    public class Foo {
+        public static void bar() {}
+    }
+}
+
+public class Main {
+    public static void main() {
+        using lib::*;
+        Foo.bar();
+    }
+}

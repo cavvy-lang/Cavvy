@@ -1,0 +1,91 @@
+// 复杂场景：多命名空间 + 继承 + 接口 + 构造函数链
+namespace core {
+    public interface Service {
+        String name();
+        String execute();
+    }
+
+    public class Logger {
+        private String prefix;
+
+        public Logger(String prefix) {
+            this.prefix = prefix;
+        }
+
+        public String log(String msg) {
+            return this.prefix + ": " + msg;
+        }
+    }
+
+    public class Database {
+        private bool connected;
+
+        public Database() {
+            this.connected = false;
+        }
+
+        public String connect() {
+            this.connected = true;
+            return "Database: connected";
+        }
+
+        public bool isConnected() {
+            return this.connected;
+        }
+    }
+
+    public class DataService extends Database {
+        private Logger logger;
+
+        public DataService(String logPrefix) {
+            this.logger = new Logger(logPrefix);
+        }
+
+        public String process() {
+            String status = this.connect();
+            return this.logger.log(status + " | Service: processing");
+        }
+    }
+}
+
+namespace result {
+    public class Result {
+        private String status;
+
+        public Result(String status) {
+            this.status = status;
+        }
+
+        public String getStatus() {
+            return this.status;
+        }
+    }
+}
+
+using core::Logger;
+using core::Database;
+using core::DataService;
+using result::Result;
+
+public class Main {
+    public static void main() {
+
+
+
+        println("=== Complex Namespace Test ===");
+
+        Logger log = new Logger("SYS");
+        println(log.log("Logger: initialized"));
+
+        Database db = new Database();
+        println(db.connect());
+
+        DataService svc = new DataService("SVC");
+        println(svc.process());
+
+        Result r = new Result("success");
+        println("Result: " + r.getStatus());
+
+        println("All systems: OK");
+    }
+}

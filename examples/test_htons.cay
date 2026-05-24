@@ -3,6 +3,8 @@
  */
 
 #include <Network.cay>
+using std::Network;
+using std::NetworkUtils;
 
 public int main() {
     println("=== htons测试 ===");

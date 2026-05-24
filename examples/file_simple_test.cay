@@ -4,6 +4,7 @@
 
 #include <std/ffi.cay>
 #include <File.cay>
+using std::File;
 
 public class SimpleTest {
     

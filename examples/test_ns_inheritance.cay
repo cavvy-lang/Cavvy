@@ -1,0 +1,37 @@
+// 命名空间内继承测试
+namespace animals {
+    public class Animal {
+        public String speak() {
+            return "Animal speaks";
+        }
+    }
+
+    public class Dog extends Animal {
+        public String speak() {
+            return "Dog barks";
+        }
+    }
+
+    public class Cat extends Animal {
+        public String speak() {
+            return "Cat meows";
+        }
+    }
+}
+
+using animals::Animal;
+using animals::Dog;
+using animals::Cat;
+
+public class Main {
+    public static void main() {
+
+
+        Animal a = new Animal();
+        println(a.speak());
+        Dog d = new Dog();
+        println(d.speak());
+        Cat c = new Cat();
+        println(c.speak());
+    }
+}

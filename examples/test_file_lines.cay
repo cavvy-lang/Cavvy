@@ -4,6 +4,9 @@
  */
 
 #include <File.cay>
+using std::File;
+using std::FileReader;
+using std::FileWriter;
 
 public class TestFileLines {
     public static void main() {

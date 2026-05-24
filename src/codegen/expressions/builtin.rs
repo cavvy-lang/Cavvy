@@ -58,46 +58,121 @@ impl IRGenerator {
     /// 生成简单的单参数打印（保持向后兼容）
     fn generate_simple_print(&mut self, arg: &Expr, newline: bool) -> cayResult<String> {
         match arg {
-            Expr::Literal(LiteralValue::String(s)) => {
-                let global_name = self.get_or_create_string_constant(s);
-                let fmt_str = if newline { "%s\n" } else { "%s" };
-                let fmt_name = self.get_or_create_string_constant(fmt_str);
-                let len = s.len() + 1;
-                let fmt_len = fmt_str.len() + 1;
+            Expr::Literal(lit_expr) => match &lit_expr.value {
+                LiteralValue::String(s) => {
+                    let global_name = self.get_or_create_string_constant(s);
+                    let fmt_str = if newline { "%s\n" } else { "%s" };
+                    let fmt_name = self.get_or_create_string_constant(fmt_str);
+                    let len = s.len() + 1;
+                    let fmt_len = fmt_str.len() + 1;
 
-                let str_ptr = self.new_temp();
-                let fmt_ptr = self.new_temp();
+                    let str_ptr = self.new_temp();
+                    let fmt_ptr = self.new_temp();
 
-                self.emit_line(&format!("  {} = getelementptr [{} x i8], [{} x i8]* {}, i64 0, i64 0",
-                    str_ptr, len, len, global_name));
-                self.emit_line(&format!("  {} = getelementptr [{} x i8], [{} x i8]* {}, i64 0, i64 0",
-                    fmt_ptr, fmt_len, fmt_len, fmt_name));
+                    self.emit_line(&format!("  {} = getelementptr [{} x i8], [{} x i8]* {}, i64 0, i64 0",
+                        str_ptr, len, len, global_name));
+                    self.emit_line(&format!("  {} = getelementptr [{} x i8], [{} x i8]* {}, i64 0, i64 0",
+                        fmt_ptr, fmt_len, fmt_len, fmt_name));
 
-                self.emit_line(&format!("  call i32 (i8*, ...) @printf(i8* {}, i8* {})",
-                    fmt_ptr, str_ptr));
-            }
-            Expr::Literal(LiteralValue::Int32(_)) | Expr::Literal(LiteralValue::Int64(_)) => {
-                let value = self.generate_expression(arg)?;
-                let (type_str, val) = self.parse_typed_value(&value);
-                let i64_fmt = self.get_i64_format_specifier();
-                let fmt_str = if newline { format!("{}\n", i64_fmt) } else { i64_fmt.to_string() };
-                let fmt_name = self.get_or_create_string_constant(&fmt_str);
-                let fmt_len = fmt_str.len() + 1;
+                    self.emit_line(&format!("  call i32 (i8*, ...) @printf(i8* {}, i8* {})",
+                        fmt_ptr, str_ptr));
+                }
+                LiteralValue::Int32(_) | LiteralValue::Int64(_) => {
+                    let value = self.generate_expression(arg)?;
+                    let (type_str, val) = self.parse_typed_value(&value);
+                    let i64_fmt = self.get_i64_format_specifier();
+                    let fmt_str = if newline { format!("{}\n", i64_fmt) } else { i64_fmt.to_string() };
+                    let fmt_name = self.get_or_create_string_constant(&fmt_str);
+                    let fmt_len = fmt_str.len() + 1;
 
-                let fmt_ptr = self.new_temp();
-                self.emit_line(&format!("  {} = getelementptr [{} x i8], [{} x i8]* {}, i64 0, i64 0",
-                    fmt_ptr, fmt_len, fmt_len, fmt_name));
+                    let fmt_ptr = self.new_temp();
+                    self.emit_line(&format!("  {} = getelementptr [{} x i8], [{} x i8]* {}, i64 0, i64 0",
+                        fmt_ptr, fmt_len, fmt_len, fmt_name));
 
-                let final_val = if type_str != "i64" {
-                    let ext_temp = self.new_temp();
-                    self.emit_line(&format!("  {} = sext {} {} to i64", ext_temp, type_str, val));
-                    ext_temp
-                } else {
-                    val.to_string()
-                };
+                    let final_val = if type_str != "i64" {
+                        let ext_temp = self.new_temp();
+                        self.emit_line(&format!("  {} = sext {} {} to i64", ext_temp, type_str, val));
+                        ext_temp
+                    } else {
+                        val.to_string()
+                    };
 
-                self.emit_line(&format!("  call i32 (i8*, ...) @printf(i8* {}, i64 {})",
-                    fmt_ptr, final_val));
+                    self.emit_line(&format!("  call i32 (i8*, ...) @printf(i8* {}, i64 {})",
+                        fmt_ptr, final_val));
+                }
+                _ => {
+                    let value = self.generate_expression(arg)?;
+                    let (type_str, val) = self.parse_typed_value(&value);
+
+                    if type_str == "i8*" {
+                        let fmt_str = if newline { "%s\n" } else { "%s" };
+                        let fmt_name = self.get_or_create_string_constant(fmt_str);
+                        let fmt_len = fmt_str.len() + 1;
+                        let fmt_ptr = self.new_temp();
+                        self.emit_line(&format!("  {} = getelementptr [{} x i8], [{} x i8]* {}, i64 0, i64 0",
+                            fmt_ptr, fmt_len, fmt_len, fmt_name));
+                        self.emit_line(&format!("  call i32 (i8*, ...) @printf(i8* {}, i8* {})",
+                            fmt_ptr, val));
+                    } else if type_str == "i1" {
+                        // 布尔类型：调用 __cay_bool_to_string 转换为字符串后打印
+                        let str_temp = self.new_temp();
+                        self.emit_line(&format!("  {} = call i8* @__cay_bool_to_string(i1 {})", str_temp, val));
+                        let fmt_str = if newline { "%s\n" } else { "%s" };
+                        let fmt_name = self.get_or_create_string_constant(fmt_str);
+                        let fmt_len = fmt_str.len() + 1;
+                        let fmt_ptr = self.new_temp();
+                        self.emit_line(&format!("  {} = getelementptr [{} x i8], [{} x i8]* {}, i64 0, i64 0",
+                            fmt_ptr, fmt_len, fmt_len, fmt_name));
+                        self.emit_line(&format!("  call i32 (i8*, ...) @printf(i8* {}, i8* {})",
+                            fmt_ptr, str_temp));
+                    } else if type_str.starts_with("i") && !type_str.ends_with("*") {
+                        let i64_fmt = self.get_i64_format_specifier();
+                        let fmt_str = if newline { format!("{}\n", i64_fmt) } else { i64_fmt.to_string() };
+                        let fmt_name = self.get_or_create_string_constant(&fmt_str);
+                        let fmt_len = fmt_str.len() + 1;
+                        let fmt_ptr = self.new_temp();
+                        self.emit_line(&format!("  {} = getelementptr [{} x i8], [{} x i8]* {}, i64 0, i64 0",
+                            fmt_ptr, fmt_len, fmt_len, fmt_name));
+
+                        let final_val = if type_str != "i64" {
+                            let ext_temp = self.new_temp();
+                            self.emit_line(&format!("  {} = sext {} {} to i64", ext_temp, type_str, val));
+                            ext_temp
+                        } else {
+                            val.to_string()
+                        };
+
+                        self.emit_line(&format!("  call i32 (i8*, ...) @printf(i8* {}, i64 {})",
+                            fmt_ptr, final_val));
+                    } else if type_str == "double" || type_str == "float" {
+                        let fmt_str = if newline { "%f\n" } else { "%f" };
+                        let fmt_name = self.get_or_create_string_constant(fmt_str);
+                        let fmt_len = fmt_str.len() + 1;
+                        let fmt_ptr = self.new_temp();
+                        self.emit_line(&format!("  {} = getelementptr [{} x i8], [{} x i8]* {}, i64 0, i64 0",
+                            fmt_ptr, fmt_len, fmt_len, fmt_name));
+
+                        let final_val = if type_str == "float" {
+                            let ext_temp = self.new_temp();
+                            self.emit_line(&format!("  {} = fpext float {} to double", ext_temp, val));
+                            ext_temp
+                        } else {
+                            val.to_string()
+                        };
+
+                        self.emit_line(&format!("  call i32 (i8*, ...) @printf(i8* {}, double {})",
+                            fmt_ptr, final_val));
+                    } else {
+                        let fmt_str = if newline { "%s\n" } else { "%s" };
+                        let fmt_name = self.get_or_create_string_constant(fmt_str);
+                        let fmt_len = fmt_str.len() + 1;
+                        let fmt_ptr = self.new_temp();
+                        self.emit_line(&format!("  {} = getelementptr [{} x i8], [{} x i8]* {}, i64 0, i64 0",
+                            fmt_ptr, fmt_len, fmt_len, fmt_name));
+                        self.emit_line(&format!("  call i32 (i8*, ...) @printf(i8* {}, {})",
+                            fmt_ptr, value));
+                    }
+                }
             }
             _ => {
                 let value = self.generate_expression(arg)?;
@@ -187,7 +262,13 @@ impl IRGenerator {
         // 第一个参数必须是 format 字符串
         let format_arg = &args[0];
         let format_str = match format_arg {
-            Expr::Literal(LiteralValue::String(s)) => s.clone(),
+            Expr::Literal(lit_expr) => match &lit_expr.value {
+                LiteralValue::String(s) => s.clone(),
+                _ => {
+                    // 如果第一个参数不是字符串字面量，回退到简单打印第一个参数
+                    return self.generate_simple_print(format_arg, newline);
+                }
+            }
             _ => {
                 // 如果第一个参数不是字符串字面量，回退到简单打印第一个参数
                 return self.generate_simple_print(format_arg, newline);

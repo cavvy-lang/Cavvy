@@ -5,6 +5,15 @@
 
 #include <std/ffi.cay>
 #include <File.cay>
+using std::File;
+using std::FileError;
+using std::FileInfo;
+using std::FileMode;
+using std::FileReader;
+using std::FileResult;
+using std::FileUtils;
+using std::FileWriter;
+using std::SeekOrigin;
 
 public class FileTest {
     

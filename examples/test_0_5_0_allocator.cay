@@ -9,6 +9,7 @@
  */
 
 #include <Allocator.cay>
+using std::Allocator;
 
 public class TestAllocator {
     

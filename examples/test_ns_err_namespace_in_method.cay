@@ -1,0 +1,8 @@
+// 错误: namespace 出现在方法体内
+public class Main {
+    public static void main() {
+        namespace invalid {
+            public class Test {}
+        }
+    }
+}

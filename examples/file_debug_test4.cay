@@ -4,6 +4,8 @@
 
 #include <std/ffi.cay>
 #include <File.cay>
+using std::File;
+using std::FileMode;
 
 public class DebugTest4 {
     

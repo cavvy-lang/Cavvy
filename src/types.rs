@@ -429,6 +429,12 @@ impl fmt::Display for Type {
 pub struct TypeRegistry {
     pub classes: HashMap<String, ClassInfo>,
     pub interfaces: HashMap<String, InterfaceInfo>,
+    /// 命名空间别名映射: simple_name -> namespace_qualified_name (用于 using 声明)
+    pub namespace_aliases: HashMap<String, String>,
+    /// 类的命名空间路径: qualified_name -> namespace_path
+    pub class_namespace_paths: HashMap<String, Vec<String>>,
+    /// 当前命名空间上下文 (由语义分析器在处理每个类时设置)
+    pub current_namespace: Vec<String>,
 }
 
 impl TypeRegistry {
@@ -436,6 +442,9 @@ impl TypeRegistry {
         let mut registry = Self {
             classes: HashMap::new(),
             interfaces: HashMap::new(),
+            namespace_aliases: HashMap::new(),
+            class_namespace_paths: HashMap::new(),
+            current_namespace: Vec::new(),
         };
 
         // 注册内置类 String（用于支持 String.valueOf() 等静态方法调用）
@@ -677,17 +686,104 @@ impl TypeRegistry {
     }
 
     pub fn get_class(&self, name: &str) -> Option<&ClassInfo> {
-        self.classes.get(name)
+        // 直接查找（适用于全局类或限定名如 "std::StringBuilder"）
+        if let Some(class) = self.classes.get(name) {
+            return Some(class);
+        }
+        // 尝试命名空间别名（using 声明）
+        if let Some(qualified) = self.namespace_aliases.get(name) {
+            return self.classes.get(qualified);
+        }
+        // 尝试当前命名空间上下文
+        if !self.current_namespace.is_empty() {
+            let qualified = format!("{}::{}", self.current_namespace.join("::"), name);
+            if let Some(class) = self.classes.get(&qualified) {
+                return Some(class);
+            }
+        }
+        None
     }
 
     /// 获取类的可变引用
     pub fn get_class_mut(&mut self, name: &str) -> Option<&mut ClassInfo> {
-        self.classes.get_mut(name)
+        if self.classes.contains_key(name) {
+            return self.classes.get_mut(name);
+        }
+        if let Some(qualified) = self.namespace_aliases.get(name).cloned() {
+            return self.classes.get_mut(&qualified);
+        }
+        if !self.current_namespace.is_empty() {
+            let qualified = format!("{}::{}", self.current_namespace.join("::"), name);
+            return self.classes.get_mut(&qualified);
+        }
+        None
+    }
+
+    /// 注册命名空间别名（用于 using 声明）
+    pub fn add_namespace_alias(&mut self, simple_name: String, qualified_name: String) {
+        self.namespace_aliases.insert(simple_name, qualified_name);
+    }
+
+    /// 记录类的命名空间路径
+    pub fn set_class_namespace(&mut self, qualified_name: &str, namespace_path: Vec<String>) {
+        self.class_namespace_paths.insert(qualified_name.to_string(), namespace_path);
+    }
+
+    /// 在命名空间上下文中解析类名
+    /// 1. 先查找 using 别名
+    /// 2. 再在当前命名空间上下文中查找 (context_ns::name)
+    /// 3. 最后查找简单名（用于全局类）
+    pub fn resolve_class(&self, name: &str, context_ns: &[String]) -> Option<&ClassInfo> {
+        // 1. using 别名
+        if let Some(qualified) = self.namespace_aliases.get(name) {
+            if let Some(cls) = self.classes.get(qualified) {
+                return Some(cls);
+            }
+        }
+        // 2. 当前命名空间上下文: context_ns::name
+        if !context_ns.is_empty() {
+            let qualified = format!("{}::{}", context_ns.join("::"), name);
+            if let Some(cls) = self.classes.get(&qualified) {
+                return Some(cls);
+            }
+        }
+        // 3. 全局简单名（无命名空间的类）
+        // 只有该类确实没有命名空间路径时才返回
+        if let Some(cls) = self.classes.get(name) {
+            // 检查这个类是否有命名空间路径
+            // 有关联命名空间的类不应该通过简单名访问（除非通过上面的上下文查找）
+            if !self.class_namespace_paths.contains_key(name) {
+                return Some(cls);
+            }
+        }
+        None
+    }
+
+    /// 获取类的可变引用（带命名空间上下文）
+    pub fn resolve_class_mut(&mut self, name: &str, context_ns: &[String]) -> Option<&mut ClassInfo> {
+        // 1. using 别名
+        if let Some(qualified) = self.namespace_aliases.get(name).cloned() {
+            if self.classes.contains_key(&qualified) {
+                return self.classes.get_mut(&qualified);
+            }
+        }
+        // 2. 当前命名空间上下文
+        if !context_ns.is_empty() {
+            let qualified = format!("{}::{}", context_ns.join("::"), name);
+            if self.classes.contains_key(&qualified) {
+                return self.classes.get_mut(&qualified);
+            }
+        }
+        // 3. 全局简单名
+        if self.classes.contains_key(name) && !self.class_namespace_paths.contains_key(name) {
+            return self.classes.get_mut(name);
+        }
+        None
     }
 
     /// 根据类名和方法名获取方法（获取第一个匹配的方法，用于无参数类型信息的情况，支持继承）
     pub fn get_method(&self, class_name: &str, method_name: &str) -> Option<&MethodInfo> {
-        if let Some(class_info) = self.classes.get(class_name) {
+        if let Some(class_info) = self.get_class(class_name) {
             if let Some(method) = class_info.find_method_by_name(method_name) {
                 return Some(method);
             }
@@ -702,7 +798,7 @@ impl TypeRegistry {
     /// 根据类名、方法名和参数类型查找方法（支持重载和继承）
     pub fn find_method(&self, class_name: &str, method_name: &str, arg_types: &[Type]) -> Option<&MethodInfo> {
         // 首先在当前类中查找
-        if let Some(class_info) = self.classes.get(class_name) {
+        if let Some(class_info) = self.get_class(class_name) {
             if let Some(method) = class_info.find_method(method_name, arg_types) {
                 return Some(method);
             }
@@ -716,12 +812,12 @@ impl TypeRegistry {
 
     /// 根据类名、方法名和参数类型查找方法，只在当前类中查找（不递归父类）
     pub fn find_method_in_class(&self, class_name: &str, method_name: &str, arg_types: &[Type]) -> Option<&MethodInfo> {
-        self.classes.get(class_name)
+        self.get_class(class_name)
             .and_then(|c| c.find_method(method_name, arg_types))
     }
 
     pub fn class_exists(&self, name: &str) -> bool {
-        self.classes.contains_key(name)
+        self.get_class(name).is_some()
     }
 }
 

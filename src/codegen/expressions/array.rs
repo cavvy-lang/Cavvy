@@ -159,7 +159,13 @@ impl IRGenerator {
         }
 
         // 检查是否有空维度（不规则数组）
-        let has_empty_dimension = sizes.iter().any(|s| matches!(s, Expr::Literal(LiteralValue::Null)));
+        let has_empty_dimension = sizes.iter().any(|s| {
+            if let Expr::Literal(lit_expr) = s {
+                matches!(lit_expr.value, LiteralValue::Null)
+            } else {
+                false
+            }
+        });
 
         // 递归创建子数组类型（去掉第一维）
         let sub_sizes = &sizes[1..];

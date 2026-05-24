@@ -85,6 +85,9 @@ impl IRGenerator {
     /// * `program` - AST程序
     /// * `source_file` - 源文件路径（用于源映射）
     pub fn generate(&mut self, program: &Program, source_file: &str) -> cayResult<String> {
+        // 扁平化 namespace 声明
+        let program = program.flatten_namespaces();
+
         // 设置源文件路径
         self.source_file = source_file.to_string();
         
@@ -155,6 +158,10 @@ impl IRGenerator {
         }
 
         for class in &program.classes {
+            // 记录类的命名空间路径，用于方法名改编
+            if !class.namespace_path.is_empty() {
+                self.class_namespaces.insert(class.name.clone(), class.namespace_path.clone());
+            }
             self.collect_static_fields(class)?;
 
             for member in &class.members {
@@ -183,7 +190,7 @@ impl IRGenerator {
         }
 
         self.emit_static_field_declarations();
-        self.register_type_identifiers(program);
+        self.register_type_identifiers(&program);
 
         // 生成 extern 函数声明
         for extern_decl in &program.extern_declarations {
@@ -394,7 +401,8 @@ impl IRGenerator {
     }
 
     fn register_static_field(&mut self, class_name: &str, field: &FieldDecl) -> cayResult<()> {
-        let full_name = format!("@{}.{}_s", class_name, field.name);
+        let llvm_class = self.get_qualified_class_name(class_name);
+        let full_name = format!("@{}.{}_s", llvm_class, field.name);
         // 对于数组类型，静态字段存储的是数组指针（指向元素数据）
         // 例如 int[] 存储为 i32*，指向 int 数组的数据
         let base_llvm_type = self.type_to_llvm(&field.field_type);
@@ -469,35 +477,38 @@ impl IRGenerator {
 
     fn evaluate_const_initializer(&self, expr: &Expr, llvm_type: &str) -> Option<String> {
         match expr {
-            Expr::Literal(crate::ast::LiteralValue::Int32(n)) => Some(n.to_string()),
-            Expr::Literal(crate::ast::LiteralValue::Int64(n)) => Some(n.to_string()),
-            Expr::Literal(crate::ast::LiteralValue::Float32(f)) => {
-                if f.is_nan() {
-                    Some("0x7FC00000".to_string())
-                } else if f.is_infinite() {
-                    if *f > 0.0 {
-                        Some("0x7F800000".to_string())
+            Expr::Literal(lit_expr) => match &lit_expr.value {
+                crate::ast::LiteralValue::Int32(n) => Some(n.to_string()),
+                crate::ast::LiteralValue::Int64(n) => Some(n.to_string()),
+                crate::ast::LiteralValue::Float32(f) => {
+                    if f.is_nan() {
+                        Some("0x7FC00000".to_string())
+                    } else if f.is_infinite() {
+                        if *f > 0.0 {
+                            Some("0x7F800000".to_string())
+                        } else {
+                            Some("0xFF800000".to_string())
+                        }
                     } else {
-                        Some("0xFF800000".to_string())
+                        Some(format!("{:.6e}", f))
                     }
-                } else {
-                    Some(format!("{:.6e}", f))
                 }
-            }
-            Expr::Literal(crate::ast::LiteralValue::Float64(f)) => {
-                if f.is_nan() {
-                    Some("0x7FF8000000000000".to_string())
-                } else if f.is_infinite() {
-                    if *f > 0.0 {
-                        Some("0x7FF0000000000000".to_string())
+                crate::ast::LiteralValue::Float64(f) => {
+                    if f.is_nan() {
+                        Some("0x7FF8000000000000".to_string())
+                    } else if f.is_infinite() {
+                        if *f > 0.0 {
+                            Some("0x7FF0000000000000".to_string())
+                        } else {
+                            Some("0xFFF0000000000000".to_string())
+                        }
                     } else {
-                        Some("0xFFF0000000000000".to_string())
+                        Some(format!("{:.6e}", f))
                     }
-                } else {
-                    Some(format!("{:.6e}", f))
                 }
+                crate::ast::LiteralValue::Bool(b) => Some(if *b { "1".to_string() } else { "0".to_string() }),
+                _ => None,
             }
-            Expr::Literal(crate::ast::LiteralValue::Bool(b)) => Some(if *b { "1".to_string() } else { "0".to_string() }),
             Expr::Binary(binary) => {
                 let left = self.evaluate_const_int(&binary.left)?;
                 let right = self.evaluate_const_int(&binary.right)?;
@@ -575,8 +586,11 @@ impl IRGenerator {
 
     fn evaluate_const_int(&self, expr: &Expr) -> Option<i64> {
         match expr {
-            Expr::Literal(crate::ast::LiteralValue::Int32(n)) => Some(*n as i64),
-            Expr::Literal(crate::ast::LiteralValue::Int64(n)) => Some(*n),
+            Expr::Literal(lit_expr) => match &lit_expr.value {
+                crate::ast::LiteralValue::Int32(n) => Some(*n as i64),
+                crate::ast::LiteralValue::Int64(n) => Some(*n),
+                _ => None,
+            }
             Expr::Binary(binary) => {
                 let left = self.evaluate_const_int(&binary.left)?;
                 let right = self.evaluate_const_int(&binary.right)?;
@@ -602,48 +616,6 @@ impl IRGenerator {
             "double" => 8,
             _ => 8,
         }
-    }
-
-    fn generate_class_declarations(&mut self, class: &ClassDecl) -> cayResult<()> {
-        for member in &class.members {
-            if let ClassMember::Method(method) = member {
-                if !method.modifiers.contains(&Modifier::Native) {
-                    self.generate_method_declaration(&class.name, method)?;
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn generate_method_declaration(&mut self, class_name: &str, method: &MethodDecl) -> cayResult<()> {
-        // 跳过 native 方法的声明（它们在运行时或由外部提供）
-        if method.modifiers.contains(&Modifier::Native) {
-            return Ok(());
-        }
-
-        let fn_name = self.generate_method_name(class_name, method);
-        let ret_type = self.type_to_llvm(&method.return_type);
-
-        let decl = if method.params.is_empty() {
-            format!("declare {} @{}()\n", ret_type, fn_name)
-        } else {
-            let params: Vec<String> = method.params.iter()
-                .map(|p| {
-                    if p.is_varargs {
-                        // 可变参数使用 i8* 指针类型
-                        "i8*".to_string()
-                    } else {
-                        self.type_to_llvm(&p.param_type)
-                    }
-                })
-                .collect();
-            format!("declare {} @{}({})\n", ret_type, fn_name, params.join(", "))
-        };
-        
-        if !self.method_declarations.contains(&decl) {
-            self.method_declarations.push(decl);
-        }
-        Ok(())
     }
 
     fn generate_class(&mut self, class: &ClassDecl) -> cayResult<()> {
@@ -907,7 +879,8 @@ impl IRGenerator {
     
     /// 生成默认构造函数（无参构造函数）
     fn generate_default_constructor(&mut self, class_name: &str) -> cayResult<()> {
-        let fn_name = format!("{}.__ctor", class_name);
+        let llvm_class = self.get_qualified_class_name(class_name);
+        let fn_name = format!("{}.__ctor", llvm_class);
         self.current_function = fn_name.clone();
         self.current_class = class_name.to_string();
         self.current_return_type = "void".to_string();
@@ -933,7 +906,8 @@ impl IRGenerator {
         if let Some(ref registry) = self.type_registry {
             if let Some(class_info) = registry.get_class(class_name) {
                 if let Some(ref parent_name) = class_info.parent {
-                    let parent_ctor_name = format!("{}.__ctor", parent_name);
+                    let llvm_parent = self.get_qualified_class_name(parent_name);
+                    let parent_ctor_name = format!("{}.__ctor", llvm_parent);
                     self.emit_line(&format!("  call void @{}(i8* %this)", parent_ctor_name));
                 }
             }
@@ -952,7 +926,8 @@ impl IRGenerator {
     }
 
     fn generate_destructor(&mut self, class_name: &str, dtor: &crate::ast::DestructorDecl) -> cayResult<()> {
-        let fn_name = format!("{}.__dtor", class_name);
+        let llvm_class = self.get_qualified_class_name(class_name);
+        let fn_name = format!("{}.__dtor", llvm_class);
         self.current_function = fn_name.clone();
         self.current_class = class_name.to_string();
         self.current_return_type = "void".to_string();
@@ -984,7 +959,8 @@ impl IRGenerator {
     }
 
     fn generate_static_initializer(&mut self, class_name: &str, block: &crate::ast::Block) -> cayResult<()> {
-        let fn_name = format!("{}.__static_init", class_name);
+        let llvm_class = self.get_qualified_class_name(class_name);
+        let fn_name = format!("{}.__static_init", llvm_class);
         self.current_function = fn_name.clone();
         self.current_class = class_name.to_string();
         self.current_return_type = "void".to_string();
@@ -1011,33 +987,35 @@ impl IRGenerator {
     }
 
     fn generate_constructor_name(&self, class_name: &str, ctor: &crate::ast::ConstructorDecl) -> String {
+        let cls = self.get_qualified_class_name(class_name);
         if ctor.params.is_empty() {
-            format!("{}.__ctor", class_name)
+            format!("{}.__ctor", cls)
         } else {
             let param_types: Vec<String> = ctor.params.iter()
                 .map(|p| self.type_to_signature(&p.param_type))
                 .collect();
-            format!("{}.__ctor_{}", class_name, param_types.join("_"))
+            format!("{}.__ctor_{}", cls, param_types.join("_"))
         }
     }
 
     /// 生成构造函数调用名称（基于参数类型列表）
     pub fn generate_constructor_call_name_with_types(&self, class_name: &str, param_types: &[String]) -> String {
+        let cls = self.get_qualified_class_name(class_name);
         if param_types.is_empty() {
-            format!("{}.__ctor", class_name)
+            format!("{}.__ctor", cls)
         } else {
-            format!("{}.__ctor_{}", class_name, param_types.join("_"))
+            format!("{}.__ctor_{}", cls, param_types.join("_"))
         }
     }
     
     /// 生成构造函数调用名称（基于参数数量 - 仅用于简单情况）
     pub fn generate_constructor_call_name(&self, class_name: &str, arg_count: usize) -> String {
+        let cls = self.get_qualified_class_name(class_name);
         if arg_count == 0 {
-            format!("{}.__ctor", class_name)
+            format!("{}.__ctor", cls)
         } else {
-            // 使用通用占位符，调用者应该使用 generate_constructor_call_name_with_types
             let param_types: Vec<String> = (0..arg_count).map(|_| "i".to_string()).collect();
-            format!("{}.__ctor_{}", class_name, param_types.join("_"))
+            format!("{}.__ctor_{}", cls, param_types.join("_"))
         }
     }
 
@@ -1046,8 +1024,8 @@ impl IRGenerator {
         use crate::ast::*;
         
         match expr {
-            Expr::Literal(lit) => {
-                match lit {
+            Expr::Literal(lit_expr) => {
+                match &lit_expr.value {
                     LiteralValue::Int32(_) => "i".to_string(),
                     LiteralValue::Int64(_) => "l".to_string(),
                     LiteralValue::Float32(_) => "f".to_string(),
@@ -1130,8 +1108,8 @@ impl IRGenerator {
             Expr::Identifier(ident) => {
                 self.var_cay_types.get(&ident.name).cloned()
             }
-            Expr::Literal(lit) => {
-                match lit {
+            Expr::Literal(lit_expr) => {
+                match &lit_expr.value {
                     LiteralValue::Int32(_) => Some(crate::types::Type::Int32),
                     LiteralValue::Int64(_) => Some(crate::types::Type::Int64),
                     LiteralValue::Float32(_) => Some(crate::types::Type::Float32),

@@ -3,6 +3,7 @@
  * 测试类似 Python 的 prints 函数功能
  */
 #include <IOPlus.cay>
+using std::IOPlus;
 
 public class TestIOPlus {
     public static void main() {

@@ -8,6 +8,8 @@
 #ifndef CAY_STRINGBUILDER_H
 #define CAY_STRINGBUILDER_H
 
+namespace std {
+
 /* 运行时内存操作函数 */
 extern {
     void __cay_memcpy_byte(long dest, long src, int n);
@@ -743,5 +745,7 @@ public class StringBuilder {
         return sb;
     }
 }
+
+} // namespace std
 
 #endif /* CAY_STRINGBUILDER_H */

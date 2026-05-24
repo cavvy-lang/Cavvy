@@ -11,7 +11,7 @@ impl IRGenerator {
     /// 从表达式推断类型
     fn infer_type_from_expr(&self, expr: &Expr) -> Option<Type> {
         match expr {
-            Expr::Literal(lit) => match lit {
+            Expr::Literal(lit_expr) => match &lit_expr.value {
                 LiteralValue::Int32(_) => Some(Type::Int32),
                 LiteralValue::Int64(_) => Some(Type::Int64),
                 LiteralValue::Float32(_) => Some(Type::Float32),

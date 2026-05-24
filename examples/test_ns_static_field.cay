@@ -1,0 +1,17 @@
+// 命名空间类静态字段测试
+namespace config {
+    public class Constants {
+        public static double PI = 3.14;
+        public static int MAX = 100;
+    }
+}
+
+using config::Constants;
+
+public class Main {
+    public static void main() {
+
+        println("PI: " + Constants.PI);
+        println("MAX: " + Constants.MAX);
+    }
+}

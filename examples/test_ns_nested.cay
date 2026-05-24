@@ -1,0 +1,28 @@
+// 嵌套namespace测试
+namespace std {
+    namespace io {
+        public class File {
+            public static String open() {
+                return "std::io::File: opened";
+            }
+        }
+
+        public class Reader {
+            public static String read() {
+                return "std::io::Reader: reading";
+            }
+        }
+    }
+}
+
+using std::io::File;
+using std::io::Reader;
+
+public class Main {
+    public static void main() {
+
+        println(File.open());
+        println(Reader.read());
+        println("Global: ok");
+    }
+}
