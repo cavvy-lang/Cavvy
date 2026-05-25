@@ -1,11 +1,12 @@
-//! 运行时支持函数生成模块
+//! 运行时支持函数声明模块
 //!
-//! 本模块包含所有 cay 运行时支持函数的 LLVM IR 生成。
-//! 每个运行时函数都有独立的子模块。
+//! 本模块声明所有 cay 运行时支持函数的 LLVM IR `declare`。
+//! 运行时函数本体已从 LLVM IR 移入预编译的 C 静态链接库 `libcayrt.a`。
+//! 编译时通过 `-lcayrt` 链接。
 
 use crate::codegen::context::IRGenerator;
 
-// 子模块声明
+// 子模块声明（保留用于 future 扩展）
 mod string_concat;
 mod float_to_string;
 mod int_to_string;
@@ -26,10 +27,10 @@ mod ptr_operations;
 mod args_support;
 
 impl IRGenerator {
-    /// 发射IR头部（外部声明和运行时函数）
+    /// 发射IR头部（外部声明和运行时函数声明）
     pub fn emit_header(&mut self) {
         self.emit_raw("; cay (Ethernos Object Language) Generated LLVM IR");
-        
+
         // 根据目标平台设置目标三元组
         let target_triple = if let Some(config) = &self.platform_config {
             match config.target_os.as_str() {
@@ -54,8 +55,6 @@ impl IRGenerator {
         self.emit_debug_header();
 
         // 声明外部函数 (printf 和标准C库函数)
-        // 注意：这些声明会被标记为已发射，以避免与用户代码中的重复声明冲突
-        // 签名格式: 函数名@返回类型@参数1@参数2@...@...
         if !self.is_extern_emitted("printf@i32@i8*@...") {
             self.emit_raw("declare i32 @printf(i8*, ...)");
             self.mark_extern_emitted("printf@i32@i8*@...".to_string());
@@ -64,13 +63,12 @@ impl IRGenerator {
             self.emit_raw("declare i32 @scanf(i8*, ...)");
             self.mark_extern_emitted("scanf@i32@i8*@...".to_string());
         }
-        
+
         // 根据平台配置声明平台特定函数
         let platform_declarations = if let Some(config) = &self.platform_config {
             let mut declarations = String::new();
             match config.target_os.as_str() {
                 "windows" => {
-                    // Windows 平台总是声明 SetConsoleOutputCP，因为 generator.rs 中总是调用它
                     declarations.push_str("declare dllimport void @SetConsoleOutputCP(i32)\n");
                     if config.is_defined("WINDOWS_SPECIFIC") {
                         declarations.push_str("declare void @WindowsSpecificInit()\n");
@@ -79,7 +77,7 @@ impl IRGenerator {
                 "linux" | "macos" => {
                     if config.is_feature_enabled("console_utf8") {
                         declarations.push_str("declare i8* @setlocale(i32, i8*)\n");
-                        declarations.push_str("@.str.locale = private unnamed_addr constant [6 x i8] c\"C.UTF-8\"\00\n");
+                        declarations.push_str(&"@.str.locale = private unnamed_addr constant [6 x i8] c\"C.UTF-8\"\00\n".to_string());
                     }
                     if config.is_defined("LINUX_SPECIFIC") {
                         declarations.push_str("declare void @LinuxSpecificInit()\n");
@@ -92,18 +90,17 @@ impl IRGenerator {
             }
             declarations
         } else if self.target_triple.contains("windows") || self.target_triple.contains("mingw32") {
-            // 向后兼容：如果没有平台配置，使用目标三元组判断
             "declare void @SetConsoleOutputCP(i32)\n".to_string()
         } else {
             "".to_string()
         };
-        
+
         // 发射宏定义
         if let Some(config) = &self.platform_config {
             let mut has_macros = false;
-            let defines = config.defines.clone(); // 克隆以避免借用冲突
-            let undefines = config.undefines.clone(); // 克隆以避免借用冲突
-            
+            let defines = config.defines.clone();
+            let undefines = config.undefines.clone();
+
             for define in &defines {
                 if !undefines.contains(define) {
                     self.emit_raw(&format!("; #define {}", define));
@@ -119,9 +116,8 @@ impl IRGenerator {
         if !platform_declarations.is_empty() {
             self.emit_raw(&platform_declarations);
         }
-        
-        // 声明外部C库函数（使用签名检查避免重复声明）
-        // 签名格式: 函数名@返回类型@参数1@参数2@...
+
+        // 声明外部C库函数
         let extern_decls = vec![
             ("strlen", "i64", vec!["i8*"], "declare i64 @strlen(i8*)"),
             ("strcmp", "i32", vec!["i8*", "i8*"], "declare i32 @strcmp(i8*, i8*)"),
@@ -131,7 +127,7 @@ impl IRGenerator {
             ("snprintf", "i32", vec!["i8*", "i64", "i8*", "..."], "declare i32 @snprintf(i8*, i64, i8*, ...)"),
             ("fgets", "i8*", vec!["i8*", "i32", "i8*"], "declare i8* @fgets(i8*, i32, i8*)"),
         ];
-        
+
         for (name, ret, params, decl) in extern_decls {
             let sig = if params.contains(&"...") {
                 format!("{}@{}@{}@...", name, ret, params[..params.len()-1].join("@"))
@@ -145,109 +141,92 @@ impl IRGenerator {
                 self.mark_extern_emitted(sig);
             }
         }
-        
-        // llvm.memcpy 是内部函数，不需要检查重复
+
+        // llvm.memcpy 内部函数声明（用户代码需要使用）
         self.emit_raw("declare void @llvm.memcpy.p0i8.p0i8.i64(i8* noalias nocapture writeonly, i8* noalias nocapture readonly, i64, i1 immarg)");
-        
-        // Windows平台使用 __acrt_iob_func 获取stdin, Linux/macOS使用外部全局变量
+
+        // Windows平台使用 __acrt_iob_func 获取stdin
         if target_triple.contains("windows") || target_triple.contains("mingw") {
             if !self.is_extern_emitted("__acrt_iob_func@i8*@i32") {
                 self.emit_raw("declare i8* @__acrt_iob_func(i32)");
                 self.mark_extern_emitted("__acrt_iob_func@i8*@i32".to_string());
             }
         } else {
-            // stdin 是全局变量，不是函数，使用不同的检查机制
             self.emit_raw("@stdin = external global i8*");
         }
-        self.emit_raw("@.str.float_fmt = private unnamed_addr constant [3 x i8] c\"%f\\00\", align 1");
-        self.emit_raw("@.str.double_fmt = private unnamed_addr constant [4 x i8] c\"%lf\\00\", align 1");
-        self.emit_raw("@.str.int_fmt = private unnamed_addr constant [3 x i8] c\"%d\\00\", align 1");
-        self.emit_raw("@.str.long_fmt = private unnamed_addr constant [5 x i8] c\"%lld\\00\", align 1");
-        self.emit_raw("@.str.true_str = private unnamed_addr constant [5 x i8] c\"true\\00\", align 1");
-        self.emit_raw("@.str.false_str = private unnamed_addr constant [6 x i8] c\"false\\00\", align 1");
         self.emit_raw("");
 
-        // 空字符串常量（用于 null 安全）
-        self.emit_raw("@.cay_empty_str = private unnamed_addr constant [1 x i8] c\"\\00\", align 1");
+        // ================================================================
+        // 分配器类型定义（运行时函数声明需要这些类型）
+        // 结构体布局必须与 libcayrt.a 中的定义一致
+        // ================================================================
+        self.emit_raw("%GlobalAlloc = type { i8 }");
+        self.emit_raw("%ArenaAllocator = type { i8*, i8*, i8*, %ArenaAllocator* }");
+        self.emit_raw("%StackAllocator = type { i8*, i64 }");
         self.emit_raw("");
 
-        // 生成运行时函数
-        self.emit_string_concat_runtime();
-        self.emit_float_to_string_runtime();
-        self.emit_int_to_string_runtime();
-        self.emit_bool_to_string_runtime();
-        self.emit_char_to_string_runtime();
-        self.emit_string_length_runtime();
-        self.emit_string_substring_runtime();
-        self.emit_string_indexof_runtime();
-        self.emit_string_lastindexof_runtime();
-        self.emit_string_startswith_runtime();
-        self.emit_string_endswith_runtime();
-        self.emit_string_charat_runtime();
-        self.emit_string_replace_runtime();
-        self.emit_string_isempty_runtime();
-        self.emit_string_equals_runtime();
-        self.emit_buffer_to_string_runtime();
+        // ================================================================
+        // 运行时函数声明 (函数本体在 libcayrt.a 中)
+        // ================================================================
+        self.emit_runtime_declarations();
 
-        // 生成指针操作运行时函数
-        self.emit_read_ptr_runtime();
-        self.emit_ptr_to_string_runtime();
-        self.emit_write_ptr_runtime();
-        self.emit_write_int_runtime();
-        self.emit_read_int_runtime();
-        self.emit_write_byte_runtime();
-
-        // 生成命令行参数支持运行时函数
-        self.emit_args_support_runtime();
-
-        // 生成内存操作函数
-        self.emit_memory_runtime();
+        // 插入标记，供 generator.rs 定位声明插入点
+        self.emit_raw("; --- END OF HEADER ---");
     }
-    
-    /// 生成内存操作运行时函数
-    fn emit_memory_runtime(&mut self) {
-        // __cay_memset_byte: 按字节设置内存 (使用i64指针参数，兼容现有代码)
-        self.emit_raw("define void @__cay_memset_byte(i64 %ptr, i32 %value, i32 %n) {");
-        self.emit_raw("entry:");
-        self.emit_raw("  ; 空指针安全检查");
-        self.emit_raw("  %is_null = icmp eq i64 %ptr, 0");
-        self.emit_raw("  br i1 %is_null, label %return, label %do_memset");
-        self.emit_raw("");
-        self.emit_raw("do_memset:");
-        self.emit_raw("  %ptr_i8 = inttoptr i64 %ptr to i8*");
-        self.emit_raw("  %val_i8 = trunc i32 %value to i8");
-        self.emit_raw("  %n_i64 = sext i32 %n to i64");
-        self.emit_raw("  call void @llvm.memset.p0i8.i64(i8* %ptr_i8, i8 %val_i8, i64 %n_i64, i1 false)");
-        self.emit_raw("  ret void");
-        self.emit_raw("");
-        self.emit_raw("return:");
-        self.emit_raw("  ret void");
-        self.emit_raw("}");
-        self.emit_raw("");
 
-        // __cay_memcpy_byte: 按字节复制内存 (使用i64指针参数，兼容现有代码)
-        self.emit_raw("define void @__cay_memcpy_byte(i64 %dest, i64 %src, i32 %n) {");
-        self.emit_raw("entry:");
-        self.emit_raw("  ; 空指针安全检查");
-        self.emit_raw("  %dest_null = icmp eq i64 %dest, 0");
-        self.emit_raw("  %src_null = icmp eq i64 %src, 0");
-        self.emit_raw("  %either_null = or i1 %dest_null, %src_null");
-        self.emit_raw("  br i1 %either_null, label %return, label %do_memcpy");
-        self.emit_raw("");
-        self.emit_raw("do_memcpy:");
-        self.emit_raw("  %dest_i8 = inttoptr i64 %dest to i8*");
-        self.emit_raw("  %src_i8 = inttoptr i64 %src to i8*");
-        self.emit_raw("  %n_i64 = sext i32 %n to i64");
-        self.emit_raw("  call void @llvm.memcpy.p0i8.p0i8.i64(i8* %dest_i8, i8* %src_i8, i64 %n_i64, i1 false)");
-        self.emit_raw("  ret void");
-        self.emit_raw("");
-        self.emit_raw("return:");
-        self.emit_raw("  ret void");
-        self.emit_raw("}");
-        self.emit_raw("");
+    /// 声明所有运行时函数（来自 libcayrt.a）
+    fn emit_runtime_declarations(&mut self) {
+        // 字符串操作
+        self.emit_raw("declare i8* @__cay_string_concat(i8*, i8*)");
+        self.emit_raw("declare i32 @__cay_string_length(i8*)");
+        self.emit_raw("declare i8* @__cay_string_substring(i8*, i32, i32)");
+        self.emit_raw("declare i32 @__cay_string_indexof(i8*, i8*)");
+        self.emit_raw("declare i32 @__cay_string_indexof_from(i8*, i8*, i32)");
+        self.emit_raw("declare i32 @__cay_string_lastindexof(i8*, i8*)");
+        self.emit_raw("declare i1 @__cay_string_startswith(i8*, i8*)");
+        self.emit_raw("declare i1 @__cay_string_endswith(i8*, i8*)");
+        self.emit_raw("declare i8 @__cay_string_charat(i8*, i32)");
+        self.emit_raw("declare i8* @__cay_string_replace(i8*, i8*, i8*)");
+        self.emit_raw("declare i1 @__cay_string_isempty(i8*)");
+        self.emit_raw("declare i1 @__cay_string_equals(i8*, i8*)");
+        self.emit_raw("declare i1 @__cay_string_equals_ignorecase(i8*, i8*)");
+        self.emit_raw("declare i8* @__cay_string_trim(i8*)");
 
-        // 声明 llvm.memset
-        self.emit_raw("declare void @llvm.memset.p0i8.i64(i8* nocapture writeonly, i8, i64, i1 immarg)");
+        // 类型转换
+        self.emit_raw("declare i8* @__cay_int_to_string(i32)");
+        self.emit_raw("declare i8* @__cay_long_to_string(i64)");
+        self.emit_raw("declare i8* @__cay_float_to_string(float)");
+        self.emit_raw("declare i8* @__cay_double_to_string(double)");
+        self.emit_raw("declare i8* @__cay_bool_to_string(i1)");
+        self.emit_raw("declare i8* @__cay_char_to_string(i8)");
+
+        // 指针/缓冲区操作
+        self.emit_raw("declare i64 @__cay_read_ptr(i64)");
+        self.emit_raw("declare i8* @__cay_ptr_to_string(i64)");
+        self.emit_raw("declare void @__cay_write_ptr(i64, i64)");
+        self.emit_raw("declare void @__cay_write_int(i64, i32)");
+        self.emit_raw("declare i32 @__cay_read_int(i64)");
+        self.emit_raw("declare void @__cay_write_byte(i64, i32)");
+        self.emit_raw("declare i8* @__cay_buffer_to_string(i64, i32)");
+
+        // 内存操作
+        self.emit_raw("declare void @__cay_memset_byte(i64, i32, i32)");
+        self.emit_raw("declare void @__cay_memcpy_byte(i64, i64, i32)");
+
+        // 数组/参数操作
+        self.emit_raw("declare i8** @__cay_create_string_array(i32)");
+        self.emit_raw("declare i8* @__cay_cstr_to_string(i8*)");
+        self.emit_raw("declare void @__cay_array_set_ref(i8**, i32, i8*)");
+        self.emit_raw("declare i8* @__cay_array_get_ref(i8**, i32)");
+        self.emit_raw("declare i32 @__cay_array_length(i8**)");
+
+        // 分配器
+        self.emit_raw("declare %GlobalAlloc* @__cay_global_alloc_get()");
+        self.emit_raw("declare %ArenaAllocator* @__cay_arena_new(i64)");
+        self.emit_raw("declare i8* @__cay_arena_alloc(%ArenaAllocator*, i64, i64)");
+        self.emit_raw("declare void @__cay_arena_reset(%ArenaAllocator*)");
+        self.emit_raw("declare void @__cay_arena_free(%ArenaAllocator*)");
+
         self.emit_raw("");
     }
 }

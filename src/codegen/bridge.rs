@@ -106,9 +106,9 @@ impl InlineIrBridge {
             .collect();
 
         // 3. 解析内联IR文本
-        eprintln!("DEBUG bridge: inline_ir.raw_lines = {:?}", inline_ir.raw_lines);
+        // eprintln!("DEBUG bridge: inline_ir.raw_lines = {:?}", inline_ir.raw_lines);
         let raw_text = inline_ir.raw_lines.join("\n");
-        eprintln!("DEBUG bridge: raw_text = '{}'", raw_text);
+        // eprintln!("DEBUG bridge: raw_text = '{}'", raw_text);
         let parsed_block = self.parser.parse(&raw_text, &ir_inputs, &[])
             .map_err(|e| crate::error::cayError::CodeGen {
                 code: "E5004".to_string(),

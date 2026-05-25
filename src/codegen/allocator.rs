@@ -300,11 +300,11 @@ declare void @__cay_arena_free(%ArenaAllocator*)
 "#
     }
 
-    /// 生成完整的分配器类型定义和运行时
+    /// 生成完整的分配器类型定义（运行时函数本体在 libcayrt.a 中）
     pub fn generate_full_allocator_support() -> String {
         let mut result = String::new();
         
-        // 类型定义
+        // 仅输出类型定义（函数定义已移入 libcayrt.a）
         result.push_str("; ==================== 分配器类型定义 ====================\n\n");
         result.push_str(AllocatorType::GlobalAlloc.llvm_struct_def());
         result.push_str("\n");
@@ -312,14 +312,6 @@ declare void @__cay_arena_free(%ArenaAllocator*)
         result.push_str("\n");
         result.push_str(AllocatorType::Stack.llvm_struct_def());
         result.push_str("\n\n");
-        
-        // GlobalAlloc 单例
-        result.push_str(Self::generate_global_alloc_instance());
-        result.push_str("\n");
-        
-        // Arena 运行时
-        result.push_str(Self::generate_arena_runtime());
-        result.push_str("\n");
         
         result
     }

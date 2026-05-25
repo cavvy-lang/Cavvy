@@ -639,9 +639,9 @@ impl IrBuilder {
 
     fn build_block(&mut self, block: &Block) -> cayResult<()> {
         self.scope_manager.enter_scope();
-        eprintln!("DEBUG: build_block with {} statements", block.statements.len());
+        // eprintln!("DEBUG: build_block with {} statements", block.statements.len());
         for (i, stmt) in block.statements.iter().enumerate() {
-            eprintln!("DEBUG:  Statement {}: {:?}", i, std::mem::discriminant(stmt));
+            // eprintln!("DEBUG:  Statement {}: {:?}", i, std::mem::discriminant(stmt));
             self.build_statement(stmt)?;
         }
         self.scope_manager.exit_scope();
@@ -689,9 +689,9 @@ impl IrBuilder {
         use super::inline_ir::InlineIrParser;
         
         // 调试：检查raw_lines
-        eprintln!("DEBUG: Inline IR raw_lines count: {}", inline_ir.raw_lines.len());
+        // eprintln!("DEBUG: Inline IR raw_lines count: {}", inline_ir.raw_lines.len());
         for (i, line) in inline_ir.raw_lines.iter().enumerate() {
-            eprintln!("DEBUG: Line {}: '{}'", i, line);
+            // eprintln!("DEBUG: Line {}: '{}'", i, line);
         }
         
         if inline_ir.raw_lines.is_empty() {

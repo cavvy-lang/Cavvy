@@ -394,8 +394,14 @@ impl IRGenerator {
         let type_id_decls = self.emit_type_id_declarations();
 
         let mut output = self.output.clone();
-        let insert_pos = output.find("define i8* @__cay_string_concat")
-            .unwrap_or(output.len());
+        let insert_pos = output.find("; --- END OF HEADER ---")
+            .map(|p| p + "; --- END OF HEADER ---\n".len())
+            .unwrap_or_else(|| {
+                // Fallback: insert after target triple line
+                output.find("target triple").map(|p| {
+                    output[p..].find('\n').map(|n| p + n + 1).unwrap_or(p)
+                }).unwrap_or(0)
+            });
 
         let mut decls = String::new();
         if !type_id_decls.is_empty() {

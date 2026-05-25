@@ -1108,17 +1108,23 @@ fn compile_with_clang(
         .unwrap_or_else(|| PathBuf::from("."));
     
     // 根据目标平台选择库路径
-    let lib_paths: Vec<PathBuf> = if options.target.contains("windows") || options.target.contains("mingw") {
+    let mut lib_paths: Vec<PathBuf> = if options.target.contains("windows") || options.target.contains("mingw") {
         // Windows/MinGW 库路径
         vec![
             exe_dir.join("lib/mingw64/x86_64-w64-mingw32/lib"),
             exe_dir.join("lib/mingw64/lib"),
-            exe_dir.join("lib/mingw64/lib/gcc/x86_64-w64-mingw32/15.2.0")
+            exe_dir.join("lib/mingw64/lib/gcc/x86_64-w64-mingw32/15.2.0"),
         ]
     } else {
         // Linux/Unix 系统使用系统默认库路径
         vec![]
     };
+
+    // 添加 Cavvy 运行时库路径（libcayrt.a 所在目录）
+    let cayrt_path = exe_dir.join("caylibs/bin");
+    if cayrt_path.exists() {
+        lib_paths.push(cayrt_path);
+    }
 
     // 构建 clang 命令
     let mut cmd = process::Command::new(clang_exe);
@@ -1236,6 +1242,9 @@ fn compile_with_clang(
         cmd.arg("-fuse-ld=lld");
     }
     // 内置clang使用默认链接器（它会自动找到同目录下的lld-link）
+
+    // 链接 Cavvy 运行时库（所有平台都需要）
+    cmd.arg("-lcayrt");
 
     // 根据目标平台选择默认库
     if options.target.contains("windows") || options.target.contains("mingw") {
@@ -1430,6 +1439,12 @@ fn compile_with_llc_lld(
                 lld_cmd.arg("-L").arg(lib_path);
             }
         }
+
+        // Cavvy 运行时库路径
+        let cayrt_path = exe_dir.join("caylibs/bin");
+        if cayrt_path.exists() {
+            lld_cmd.arg("-L").arg(&cayrt_path);
+        }
         
         // 额外库路径
         for path in &options.extra_lib_paths {
@@ -1439,6 +1454,9 @@ fn compile_with_llc_lld(
         // 输入目标文件
         lld_cmd.arg(&obj_file);
         
+        // Cavvy 运行时库
+        lld_cmd.arg("-lcayrt");
+
         // 默认库 - 按照 MinGW 的标准顺序
         lld_cmd.arg("-lmingw32")
             .arg("-lmingwex")
