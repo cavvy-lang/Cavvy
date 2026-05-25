@@ -88,6 +88,8 @@ struct CompileOptions {
     use_llc_lld: bool,            // --use-llc-lld
     // 语言特性
     features: Vec<String>,        // -F/--feature=<feature>
+    // 测试模式
+    test_mode: bool,              // --test
 }
 
 /// 根据当前操作系统自动选择默认目标平台
@@ -147,6 +149,7 @@ impl Default for CompileOptions {
             fslp_vectorize: false,
             use_llc_lld: false,
             features: Vec::new(),
+            test_mode: false,
         }
     }
 }
@@ -262,6 +265,9 @@ fn parse_args(args: &[String]) -> Result<(CompileOptions, String, String), Strin
             }
             "--use-llc-lld" => {
                 options.use_llc_lld = true;
+            }
+            "--test" => {
+                options.test_mode = true;
             }
             "--mneon" => {
                 options.mneon = true;
@@ -562,6 +568,7 @@ fn main() {
         obfuscate: false,
         debug: options.debug,
         include_paths: options.include_paths.clone(),
+        test_mode: options.test_mode,
     };
     let compiler = cavvy::Compiler::with_options(compiler_options);
     match compiler.compile_file(&source_path, &ir_file) {

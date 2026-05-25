@@ -166,6 +166,7 @@ impl SemanticAnalyzer {
                 is_native: true,
                 is_override: false,
                 is_final: false,
+                is_test: false,
             };
 
             class_info.add_method(method);

@@ -175,6 +175,7 @@ pub enum Modifier {
     Native,
     Main,      // 标记主类，用于解决多main冲突
     Override,  // @Override 注解，标记方法重写
+    Test,      // @Test 注解，标记测试方法
 }
 
 #[derive(Debug, Clone)]

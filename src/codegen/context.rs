@@ -226,6 +226,9 @@ pub struct IRGenerator {
     debug_file_node: usize,                   // DIFile 节点编号
     debug_empty_node: usize,                   // 空元组节点编号
     debug_subprograms: Vec<DebugSubprogram>,   // 记录所有子程序元数据
+    // 测试模式
+    pub test_mode: bool,                      // 是否生成测试入口
+    pub test_methods: Vec<(String, String)>,  // (类名, 方法名) 列表
 }
 
 /// DWARF 子程序元数据
@@ -291,6 +294,8 @@ impl IRGenerator {
             debug_file_node: 3,
             debug_empty_node: 4,
             debug_subprograms: Vec::new(),
+            test_mode: false,
+            test_methods: Vec::new(),
         }
     }
 
@@ -1219,6 +1224,14 @@ impl IRGenerator {
     /// 启用 DWARF 调试信息生成
     pub fn enable_debug_info(&mut self) {
         self.debug_info = true;
+    }
+
+    /// 启用测试模式
+    /// 
+    /// 在测试模式下，代码生成器会额外生成 `__cavvy_test_main` 入口函数，
+    /// 自动调用所有带 `@Test` 注解的方法，并打印测试结果。
+    pub fn enable_test_mode(&mut self) {
+        self.test_mode = true;
     }
 
     /// 为函数定义分配 DWARF 子程序元数据节点

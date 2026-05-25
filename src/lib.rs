@@ -39,6 +39,8 @@ pub struct CompilerOptions {
     pub debug: bool,               // 生成 DWARF 调试信息
     /// 额外的包含路径（供 #include 搜索）
     pub include_paths: Vec<String>,
+    /// 测试模式：生成 __cavvy_test_main 入口，自动调用所有 @Test 方法
+    pub test_mode: bool,
 }
 
 impl Default for CompilerOptions {
@@ -52,6 +54,7 @@ impl Default for CompilerOptions {
             obfuscate: false,
             debug: false,
             include_paths: Vec::new(),
+            test_mode: false,
         }
     }
 }
@@ -109,6 +112,10 @@ impl Compiler {
         // 启用 DWARF 调试信息
         if self.options.debug {
             ir_gen.enable_debug_info();
+        }
+        // 启用测试模式
+        if self.options.test_mode {
+            ir_gen.enable_test_mode();
         }
         // 注意：compile方法没有源文件路径，使用空字符串
         let mut ir = ir_gen.generate(&ast, "")?;

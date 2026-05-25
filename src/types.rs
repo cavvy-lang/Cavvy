@@ -274,6 +274,7 @@ pub struct MethodInfo {
     pub is_native: bool,
     pub is_override: bool,  // 标记是否是重写方法
     pub is_final: bool,  // 是否是final方法（禁止重写）
+    pub is_test: bool,   // 是否被 @Test 注解标记
 }
 
 #[derive(Debug, Clone)]
@@ -492,6 +493,7 @@ impl TypeRegistry {
             is_native: false,
             is_final: true,
             is_override: false,
+            is_test: false,
         });
 
         // valueOf(long)
@@ -511,6 +513,7 @@ impl TypeRegistry {
             is_native: false,
             is_final: true,
             is_override: false,
+            is_test: false,
         });
 
         // valueOf(float)
@@ -530,6 +533,7 @@ impl TypeRegistry {
             is_native: false,
             is_final: true,
             is_override: false,
+            is_test: false,
         });
 
         // valueOf(double)
@@ -549,6 +553,7 @@ impl TypeRegistry {
             is_native: false,
             is_final: true,
             is_override: false,
+            is_test: false,
         });
 
         // valueOf(boolean)
@@ -568,6 +573,7 @@ impl TypeRegistry {
             is_native: false,
             is_final: true,
             is_override: false,
+            is_test: false,
         });
 
         // valueOf(char)
@@ -587,6 +593,7 @@ impl TypeRegistry {
             is_native: false,
             is_final: true,
             is_override: false,
+            is_test: false,
         });
 
         // valueOf(String) - 返回自身
@@ -606,6 +613,7 @@ impl TypeRegistry {
             is_native: false,
             is_final: true,
             is_override: false,
+            is_test: false,
         });
 
         // 注册 String 类
@@ -644,6 +652,7 @@ impl TypeRegistry {
             is_native: false,
             is_final: true,
             is_override: false,
+            is_test: false,
         });
 
         // 注册 Integer 类

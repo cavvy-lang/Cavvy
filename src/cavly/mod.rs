@@ -3,6 +3,7 @@ pub mod builder;
 pub mod project;
 pub mod ffi;
 pub mod workspace;
+pub mod tester;
 
 use std::path::{Path, PathBuf};
 use anyhow::{Result, Context};

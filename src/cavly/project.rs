@@ -139,6 +139,116 @@ Thumbs.db
                 .with_context(|| format!("写入 .gitignore 失败: {}", gitignore_path.display()))?;
         }
         
+        // 创建 tests 目录和示例测试文件
+        let tests_dir = path.join("tests");
+        if !tests_dir.exists() {
+            ensure_dir(&tests_dir)?;
+            
+            match project_type {
+                ProjectType::Bin => {
+                    let test_path = tests_dir.join("test_basic.cay");
+                    if !test_path.exists() {
+                        let test_content = r#"// Cavvy 测试文件示例
+// 使用 @Test 注解标记测试方法（需要编译器 --test 模式）
+
+public class BasicTests {
+    @Test
+    public static void testAddition() {
+        int result = 1 + 1;
+        // 断言：如果条件为 false，测试失败
+        // 在正式支持 assert 前，用 if + println 模拟
+        if (result != 2) {
+            println("FAILED: testAddition expected 2, got " + result);
+            return;
+        }
+        println("  testAddition passed");
+    }
+    
+    @Test
+    public static void testStringConcat() {
+        String hello = "Hello, ";
+        String world = "Cavvy!";
+        String result = hello + world;
+        if (result != "Hello, Cavvy!") {
+            println("FAILED: testStringConcat");
+            return;
+        }
+        println("  testStringConcat passed");
+    }
+    
+    public static void main() {
+        // 测试入口：手动调用 test 方法
+        // cavly test 在 --test 模式下会自动调用 @Test 方法
+        testAddition();
+        testStringConcat();
+        println("All tests passed!");
+    }
+}
+"#;
+                        std::fs::write(&test_path, test_content)
+                            .with_context(|| format!("写入测试文件失败: {}", test_path.display()))?;
+                    }
+                }
+                ProjectType::Lib => {
+                    let test_path = tests_dir.join("test_lib.cay");
+                    if !test_path.exists() {
+                        let test_content = format!(r#"// {} 库测试
+
+public class LibTests {{
+    @Test
+    public static void testAdd() {{
+        // 测试库的 add 函数
+        int result = {}::add(1, 2);
+        if (result != 3) {{
+            println("FAILED: testAdd expected 3, got " + result);
+        }} else {{
+            println("  testAdd passed");
+        }}
+    }}
+    
+    public static void main() {{
+        testAdd();
+        println("All library tests passed!");
+    }}
+}}
+"#, project_name, Self::to_class_name(&project_name));
+                        std::fs::write(&test_path, test_content)
+                            .with_context(|| format!("写入库测试文件失败: {}", test_path.display()))?;
+                    }
+                }
+            }
+        }
+        
+        // 创建 build.cay 模板（可选）
+        let build_script_path = path.join("build.cay");
+        if !build_script_path.exists() {
+            let build_content = r#"// Cavvy 构建脚本 (build.cay)
+// 在编译主项目之前自动编译并运行此脚本。
+//
+// 环境变量：
+//   OUT_DIR       - 构建产物输出目录
+//   PROJECT_ROOT  - 项目根目录
+//   PROFILE       - 构建配置 (debug/release)
+//   OPT_LEVEL     - 优化级别 (0/1/2/3/s/z)
+//   TARGET        - 目标平台
+//
+// 用途示例：
+//   - 代码生成
+//   - 下载外部依赖
+//   - 编译 C/C++ 代码
+//   - 生成版本头文件
+
+public class BuildScript {
+    public static void main() {
+        // TODO: 在此添加构建前置逻辑
+        println("Build script executed successfully!");
+    }
+}
+"#;
+            std::fs::write(&build_script_path, build_content)
+                .with_context(|| format!("写入构建脚本模板失败: {}", build_script_path.display()))?;
+        }
+        
         let type_str = match project_type {
             ProjectType::Bin => "可执行项目",
             ProjectType::Lib => "库项目",
@@ -152,6 +262,23 @@ Thumbs.db
         println!("已在 {} 创建{} '{}'", path.display(), type_str, project_name);
         println!("  配置文件: {}", config_path.display());
         println!("  主文件: {}", src_dir.join(main_file_name).display());
+        println!("  测试目录: {}", tests_dir.display());
+        if build_script_path.exists() {
+            println!("  构建脚本: {}", build_script_path.display());
+        }
+        println!();
+        println!("下一步:");
+        match project_type {
+            ProjectType::Bin => {
+                println!("  cavly build       # 构建项目");
+                println!("  cavly run         # 构建并运行");
+                println!("  cavly test        # 运行测试");
+            }
+            ProjectType::Lib => {
+                println!("  cavly build       # 构建库");
+                println!("  cavly test        # 运行测试");
+            }
+        }
         
         Ok(())
     }

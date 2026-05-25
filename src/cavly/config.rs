@@ -28,6 +28,18 @@ pub struct CavlyConfig {
     #[serde(default)]
     pub ffi: FfiConfig,
     
+    /// 二进制目标（类似 Cargo 的 [[bin]]）
+    #[serde(default, rename = "bin")]
+    pub bins: Vec<BinTarget>,
+    
+    /// 测试目标（类似 Cargo 的 [[test]]）
+    #[serde(default, rename = "test")]
+    pub tests: Vec<TestTarget>,
+    
+    /// 测试运行配置
+    #[serde(default)]
+    pub test_config: TestConfig,
+    
     /// 依赖配置
     #[serde(default)]
     pub dependencies: HashMap<String, Dependency>,
@@ -85,6 +97,12 @@ pub struct PackageConfig {
     /// 输出目录
     #[serde(default = "default_target_dir")]
     pub target_dir: String,
+    
+    /// 构建脚本路径（类似 Cargo 的 build.rs）
+    /// 如果指定，在构建主项目之前先编译并运行此脚本
+    /// 默认为 None，表示不使用构建脚本
+    #[serde(default)]
+    pub build_script: Option<String>,
 }
 
 impl Default for PackageConfig {
@@ -99,6 +117,7 @@ impl Default for PackageConfig {
             main: default_main(),
             src_dir: default_src_dir(),
             target_dir: default_target_dir(),
+            build_script: None,
         }
     }
 }
@@ -115,7 +134,121 @@ fn default_target_dir() -> String {
     "target".to_string()
 }
 
-/// 构建配置
+// ============================================================
+// 二进制目标配置 - 类似 Cargo 的 [[bin]]
+// ============================================================
+
+/// 二进制目标（类似 Cargo 的 `[[bin]]`）
+/// 
+/// 一个项目可以定义多个二进制目标，每个编译为独立的可执行文件。
+/// 如果 `bins` 为空且 `project_type` 为 `Bin`，则自动将 `package.main`
+/// 作为默认的单一二进制目标，保证向后兼容。
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct BinTarget {
+    /// 二进制名称（输出文件名，不含扩展名）
+    /// 例如 `name = "my-app"` → 输出 `my-app.exe`（Windows）或 `my-app`（Linux）
+    pub name: String,
+    
+    /// 源文件路径（相对于项目根目录）
+    pub path: String,
+    
+    /// 是否在 `cavly build` 时默认构建此目标
+    /// 设为 false 可通过 `cavly build --bin <name>` 手动构建
+    #[serde(default = "default_true")]
+    pub default_build: bool,
+    
+    /// 是否可在 `cavly test` 时测试此目标
+    #[serde(default = "default_true")]
+    pub test: bool,
+    
+    /// 是否启用基准测试（预留字段）
+    #[serde(default)]
+    pub bench: bool,
+    
+    /// 此目标的独立构建配置（覆盖全局 [build] 配置）
+    #[serde(default)]
+    pub build: Option<BuildConfig>,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl BinTarget {
+    /// 获取此目标的输出文件名（不含扩展名）
+    pub fn output_basename(&self) -> &str {
+        &self.name
+    }
+}
+
+// ============================================================
+// 测试目标配置 - 类似 Cargo 的 [[test]]
+// ============================================================
+
+/// 测试目标（类似 Cargo 的 `[[test]]`）
+/// 
+/// 定义独立的测试入口，每个测试目标编译为独立的可执行文件。
+/// `cavly test` 命令会编译并运行所有测试目标。
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TestTarget {
+    /// 测试名称
+    pub name: String,
+    
+    /// 测试文件路径（相对于项目根目录）
+    pub path: String,
+    
+    /// 是否使用内置测试框架（harness）
+    /// - true: 编译器用 `--test` 模式编译，自动生成测试入口，发现 `@Test` 注解方法
+    /// - false: 作为普通程序编译运行，退出码 0 表示通过
+    #[serde(default = "default_true")]
+    pub harness: bool,
+}
+
+// ============================================================
+// 测试运行配置
+// ============================================================
+
+/// 测试运行配置
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TestConfig {
+    /// 并发运行的测试线程数（1 = 串行）
+    #[serde(default = "default_test_threads")]
+    pub threads: usize,
+    
+    /// 单个测试的超时时间（秒），0 表示无限制
+    #[serde(default)]
+    pub timeout_secs: u64,
+    
+    /// 失败时是否立即停止（默认 true）
+    #[serde(default = "default_true")]
+    pub fail_fast: bool,
+    
+    /// 是否显示测试输出（包括通过的测试）
+    #[serde(default)]
+    pub show_output: bool,
+}
+
+fn default_test_threads() -> usize {
+    // 默认使用逻辑 CPU 核心数，最小为 1
+    std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4)
+}
+
+impl Default for TestConfig {
+    fn default() -> Self {
+        Self {
+            threads: default_test_threads(),
+            timeout_secs: 0,
+            fail_fast: true,
+            show_output: false,
+        }
+    }
+}
+
+// ============================================================
+// 构建配置
+// ============================================================
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct BuildConfig {
     /// 优化级别: 0, 1, 2, 3, s, z
@@ -552,6 +685,123 @@ impl CavlyConfig {
     pub fn is_bin(&self) -> bool {
         self.package.project_type == ProjectType::Bin
     }
+    
+    /// 获取有效的二进制目标列表（向后兼容）
+    /// 
+    /// 如果 `bins` 不为空，返回 `bins` 中的所有目标。
+    /// 如果 `bins` 为空且项目类型为 Bin，则自动将 `package.main` 
+    /// 作为默认的单一二进制目标，保证旧配置文件的兼容性。
+    pub fn effective_bins(&self) -> Vec<BinTarget> {
+        if !self.bins.is_empty() {
+            return self.bins.clone();
+        }
+        
+        // 向后兼容：bins 为空时使用 package.main
+        if self.is_bin() {
+            return vec![BinTarget {
+                name: self.output_filename(),
+                path: format!("{}/{}", self.package.src_dir, self.package.main),
+                default_build: true,
+                test: true,
+                bench: false,
+                build: None,
+            }];
+        }
+        
+        Vec::new()
+    }
+    
+    /// 按名称查找二进制目标
+    pub fn bin_by_name(&self, name: &str) -> Option<&BinTarget> {
+        self.bins.iter().find(|b| b.name == name)
+    }
+    
+    /// 获取所有默认构建的二进制目标
+    pub fn default_bins(&self) -> Vec<BinTarget> {
+        self.effective_bins()
+            .into_iter()
+            .filter(|b| b.default_build)
+            .collect()
+    }
+    
+    /// 检查是否配置了构建脚本
+    pub fn has_build_script(&self) -> bool {
+        self.package.build_script.is_some()
+    }
+    
+    /// 获取构建脚本的完整路径
+    /// 
+    /// 返回 None 表示没有配置构建脚本。
+    pub fn build_script_path(&self, project_root: &Path) -> Option<PathBuf> {
+        self.package.build_script.as_ref().map(|script| {
+            if Path::new(script).is_absolute() {
+                PathBuf::from(script)
+            } else {
+                project_root.join(script)
+            }
+        })
+    }
+    
+    /// 获取构建脚本的输出目录
+    /// 
+    /// 构建脚本编译后的可执行文件放在此目录下。
+    pub fn build_script_dir(&self, project_root: &Path) -> PathBuf {
+        self.target_path(project_root).join("build-script")
+    }
+    
+    /// 检查是否存在测试目标
+    pub fn has_tests(&self) -> bool {
+        !self.tests.is_empty()
+    }
+    
+    /// 扫描 `tests/` 目录，自动发现测试文件
+    /// 
+    /// 自动发现的测试文件会被添加到显式声明的 `[[test]]` 目标之后。
+    /// 约定：
+    /// - `tests/*.cay` 中的每个文件作为一个独立的测试目标
+    /// - 测试名称由文件名（不含扩展名）派生
+    /// - 自动发现的测试默认启用 harness
+    pub fn discover_tests(&self, project_root: &Path) -> Vec<TestTarget> {
+        let mut all_tests = self.tests.clone();
+        
+        let tests_dir = project_root.join("tests");
+        if !tests_dir.is_dir() {
+            return all_tests;
+        }
+        
+        // 收集已显式声明的测试路径，避免重复
+        let declared_paths: std::collections::HashSet<String> = self.tests
+            .iter()
+            .map(|t| t.path.clone())
+            .collect();
+        
+        if let Ok(entries) = std::fs::read_dir(&tests_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().map(|e| e == "cay").unwrap_or(false) {
+                    let rel_path = path.strip_prefix(project_root)
+                        .unwrap_or(&path)
+                        .to_string_lossy()
+                        .to_string();
+                    
+                    if !declared_paths.contains(&rel_path) {
+                        let test_name = path.file_stem()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or("unknown")
+                            .to_string();
+                        
+                        all_tests.push(TestTarget {
+                            name: test_name,
+                            path: rel_path,
+                            harness: true,
+                        });
+                    }
+                }
+            }
+        }
+        
+        all_tests
+    }
 }
 
 /// 创建默认可执行项目配置模板
@@ -570,6 +820,36 @@ license = "MIT"
 main = "main.cay"
 src_dir = "src"
 target_dir = "target"
+# build_script = "build.cay"  # 构建脚本（可选）
+
+# [[bin]] 定义多个二进制目标
+# 如果没有 [[bin]]，cavly 自动将 package.main 作为默认的单一二进制目标
+[[bin]]
+name = "{}"
+path = "src/main.cay"
+# default_build = true  # 是否在 cavly build 时默认构建
+# test = true           # 是否在 cavly test 时测试
+# bench = false         # 是否启用基准测试
+
+# 额外的二进制目标示例
+# [[bin]]
+# name = "my-tool"
+# path = "src/bin/my-tool.cay"
+# default_build = true  # 包含在默认构建中
+
+# [[test]] 定义测试目标
+# cavly test 会自动发现 tests/ 目录下的 .cay 文件
+# 也可以显式声明测试目标
+# [[test]]
+# name = "unit_tests"
+# path = "tests/unit_tests.cay"
+# harness = true  # 使用内置测试框架（支持 @Test 注解）
+
+[test-config]
+threads = 0       # 并发线程数（0 = CPU 核心数）
+timeout_secs = 0  # 单个测试超时秒数（0 = 无限）
+fail_fast = true  # 失败时立即停止
+show_output = false  # 显示通过的测试输出
 
 [build]
 opt_level = "2"
@@ -621,7 +901,7 @@ link_options = []
 
 [dev-dependencies]
 # 仅开发时使用的依赖
-"#, name)
+"#, name, name)
 }
 
 /// 创建默认库项目配置模板
@@ -640,6 +920,19 @@ project_type = "lib"
 main = "lib.cay"
 src_dir = "src"
 target_dir = "target"
+# build_script = "build.cay"  # 构建脚本（可选）
+
+# [[test]] 库项目的测试目标
+# [[test]]
+# name = "lib_tests"
+# path = "tests/lib_tests.cay"
+# harness = true
+
+[test-config]
+threads = 0
+timeout_secs = 0
+fail_fast = true
+show_output = false
 
 [build]
 opt_level = "2"

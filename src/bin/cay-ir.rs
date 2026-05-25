@@ -270,6 +270,7 @@ fn main() {
         obfuscate: options.obfuscate,
         debug: options.debug,
         include_paths: Vec::new(),
+        test_mode: false,
     };
 
     // 编译 Cavvy → IR

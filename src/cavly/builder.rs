@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use anyhow::{Result, Context, bail};
-use crate::cavly::config::{CavlyConfig, ProjectType};
+use crate::cavly::config::{CavlyConfig, BinTarget, ProjectType};
 use crate::cavly::workspace::{WorkspaceResolver, ResolvedDependency, topological_sort};
 use crate::cavly::{ensure_dir, TARGET_DIR};
 
@@ -9,6 +9,8 @@ use crate::cavly::{ensure_dir, TARGET_DIR};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuildState {
     Idle,
+    /// 执行预构建脚本
+    PreBuild,
     Compiling,
     Linking,
     Complete,
@@ -87,6 +89,7 @@ impl Builder {
     /// 执行完整构建流程
     /// 
     /// # 流程
+    /// 0. 执行构建脚本（如果配置了 build.cay）
     /// 1. 首先构建所有依赖库（如果是 lib 项目）
     /// 2. 验证源文件存在
     /// 3. 查找 cayc 编译器
@@ -97,6 +100,9 @@ impl Builder {
     /// - 时间: O(n + m)，n 为源码大小，m 为链接复杂度
     /// - 空间: O(n) 临时文件
     pub fn build(&mut self) -> Result<PathBuf> {
+        // 0. 执行构建脚本（如果配置了）
+        self.execute_build_script()?;
+        
         self.state = BuildState::Compiling;
         
         // 1. 先构建所有依赖库
@@ -119,7 +125,7 @@ impl Builder {
         let output_path = self.determine_output_path(&target_dir)?;
         
         // 6. 构建 cayc 命令行参数
-        let args = self.build_cayc_args(&source_path, &output_path)?;
+        let args = self.build_cayc_args(&source_path, &output_path, None)?;
         
         if self.verbose {
             if self.config.is_lib() && self.config.lib.only_include {
@@ -143,24 +149,9 @@ impl Builder {
         // 7. 执行 cayc 编译
         self.state = BuildState::Linking;
         
-        let output = Command::new(&cayc_path)
-            .args(&args)
-            .current_dir(&self.project_root)
-            .output()
-            .with_context(|| format!("执行 cayc 失败: {}", cayc_path.display()))?;
+        self.invoke_cayc(&cayc_path, &args, &output_path)?;
         
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            bail!("编译失败:\nstdout:\n{}\nstderr:\n{}", stdout, stderr);
-        }
-        
-        // 8. 检查输出文件是否生成
-        if !output_path.exists() {
-            bail!("编译未生成输出文件: {}", output_path.display());
-        }
-        
-        // 9. 如果是库项目且不是 only_include，安装到 lib 目录
+        // 8. 如果是库项目且不是 only_include，安装到 lib 目录
         if self.config.is_lib() && !self.config.lib.only_include {
             self.install_library(&output_path)?;
         }
@@ -172,6 +163,229 @@ impl Builder {
         }
         
         Ok(output_path)
+    }
+    
+    /// 构建所有默认的二进制目标
+    /// 
+    /// 这是 `cavly build` 的新默认行为：
+    /// - 如果定义了 `[[bin]]`，构建所有 `default_build = true` 的 bin
+    /// - 如果没有 `[[bin]]`，回退到 package.main（向后兼容）
+    /// 
+    /// # 返回
+    /// 所有成功构建的输出文件路径列表
+    pub fn build_all_bins(&mut self) -> Result<Vec<PathBuf>> {
+        // 0. 执行构建脚本
+        self.execute_build_script()?;
+        
+        // 1. 构建依赖
+        self.build_dependencies()?;
+        
+        // 2. 获取有效的 bin 目标
+        let bins = self.config.default_bins();
+        
+        if bins.is_empty() {
+            // 无 bin 目标（可能是纯库项目），使用旧的 build() 路径
+            return self.build().map(|p| vec![p]);
+        }
+        
+        let target_dir = self.config.target_path(&self.project_root);
+        ensure_dir(&target_dir)?;
+        
+        let cayc_path = find_cayc()?;
+        
+        let mut outputs = Vec::new();
+        
+        for bin in &bins {
+            let source_path = self.project_root.join(&bin.path);
+            if !source_path.exists() {
+                if self.verbose {
+                    println!("Cavly: 跳过不存在的 bin 源文件: {}", source_path.display());
+                }
+                continue;
+            }
+            
+            let output_path = self.determine_bin_output_path(&target_dir, bin)?;
+            
+            if self.verbose {
+                println!("Cavly: 构建 bin: {} ({})", bin.name, bin.path);
+                println!("Cavly:   输出: {}", output_path.display());
+            }
+            
+            let args = self.build_cayc_args(&source_path, &output_path, Some(bin))?;
+            
+            if self.verbose {
+                println!("Cavly:   调用: {} {}", cayc_path.display(), args.join(" "));
+            }
+            
+            self.invoke_cayc(&cayc_path, &args, &output_path)?;
+            outputs.push(output_path);
+        }
+        
+        self.state = BuildState::Complete;
+        
+        if self.verbose {
+            println!("Cavly: 所有 bin 构建完成 ({} 个)", outputs.len());
+        }
+        
+        Ok(outputs)
+    }
+    
+    /// 按名称构建指定的二进制目标
+    pub fn build_bin_by_name(&mut self, name: &str) -> Result<PathBuf> {
+        // 0. 执行构建脚本
+        self.execute_build_script()?;
+        
+        // 1. 构建依赖
+        self.build_dependencies()?;
+        
+        // 2. 查找 bin
+        let bin = self.config.effective_bins()
+            .into_iter()
+            .find(|b| b.name == name)
+            .ok_or_else(|| anyhow::anyhow!("找不到二进制目标: '{}'", name))?;
+        
+        let target_dir = self.config.target_path(&self.project_root);
+        ensure_dir(&target_dir)?;
+        
+        let cayc_path = find_cayc()?;
+        
+        let source_path = self.project_root.join(&bin.path);
+        if !source_path.exists() {
+            bail!("bin '{}' 的源文件不存在: {}", name, source_path.display());
+        }
+        
+        let output_path = self.determine_bin_output_path(&target_dir, &bin)?;
+        
+        if self.verbose {
+            println!("Cavly: 构建 bin: {} ({})", bin.name, bin.path);
+        }
+        
+        let args = self.build_cayc_args(&source_path, &output_path, Some(&bin))?;
+        self.invoke_cayc(&cayc_path, &args, &output_path)?;
+        
+        self.state = BuildState::Complete;
+        
+        Ok(output_path)
+    }
+    
+    /// 执行构建脚本（build.cay）
+    /// 
+    /// # 流程
+    /// 1. 检查是否配置了 build_script
+    /// 2. 编译 build.cay → target/build-script/build.exe
+    /// 3. 运行 build.exe，传入环境变量
+    /// 4. 检查退出码
+    fn execute_build_script(&mut self) -> Result<()> {
+        let script_path = match self.config.build_script_path(&self.project_root) {
+            Some(p) if p.exists() => p,
+            Some(p) => {
+                // 配置了但文件不存在
+                bail!("构建脚本不存在: {}", p.display());
+            }
+            None => return Ok(()),  // 没有配置构建脚本，跳过
+        };
+        
+        self.state = BuildState::PreBuild;
+        
+        let build_dir = self.config.build_script_dir(&self.project_root);
+        ensure_dir(&build_dir)?;
+        
+        let cayc_path = find_cayc()?;
+        
+        // 确定 build.exe 输出路径
+        let build_exe = if cfg!(target_os = "windows") {
+            build_dir.join("build.exe")
+        } else {
+            build_dir.join("build")
+        };
+        
+        if self.verbose {
+            println!("Cavly: 执行构建脚本: {}", script_path.display());
+            println!("Cavly:   编译构建脚本: {} {}", cayc_path.display(), script_path.display());
+        }
+        
+        // 编译构建脚本为可执行文件
+        // 构建脚本使用 -O0 以加快编译速度（脚本通常很小）
+        let build_args = vec![
+            "-O0".to_string(),
+            script_path.to_string_lossy().to_string(),
+            build_exe.to_string_lossy().to_string(),
+        ];
+        
+        let output = Command::new(&cayc_path)
+            .args(&build_args)
+            .current_dir(&self.project_root)
+            .output()
+            .with_context(|| format!("编译构建脚本失败: {}", script_path.display()))?;
+        
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            bail!("构建脚本编译失败:\nstdout:\n{}\nstderr:\n{}", stdout, stderr);
+        }
+        
+        if !build_exe.exists() {
+            bail!("构建脚本编译未生成可执行文件: {}", build_exe.display());
+        }
+        
+        if self.verbose {
+            println!("Cavly:   运行构建脚本: {}", build_exe.display());
+        }
+        
+        // 运行构建脚本，设置标准环境变量
+        let target_dir = self.config.target_path(&self.project_root);
+        let out_dir = target_dir.join("build-script-out");
+        ensure_dir(&out_dir)?;
+        
+        let status = Command::new(&build_exe)
+            .env("OUT_DIR", &out_dir)
+            .env("PROJECT_ROOT", &self.project_root)
+            .env("PROFILE", if self.config.build.debug { "debug" } else { "release" })
+            .env("OPT_LEVEL", &self.config.build.opt_level)
+            .env("TARGET", self.config.build.target.as_deref().unwrap_or("native"))
+            .current_dir(&self.project_root)
+            .status()
+            .with_context(|| format!("运行构建脚本失败: {}", build_exe.display()))?;
+        
+        if !status.success() {
+            bail!("构建脚本退出码: {:?}", status.code());
+        }
+        
+        if self.verbose {
+            println!("Cavly: 构建脚本执行成功");
+        }
+        
+        Ok(())
+    }
+    
+    /// 确定 bin 的输出文件路径
+    fn determine_bin_output_path(&self, target_dir: &Path, bin: &BinTarget) -> Result<PathBuf> {
+        if self.is_windows_target() {
+            Ok(target_dir.join(format!("{}.exe", bin.output_basename())))
+        } else {
+            Ok(target_dir.join(bin.output_basename()))
+        }
+    }
+    
+    /// 调用 cayc 编译并检查结果（核心编译函数）
+    fn invoke_cayc(&self, cayc_path: &Path, args: &[String], expected_output: &Path) -> Result<()> {
+        let output = Command::new(cayc_path)
+            .args(args)
+            .current_dir(&self.project_root)
+            .output()
+            .with_context(|| format!("执行 cayc 失败: {}", cayc_path.display()))?;
+        
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            bail!("编译失败:\nstdout:\n{}\nstderr:\n{}", stdout, stderr);
+        }
+        
+        if !expected_output.exists() {
+            bail!("编译未生成输出文件: {}", expected_output.display());
+        }
+        
+        Ok(())
     }
     
     /// 构建所有依赖库
@@ -323,31 +537,41 @@ impl Builder {
     
     /// 构建 cayc 命令行参数
     /// 
+    /// # 参数
+    /// - `source_path`: 源文件路径
+    /// - `output_path`: 输出文件路径
+    /// - `bin`: 可选的二进制目标，用于 bin 级别的构建配置覆盖
+    /// 
     /// # 复杂度
     /// - 时间: O(n)，n 为配置参数数量
     /// - 空间: O(n)
-    fn build_cayc_args(&self, source_path: &Path, output_path: &Path) -> Result<Vec<String>> {
+    fn build_cayc_args(&self, source_path: &Path, output_path: &Path, bin: Option<&BinTarget>) -> Result<Vec<String>> {
         let mut args = Vec::new();
+
+        // 使用 bin 级别的构建配置（如果存在），否则使用全局配置
+        let effective_build = bin
+            .and_then(|b| b.build.as_ref())
+            .unwrap_or(&self.config.build);
 
         // only_include 模式：只编译检查，不链接任何库
         let is_only_include = self.config.is_lib() && self.config.lib.only_include;
 
         // 优化级别
-        args.push(self.config.opt_flag());
+        args.push(format!("-O{}", effective_build.opt_level));
         
         // 调试信息
-        if self.config.build.debug {
+        if effective_build.debug {
             args.push("-g".to_string());
         }
         
         // 静态链接（only_include 模式不需要）
-        if !is_only_include && self.config.build.static_link {
+        if !is_only_include && effective_build.static_link {
             args.push("--static".to_string());
         }
         
         // LTO
-        if self.config.build.lto {
-            if self.config.build.opt_ir {
+        if effective_build.lto {
+            if effective_build.opt_ir {
                 // thin LTO
                 args.push("--lto=thin".to_string());
             } else {
@@ -356,18 +580,18 @@ impl Builder {
         }
         
         // 目标平台
-        if let Some(ref target) = self.config.build.target {
+        if let Some(ref target) = effective_build.target {
             args.push("--target".to_string());
             args.push(target.clone());
         }
         
         // IR 优化
-        if self.config.build.opt_ir {
+        if effective_build.opt_ir {
             args.push("--opt-ir".to_string());
         }
         
         // 保留 IR
-        if self.config.build.keep_ir {
+        if effective_build.keep_ir {
             args.push("--keep-ir".to_string());
         }
         
@@ -413,15 +637,15 @@ impl Builder {
         }
 
         // 额外的 cflags
-        if !self.config.build.cflags.is_empty() {
+        if !effective_build.cflags.is_empty() {
             args.push("--cflags".to_string());
-            args.push(self.config.build.cflags.join(" "));
+            args.push(effective_build.cflags.join(" "));
         }
         
         // 额外的 ldflags
-        if !self.config.build.ldflags.is_empty() {
+        if !effective_build.ldflags.is_empty() {
             args.push("--ldflags".to_string());
-            args.push(self.config.build.ldflags.join(" "));
+            args.push(effective_build.ldflags.join(" "));
         }
         
         // 输入文件（相对于项目根目录的路径）
@@ -468,7 +692,7 @@ impl Builder {
 /// 搜索顺序:
 /// 1. 系统 PATH 中的 cayc
 /// 2. 当前可执行文件所在目录下的 cayc
-fn find_cayc() -> Result<PathBuf> {
+pub fn find_cayc() -> Result<PathBuf> {
     // 1. 尝试系统 PATH
     if let Ok(output) = Command::new("cayc").arg("--version").output() {
         if output.status.success() {
@@ -509,19 +733,19 @@ fn find_cayc() -> Result<PathBuf> {
     bail!("找不到 cayc 编译器。请确保 cayc 已安装并在 PATH 中，或与 cavly 在同一目录下")
 }
 
-/// 快速构建入口
+/// 快速构建入口（构建所有默认 bin）
 /// 
 /// # 复杂度
 /// - 时间: O(n + m)
 /// - 空间: O(n)
-pub fn quick_build(project_root: &Path, verbose: bool) -> Result<PathBuf> {
+pub fn quick_build(project_root: &Path, verbose: bool) -> Result<Vec<PathBuf>> {
     let config_path = project_root.join("cavly.toml");
     let config = CavlyConfig::from_file(&config_path)?;
     
     let mut builder = Builder::new(project_root.to_path_buf(), config)
         .verbose(verbose);
     
-    builder.build()
+    builder.build_all_bins()
 }
 
 #[cfg(test)]
@@ -599,7 +823,7 @@ mod tests {
         let source = Path::new("src/main.cay");
         let output = Path::new("target/test.exe");
         
-        let args = builder.build_cayc_args(source, output).unwrap();
+        let args = builder.build_cayc_args(source, output, None).unwrap();
         
         // 验证参数包含预期内容
         assert!(args.contains(&"-O3".to_string()));

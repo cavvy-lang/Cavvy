@@ -107,6 +107,7 @@ impl SemanticAnalyzer {
                     is_native: false,
                     is_override: false,
                     is_final: false,  // 接口方法不是final
+                    is_test: false,   // 接口方法不能是 @Test
                 };
                 interface_info.add_method(method_info);
             }
@@ -211,6 +212,8 @@ impl SemanticAnalyzer {
 
             for member in &class.members {
                 if let ClassMember::Method(method) = member {
+                    let is_test = method.modifiers.contains(&Modifier::Test);
+                    
                     let method_info = MethodInfo {
                         name: method.name.clone(),
                         class_name: class.name.clone(),
@@ -223,7 +226,48 @@ impl SemanticAnalyzer {
                         is_native: method.modifiers.contains(&Modifier::Native),
                         is_override: method.modifiers.contains(&Modifier::Override),
                         is_final: method.modifiers.contains(&Modifier::Final),
+                        is_test,
                     };
+                    
+                    // 验证 @Test 方法签名
+                    if is_test {
+                        // @Test 方法必须是 void 返回类型
+                        if method.return_type != Type::Void {
+                            return Err(semantic_error_with_file(
+                                self.current_file.clone(),
+                                method.loc.line,
+                                method.loc.column,
+                                format!(
+                                    "@Test 方法 '{}' 的返回类型必须是 void，当前为 {}\n提示: 将返回类型改为 void，例如: public void {}()",
+                                    method.name, method.return_type, method.name
+                                ),
+                            ));
+                        }
+                        // @Test 方法不能有参数
+                        if !method.params.is_empty() {
+                            return Err(semantic_error_with_file(
+                                self.current_file.clone(),
+                                method.loc.line,
+                                method.loc.column,
+                                format!(
+                                    "@Test 方法 '{}' 不能有参数（发现 {} 个参数）\n提示: 移除参数，例如: public void {}()",
+                                    method.name, method.params.len(), method.name
+                                ),
+                            ));
+                        }
+                        // @Test 方法不能是 private
+                        if method.modifiers.contains(&Modifier::Private) {
+                            return Err(semantic_error_with_file(
+                                self.current_file.clone(),
+                                method.loc.line,
+                                method.loc.column,
+                                format!(
+                                    "@Test 方法 '{}' 不能是 private\n提示: 将 private 改为 public，例如: public void {}()",
+                                    method.name, method.name
+                                ),
+                            ));
+                        }
+                    }
 
                     if let Some(class_info) = self.type_registry.get_class_mut(&class.name) {
                         class_info.add_method(method_info);

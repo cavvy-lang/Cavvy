@@ -58,3 +58,4 @@ sync_docs.py
 *.diff
 
 debug_*
+.sisyphus/

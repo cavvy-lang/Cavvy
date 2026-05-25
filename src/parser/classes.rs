@@ -607,6 +607,10 @@ pub fn parse_modifiers(parser: &mut Parser) -> cayResult<Vec<Modifier>> {
                 modifiers.push(Modifier::Main);
                 parser.advance();
             }
+            Token::AtTest => {
+                modifiers.push(Modifier::Test);
+                parser.advance();
+            }
             _ => break,
         }
     }

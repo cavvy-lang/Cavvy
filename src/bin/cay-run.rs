@@ -300,6 +300,7 @@ fn compile_cay_to_ir(source_path: &str, options: &RunOptions) -> Result<String, 
         obfuscate: options.obfuscate,
         debug: false,
         include_paths: Vec::new(),
+        test_mode: false,
     };
 
     let compiler = Compiler::with_options(compiler_options);
