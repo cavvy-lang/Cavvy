@@ -239,6 +239,8 @@ pub fn get_token_name(token: &Token) -> String {
         Token::Final => "final".to_string(),
         Token::Abstract => "abstract".to_string(),
         Token::Class => "class".to_string(),
+        Token::Struct => "struct".to_string(),
+        Token::Enum => "enum".to_string(),
         Token::Interface => "interface".to_string(),
         Token::Void => "void".to_string(),
         Token::Int => "int".to_string(),
@@ -278,6 +280,7 @@ pub fn get_token_name(token: &Token) -> String {
         Token::AtMain => "@main".to_string(),
         Token::AtOverride => "@Override".to_string(),
         Token::AtTest => "@Test".to_string(),
+        Token::AtFreeFunction => "@FreeFunction".to_string(),
         Token::At => "@".to_string(),
         Token::LParen => "(".to_string(),
         Token::RParen => ")".to_string(),
@@ -380,7 +383,7 @@ pub fn synchronize(parser: &mut Parser) {
         }
         
         match current_token(parser) {
-            Token::Class | Token::Interface | Token::Public | 
+            Token::Class | Token::Struct | Token::Enum | Token::Interface | Token::Public | 
             Token::Private | Token::Protected | Token::If | 
             Token::While | Token::For | Token::Return => {
                 return;

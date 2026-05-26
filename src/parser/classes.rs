@@ -611,6 +611,10 @@ pub fn parse_modifiers(parser: &mut Parser) -> cayResult<Vec<Modifier>> {
                 modifiers.push(Modifier::Test);
                 parser.advance();
             }
+            Token::AtFreeFunction => {
+                modifiers.push(Modifier::FreeFunction);
+                parser.advance();
+            }
             _ => break,
         }
     }
@@ -663,4 +667,260 @@ pub fn parse_parameters(parser: &mut Parser) -> cayResult<Vec<ParameterInfo>> {
     }
 
     Ok(params)
+}
+
+/// 解析 struct 声明
+/// struct Point { int x; int y; }
+pub fn parse_struct(parser: &mut Parser) -> cayResult<StructDecl> {
+    let loc = parser.current_loc();
+
+    // 解析所有修饰符
+    let modifiers = parse_modifiers(parser)?;
+
+    parser.consume(&Token::Struct, "期望关键字 'struct'\n提示: struct 声明应以 'struct' 开头，例如: struct Point { int x; int y; }")?;
+
+    let name = parser.consume_identifier("期望 struct 名\n提示: 在 'struct' 后应跟 struct 名，例如: struct Point { ... }")?;
+
+    // 不支持泛型类型参数的说明：struct 暂不支持泛型，需要时可以添加
+    // 跳过可能的 <T>，报错提示
+    if parser.check(&Token::Lt) {
+        return Err(parser.error("struct 暂不支持泛型类型参数\n提示: 当前版本 struct 不支持泛型语法，请移除 '<T>' 类型参数"));
+    }
+
+    parser.consume(&Token::LBrace, "期望 '{'\n提示: struct 声明后应跟结构体，使用 '{' 开始，例如: struct Point { ... }")?;
+
+    let mut fields = Vec::new();
+    let mut methods = Vec::new();
+    while !parser.check(&Token::RBrace) && !parser.is_at_end() {
+        // struct 成员可以是字段或方法
+        let member_loc = parser.current_loc();
+        let member_modifiers = parse_modifiers(parser)?;
+
+        // 检查是否是方法（返回类型 + 方法名 + 括号）
+        let is_method = if parser.check(&Token::Void) || super::types::is_type_token(parser) {
+            // 可能是方法 - 检查后面是否有方法名和括号
+            let saved_pos = parser.pos;
+            // 尝试跳过返回类型
+            parser.advance(); // 消费返回类型 token
+            let looks_like_method = if parser.is_at_end() {
+                false
+            } else if let Token::Identifier(_) = parser.current_token().clone() {
+                parser.advance(); // 消费标识符
+                parser.check(&Token::LParen)
+            } else {
+                false
+            };
+            parser.pos = saved_pos; // 回退
+            looks_like_method
+        } else {
+            // 检查是否是构造函数（struct 名后跟括号）
+            if let Token::Identifier(ref id) = parser.current_token().clone() {
+                if id.as_str() == name.as_str() {
+                    let saved_pos = parser.pos;
+                    parser.advance();
+                    if parser.check(&Token::LParen) {
+                        parser.pos = saved_pos;
+                        true
+                    } else {
+                        parser.pos = saved_pos;
+                        false
+                    }
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        };
+
+        if is_method {
+            // 解析为方法
+            let method = parse_struct_method(parser, &member_modifiers)?;
+            methods.push(method);
+        } else {
+            // 解析为字段
+            let field = parse_struct_field(parser, &member_modifiers)?;
+            fields.push(field);
+        }
+    }
+
+    parser.consume(&Token::RBrace, "期望 '}'\n提示: struct 体应以 '}' 结束")?;
+
+    Ok(StructDecl {
+        name,
+        modifiers,
+        fields,
+        methods,
+        namespace_path: Vec::new(),
+        loc,
+    })
+}
+
+/// 解析 struct 字段 - int x;
+fn parse_struct_field(parser: &mut Parser, modifiers: &[Modifier]) -> cayResult<FieldDecl> {
+    let loc = parser.current_loc();
+    let field_type = super::types::parse_type(parser)?;
+    let name = parser.consume_identifier("期望字段名\n提示: 在类型后应跟字段名，例如: int x;")?;
+
+    // 可选初始值
+    let initializer = if parser.match_token(&Token::Assign) {
+        Some(super::expressions::parse_expression(parser)?)
+    } else {
+        None
+    };
+
+    parser.consume(&Token::Semicolon, "期望 ';'\n提示: 字段声明应以 ';' 结束")?;
+
+    Ok(FieldDecl {
+        name,
+        field_type,
+        modifiers: modifiers.to_vec(),
+        initializer,
+        loc,
+    })
+}
+
+/// 解析 struct 方法
+fn parse_struct_method(parser: &mut Parser, modifiers: &[Modifier]) -> cayResult<MethodDecl> {
+    parse_method_after_modifiers(parser, modifiers)
+}
+
+/// 在已有 modifiers 后继续解析方法
+fn parse_method_after_modifiers(parser: &mut Parser, modifiers: &[Modifier]) -> cayResult<MethodDecl> {
+    let loc = parser.current_loc();
+
+    // 检查是否是构造函数（struct 名后跟括号）
+    let saved_pos = parser.pos;
+    
+    let return_type = if parser.check(&Token::Void) {
+        parser.advance();
+        Type::Void
+    } else if let Token::Identifier(ref id) = parser.current_token().clone() {
+        // 向前看确认不是构造函数调用参数解析
+        // 这里简单处理：先解析为 return_type，如果在类型解析中遇到 Identifier 就尝试作为类型
+        super::types::parse_type(parser)?
+    } else {
+        super::types::parse_type(parser)?
+    };
+
+    let name = parser.consume_identifier("期望方法名\n提示: 在返回类型后应跟方法名，例如: int calculate() { ... }")?;
+
+    parser.consume(&Token::LParen, "期望 '('\n提示: 方法名后应跟 '(' 开始参数列表")?;
+    let params = parse_parameters(parser)?;
+    parser.consume(&Token::RParen, "期望 ')'\n提示: 参数列表应以 ')' 结束")?;
+
+    // 检查是否有方法体
+    let body = if parser.check(&Token::LBrace) {
+        Some(super::statements::parse_block(parser)?)
+    } else if parser.check(&Token::Semicolon) {
+        // 抽象方法或声明
+        parser.advance();
+        None
+    } else {
+        return Err(parser.error("期望 '{' 或 ';'\n提示: 方法后应跟方法体或分号"));
+    };
+
+    Ok(MethodDecl {
+        name,
+        modifiers: modifiers.to_vec(),
+        return_type,
+        params,
+        body,
+        loc,
+    })
+}
+
+/// 解析 enum 声明 - tagged union / ADT
+/// enum Option<T> { Some(T), None }
+pub fn parse_enum(parser: &mut Parser) -> cayResult<EnumDecl> {
+    let loc = parser.current_loc();
+
+    // 解析所有修饰符
+    let modifiers = parse_modifiers(parser)?;
+
+    parser.consume(&Token::Enum, "期望关键字 'enum'\n提示: enum 声明应以 'enum' 开头，例如: enum Option<T> { Some(T), None }")?;
+
+    let name = parser.consume_identifier("期望 enum 名\n提示: 在 'enum' 后应跟 enum 名，例如: enum Option<T> { ... }")?;
+
+    // 解析泛型类型参数 <T, U, ...>
+    let type_params = parse_generic_type_params(parser)?;
+
+    parser.consume(&Token::LBrace, "期望 '{'\n提示: enum 声明后应跟枚举体，使用 '{' 开始，例如: enum Option<T> { ... }")?;
+
+    let mut variants = Vec::new();
+    while !parser.check(&Token::RBrace) && !parser.is_at_end() {
+        let variant_loc = parser.current_loc();
+        let variant_name = parser.consume_identifier("期望 variant 名\n提示: enum variant 应为标识符，例如: Some 或 None")?;
+
+        // 检查是否携带 payload: Variant(Type)
+        let payload_type = if parser.check(&Token::LParen) {
+            parser.advance(); // 消费 (
+            let ptype = super::types::parse_type(parser)?;
+            parser.consume(&Token::RParen, "期望 ')'\n提示: variant payload 参数列表应以 ')' 结束")?;
+            Some(ptype)
+        } else {
+            None
+        };
+
+        variants.push(EnumVariant {
+            name: variant_name,
+            payload_type,
+            loc: variant_loc,
+        });
+
+        // 检查逗号或结束
+        if !parser.match_token(&Token::Comma) {
+            break;
+        }
+    }
+
+    parser.consume(&Token::RBrace, "期望 '}'\n提示: enum 体应以 '}' 结束")?;
+
+    Ok(EnumDecl {
+        name,
+        modifiers,
+        type_params,
+        variants,
+        namespace_path: Vec::new(),
+        loc,
+    })
+}
+
+/// 解析泛型类型参数 <T, U, V, ...>
+pub fn parse_generic_type_params(parser: &mut Parser) -> cayResult<Vec<String>> {
+    let mut params = Vec::new();
+    
+    if parser.match_token(&Token::Lt) {
+        loop {
+            let param_name = parser.consume_identifier("期望泛型类型参数名\n提示: 泛型类型参数应为标识符，例如: <T> 或 <T, U>")?;
+            params.push(param_name);
+            
+            if !parser.match_token(&Token::Comma) {
+                break;
+            }
+        }
+        parser.consume(&Token::Gt, "期望 '>' 结束泛型参数列表\n提示: 泛型类型参数应以 '>' 结束，例如: <T> 或 <K, V>")?;
+    }
+    
+    Ok(params)
+}
+
+/// 解析泛型类型实参 <Type1, Type2, ...>（用于类型使用）
+/// 例如：Optional<int, String>
+pub fn parse_generic_type_args(parser: &mut Parser) -> cayResult<Vec<Type>> {
+    let mut args = Vec::new();
+    
+    parser.consume(&Token::Lt, "期望 '<' 开始泛型类型实参\n提示: 泛型类型实参应以 '<' 开始，例如: Optional<int>")?;
+    
+    loop {
+        args.push(super::types::parse_type(parser)?);
+        
+        if !parser.match_token(&Token::Comma) {
+            break;
+        }
+    }
+    
+    parser.consume(&Token::Gt, "期望 '>' 结束泛型类型实参\n提示: 泛型类型实参应以 '>' 结束，例如: Optional<int>")?;
+    
+    Ok(args)
 }

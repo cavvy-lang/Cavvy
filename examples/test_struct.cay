@@ -1,0 +1,42 @@
+/**
+ * struct 集成测试
+ * 
+ * 测试内容:
+ * - 基本 struct 声明与字段
+ * - struct 方法调用
+ * - struct 作为值类型的行为
+ */
+
+public struct Point {
+    public int x;
+    public int y;
+    
+    public int getX() {
+        return x;
+    }
+    
+    public int getY() {
+        return y;
+    }
+}
+
+public class StructTest {
+    public static void main() {
+        println("=== struct 声明测试 ===");
+        
+        // 创建 struct 并设置字段
+        Point p = new Point();
+        p.x = 10;
+        p.y = 20;
+        
+        // 测试字段访问
+        println("p.x = " + String.valueOf(p.x));
+        println("p.y = " + String.valueOf(p.y));
+        
+        // 测试方法调用
+        println("p.getX() = " + String.valueOf(p.getX()));
+        println("p.getY() = " + String.valueOf(p.getY()));
+        
+        println("=== struct 测试通过 ===");
+    }
+}

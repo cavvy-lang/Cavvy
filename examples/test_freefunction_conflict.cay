@@ -1,0 +1,28 @@
+/**
+ * @FreeFunction 冲突测试
+ * 
+ * 测试内容:
+ * - 两个不同类中同名 @FreeFunction 方法 → 编译错误
+ */
+
+public class Foo {
+    @FreeFunction
+    public static int greet() {
+        return 1;
+    }
+}
+
+public class Bar {
+    @FreeFunction
+    public static int greet() {
+        return 2;
+    }
+}
+
+public class FreeFunctionConflictTest {
+    public static void main() {
+        // 这应该触发编译错误：greet 在 Foo 和 Bar 中都导出了
+        int result = greet();
+        println(String.valueOf(result));
+    }
+}

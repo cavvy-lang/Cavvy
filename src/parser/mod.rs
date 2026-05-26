@@ -64,6 +64,8 @@ impl Parser {
     /// 解析整个程序
     pub fn parse(&mut self) -> cayResult<Program> {
         let mut classes = Vec::new();
+        let mut structs = Vec::new();
+        let mut enums = Vec::new();
         let mut interfaces = Vec::new();
         let mut top_level_functions = Vec::new();
         let mut extern_declarations = Vec::new();
@@ -104,6 +106,18 @@ impl Parser {
                 || (self.check(&crate::lexer::Token::Public) && self.check_next(&crate::lexer::Token::Interface))
             {
                 interfaces.push(self.parse_interface()?);
+            } else if self.check(&crate::lexer::Token::Struct)
+                || (self.check(&crate::lexer::Token::Public) && self.check_next(&crate::lexer::Token::Struct))
+                || (self.check(&crate::lexer::Token::Private) && self.check_next(&crate::lexer::Token::Struct))
+                || (self.check(&crate::lexer::Token::Protected) && self.check_next(&crate::lexer::Token::Struct))
+            {
+                structs.push(self.parse_struct()?);
+            } else if self.check(&crate::lexer::Token::Enum)
+                || (self.check(&crate::lexer::Token::Public) && self.check_next(&crate::lexer::Token::Enum))
+                || (self.check(&crate::lexer::Token::Private) && self.check_next(&crate::lexer::Token::Enum))
+                || (self.check(&crate::lexer::Token::Protected) && self.check_next(&crate::lexer::Token::Enum))
+            {
+                enums.push(self.parse_enum()?);
             } else if self.check(&crate::lexer::Token::Class)
                 || self.check(&crate::lexer::Token::Private)
                 || self.check(&crate::lexer::Token::Protected)
@@ -200,7 +214,7 @@ impl Parser {
             }
         }
 
-        Ok(Program { classes, interfaces, top_level_functions, extern_declarations, type_aliases, namespace_path, namespace_decls, using_decls })
+        Ok(Program { classes, structs, enums, interfaces, top_level_functions, extern_declarations, type_aliases, namespace_path, namespace_decls, using_decls })
     }
 
     // 类解析方法
@@ -208,8 +222,21 @@ impl Parser {
         classes::parse_class(self)
     }
 
+    fn parse_struct(&mut self) -> cayResult<crate::ast::StructDecl> {
+        classes::parse_struct(self)
+    }
+
+    fn parse_enum(&mut self) -> cayResult<crate::ast::EnumDecl> {
+        classes::parse_enum(self)
+    }
+
     fn parse_interface(&mut self) -> cayResult<crate::ast::InterfaceDecl> {
         classes::parse_interface(self)
+    }
+
+    /// 解析泛型类型参数 <T, U, ...>
+    fn parse_generic_type_params(&mut self) -> cayResult<Vec<String>> {
+        classes::parse_generic_type_params(self)
     }
 
     fn parse_class_member(&mut self) -> cayResult<crate::ast::ClassMember> {
@@ -899,6 +926,8 @@ impl Parser {
         Ok(crate::ast::NamespaceDecl {
             path,
             classes,
+            structs: Vec::new(),
+            enums: Vec::new(),
             interfaces,
             top_level_functions,
             extern_declarations,

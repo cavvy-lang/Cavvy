@@ -1,0 +1,35 @@
+/**
+ * @FreeFunction 集成测试
+ * 
+ * 测试内容:
+ * - @FreeFunction 注解标记方法
+ * - 通过函数名直接调用（不在命名空间内）
+ * - 命名空间内的 @FreeFunction 仍需加前缀
+ */
+
+public class Calculator {
+    @FreeFunction
+    public static int add(int a, int b) {
+        return a + b;
+    }
+    
+    @FreeFunction
+    public static int multiply(int a, int b) {
+        return a * b;
+    }
+}
+
+public class FreeFunctionTest {
+    public static void main() {
+        println("=== @FreeFunction 测试 ===");
+        
+        // 使用 @FreeFunction 导出的函数
+        int sum = add(10, 20);
+        println("add(10, 20) = " + String.valueOf(sum));
+        
+        int product = multiply(6, 7);
+        println("multiply(6, 7) = " + String.valueOf(product));
+        
+        println("=== @FreeFunction 测试通过 ===");
+    }
+}

@@ -78,13 +78,21 @@ impl IRGenerator {
         // 生成构造函数名（使用推断的参数类型）
         let ctor_name = self.generate_constructor_call_name_with_types(&canonical_name, &param_types);
         
-        // 生成参数列表
-        let mut arg_strs = vec![format!("i8* {}", calloc_temp)];
-        arg_strs.extend(arg_values);
+        // struct (值类型) 如果无参构造，跳过构造函数调用（struct 默认值初始化即可）
+        let is_struct = self.type_registry.as_ref()
+            .and_then(|r| r.get_struct(&canonical_name))
+            .is_some();
         
-        // 调用构造函数
-        self.emit_line(&format!("  call void @{}({})",
-            ctor_name, arg_strs.join(", ")));
+        // 非 struct 或有参构造才调用构造函数
+        if !is_struct || !param_types.is_empty() {
+            // 生成参数列表
+            let mut arg_strs = vec![format!("i8* {}", calloc_temp)];
+            arg_strs.extend(arg_values);
+            
+            // 调用构造函数
+            self.emit_line(&format!("  call void @{}({})",
+                ctor_name, arg_strs.join(", ")));
+        }
 
         let cast_temp = self.new_temp();
         self.emit_line(&format!("  {} = bitcast i8* {} to i8*", cast_temp, calloc_temp));

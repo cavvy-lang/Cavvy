@@ -163,6 +163,17 @@ impl IRGenerator {
             compute_layout_recursive(class, &classes, &mut computed, self);
         }
 
+        // 计算 struct 的布局（值类型，无继承）
+        for struct_decl in &program.structs {
+            let qname = if struct_decl.namespace_path.is_empty() {
+                struct_decl.name.clone()
+            } else {
+                format!("{}::{}", struct_decl.namespace_path.join("::"), struct_decl.name)
+            };
+            let instance_fields: Vec<_> = struct_decl.fields.iter().cloned().collect();
+            self.compute_class_layout(&qname, &instance_fields, None);
+        }
+
         for class in &program.classes {
             let qname = if class.namespace_path.is_empty() {
                 class.name.clone()
@@ -233,6 +244,11 @@ impl IRGenerator {
 
         for class in &program.classes {
             self.generate_class(class)?;
+        }
+
+        // 生成 struct 方法
+        for struct_decl in &program.structs {
+            self.generate_struct_methods(struct_decl)?;
         }
 
         self.output.push_str(&self.code);
@@ -710,6 +726,34 @@ impl IRGenerator {
         // 如果没有显式构造函数，生成默认构造函数
         if !has_explicit_ctor {
             self.generate_default_constructor(&qname)?;
+        }
+
+        // 清除命名空间上下文
+        if let Some(ref mut registry) = self.type_registry {
+            registry.current_namespace.clear();
+        }
+
+        Ok(())
+    }
+
+    /// 生成 struct 的所有方法（struct 是值类型，无构造/析构/静态初始化）
+    fn generate_struct_methods(&mut self, struct_decl: &StructDecl) -> cayResult<()> {
+        // 设置当前命名空间上下文
+        if let Some(ref mut registry) = self.type_registry {
+            registry.current_namespace = struct_decl.namespace_path.clone();
+        }
+
+        let qname = if struct_decl.namespace_path.is_empty() {
+            struct_decl.name.clone()
+        } else {
+            format!("{}::{}", struct_decl.namespace_path.join("::"), struct_decl.name)
+        };
+
+        for method in &struct_decl.methods {
+            if !method.modifiers.contains(&Modifier::Native)
+                && !method.modifiers.contains(&Modifier::Abstract) {
+                self.generate_method(&qname, method)?;
+            }
         }
 
         // 清除命名空间上下文

@@ -1,0 +1,42 @@
+/**
+ * enum 集成测试
+ * 
+ * 测试内容:
+ * - enum 声明与 variant 解析
+ * - enum 带 payload 的 variant
+ * - enum 不带 payload 的 variant
+ */
+
+// 简单枚举 - 无 payload
+public enum Color {
+    Red,
+    Green,
+    Blue
+}
+
+// 带 payload 的枚举 - tagged union
+public enum Result {
+    Ok(int),
+    Err(String)
+}
+
+// 带泛型参数的枚举
+public enum MyOption {
+    Some(int),
+    None
+}
+
+public class EnumTest {
+    public static void main() {
+        println("=== enum 声明测试 ===");
+        
+        // 确认文件可以编译通过
+        // enum 目前处于声明定义阶段，具体实例化待后续实现
+        
+        println("Color enum declared: OK");
+        println("Result enum declared: OK");
+        println("MyOption enum declared: OK");
+        
+        println("=== enum 测试通过 ===");
+    }
+}

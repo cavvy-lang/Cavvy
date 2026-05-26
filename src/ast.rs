@@ -11,6 +11,8 @@ pub trait HasLocation {
 #[derive(Debug, Clone)]
 pub struct Program {
     pub classes: Vec<ClassDecl>,
+    pub structs: Vec<StructDecl>,              // 用户自定义 struct 声明
+    pub enums: Vec<EnumDecl>,                  // 用户自定义 enum 声明
     pub interfaces: Vec<InterfaceDecl>,
     pub top_level_functions: Vec<TopLevelFunction>,
     pub extern_declarations: Vec<ExternDecl>,  // FFI extern 声明
@@ -25,6 +27,8 @@ pub struct Program {
 pub struct NamespaceDecl {
     pub path: Vec<String>,               // 命名空间路径，如 ["std", "io"]
     pub classes: Vec<ClassDecl>,
+    pub structs: Vec<StructDecl>,
+    pub enums: Vec<EnumDecl>,
     pub interfaces: Vec<InterfaceDecl>,
     pub top_level_functions: Vec<TopLevelFunction>,
     pub extern_declarations: Vec<ExternDecl>,
@@ -96,6 +100,38 @@ pub struct InterfaceDecl {
     pub modifiers: Vec<Modifier>,
     pub methods: Vec<MethodDecl>,
     pub namespace_path: Vec<String>,  // 所属命名空间路径
+    pub loc: SourceLocation,
+}
+
+/// 用户自定义 struct 声明 - 值类型，栈分配
+/// struct Point { int x; int y; }
+#[derive(Debug, Clone)]
+pub struct StructDecl {
+    pub name: String,
+    pub modifiers: Vec<Modifier>,
+    pub fields: Vec<FieldDecl>,
+    pub methods: Vec<MethodDecl>,
+    pub namespace_path: Vec<String>,  // 所属命名空间路径
+    pub loc: SourceLocation,
+}
+
+/// 用户自定义 enum 声明 - tagged union / ADT
+/// enum Option<T> { Some(T), None }
+#[derive(Debug, Clone)]
+pub struct EnumDecl {
+    pub name: String,
+    pub modifiers: Vec<Modifier>,
+    pub type_params: Vec<String>,          // 泛型类型参数：["T"]
+    pub variants: Vec<EnumVariant>,
+    pub namespace_path: Vec<String>,       // 所属命名空间路径
+    pub loc: SourceLocation,
+}
+
+/// enum 的 variant - 可以携带数据
+#[derive(Debug, Clone)]
+pub struct EnumVariant {
+    pub name: String,
+    pub payload_type: Option<Type>,    // variant 携带的数据类型
     pub loc: SourceLocation,
 }
 
@@ -176,6 +212,7 @@ pub enum Modifier {
     Main,      // 标记主类，用于解决多main冲突
     Override,  // @Override 注解，标记方法重写
     Test,      // @Test 注解，标记测试方法
+    FreeFunction,  // @FreeFunction 注解，将类方法导出为可直接调用的顶层函数
 }
 
 #[derive(Debug, Clone)]
@@ -582,6 +619,8 @@ impl Program {
     /// 扁平化 namespace 声明：将块级 namespace 和文件级 namespace_path 应用到所有声明
     pub fn flatten_namespaces(&self) -> Program {
         let mut classes = self.classes.clone();
+        let mut structs = self.structs.clone();
+        let mut enums = self.enums.clone();
         let mut interfaces = self.interfaces.clone();
         let mut top_level_functions = self.top_level_functions.clone();
         let mut extern_declarations = self.extern_declarations.clone();
@@ -616,6 +655,8 @@ impl Program {
             ns: &NamespaceDecl,
             parent_path: &[String],
             classes: &mut Vec<ClassDecl>,
+            structs: &mut Vec<StructDecl>,
+            enums: &mut Vec<EnumDecl>,
             interfaces: &mut Vec<InterfaceDecl>,
             top_level_functions: &mut Vec<TopLevelFunction>,
             extern_declarations: &mut Vec<ExternDecl>,
@@ -636,6 +677,18 @@ impl Program {
                 }
                 // eprintln!("[DEBUG]   Adding class: {} with namespace_path: {:?}", class.name, class.namespace_path);
                 classes.push(class);
+            }
+            for mut s in ns.structs.clone() {
+                if s.namespace_path.is_empty() {
+                    s.namespace_path = full_path.clone();
+                }
+                structs.push(s);
+            }
+            for mut e in ns.enums.clone() {
+                if e.namespace_path.is_empty() {
+                    e.namespace_path = full_path.clone();
+                }
+                enums.push(e);
             }
             for mut interface in ns.interfaces.clone() {
                 if interface.namespace_path.is_empty() {
@@ -671,13 +724,13 @@ impl Program {
                 };
                 // eprintln!("[DEBUG]   Processing nested namespace at depth {}: nested.path={:?}, ns.path={:?}, using parent_path={:?}", 
                 //     depth, nested.path, ns.path, nested_parent_path);
-                flatten_ns(nested, &nested_parent_path, classes, interfaces, top_level_functions, extern_declarations, type_aliases, depth + 1);
+                flatten_ns(nested, &nested_parent_path, classes, structs, enums, interfaces, top_level_functions, extern_declarations, type_aliases, depth + 1);
             }
         }
 
         for (i, ns) in self.namespace_decls.iter().enumerate() {
             // eprintln!("[DEBUG] Processing namespace_decls[{}]", i);
-            flatten_ns(ns, &[], &mut classes, &mut interfaces, &mut top_level_functions, &mut extern_declarations, &mut type_aliases, 0);
+            flatten_ns(ns, &[], &mut classes, &mut structs, &mut enums, &mut interfaces, &mut top_level_functions, &mut extern_declarations, &mut type_aliases, 0);
         }
 
         // 如果有文件级 namespace，设置给所有没有 namespace_path 的全局声明
@@ -685,6 +738,16 @@ impl Program {
             for class in &mut classes {
                 if class.namespace_path.is_empty() {
                     class.namespace_path = ns_path.clone();
+                }
+            }
+            for s in &mut structs {
+                if s.namespace_path.is_empty() {
+                    s.namespace_path = ns_path.clone();
+                }
+            }
+            for e in &mut enums {
+                if e.namespace_path.is_empty() {
+                    e.namespace_path = ns_path.clone();
                 }
             }
             for interface in &mut interfaces {
@@ -709,15 +772,10 @@ impl Program {
             }
         }
 
-        // 调试信息：输出结果
-        // eprintln!("[DEBUG] flatten_namespaces result:");
-        // eprintln!("  - classes count: {}", classes.len());
-        // for class in &classes {
-            // eprintln!("    - class: {}, namespace_path: {:?}", class.name, class.namespace_path);
-        // }
-
         Program {
             classes,
+            structs,
+            enums,
             interfaces,
             top_level_functions,
             extern_declarations,
@@ -733,6 +791,8 @@ impl Default for Program {
     fn default() -> Self {
         Self {
             classes: Vec::new(),
+            structs: Vec::new(),
+            enums: Vec::new(),
             interfaces: Vec::new(),
             top_level_functions: Vec::new(),
             extern_declarations: Vec::new(),

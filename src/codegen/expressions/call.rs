@@ -91,8 +91,15 @@ impl IRGenerator {
                         return self.generate_function_pointer_call(name_str, &call.args, &var_type, &call.loc);
                     }
                 }
-                // 检查是否是顶层函数
-                if self.is_top_level_function(name_str) {
+                // 检查是否是 @FreeFunction 导出的自由函数
+                let free_fn_info = self.type_registry.as_ref()
+                    .and_then(|r| r.free_functions.get(name_str))
+                    .map(|(class_name, method_info, _)| (class_name.clone(), method_info.name.clone()));
+                if let Some((owner_class, method_name)) = free_fn_info {
+                    // 将 @FreeFunction 调用转为对应类的静态方法调用
+                    // 使用注册时的方法名（而非调用时的限定名）
+                    (owner_class, method_name, None, true)
+                } else if self.is_top_level_function(name_str) {
                     // 顶层函数没有类名前缀
                     (String::new(), name_str.to_string(), None, false)
                 } else if !self.current_class.is_empty() {
@@ -575,6 +582,18 @@ impl IRGenerator {
     fn is_instance_method(&self, class_name: &str, method_name: &str) -> bool {
         // 查询类型注册表，支持继承查找
         if let Some(ref registry) = self.type_registry {
+            // 先查 struct
+            if let Some(struct_info) = registry.get_struct(class_name) {
+                if let Some(methods) = struct_info.methods.get(method_name) {
+                    for method in methods {
+                        if !method.is_static {
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            }
+            
             let mut current_class_name = class_name.to_string();
             loop {
                 if let Some(class_info) = registry.get_class(&current_class_name) {

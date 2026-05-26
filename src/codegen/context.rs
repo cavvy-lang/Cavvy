@@ -935,6 +935,15 @@ impl IRGenerator {
             // FFI 指针和结构体
             Type::Pointer(inner) => format!("p{}", self.type_to_signature(inner)),
             Type::Struct(name) => format!("st{}", name),
+            // 泛型类型 - 使用类型参数的字符串表示
+            Type::GenericParam(name) => format!("g{}", name),
+            Type::Generic(name, args) => {
+                let mut sig = format!("G{}", name);
+                for arg in args {
+                    sig.push_str(&self.type_to_signature(arg));
+                }
+                sig
+            }
         }
     }
 
@@ -1096,6 +1105,17 @@ impl IRGenerator {
             if let Some(qname) = registry.find_qualified_class(class_name) {
                 return self.class_layouts.get(&qname);
             }
+            // struct 也按相同方式查找
+            let struct_qname = if let Some(s) = registry.get_struct(class_name) {
+                Some(s.name.clone())
+            } else {
+                None
+            };
+            if let Some(ref qname) = struct_qname {
+                if let Some(layout) = self.class_layouts.get(qname) {
+                    return Some(layout);
+                }
+            }
         }
         None
     }
@@ -1112,6 +1132,12 @@ impl IRGenerator {
         if let Some(ref registry) = self.type_registry {
             if let Some(qname) = registry.find_qualified_class(class_name) {
                 return self.class_layouts.get(&qname)?.fields.get(field_name);
+            }
+            // struct 也按相同方式查找
+            if let Some(s) = registry.get_struct(class_name) {
+                if let Some(layout) = self.class_layouts.get(&s.name) {
+                    return layout.fields.get(field_name);
+                }
             }
         }
         None

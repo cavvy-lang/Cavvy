@@ -70,6 +70,9 @@ impl IRGenerator {
                 }
             },
             Type::Struct(name) => format!("%struct.{}", name),                // 命名结构体
+            // 泛型类型 - 默认为 i8* 指针
+            Type::GenericParam(_) => "i8*".to_string(),
+            Type::Generic(_, _) => "i8*".to_string(),
         }
     }
 

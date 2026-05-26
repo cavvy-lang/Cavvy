@@ -15,6 +15,9 @@ pub enum Type {
     Array(Box<Type>),
     Function(Box<FunctionType>),
     Auto,  // 自动类型推断占位符
+    // 泛型支持
+    GenericParam(String),                   // 泛型类型参数: T
+    Generic(String, Vec<Type>),             // 泛型特化: Optional<Int32>, ArrayList<Int32>
     // FFI 类型
     CInt,       // C int (通常为 i32)
     CUInt,      // C unsigned int (通常为 u32)
@@ -71,6 +74,32 @@ pub struct ConstructorInfo {
 pub struct InterfaceInfo {
     pub name: String,
     pub methods: HashMap<String, MethodInfo>,
+}
+
+/// struct 信息 - 值类型，无继承
+#[derive(Debug, Clone)]
+pub struct StructInfo {
+    pub name: String,
+    pub fields: HashMap<String, FieldInfo>,
+    pub methods: HashMap<String, Vec<MethodInfo>>,  // 支持方法重载
+    pub is_public: bool,
+}
+
+/// enum 信息 - tagged union / ADT
+#[derive(Debug, Clone)]
+pub struct EnumInfo {
+    pub name: String,
+    pub type_params: Vec<String>,                    // 泛型类型参数
+    pub variants: Vec<EnumVariantInfo>,
+    pub methods: HashMap<String, Vec<MethodInfo>>,   // 支持方法重载
+    pub is_public: bool,
+}
+
+/// enum variant 信息
+#[derive(Debug, Clone)]
+pub struct EnumVariantInfo {
+    pub name: String,
+    pub payload_type: Option<Type>,   // variant 携带的数据类型
 }
 
 impl ClassInfo {
@@ -330,6 +359,9 @@ impl Type {
             Type::Array(_) => 8, // 指针大小
             Type::Function(_) => 8, // 函数指针
             Type::Auto => panic!("Cannot get size of auto type - type inference not completed"),
+            // 泛型类型 — 大小取决于具体实例化，运行时由单态化版本决定
+            Type::GenericParam(_) => 8,  // 泛型参数默认指针大小
+            Type::Generic(_, _) => 8,    // 泛型对象默认指针大小（引用语义）
             // FFI 类型大小 (平台相关，这里使用常见值)
             Type::CInt => 4,       // C int 通常为 4 字节
             Type::CUInt => 4,      // C unsigned int 通常为 4 字节
@@ -373,11 +405,16 @@ impl Type {
     }
 
     pub fn is_reference_type(&self) -> bool {
-        matches!(self, Type::String | Type::Object(_) | Type::Array(_))
+        matches!(self, Type::String | Type::Object(_) | Type::Array(_) | Type::Generic(_, _))
     }
 
     pub fn is_integer(&self) -> bool {
         matches!(self, Type::Int32 | Type::Int64 | Type::CULong)
+    }
+
+    /// 检查是否是泛型相关类型
+    pub fn is_generic(&self) -> bool {
+        matches!(self, Type::GenericParam(_) | Type::Generic(_, _))
     }
 }
 
@@ -405,6 +442,16 @@ impl fmt::Display for Type {
                 write!(f, ") -> {}", func_type.return_type)
             }
             Type::Auto => write!(f, "auto"),
+            // 泛型类型
+            Type::GenericParam(name) => write!(f, "{}", name),
+            Type::Generic(name, args) => {
+                write!(f, "{}<", name)?;
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 { write!(f, ", ")?; }
+                    write!(f, "{}", arg)?;
+                }
+                write!(f, ">")
+            }
             // FFI 类型显示
             Type::CInt => write!(f, "c_int"),
             Type::CUInt => write!(f, "c_uint"),
@@ -432,11 +479,16 @@ impl fmt::Display for Type {
 #[derive(Debug, Clone)]
 pub struct TypeRegistry {
     pub classes: HashMap<String, ClassInfo>,
+    pub structs: HashMap<String, StructInfo>,
+    pub enums: HashMap<String, EnumInfo>,
     pub interfaces: HashMap<String, InterfaceInfo>,
     /// 命名空间别名映射: simple_name -> namespace_qualified_name (用于 using 声明)
     pub namespace_aliases: HashMap<String, String>,
     /// 类的命名空间路径: qualified_name -> namespace_path
     pub class_namespace_paths: HashMap<String, Vec<String>>,
+    /// @FreeFunction 导出的函数名 -> (类名, 方法信息, 源位置)
+    /// 用于检测跨类同名冲突
+    pub free_functions: HashMap<String, (String, MethodInfo, crate::error::SourceLocation)>,
     /// 当前命名空间上下文 (由语义分析器在处理每个类时设置)
     pub current_namespace: Vec<String>,
 }
@@ -445,9 +497,12 @@ impl TypeRegistry {
     pub fn new() -> Self {
         let mut registry = Self {
             classes: HashMap::new(),
+            structs: HashMap::new(),
+            enums: HashMap::new(),
             interfaces: HashMap::new(),
             namespace_aliases: HashMap::new(),
             class_namespace_paths: HashMap::new(),
+            free_functions: HashMap::new(),
             current_namespace: Vec::new(),
         };
 
@@ -686,6 +741,75 @@ impl TypeRegistry {
             });
         }
         self.interfaces.insert(name, interface_info);
+        Ok(())
+    }
+
+    /// 注册 struct（值类型）
+    pub fn register_struct(&mut self, struct_info: StructInfo, file: Option<String>, line: usize, column: usize) -> crate::error::cayResult<()> {
+        let name = struct_info.name.clone();
+        if self.structs.contains_key(&name) || self.classes.contains_key(&name) {
+            return Err(crate::error::cayError::DuplicateDefinition {
+                file,
+                line,
+                column,
+                name: name.clone(),
+                suggestion: format!("'{}' 已被定义为类或 struct，请使用不同的名称", name),
+            });
+        }
+        self.structs.insert(name, struct_info);
+        Ok(())
+    }
+
+    /// 注册 enum（tagged union / ADT）
+    pub fn register_enum(&mut self, enum_info: EnumInfo, file: Option<String>, line: usize, column: usize) -> crate::error::cayResult<()> {
+        let name = enum_info.name.clone();
+        if self.enums.contains_key(&name) || self.classes.contains_key(&name) || self.structs.contains_key(&name) {
+            return Err(crate::error::cayError::DuplicateDefinition {
+                file,
+                line,
+                column,
+                name: name.clone(),
+                suggestion: format!("'{}' 已被定义为类/struct/enum，请使用不同的名称", name),
+            });
+        }
+        self.enums.insert(name, enum_info);
+        Ok(())
+    }
+
+    /// 获取 struct 信息
+    pub fn get_struct(&self, name: &str) -> Option<&StructInfo> {
+        self.structs.get(name)
+    }
+
+    /// 获取 enum 信息
+    pub fn get_enum(&self, name: &str) -> Option<&EnumInfo> {
+        self.enums.get(name)
+    }
+
+    /// 注册 @FreeFunction 导出函数
+    /// 如果已有同名函数且来自不同的类，返回冲突错误
+    pub fn register_free_function(
+        &mut self,
+        func_name: &str,
+        class_name: &str,
+        method_info: MethodInfo,
+        loc: crate::error::SourceLocation,
+    ) -> crate::error::cayResult<()> {
+        if let Some((existing_class, _, existing_loc)) = self.free_functions.get(func_name) {
+            if existing_class != class_name {
+                return Err(crate::error::cayError::DuplicateDefinition {
+                    file: loc.file.clone(),
+                    line: loc.line,
+                    column: loc.column,
+                    name: func_name.to_string(),
+                    suggestion: format!(
+                        "@FreeFunction 函数 '{}' 已在类 '{}' ({}:{}) 中定义，类 '{}' 中的同名 @FreeFunction 方法冲突。请使用不同的函数名。",
+                        func_name, existing_class, existing_loc.line, existing_loc.column, class_name
+                    ),
+                });
+            }
+        }
+        self.free_functions.insert(func_name.to_string(), (class_name.to_string(), method_info, loc));
         Ok(())
     }
 

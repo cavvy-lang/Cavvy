@@ -1,0 +1,27 @@
+/**
+ * @FreeFunction 命名空间测试
+ * 
+ * 测试内容:
+ * - 命名空间内的 @FreeFunction 需要加命名空间前缀调用
+ */
+
+namespace math {
+    public class Operations {
+        @FreeFunction
+        public static int square(int x) {
+            return x * x;
+        }
+    }
+}
+
+public class FreeFunctionNSTest {
+    public static void main() {
+        println("=== @FreeFunction 命名空间测试 ===");
+        
+        // 命名空间内的 @FreeFunction 需要加前缀
+        int result = math::square(5);
+        println("math::square(5) = " + String.valueOf(result));
+        
+        println("=== @FreeFunction 命名空间测试通过 ===");
+    }
+}

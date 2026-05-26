@@ -1,0 +1,211 @@
+/**
+ * Optional<T> - 零开销可选值容器 (tagged union 模式)
+ * 
+ * 取代 null，显式空值处理。编译期通过单态化 (monomorphization)
+ * 为每个具体类型生成特化代码，无堆分配，无 RTTI。
+ * 
+ * 设计基于 ROADMAP 0.5.1.x (详见 ROADMAP.md)
+ * 版本: 0.5.1.x
+ * 
+ * 用法示例:
+ *   Optional<int> maybeInt = Optional<int>.of(42);
+ *   if (maybeInt.isPresent()) {
+ *       int val = maybeInt.get();
+ *   }
+ *   int result = maybeInt.orElse(0);
+ */
+
+#ifndef CAY_OPTIONAL_H
+#define CAY_OPTIONAL_H
+
+namespace std {
+
+/**
+ * OptionalInt - int 类型的 Optional 特化版本
+ * 
+ * 这是 Optional<int> 的单态化实现。
+ * 当泛型系统完全实现后，将由 Optional<int> 自动生成此代码。
+ */
+public class OptionalInt {
+    private boolean hasValue;
+    private int value;       // 未初始化时占位，编译器保证 hasValue=false 时不访问
+    
+    // ========== 构造 ==========
+    
+    /**
+     * 创建一个包含值的 Optional
+     */
+    public static OptionalInt of(int value) {
+        OptionalInt opt = new OptionalInt();
+        opt.hasValue = true;
+        opt.value = value;
+        return opt;
+    }
+    
+    /**
+     * 创建一个空的 Optional
+     */
+    public static OptionalInt empty() {
+        OptionalInt opt = new OptionalInt();
+        opt.hasValue = false;
+        // value 保持未初始化，编译器保证不被访问
+        return opt;
+    }
+    
+    // ========== 检查 ==========
+    
+    /**
+     * 检查是否包含值
+     */
+    public boolean isPresent() {
+        return hasValue;
+    }
+    
+    /**
+     * 检查是否为空
+     */
+    public boolean isEmpty() {
+        return !hasValue;
+    }
+    
+    // ========== 取值 ==========
+    
+    /**
+     * 获取值（不安全 - 需先检查 isPresent()）
+     * 如果为空，行为未定义（release 模式跳过检查）
+     */
+    public int get() {
+        // 注意：release 模式下跳过检查以实现零开销
+        // debug 模式下可添加断言
+        return value;
+    }
+    
+    /**
+     * 安全取值：为空时返回默认值
+     */
+    public int orElse(int defaultValue) {
+        if (hasValue) {
+            return value;
+        } else {
+            return defaultValue;
+        }
+    }
+}
+
+/**
+ * OptionalBool - boolean 类型的 Optional 特化版本
+ */
+public class OptionalBool {
+    private boolean hasValue;
+    private boolean value;
+    
+    public static OptionalBool of(boolean value) {
+        OptionalBool opt = new OptionalBool();
+        opt.hasValue = true;
+        opt.value = value;
+        return opt;
+    }
+    
+    public static OptionalBool empty() {
+        OptionalBool opt = new OptionalBool();
+        opt.hasValue = false;
+        return opt;
+    }
+    
+    public boolean isPresent() {
+        return hasValue;
+    }
+    
+    public boolean isEmpty() {
+        return !hasValue;
+    }
+    
+    public boolean get() {
+        return value;
+    }
+    
+    public boolean orElse(boolean defaultValue) {
+        if (hasValue) {
+            return value;
+        } else {
+            return defaultValue;
+        }
+    }
+}
+
+/**
+ * OptionalDouble - double 类型的 Optional 特化版本
+ */
+public class OptionalDouble {
+    private boolean hasValue;
+    private double value;
+    
+    public static OptionalDouble of(double value) {
+        OptionalDouble opt = new OptionalDouble();
+        opt.hasValue = true;
+        opt.value = value;
+        return opt;
+    }
+    
+    public static OptionalDouble empty() {
+        OptionalDouble opt = new OptionalDouble();
+        opt.hasValue = false;
+        return opt;
+    }
+    
+    public boolean isPresent() {
+        return hasValue;
+    }
+    
+    public boolean isEmpty() {
+        return !hasValue;
+    }
+    
+    public double get() {
+        return value;
+    }
+    
+    public double orElse(double defaultValue) {
+        if (hasValue) {
+            return value;
+        } else {
+            return defaultValue;
+        }
+    }
+}
+
+} // namespace std
+
+/*
+ * ============================================================
+ * Optional<T> 完整 API 设计（待泛型系统完成后实现）
+ * ============================================================
+ * 
+ * public class Optional<T> {
+ *     private boolean hasValue;
+ *     private T value;          // 未初始化时占位，编译器保证不访问
+ * 
+ *     // 构造
+ *     public static Optional<T> of(T value);
+ *     public static Optional<T> empty();
+ * 
+ *     // 检查
+ *     public boolean isPresent();
+ *     public boolean isEmpty();
+ * 
+ *     // 取值（不安全 - 需手动检查）
+ *     public T get();                        // throw if empty
+ * 
+ *     // 安全取值
+ *     public T orElse(T defaultValue);
+ *     public T orElseGet(fn() -> T supplier);
+ *     public Optional<U> map(fn(T) -> U mapper);
+ *     public Optional<U> flatMap(fn(T) -> Optional<U> mapper);
+ * 
+ *     // 条件操作
+ *     public void ifPresent(fn(T) -> void consumer);
+ *     public Optional<T> filter(fn(T) -> boolean predicate);
+ * }
+ */
+
+#endif // CAY_OPTIONAL_H

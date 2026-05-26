@@ -128,7 +128,9 @@ impl SemanticAnalyzer {
                     }
                 }
                 
-                if self.type_registry.class_exists(name) {
+                if self.type_registry.class_exists(name) 
+                    || self.type_registry.get_struct(name).is_some()
+                    || self.type_registry.get_enum(name).is_some() {
                     // 标识符是类名，返回类类型（用于静态成员访问）
                     Ok(Type::Object(name.clone()))
                 } else {
@@ -579,6 +581,27 @@ impl SemanticAnalyzer {
                 return Ok(return_type);
             }
             
+            // 检查 @FreeFunction 注册的自由函数
+            if let Some((_class_name, method_info, _loc)) = self.type_registry.free_functions.get(name.as_ref()).cloned() {
+                // 验证参数
+                if call.args.len() != method_info.params.len() {
+                    return Err(semantic_error_at_loc(
+                        &call.loc,
+                        format!("@FreeFunction '{}' requires {} arguments, but got {}", name, method_info.params.len(), call.args.len())
+                    ));
+                }
+                for (i, (arg, param)) in call.args.iter().zip(method_info.params.iter()).enumerate() {
+                    let arg_type = self.infer_expr_type_internal(arg)?;
+                    if !self.types_compatible(&arg_type, &param.param_type) {
+                        return Err(semantic_error_at_loc(
+                            &call.loc,
+                            format!("@FreeFunction '{}' argument {} type mismatch: expected {}, got {}", name, i + 1, param.param_type, arg_type)
+                        ));
+                    }
+                }
+                return Ok(method_info.return_type.clone());
+            }
+            
             // 检查是否存在同名方法（参数不匹配）
             if let Some(ref current_class) = self.current_class {
                 if let Some(class_info) = self.type_registry.get_class(current_class) {
@@ -728,8 +751,14 @@ impl SemanticAnalyzer {
             }
         }
 
-        // 类成员访问
+        // 类/struct 成员访问
         if let Type::Object(class_name) = obj_type {
+            // 先查 struct
+            if let Some(struct_info) = self.type_registry.get_struct(&class_name) {
+                if let Some(field_info) = struct_info.fields.get(&member.member) {
+                    return Ok(field_info.field_type.clone());
+                }
+            }
             if let Some(class_info) = self.type_registry.get_class(&class_name) {
                 if let Some(field_info) = class_info.fields.get(&member.member) {
                     // 检查私有字段访问权限
@@ -774,10 +803,13 @@ impl SemanticAnalyzer {
                 ));
             }
             Ok(Type::Object(new_expr.class_name.clone()))
+        } else if self.type_registry.get_struct(&new_expr.class_name).is_some() {
+            // struct 是值类型，用 Object 包装
+            Ok(Type::Object(new_expr.class_name.clone()))
         } else {
             Err(semantic_error_at_loc(
                 &new_expr.loc,
-                format!("Unknown class: {}", new_expr.class_name)
+                format!("Unknown class or struct: {}", new_expr.class_name)
             ))
         }
     }

@@ -497,4 +497,157 @@ impl SemanticAnalyzer {
 
         types1.iter().zip(types2.iter()).all(|(t1, t2)| t1 == t2)
     }
+
+    /// 收集 struct 定义并注册到 TypeRegistry
+    pub fn collect_structs(&mut self, program: &Program) -> cayResult<()> {
+        for struct_decl in &program.structs {
+            let mut struct_info = crate::types::StructInfo {
+                name: struct_decl.name.clone(),
+                fields: std::collections::HashMap::new(),
+                methods: std::collections::HashMap::new(),
+                is_public: struct_decl.modifiers.iter().any(|m| matches!(m, Modifier::Public)),
+            };
+
+            // 收集字段
+            for field in &struct_decl.fields {
+                let field_info = crate::types::FieldInfo {
+                    name: field.name.clone(),
+                    field_type: field.field_type.clone(),
+                    is_public: true,  // struct 字段默认公开
+                    is_private: false,
+                    is_protected: false,
+                    is_static: false,
+                    is_final: false,
+                    is_const_expr: false,
+                };
+                struct_info.fields.insert(field.name.clone(), field_info);
+            }
+
+            // 收集方法
+            for method in &struct_decl.methods {
+                let method_info = MethodInfo {
+                    name: method.name.clone(),
+                    class_name: struct_decl.name.clone(),
+                    params: method.params.clone(),
+                    return_type: method.return_type.clone(),
+                    is_public: method.modifiers.iter().any(|m| matches!(m, Modifier::Public)),
+                    is_private: method.modifiers.iter().any(|m| matches!(m, Modifier::Private)),
+                    is_protected: method.modifiers.iter().any(|m| matches!(m, Modifier::Protected)),
+                    is_static: method.modifiers.iter().any(|m| matches!(m, Modifier::Static)),
+                    is_native: method.modifiers.iter().any(|m| matches!(m, Modifier::Native)),
+                    is_override: false,
+                    is_final: method.modifiers.iter().any(|m| matches!(m, Modifier::Final)),
+                    is_test: false,
+                };
+                struct_info.methods
+                    .entry(method.name.clone())
+                    .or_insert_with(Vec::new)
+                    .push(method_info);
+            }
+
+            let (file, line) = self.resolve_file_and_line(struct_decl.loc.line);
+            self.type_registry.register_struct(
+                struct_info,
+                file,
+                line,
+                struct_decl.loc.column,
+            )?;
+        }
+        Ok(())
+    }
+
+    /// 收集 enum 定义并注册到 TypeRegistry
+    pub fn collect_enums(&mut self, program: &Program) -> cayResult<()> {
+        for enum_decl in &program.enums {
+            let variants = enum_decl.variants.iter().map(|v| crate::types::EnumVariantInfo {
+                name: v.name.clone(),
+                payload_type: v.payload_type.clone(),
+            }).collect();
+
+            let enum_info = crate::types::EnumInfo {
+                name: enum_decl.name.clone(),
+                type_params: enum_decl.type_params.clone(),
+                variants,
+                methods: std::collections::HashMap::new(),
+                is_public: enum_decl.modifiers.iter().any(|m| matches!(m, Modifier::Public)),
+            };
+
+            let (file, line) = self.resolve_file_and_line(enum_decl.loc.line);
+            self.type_registry.register_enum(
+                enum_info,
+                file,
+                line,
+                enum_decl.loc.column,
+            )?;
+        }
+        Ok(())
+    }
+
+    /// 检查 @FreeFunction 冲突
+    /// 当两个不同类中的方法都标记了 @FreeFunction 且同名时，报错
+    pub fn check_free_function_conflicts(&mut self, program: &Program) -> cayResult<()> {
+        use crate::ast::Modifier;
+        
+        for class_decl in &program.classes {
+            for member in &class_decl.members {
+                if let ClassMember::Method(method) = member {
+                    if method.modifiers.contains(&Modifier::FreeFunction) {
+                        // 构建 MethodInfo 用于注册
+                        let method_info = MethodInfo {
+                            name: method.name.clone(),
+                            class_name: class_decl.name.clone(),
+                            params: method.params.clone(),
+                            return_type: method.return_type.clone(),
+                            is_public: method.modifiers.contains(&Modifier::Public),
+                            is_private: method.modifiers.contains(&Modifier::Private),
+                            is_protected: method.modifiers.contains(&Modifier::Protected),
+                            is_static: method.modifiers.contains(&Modifier::Static),
+                            is_native: false,
+                            is_override: false,
+                            is_final: false,
+                            is_test: false,
+                        };
+
+                        // 获取源映射后的位置
+                        let (file, line) = self.resolve_file_and_line(method.loc.line);
+                        let loc = crate::error::SourceLocation {
+                            file,
+                            line,
+                            column: method.loc.column,
+                        };
+
+                        // 注册到 TypeRegistry（内部会检查冲突）
+                        self.type_registry.register_free_function(
+                            &method.name,
+                            &class_decl.name,
+                            method_info.clone(),
+                            loc.clone(),
+                        )?;
+                        
+                        // 如果在命名空间内，同时注册命名空间限定名
+                        // 例如: namespace math 中的 square → 也注册 math::square
+                        if !class_decl.namespace_path.is_empty() {
+                            let qualified_name = format!(
+                                "{}::{}",
+                                class_decl.namespace_path.join("::"),
+                                method.name
+                            );
+                            let ns_loc = crate::error::SourceLocation {
+                                line: method.loc.line,
+                                column: method.loc.column,
+                                ..loc
+                            };
+                            self.type_registry.register_free_function(
+                                &qualified_name,
+                                &class_decl.name,
+                                method_info,
+                                ns_loc,
+                            )?;
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
 }

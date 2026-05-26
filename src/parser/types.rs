@@ -36,22 +36,30 @@ pub fn parse_type(parser: &mut Parser) -> cayResult<Type> {
         crate::lexer::Token::CString => { parser.advance(); Type::Pointer(Box::new(Type::CChar)) }
         crate::lexer::Token::CInt64 => { parser.advance(); Type::Int64 }
         crate::lexer::Token::CUInt64 => { parser.advance(); Type::Int64 }
-        crate::lexer::Token::Identifier(name) => {
-            let mut name = name.clone();
-            parser.advance();
-            // 支持命名空间限定类型名: std::StringBuilder, std::io::File
-            while parser.check(&crate::lexer::Token::DoubleColon) {
-                parser.advance(); // 消费 ::
-                let next = parser.consume_identifier("期望命名空间后的标识符\n提示: 限定类型名格式为 'ns::Type' 或 'ns::sub::Type'")?;
-                name = format!("{}::{}", name, next);
+            crate::lexer::Token::Identifier(name) => {
+                let mut name = name.clone();
+                parser.advance();
+                // 支持命名空间限定类型名: std::StringBuilder, std::io::File
+                while parser.check(&crate::lexer::Token::DoubleColon) {
+                    parser.advance(); // 消费 ::
+                    let next = parser.consume_identifier("期望命名空间后的标识符\n提示: 限定类型名格式为 'ns::Type' 或 'ns::sub::Type'")?;
+                    name = format!("{}::{}", name, next);
+                }
+                // 检查是否是已定义的类型别名
+                if let Some(aliased_type) = parser.get_type_alias(&name) {
+                    aliased_type
+                } else {
+                    // 检查是否有泛型类型参数 <...>
+                    let type_name = Type::Object(name.clone());
+                    if parser.check(&crate::lexer::Token::Lt) {
+                        // 解析泛型类型参数: Optional<int, String>
+                        let type_args = crate::parser::classes::parse_generic_type_args(parser)?;
+                        Type::Generic(name, type_args)
+                    } else {
+                        type_name
+                    }
+                }
             }
-            // 检查是否是已定义的类型别名
-            if let Some(aliased_type) = parser.get_type_alias(&name) {
-                aliased_type
-            } else {
-                Type::Object(name)
-            }
-        }
         _ => {
             let current_token = parser.current_token();
             let (token_desc, suggestion) = match current_token {

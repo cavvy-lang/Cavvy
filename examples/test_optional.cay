@@ -1,0 +1,59 @@
+/**
+ * Optional<T> 使用示例
+ * 
+ * 编译运行: cayc examples/test_optional.cay test_optional.exe && ./test_optional.exe
+ */
+
+#include <Optional.cay>
+
+using std::OptionalInt;
+using std::OptionalBool;
+using std::OptionalDouble;
+
+public class OptionalTest {
+    public static void main() {
+        // ===== OptionalInt 测试 =====
+        println("=== OptionalInt 测试 ===");
+        
+        // 创建包含值的 Optional
+        OptionalInt some = OptionalInt.of(42);
+        if (some.isPresent()) {
+            println("some.isPresent() = true");
+            println("some.get() = " + String.valueOf(some.get()));
+        }
+        
+        // 创建空的 Optional
+        OptionalInt none = OptionalInt.empty();
+        if (none.isEmpty()) {
+            println("none.isEmpty() = true");
+        }
+        
+        // orElse 测试
+        int val1 = some.orElse(0);
+        int val2 = none.orElse(100);
+        println("some.orElse(0) = " + String.valueOf(val1));
+        println("none.orElse(100) = " + String.valueOf(val2));
+        
+        // ===== OptionalBool 测试 =====
+        println("");
+        println("=== OptionalBool 测试 ===");
+        
+        OptionalBool flag = OptionalBool.of(true);
+        if (flag.isPresent()) {
+            println("flag.isPresent() = true, flag.get() = true");
+        }
+        
+        // ===== OptionalDouble 测试 =====
+        println("");
+        println("=== OptionalDouble 测试 ===");
+        
+        OptionalDouble pi = OptionalDouble.of(3.14159);
+        if (pi.isPresent()) {
+            println("pi.isPresent() = true");
+            println("pi.orElse(0.0) = " + String.valueOf(pi.orElse(0.0)));
+        }
+        
+        println("");
+        println("=== 所有 Optional 测试通过! ===");
+    }
+}

@@ -110,6 +110,13 @@ impl SemanticAnalyzer {
         // 第一遍：收集所有类定义
         self.collect_classes(&program)?;
 
+        // 收集 struct 和 enum 定义
+        self.collect_structs(&program)?;
+        self.collect_enums(&program)?;
+
+        // 检查 @FreeFunction 冲突
+        self.check_free_function_conflicts(&program)?;
+
         // 注册运行时函数到 NetworkUtils 类
         self.register_runtime_functions();
 

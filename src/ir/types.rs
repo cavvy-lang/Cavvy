@@ -178,6 +178,9 @@ impl From<&crate::types::Type> for IrType {
                 name: format!("struct.{}", name),
                 fields: Vec::new(),
             },
+            // 泛型类型 - 默认回退为指针
+            Type::GenericParam(_) => IrType::Pointer(Box::new(IrType::I8)),
+            Type::Generic(_, _) => IrType::Pointer(Box::new(IrType::I8)),
         }
     }
 }

@@ -36,10 +36,16 @@ pub enum Token {
     AtOverride,
     #[token("@Test")]
     AtTest,
+    #[token("@FreeFunction")]
+    AtFreeFunction,
     #[token("@")]
     At,
     #[token("class")]
     Class,
+    #[token("struct")]
+    Struct,
+    #[token("enum")]
+    Enum,
     #[token("void")]
     Void,
     #[token("int")]
@@ -921,8 +927,11 @@ pub fn token_name(token: &Token) -> &'static str {
         Token::AtMain => "@main",
         Token::AtOverride => "@Override",
         Token::AtTest => "@Test",
+        Token::AtFreeFunction => "@FreeFunction",
         Token::At => "@",
         Token::Class => "class",
+        Token::Struct => "struct",
+        Token::Enum => "enum",
         Token::Void => "void",
         Token::Int => "int",
         Token::Long => "long",
@@ -1045,7 +1054,7 @@ pub fn is_keyword(token: &Token) -> bool {
     matches!(token,
         Token::Public | Token::Private | Token::Protected |
         Token::Static | Token::Final | Token::Abstract | Token::Native |
-        Token::Class | Token::Void | Token::Int | Token::Long |
+        Token::Class | Token::Struct | Token::Enum | Token::Void | Token::Int | Token::Long |
         Token::Float | Token::Double | Token::Bool | Token::String |
         Token::Char | Token::True | Token::False | Token::Null |
         Token::If | Token::Else | Token::While | Token::For |
