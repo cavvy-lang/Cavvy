@@ -300,6 +300,7 @@ public class ScopeAlloc implements Allocator {
     public long getMarker();
 }
 ```
+
 </details>
 
 #### 0.5.1.x 基础类型与字符串（无 Object 根类）
@@ -309,7 +310,7 @@ public class ScopeAlloc implements Allocator {
 - [X] **StringBuilder** - 基于 Arena 或显式容量预分配的可变字符串
   - 实现文件: `caylibs/StringBuilder.cay`
   - 支持 `append(String/int/long/boolean/char/char[])`, `insert()`, `delete()`, `reverse()`, `substring()`, `replace()`, `indexOf()`
-- [ ] **Optional `<T>`** - 取代 null，显式空值处理 `Option<String>`，编译期非空检查基础
+- [X] **Optional `<T>`** - 取代 null，显式空值处理 `Option<String>`，编译期非空检查基础
 - [X] **FFI 基础类型包** - 标准库新增 `std.ffi` 模块
   - `CInt`, `CLong`, `SizeT` 等跨平台固定宽度别名
   - 固定宽度整数: `Int8T`, `Int16T`, `Int32T`, `Int64T`, `UInt8T`~`UInt64T`
@@ -318,7 +319,7 @@ public class ScopeAlloc implements Allocator {
   - 实现文件: `caylibs/std/ffi.cay`, `caylibs/std/ffia.cay`
 
 <details>
-<summary>Optional&lt;T&gt; 设计草案（依赖 0.5.2.x 泛型）</summary>
+<summary>Optional<T> 设计草案（依赖 0.5.2.x 泛型）</summary>
 
 ```java
 // 底层实现：tagged union，零开销（无堆分配）
@@ -348,23 +349,27 @@ public class Optional<T> {
     public Optional<T> filter(fn(T) -> bool predicate);
 }
 ```
+
 </details>
 
 #### 0.5.2.x 泛型集合（单态化实现）
 
 - [ ] **泛型语法基础** - `class Box<T>` 语法解析、AST 节点、类型参数绑定
+
   - 单态化（monomorphization）：每个具体类型参数组合生成独立代码
   - 示例：`ArrayList<int>` → 生成 `ArrayList_i32` 特化版本
   - 类型擦除仅在 IR 层，前端保留完整类型信息
 - [ ] **泛型类型检查** - 类型参数边界验证、泛型方法调用点类型推导
+
   - 协变/逆变暂不支持（保持与 Java 数组的协变不同，更接近 C++ 模板）
 - [ ] **显式分配器参数** - 所有集合必须携带分配器：`ArrayList<int> list = new ArrayList<>(arena);`
+
   - 分配器作为泛型参数: `class ArrayList<T, A: Allocator = GlobalAlloc>`
   - 默认使用 GlobalAlloc，可通过参数指定 Arena 等
 - [ ] **核心集合**：
 
   <details>
-  <summary>ArrayList&lt;T&gt; API 设计</summary>
+  <summary>ArrayList<T> API 设计</summary>
 
   ```java
   public class ArrayList<T, A: Allocator = GlobalAlloc> {
@@ -408,10 +413,11 @@ public class Optional<T> {
       public T[] toArray();
   }
   ```
+
   </details>
 
   <details>
-  <summary>HashMap&lt;K,V&gt; API 设计</summary>
+  <summary>HashMap<K,V> API 设计</summary>
 
   ```java
   // 开放寻址法 (Robin Hood hashing)，无二次指针间接
@@ -444,10 +450,11 @@ public class Optional<T> {
       public V putIfAbsent(K key, V value);
   }
   ```
+
   </details>
 
   <details>
-  <summary>HashSet&lt;T&gt; API 设计</summary>
+  <summary>HashSet<T> API 设计</summary>
 
   ```java
   // 基于 HashMap<T, bool> 的特化实现
@@ -466,8 +473,8 @@ public class Optional<T> {
       public ArrayList<T> toList();
   }
   ```
-  </details>
 
+  </details>
 - [ ] **迭代器协议** - 基础迭代器接口，支持范围 for 循环
 
   ```java
@@ -492,6 +499,7 @@ public class Optional<T> {
 4. **与 FFI 的交互**：单态化后的代码可与 C ABI 兼容（特化版本有确定的大小和布局）
 5. **编译性能**：单态化增加编译时间和二进制大小。考虑实现共享单态化（shared monomorphization）优化相同布局的类型共享一份代码
 6. **错误信息质量**：泛型实例化错误需追溯到模板定义位置，参考 Rust 的 error chain 机制
+
 </details>
 
 #### 0.5.3.x 智能指针与资源管理
@@ -521,7 +529,6 @@ public class Optional<T> {
       // 析构时自动 delete 管理的对象
   }
   ```
-
 - [ ] **ScopedPtr `<T>`** - 栈作用域指针，禁止堆分配
 
   ```java
@@ -534,7 +541,6 @@ public class Optional<T> {
       public T& operator*();
   }
   ```
-
 - [ ] **Rc `<T>`（引用计数）**- 循环依赖检测（debug 模式），为 G2 的借用检查做过渡
 
   ```java
@@ -549,7 +555,6 @@ public class Optional<T> {
       // 启用 --detect-cycles 编译选项时插入运行时检测代码
   }
   ```
-
 - [ ] **弱引用基础** - `WeakPtr<T>`，解决循环引用（此时需手动打破循环）
 
   ```java
@@ -574,11 +579,13 @@ public static Result<UniquePtr<File>, IOError> openFile(String path) {
 }
 // 使用: 自动析构，无内存泄漏
 ```
+
 </details>
 
 #### 0.5.4.x 系统级 I/O
 
 - [X] **File 与 Path** - 封装系统调用（Windows: HANDLE, Linux: fd），支持 RAII 关闭
+
   - 实现文件: `caylibs/File.cay`
   - `File` 类: open/close/readChar/writeChar/readLine/writeString/readAllText/writeAllText
   - `FileReader` / `FileWriter`: 简化的流式读写封装
@@ -590,6 +597,7 @@ public static Result<UniquePtr<File>, IOError> openFile(String path) {
   - `File.copy()`: 缓冲区复制, `File.move()`: rename 封装
   - `File.exists()`: 使用 access() 系统调用，避免修改 atime
 - [X] **缓冲区 I/O** - `FileReader/Writer`，显式缓冲区大小参数（默认 8KB）
+
   - `readAllLines()`: 流式两遍读取，避免双倍内存峰值
   - `writeInterpolated()`: 使用 StringBuilder 优化格式化写入，O(n) 复杂度
 - [ ] **内存映射文件** - `Mmap` 类型，支持大文件零拷贝处理
@@ -616,8 +624,8 @@ public static Result<UniquePtr<File>, IOError> openFile(String path) {
       public long size();
   }
   ```
-
 - [X] **错误处理基础** - `FileResult`/`FileError` 已有基础实现
+
   - 当前为非泛型版本，使用 `Object` 作为值容器
   - 待 0.5.2.x 泛型完成后升级为 `Result<T, FileError>`
 
@@ -632,6 +640,7 @@ public static Result<UniquePtr<File>, IOError> openFile(String path) {
 #### 0.6.1.x 错误处理机制（非异常体系）
 
 - [ ] **Result<T, E> 泛型** - 显式错误传播 `Result<File, IOError>`
+
   - 底层实现：tagged union `{ tag: u8, value: union { T ok; E err; } }`
   - 零开销：无堆分配，无 RTTI，无栈回退
 
@@ -667,7 +676,6 @@ public static Result<UniquePtr<File>, IOError> openFile(String path) {
       public Result<T,E> inspectErr(fn(E) -> void action);
   }
   ```
-
 - [ ] **问号运算符** - `file.read()?` 自动展开错误传播（类似 Rust 的 `?` 或 Zig 的 `try`）
 
   ```java
@@ -684,7 +692,6 @@ public static Result<UniquePtr<File>, IOError> openFile(String path) {
       return Result.ok(content);
   }
   ```
-
 - [ ] **错误类型层级** - `interface Error { string message(); }`，支持错误链（error chaining）
 
   ```java
@@ -706,8 +713,8 @@ public static Result<UniquePtr<File>, IOError> openFile(String path) {
       public String sourceSnippet();
   }
   ```
-
 - [ ] **panic/abort** - 不可恢复错误，调用栈回退或立即终止（可选 unwind 实现）
+
   - `panic(String message)`：打印消息和调用栈，调用 `abort()`
   - Debug 模式展开栈帧以收集 backtrace；Release 模式直接 abort
   - 编译选项 `--no-panic` 将所有 panic 转为编译错误（适用于嵌入式环境）
@@ -749,11 +756,10 @@ public static Result<UniquePtr<File>, IOError> openFile(String path) {
       public Result<Thread, ThreadError> spawn(fn() -> void entry);
   }
   ```
-
 - [ ] **线程参数传递** - 必须显式指定数据所有权转移（为 G2 所有权系统做铺垫）
+
   - 线程入口函数的捕获变量需显式 `move` 标记
   - 共享数据使用 `Arc<T>`（见 0.5.3.x）或 `Mutex<T>`
-
 - [ ] **原子操作** - `AtomicI32`, `AtomicI64`, `AtomicPtr<T>`，封装 C++11 风格内存序
 
   ```java
@@ -771,7 +777,6 @@ public static Result<UniquePtr<File>, IOError> openFile(String path) {
 
   // 同样提供 AtomicI64, AtomicPtr<T>, AtomicBool
   ```
-
 - [ ] **互斥锁** - `Mutex<T>`，封装 OS 层 mutex（futex 或 CriticalSection），非语言级 synchronized
 
   ```java
@@ -811,7 +816,6 @@ public static Result<UniquePtr<File>, IOError> openFile(String path) {
       Readable = 1, Writable = 2, Error = 4, HangUp = 8
   }
   ```
-
 - [ ] **异步文件 I/O** - 基于 io_uring（Linux）或 Overlapped I/O（Windows）
 
   ```java
@@ -822,7 +826,6 @@ public static Result<UniquePtr<File>, IOError> openFile(String path) {
       public void close();
   }
   ```
-
 - [ ] **Future/Promise 基础** - 回调式异步，显式状态机转换
 
   ```java
@@ -902,6 +905,7 @@ panic = "abort"
 opt-level = 0
 debug = true
 ```
+
 </details>
 
 #### 0.7.2.x 编译单元与链接
@@ -956,17 +960,21 @@ debug = true
 #### 0.8.1.x Unsafe 子集（为 G2 做准备）
 
 - [ ] **unsafe 块** - `unsafe { ... }`，内部允许：原始指针解引用、union 访问、调用 C 函数
+
   - 在 `unsafe` 块内的操作编译器不进行安全检查
   - 嵌套的 `unsafe` 无效（内部已在 unsafe 上下文）
   - 为 G2 的安全检查提供明确的"信任边界"
 - [ ] **原始指针** - `*T` 和 `*mut T`，支持指针运算
+
   - `*const T` / `*mut T` 类型（区分只读/可写指针）
   - `ptr + offset`, `ptr - offset`, `ptr1 - ptr2`（按元素大小计算）
 - [ ] **类型转换** - `transmute<T, U>`（位重解释），`as` 关键字基础转换
+
   - `ptr as *mut u8` — 指针类型间转换
   - `value as u64` — 数值类型间转换
   - `transmute<f64, u64>(3.14)` — 位级重解释（仅 unsafe 块内可用）
 - [X] **内联IR** - `__ir { ... }` 宏，支持内联 LLVM IR 代码
+
   - 实现文件: `src/ir/inline_ir.rs`
   - 当前用于 StringBuilder、File 等标准库的内部实现
   - 待完善：对外文档和使用指南、安全性审计
@@ -989,6 +997,7 @@ debug = true
 #### 0.8.2.x 编译器优化与 SIMD
 
 - [ ] **自动向量化** - LLVM auto-vectorization 调优，支持 AVX2/AVX-512/NEON
+
   - 编译器传递 `--target-features=+avx2,+fma` 启用特定指令集
   - `cavly build --march=native` 自动检测并启用当前 CPU 全部特性
   - 基础选项已在 `cayc` 编译选项中预留
@@ -1012,23 +1021,26 @@ debug = true
       public float z(); public float w();
   }
   ```
-
 - [ ] **内存布局控制** - `#[repr(C)]`, `#[repr(packed)]`, `#[align(N)]` 属性
+
   - `#[repr(C)]`：C 兼容布局，用于 FFI
   - `#[repr(packed)]`：取消对齐填充，最小化内存占用
   - `#[align(16)]`：指定对齐字节数
   - `#[repr(transparent)]`：单字段结构体保证与字段相同布局（用于 newtype 模式）
 - [ ] **零成本抽象验证** - 确保泛型、迭代器等抽象最终编译为与手写 C 等价的机器码
+
   - 建立性能基准测试套件（microbenchmarks）
   - CI 中对比泛型版本与手写版本的汇编输出
 
 #### 0.8.3.x 嵌入式与裸机支持
 
 - [ ] **no_std** - 支持无标准库环境，不链接 libc
+
   - `cavly build --no-std` 编译标志
   - `#![no_std]` crate 级属性
   - 提供 `core` 最小运行时（仅含基础类型、编译器内置函数）
 - [ ] **启动代码** - 自定义 `_start`，支持裸机 ARM/RISC-V 编程
+
   - 可自定义链接脚本
   - `#[link_section = ".vector_table"]` 属性放置中断向量表
   - `#[no_mangle]` 属性保留符号名
@@ -1117,11 +1129,12 @@ debug = true
       Err(e) => log("Error: \(e.message())"),
   }
   ```
-
 - [ ] **模式匹配基础** - `match` 表达式，支持常量、范围、元组匹配
+
   - 必须穷举（exhaustiveness check）
   - 支持守卫条件：`case Point(x, y) if x > 0 => ...`
 - [ ] **泛型约束** - `where T: Comparable`，泛型边界细化
+
   - `fn max<T>(a: T, b: T) -> T where T: Comparable`
   - 支持多重约束：`where T: Copy + Comparable + Hash`
 - [ ] **关联类型** - `interface Container { type Item; fn get(self) -> Item; }`
@@ -1238,14 +1251,14 @@ debug = true
 6. **默认虚函数**：Cavvy 的方法默认是虚函数（与 Java 一致），final 方法可去虚拟化。不同于 C++ 的默认非虚，给予面向对象设计更大的灵活性。
 7. **IR 层兼容性**：`.ll` 文件和 `.caybc` 字节码是平台无关的中间表示。一次编译、到处运行的实现基础。
 
-| 依赖关系图 |
-|---|
-| 0.5.0 (Allocator) ──────┬──→ 0.5.2 (Generics) ──┬──→ 0.5.3 (SmartPtrs) ──→ 0.6.1 (Result) ──→ 0.6.3 (Async) |
-|                          │                       │                                                      |
-| 0.5.1 (Types/String) ───┘                       └──→ 0.5.4 (I/O) ───────────→ 0.7.1 (cavly) ──→ 0.7.2 (Modules) |
-|                                                                                                           |
-| 0.6.2 (Threads) ────────────────────────────────────────────────→ 0.8.1 (Unsafe) ──→ G2 (Ownership)       |
-|                                                                                                           |
-| 0.7.3 (Tools) ──→ 0.8.2 (SIMD) ──→ 0.8.3 (Embedded) ──→ G1 (Self-hosting)                               |
+| 依赖关系图                                                                                                                                              |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0.5.0 (Allocator) ──────┬──→ 0.5.2 (Generics) ──┬──→ 0.5.3 (SmartPtrs) ──→ 0.6.1 (Result) ──→ 0.6.3 (Async)                       |
+| │                       │                                                                                                                             |
+| 0.5.1 (Types/String) ───┘                       └──→ 0.5.4 (I/O) ───────────→ 0.7.1 (cavly) ──→ 0.7.2 (Modules)                  |
+|                                                                                                                                                         |
+| 0.6.2 (Threads) ────────────────────────────────────────────────→ 0.8.1 (Unsafe) ──→ G2 (Ownership) |
+|                                                                                                                                                         |
+| 0.7.3 (Tools) ──→ 0.8.2 (SIMD) ──→ 0.8.3 (Embedded) ──→ G1 (Self-hosting)                                                                      |
 
 **注意：** 本路线图会根据实际开发情况和社区反馈进行调整。
