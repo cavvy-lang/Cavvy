@@ -253,7 +253,10 @@ fn get_system_include_paths() -> Vec<PathBuf> {
 /// 编译Cay源码为IR
 fn compile_cay_to_ir(source_path: &str, options: &RunOptions) -> Result<String, cayError> {
     let source = fs::read_to_string(source_path)
-        .map_err(|e| cayError::Io(format!("读取源文件失败: {}", e)))?;
+        .map_err(|e| cayError::Io {
+            file: Some(source_path.to_string()),
+            message: format!("读取源文件失败: {}", e),
+        })?;
 
     // 预处理
     let base_dir = Path::new(source_path)
@@ -310,7 +313,10 @@ fn compile_cay_to_ir(source_path: &str, options: &RunOptions) -> Result<String, 
     compiler.compile_with_source_map(&preprocess_result.code, source_map, temp_ir_file.to_str().unwrap())?;
 
     let ir = fs::read_to_string(&temp_ir_file)
-        .map_err(|e| cayError::Io(format!("读取IR文件失败: {}", e)))?;
+        .map_err(|e| cayError::Io {
+            file: temp_ir_file.to_str().map(|s| s.to_string()),
+            message: format!("读取IR文件失败: {}", e),
+        })?;
 
     if !options.keep_temp {
         let _ = fs::remove_file(&temp_ir_file);

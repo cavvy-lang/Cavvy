@@ -496,7 +496,7 @@ fn error_to_diagnostic(error: &cavvy::error::cayError, source: &str) -> Option<D
         cayError::Preprocessor { message, line, column, .. } => {
             (message.clone(), *line, *column)
         }
-        cayError::Io(msg) => {
+        cayError::Io { file: _, message } => {
             return Some(Diagnostic {
                 range: Range {
                     start: Position::new(0, 0),
@@ -506,7 +506,7 @@ fn error_to_diagnostic(error: &cavvy::error::cayError, source: &str) -> Option<D
                 code: None,
                 code_description: None,
                 source: Some("cavvy".to_string()),
-                message: msg.clone(),
+                message: message.clone(),
                 related_information: None,
                 tags: None,
                 data: None,

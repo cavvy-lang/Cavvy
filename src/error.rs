@@ -42,8 +42,11 @@ pub enum cayError {
         suggestion: String,
     },
     
-    #[error("IO错误: {0}")]
-    Io(String),
+    #[error("IO错误 [{}]: {message}", file.as_deref().unwrap_or("<unknown>"))]
+    Io {
+        file: Option<String>,
+        message: String,
+    },
     
     #[error("LLVM错误: {0}")]
     Llvm(String),
@@ -214,13 +217,13 @@ impl From<cayError> for CompilerError {
                     SourceLocation { file: file.clone(), line: display_line, column: display_column },
                 ).with_suggestion(crate::diagnostic::FixSuggestion::new(suggestion.clone()))
             }
-            cayError::Io(msg) => {
+            cayError::Io { file, message } => {
                 crate::diagnostic::Diagnostic::new(
                     "I0001".to_string(),
                     crate::diagnostic::Severity::Error,
                     crate::diagnostic::CompilationPhase::Linker,
-                    msg.clone(),
-                    SourceLocation::default(),
+                    message.clone(),
+                    SourceLocation { file: file.clone(), line: 1, column: 1 },
                 )
             }
             cayError::Llvm(msg) => {
@@ -375,8 +378,8 @@ impl Default for SourceLocation {
     fn default() -> Self {
         Self {
             file: None,
-            line: 1,
-            column: 1,
+            line: 0,
+            column: 0, // 让Cavvy显示严重问题报错，到时候用户用的时候可以直接提issue不至于一脸懵逼
         }
     }
 }
@@ -622,7 +625,7 @@ fn get_error_code(error: &cayError) -> &'static str {
         cayError::UndefinedIdentifier { .. } => "cavvy::undefined_identifier",
         cayError::DuplicateDefinition { .. } => "cavvy::duplicate_definition",
         cayError::CodeGen { .. } => "cavvy::codegen_error",
-        cayError::Io(_) => "cavvy::io_error",
+        cayError::Io { .. } => "cavvy::io_error",
         cayError::Llvm(_) => "cavvy::llvm_error",
         cayError::Preprocessor { .. } => "cavvy::preprocessor_error",
         cayError::MultipleErrors { .. } => "cavvy::multiple_errors",
@@ -639,7 +642,7 @@ pub fn get_error_message(error: &cayError) -> String {
         cayError::UndefinedIdentifier { name, .. } => format!("未定义的标识符 '{}'", name),
         cayError::DuplicateDefinition { name, .. } => format!("重复定义 '{}'", name),
         cayError::CodeGen { message, .. } => message.clone(),
-        cayError::Io(msg) => msg.clone(),
+        cayError::Io { message, .. } => message.clone(),
         cayError::Llvm(msg) => msg.clone(),
         cayError::Preprocessor { message, .. } => message.clone(),
         cayError::MultipleErrors { errors } => format!("发现 {} 个错误", errors.len()),
@@ -656,7 +659,7 @@ pub fn get_error_help(error: &cayError) -> Option<String> {
         cayError::UndefinedIdentifier { suggestion, .. } => Some(suggestion.clone()),
         cayError::DuplicateDefinition { suggestion, .. } => Some(suggestion.clone()),
         cayError::CodeGen { suggestion, .. } => Some(suggestion.clone()),
-        cayError::Io(_) => None,
+        cayError::Io { .. } => None,
         cayError::Llvm(_) => None,
         cayError::Preprocessor { suggestion, .. } => Some(suggestion.clone()),
         cayError::MultipleErrors { .. } => Some("请逐个修复上述错误".to_string()),
@@ -1029,8 +1032,8 @@ mod tests {
     #[test]
     fn test_source_location_default() {
         let loc = SourceLocation::default();
-        assert_eq!(loc.line, 1);
-        assert_eq!(loc.column, 1);
+        assert_eq!(loc.line, 0);
+        assert_eq!(loc.column, 0);
         assert_eq!(loc.file, None);
     }
 

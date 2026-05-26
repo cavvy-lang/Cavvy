@@ -371,8 +371,8 @@ fn test_comprehensive_error_scenario() {
 #[test]
 fn test_empty_source_location() {
     let loc = SourceLocation::default();
-    assert_eq!(loc.line, 1);
-    assert_eq!(loc.column, 1);
+    assert_eq!(loc.line, 0);
+    assert_eq!(loc.column, 0);
 }
 
 #[test]

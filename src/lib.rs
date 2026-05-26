@@ -129,7 +129,10 @@ impl Compiler {
 
         // 输出到文件
         std::fs::write(output_path, ir)
-            .map_err(|e| error::cayError::Io(e.to_string()))?;
+            .map_err(|e| error::cayError::Io {
+                file: Some(output_path.to_string()),
+                message: e.to_string(),
+            })?;
 
         Ok(())
     }
@@ -213,7 +216,10 @@ impl Compiler {
 
         // 输出到文件
         std::fs::write(output_path, ir)
-            .map_err(|e| error::cayError::Io(e.to_string()))?;
+            .map_err(|e| error::cayError::Io {
+                file: Some(output_path.to_string()),
+                message: e.to_string(),
+            })?;
 
         Ok(())
     }
@@ -229,9 +235,10 @@ impl Compiler {
     pub fn compile_file(&self, input_path: &str, output_path: &str) -> cayResult<()> {
         // 读取源文件
         let source = std::fs::read_to_string(input_path)
-            .map_err(|e| error::cayError::Io(
-                format!("无法读取源文件 '{}': {}", input_path, e)
-            ))?;
+            .map_err(|e| error::cayError::Io {
+                file: Some(input_path.to_string()),
+                message: format!("无法读取源文件: {}", e),
+            })?;
 
         // 获取基础目录（用于解析相对路径的 #include）
         let base_dir = Path::new(input_path)
