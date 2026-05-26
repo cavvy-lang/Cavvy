@@ -1,0 +1,8 @@
+
+#include "weather_lib.cay"
+public int main() {
+    double[] temps = {23.5, 25.0, 21.0, 28.5, 26.0};
+    println(WeatherLib.tempSpread(temps));
+    println(WeatherLib.tempAvg(temps));
+    return 0;
+}

@@ -1,0 +1,85 @@
+// Fuzz Test: interfaces // Fuzz35_073_SWMVO
+public class Fuzz35_073_SWMVO {
+    public static void test_iface_000() {
+        int v = 42;
+        print("iface="); println(v);
+        println("OK");
+    }
+    public static void test_iface_001() {
+        int v = 64;
+        print("iface="); println(v);
+        println("OK");
+    }
+    public static void test_iface_002() {
+        int v = 24;
+        print("iface="); println(v);
+        println("OK");
+    }
+    public static void test_iface_003() {
+        int v = 78;
+        print("iface="); println(v);
+        println("OK");
+    }
+    public static void test_iface_004() {
+        int v = 77;
+        print("iface="); println(v);
+        println("OK");
+    }
+    public static void test_iface_005() {
+        int v = 49;
+        print("iface="); println(v);
+        println("OK");
+    }
+    public static void test_iface_006() {
+        int v = 75;
+        print("iface="); println(v);
+        println("OK");
+    }
+    public static void test_iface_007() {
+        int v = 72;
+        print("iface="); println(v);
+        println("OK");
+    }
+    public static void test_iface_008() {
+        int v = 19;
+        print("iface="); println(v);
+        println("OK");
+    }
+    public static void test_iface_009() {
+        int v = 39;
+        print("iface="); println(v);
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_iface_000 START");
+        test_iface_000();
+        println("[SUB] test_iface_000 PASS");
+        println("[SUB] test_iface_001 START");
+        test_iface_001();
+        println("[SUB] test_iface_001 PASS");
+        println("[SUB] test_iface_002 START");
+        test_iface_002();
+        println("[SUB] test_iface_002 PASS");
+        println("[SUB] test_iface_003 START");
+        test_iface_003();
+        println("[SUB] test_iface_003 PASS");
+        println("[SUB] test_iface_004 START");
+        test_iface_004();
+        println("[SUB] test_iface_004 PASS");
+        println("[SUB] test_iface_005 START");
+        test_iface_005();
+        println("[SUB] test_iface_005 PASS");
+        println("[SUB] test_iface_006 START");
+        test_iface_006();
+        println("[SUB] test_iface_006 PASS");
+        println("[SUB] test_iface_007 START");
+        test_iface_007();
+        println("[SUB] test_iface_007 PASS");
+        println("[SUB] test_iface_008 START");
+        test_iface_008();
+        println("[SUB] test_iface_008 PASS");
+        println("[SUB] test_iface_009 START");
+        test_iface_009();
+        println("[SUB] test_iface_009 PASS");
+    }
+}

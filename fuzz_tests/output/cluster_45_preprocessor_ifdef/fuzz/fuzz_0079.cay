@@ -1,0 +1,85 @@
+// Fuzz Test: preprocessor_ifdef // Fuzz45_079_KQMUX
+public class Fuzz45_079_KQMUX {
+    public static void test_ifdef_000() {
+        int v = 88;
+        print("ifdef="); println(v);
+        println("OK");
+    }
+    public static void test_ifdef_001() {
+        int v = 43;
+        print("ifdef="); println(v);
+        println("OK");
+    }
+    public static void test_ifdef_002() {
+        int v = 15;
+        print("ifdef="); println(v);
+        println("OK");
+    }
+    public static void test_ifdef_003() {
+        int v = 14;
+        print("ifdef="); println(v);
+        println("OK");
+    }
+    public static void test_ifdef_004() {
+        int v = 89;
+        print("ifdef="); println(v);
+        println("OK");
+    }
+    public static void test_ifdef_005() {
+        int v = 64;
+        print("ifdef="); println(v);
+        println("OK");
+    }
+    public static void test_ifdef_006() {
+        int v = 96;
+        print("ifdef="); println(v);
+        println("OK");
+    }
+    public static void test_ifdef_007() {
+        int v = 23;
+        print("ifdef="); println(v);
+        println("OK");
+    }
+    public static void test_ifdef_008() {
+        int v = 54;
+        print("ifdef="); println(v);
+        println("OK");
+    }
+    public static void test_ifdef_009() {
+        int v = 96;
+        print("ifdef="); println(v);
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_ifdef_000 START");
+        test_ifdef_000();
+        println("[SUB] test_ifdef_000 PASS");
+        println("[SUB] test_ifdef_001 START");
+        test_ifdef_001();
+        println("[SUB] test_ifdef_001 PASS");
+        println("[SUB] test_ifdef_002 START");
+        test_ifdef_002();
+        println("[SUB] test_ifdef_002 PASS");
+        println("[SUB] test_ifdef_003 START");
+        test_ifdef_003();
+        println("[SUB] test_ifdef_003 PASS");
+        println("[SUB] test_ifdef_004 START");
+        test_ifdef_004();
+        println("[SUB] test_ifdef_004 PASS");
+        println("[SUB] test_ifdef_005 START");
+        test_ifdef_005();
+        println("[SUB] test_ifdef_005 PASS");
+        println("[SUB] test_ifdef_006 START");
+        test_ifdef_006();
+        println("[SUB] test_ifdef_006 PASS");
+        println("[SUB] test_ifdef_007 START");
+        test_ifdef_007();
+        println("[SUB] test_ifdef_007 PASS");
+        println("[SUB] test_ifdef_008 START");
+        test_ifdef_008();
+        println("[SUB] test_ifdef_008 PASS");
+        println("[SUB] test_ifdef_009 START");
+        test_ifdef_009();
+        println("[SUB] test_ifdef_009 PASS");
+    }
+}

@@ -1,0 +1,89 @@
+// Fuzz Test: boolean_logic // Fuzz03_010_EFGIR
+public class Fuzz03_010_EFGIR {
+    public static void test_bool_000() {
+        boolean a = false; boolean b = false; boolean c = a && !b;
+        println("OK");
+    }
+    public static void test_bool_001() {
+        boolean a = true; boolean b = true; boolean c = a && !b;
+        println("OK");
+    }
+    public static void test_bool_002() {
+        boolean a = false; boolean b = false; boolean c = a && b; boolean d = a || b;
+        println("OK");
+    }
+    public static void test_bool_003() {
+        boolean a = false; boolean b = false; boolean c = a || b;
+        println("OK");
+    }
+    public static void test_bool_004() {
+        boolean a = false; boolean b = true; boolean c = (a && b) || (!a && !b);
+        println("OK");
+    }
+    public static void test_bool_005() {
+        boolean a = true; boolean b = false; boolean c = a && b; boolean d = a || b;
+        println("OK");
+    }
+    public static void test_bool_006() {
+        boolean a = true; boolean b = true; boolean c = a || b;
+        println("OK");
+    }
+    public static void test_bool_007() {
+        boolean a = false; boolean b = true; boolean c = a || b;
+        println("OK");
+    }
+    public static void test_bool_008() {
+        boolean a = false; boolean b = false; boolean c = !(a && b);
+        println("OK");
+    }
+    public static void test_bool_009() {
+        boolean a = false; boolean b = false; boolean c = (a && b) || (!a && !b);
+        println("OK");
+    }
+    public static void test_bool_010() {
+        boolean a = false; boolean b = false; boolean c = a && b;
+        println("OK");
+    }
+    public static void test_bool_011() {
+        boolean a = true; boolean c = a && a;
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_bool_000 START");
+        test_bool_000();
+        println("[SUB] test_bool_000 PASS");
+        println("[SUB] test_bool_001 START");
+        test_bool_001();
+        println("[SUB] test_bool_001 PASS");
+        println("[SUB] test_bool_002 START");
+        test_bool_002();
+        println("[SUB] test_bool_002 PASS");
+        println("[SUB] test_bool_003 START");
+        test_bool_003();
+        println("[SUB] test_bool_003 PASS");
+        println("[SUB] test_bool_004 START");
+        test_bool_004();
+        println("[SUB] test_bool_004 PASS");
+        println("[SUB] test_bool_005 START");
+        test_bool_005();
+        println("[SUB] test_bool_005 PASS");
+        println("[SUB] test_bool_006 START");
+        test_bool_006();
+        println("[SUB] test_bool_006 PASS");
+        println("[SUB] test_bool_007 START");
+        test_bool_007();
+        println("[SUB] test_bool_007 PASS");
+        println("[SUB] test_bool_008 START");
+        test_bool_008();
+        println("[SUB] test_bool_008 PASS");
+        println("[SUB] test_bool_009 START");
+        test_bool_009();
+        println("[SUB] test_bool_009 PASS");
+        println("[SUB] test_bool_010 START");
+        test_bool_010();
+        println("[SUB] test_bool_010 PASS");
+        println("[SUB] test_bool_011 START");
+        test_bool_011();
+        println("[SUB] test_bool_011 PASS");
+    }
+}

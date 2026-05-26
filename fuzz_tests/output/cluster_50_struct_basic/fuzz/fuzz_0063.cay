@@ -1,0 +1,101 @@
+// Fuzz Test: struct_basic // Fuzz50_063_WREGG
+public class Fuzz50_063_WREGG {
+    public static void test_struct_000() {
+        int v = 65;
+        print("struct="); println(v);
+        println("OK");
+    }
+    public static void test_struct_001() {
+        int v = 93;
+        print("struct="); println(v);
+        println("OK");
+    }
+    public static void test_struct_002() {
+        int v = 10;
+        print("struct="); println(v);
+        println("OK");
+    }
+    public static void test_struct_003() {
+        int v = 38;
+        print("struct="); println(v);
+        println("OK");
+    }
+    public static void test_struct_004() {
+        int v = 3;
+        print("struct="); println(v);
+        println("OK");
+    }
+    public static void test_struct_005() {
+        int v = 87;
+        print("struct="); println(v);
+        println("OK");
+    }
+    public static void test_struct_006() {
+        int v = 46;
+        print("struct="); println(v);
+        println("OK");
+    }
+    public static void test_struct_007() {
+        int v = 69;
+        print("struct="); println(v);
+        println("OK");
+    }
+    public static void test_struct_008() {
+        int v = 79;
+        print("struct="); println(v);
+        println("OK");
+    }
+    public static void test_struct_009() {
+        int v = 96;
+        print("struct="); println(v);
+        println("OK");
+    }
+    public static void test_struct_010() {
+        int v = 79;
+        print("struct="); println(v);
+        println("OK");
+    }
+    public static void test_struct_011() {
+        int v = 70;
+        print("struct="); println(v);
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_struct_000 START");
+        test_struct_000();
+        println("[SUB] test_struct_000 PASS");
+        println("[SUB] test_struct_001 START");
+        test_struct_001();
+        println("[SUB] test_struct_001 PASS");
+        println("[SUB] test_struct_002 START");
+        test_struct_002();
+        println("[SUB] test_struct_002 PASS");
+        println("[SUB] test_struct_003 START");
+        test_struct_003();
+        println("[SUB] test_struct_003 PASS");
+        println("[SUB] test_struct_004 START");
+        test_struct_004();
+        println("[SUB] test_struct_004 PASS");
+        println("[SUB] test_struct_005 START");
+        test_struct_005();
+        println("[SUB] test_struct_005 PASS");
+        println("[SUB] test_struct_006 START");
+        test_struct_006();
+        println("[SUB] test_struct_006 PASS");
+        println("[SUB] test_struct_007 START");
+        test_struct_007();
+        println("[SUB] test_struct_007 PASS");
+        println("[SUB] test_struct_008 START");
+        test_struct_008();
+        println("[SUB] test_struct_008 PASS");
+        println("[SUB] test_struct_009 START");
+        test_struct_009();
+        println("[SUB] test_struct_009 PASS");
+        println("[SUB] test_struct_010 START");
+        test_struct_010();
+        println("[SUB] test_struct_010 PASS");
+        println("[SUB] test_struct_011 START");
+        test_struct_011();
+        println("[SUB] test_struct_011 PASS");
+    }
+}

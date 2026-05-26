@@ -1,0 +1,8 @@
+
+public class Task {
+    public int id;
+    public String desc;
+    public boolean done;
+    public Task(int i, String d) { this.id = i; this.desc = d; this.done = false; }
+    public void markDone() { this.done = true; }
+}

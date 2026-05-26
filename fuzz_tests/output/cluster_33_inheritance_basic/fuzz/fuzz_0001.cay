@@ -1,0 +1,77 @@
+// Fuzz Test: inheritance_basic // Fuzz33_001_CQFMR
+public class Fuzz33_001_CQFMR {
+    public static void test_inh_000() {
+        int v = 87;
+        print("inherit="); println(v);
+        println("OK");
+    }
+    public static void test_inh_001() {
+        int v = 80;
+        print("inherit="); println(v);
+        println("OK");
+    }
+    public static void test_inh_002() {
+        int v = 75;
+        print("inherit="); println(v);
+        println("OK");
+    }
+    public static void test_inh_003() {
+        int v = 63;
+        print("inherit="); println(v);
+        println("OK");
+    }
+    public static void test_inh_004() {
+        int v = 90;
+        print("inherit="); println(v);
+        println("OK");
+    }
+    public static void test_inh_005() {
+        int v = 54;
+        print("inherit="); println(v);
+        println("OK");
+    }
+    public static void test_inh_006() {
+        int v = 38;
+        print("inherit="); println(v);
+        println("OK");
+    }
+    public static void test_inh_007() {
+        int v = 16;
+        print("inherit="); println(v);
+        println("OK");
+    }
+    public static void test_inh_008() {
+        int v = 65;
+        print("inherit="); println(v);
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_inh_000 START");
+        test_inh_000();
+        println("[SUB] test_inh_000 PASS");
+        println("[SUB] test_inh_001 START");
+        test_inh_001();
+        println("[SUB] test_inh_001 PASS");
+        println("[SUB] test_inh_002 START");
+        test_inh_002();
+        println("[SUB] test_inh_002 PASS");
+        println("[SUB] test_inh_003 START");
+        test_inh_003();
+        println("[SUB] test_inh_003 PASS");
+        println("[SUB] test_inh_004 START");
+        test_inh_004();
+        println("[SUB] test_inh_004 PASS");
+        println("[SUB] test_inh_005 START");
+        test_inh_005();
+        println("[SUB] test_inh_005 PASS");
+        println("[SUB] test_inh_006 START");
+        test_inh_006();
+        println("[SUB] test_inh_006 PASS");
+        println("[SUB] test_inh_007 START");
+        test_inh_007();
+        println("[SUB] test_inh_007 PASS");
+        println("[SUB] test_inh_008 START");
+        test_inh_008();
+        println("[SUB] test_inh_008 PASS");
+    }
+}

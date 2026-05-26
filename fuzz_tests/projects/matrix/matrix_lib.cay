@@ -1,0 +1,19 @@
+
+public class MatrixLib {
+    public static void fill(int[][] m) {
+        for (int i = 0; i < m.length; i = i + 1) {
+            for (int j = 0; j < m[i].length; j = j + 1) {
+                m[i][j] = i * m[i].length + j + 1;
+            }
+        }
+    }
+    public static int sum(int[][] m) {
+        int s = 0;
+        for (int i = 0; i < m.length; i = i + 1) {
+            for (int j = 0; j < m[i].length; j = j + 1) {
+                s = s + m[i][j];
+            }
+        }
+        return s;
+    }
+}

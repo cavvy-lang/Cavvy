@@ -1,0 +1,8 @@
+
+public class TaxCalc {
+    public static int calcTax(int income) {
+        if (income <= 10000) return 0;
+        else if (income <= 50000) return (income - 10000) * 10 / 100;
+        else return 4000 + (income - 50000) * 20 / 100;
+    }
+}

@@ -1,0 +1,17 @@
+
+public class FmtUtils {
+    public static String padLeft(String s, int len, char pad) {
+        String result = s;
+        while (result.length() < len) {
+            result = pad + result;
+        }
+        return result;
+    }
+    public static String repeat(String s, int times) {
+        String result = "";
+        for (int i = 0; i < times; i = i + 1) {
+            result = result + s;
+        }
+        return result;
+    }
+}

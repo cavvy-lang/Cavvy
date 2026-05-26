@@ -1,0 +1,69 @@
+// Fuzz Test: struct_basic // Fuzz50_003_ZYFMB
+public class Fuzz50_003_ZYFMB {
+    public static void test_struct_000() {
+        int v = 9;
+        print("struct="); println(v);
+        println("OK");
+    }
+    public static void test_struct_001() {
+        int v = 89;
+        print("struct="); println(v);
+        println("OK");
+    }
+    public static void test_struct_002() {
+        int v = 23;
+        print("struct="); println(v);
+        println("OK");
+    }
+    public static void test_struct_003() {
+        int v = 67;
+        print("struct="); println(v);
+        println("OK");
+    }
+    public static void test_struct_004() {
+        int v = 25;
+        print("struct="); println(v);
+        println("OK");
+    }
+    public static void test_struct_005() {
+        int v = 57;
+        print("struct="); println(v);
+        println("OK");
+    }
+    public static void test_struct_006() {
+        int v = 52;
+        print("struct="); println(v);
+        println("OK");
+    }
+    public static void test_struct_007() {
+        int v = 68;
+        print("struct="); println(v);
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_struct_000 START");
+        test_struct_000();
+        println("[SUB] test_struct_000 PASS");
+        println("[SUB] test_struct_001 START");
+        test_struct_001();
+        println("[SUB] test_struct_001 PASS");
+        println("[SUB] test_struct_002 START");
+        test_struct_002();
+        println("[SUB] test_struct_002 PASS");
+        println("[SUB] test_struct_003 START");
+        test_struct_003();
+        println("[SUB] test_struct_003 PASS");
+        println("[SUB] test_struct_004 START");
+        test_struct_004();
+        println("[SUB] test_struct_004 PASS");
+        println("[SUB] test_struct_005 START");
+        test_struct_005();
+        println("[SUB] test_struct_005 PASS");
+        println("[SUB] test_struct_006 START");
+        test_struct_006();
+        println("[SUB] test_struct_006 PASS");
+        println("[SUB] test_struct_007 START");
+        test_struct_007();
+        println("[SUB] test_struct_007 PASS");
+    }
+}

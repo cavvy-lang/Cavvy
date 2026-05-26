@@ -1,0 +1,101 @@
+// Fuzz Test: bitwise_operators // Fuzz14_003_FLTHV
+public class Fuzz14_003_FLTHV {
+    public static void test_bit_000() {
+        int a = 11856; int b = 10; int c = a & b;
+        print("bit="); println(c);
+        println("OK");
+    }
+    public static void test_bit_001() {
+        int a = 57288; int b = 5; int c = a & b;
+        print("bit="); println(c);
+        println("OK");
+    }
+    public static void test_bit_002() {
+        int a = 13201; int b = 13; int c = a | b;
+        print("bit="); println(c);
+        println("OK");
+    }
+    public static void test_bit_003() {
+        int a = 11076; int b = 6; int c = a & b;
+        print("bit="); println(c);
+        println("OK");
+    }
+    public static void test_bit_004() {
+        int a = 56052; int b = 3; int c = a | b;
+        print("bit="); println(c);
+        println("OK");
+    }
+    public static void test_bit_005() {
+        int a = 8521; int b = 6; int c = a & b;
+        print("bit="); println(c);
+        println("OK");
+    }
+    public static void test_bit_006() {
+        int a = 46591; int b = 2; int c = a << b;
+        print("bit="); println(c);
+        println("OK");
+    }
+    public static void test_bit_007() {
+        int a = 47912; int b = 0; int c = a >> b;
+        print("bit="); println(c);
+        println("OK");
+    }
+    public static void test_bit_008() {
+        int a = 39521; int b = 11; int c = a | b;
+        print("bit="); println(c);
+        println("OK");
+    }
+    public static void test_bit_009() {
+        int a = 25393; int b = 5; int c = a & b;
+        print("bit="); println(c);
+        println("OK");
+    }
+    public static void test_bit_010() {
+        int a = 28338; int b = 11; int c = a | b;
+        print("bit="); println(c);
+        println("OK");
+    }
+    public static void test_bit_011() {
+        int a = 22646; int b = 7; int c = a ^ b;
+        print("bit="); println(c);
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_bit_000 START");
+        test_bit_000();
+        println("[SUB] test_bit_000 PASS");
+        println("[SUB] test_bit_001 START");
+        test_bit_001();
+        println("[SUB] test_bit_001 PASS");
+        println("[SUB] test_bit_002 START");
+        test_bit_002();
+        println("[SUB] test_bit_002 PASS");
+        println("[SUB] test_bit_003 START");
+        test_bit_003();
+        println("[SUB] test_bit_003 PASS");
+        println("[SUB] test_bit_004 START");
+        test_bit_004();
+        println("[SUB] test_bit_004 PASS");
+        println("[SUB] test_bit_005 START");
+        test_bit_005();
+        println("[SUB] test_bit_005 PASS");
+        println("[SUB] test_bit_006 START");
+        test_bit_006();
+        println("[SUB] test_bit_006 PASS");
+        println("[SUB] test_bit_007 START");
+        test_bit_007();
+        println("[SUB] test_bit_007 PASS");
+        println("[SUB] test_bit_008 START");
+        test_bit_008();
+        println("[SUB] test_bit_008 PASS");
+        println("[SUB] test_bit_009 START");
+        test_bit_009();
+        println("[SUB] test_bit_009 PASS");
+        println("[SUB] test_bit_010 START");
+        test_bit_010();
+        println("[SUB] test_bit_010 PASS");
+        println("[SUB] test_bit_011 START");
+        test_bit_011();
+        println("[SUB] test_bit_011 PASS");
+    }
+}

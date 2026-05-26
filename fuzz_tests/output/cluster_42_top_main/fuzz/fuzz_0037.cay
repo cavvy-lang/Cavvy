@@ -1,0 +1,85 @@
+// Fuzz Test: top_main // Fuzz42_037_VDEJF
+public class Fuzz42_037_VDEJF {
+    public static void test_tm_000() {
+        int v = 72;
+        print("topmain="); println(v);
+        println("OK");
+    }
+    public static void test_tm_001() {
+        int v = 76;
+        print("topmain="); println(v);
+        println("OK");
+    }
+    public static void test_tm_002() {
+        int v = 23;
+        print("topmain="); println(v);
+        println("OK");
+    }
+    public static void test_tm_003() {
+        int v = 19;
+        print("topmain="); println(v);
+        println("OK");
+    }
+    public static void test_tm_004() {
+        int v = 6;
+        print("topmain="); println(v);
+        println("OK");
+    }
+    public static void test_tm_005() {
+        int v = 34;
+        print("topmain="); println(v);
+        println("OK");
+    }
+    public static void test_tm_006() {
+        int v = 20;
+        print("topmain="); println(v);
+        println("OK");
+    }
+    public static void test_tm_007() {
+        int v = 22;
+        print("topmain="); println(v);
+        println("OK");
+    }
+    public static void test_tm_008() {
+        int v = 44;
+        print("topmain="); println(v);
+        println("OK");
+    }
+    public static void test_tm_009() {
+        int v = 92;
+        print("topmain="); println(v);
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_tm_000 START");
+        test_tm_000();
+        println("[SUB] test_tm_000 PASS");
+        println("[SUB] test_tm_001 START");
+        test_tm_001();
+        println("[SUB] test_tm_001 PASS");
+        println("[SUB] test_tm_002 START");
+        test_tm_002();
+        println("[SUB] test_tm_002 PASS");
+        println("[SUB] test_tm_003 START");
+        test_tm_003();
+        println("[SUB] test_tm_003 PASS");
+        println("[SUB] test_tm_004 START");
+        test_tm_004();
+        println("[SUB] test_tm_004 PASS");
+        println("[SUB] test_tm_005 START");
+        test_tm_005();
+        println("[SUB] test_tm_005 PASS");
+        println("[SUB] test_tm_006 START");
+        test_tm_006();
+        println("[SUB] test_tm_006 PASS");
+        println("[SUB] test_tm_007 START");
+        test_tm_007();
+        println("[SUB] test_tm_007 PASS");
+        println("[SUB] test_tm_008 START");
+        test_tm_008();
+        println("[SUB] test_tm_008 PASS");
+        println("[SUB] test_tm_009 START");
+        test_tm_009();
+        println("[SUB] test_tm_009 PASS");
+    }
+}

@@ -1,0 +1,93 @@
+// Fuzz Test: comparison_operators // Fuzz12_057_GJCEF
+public class Fuzz12_057_GJCEF {
+    public static void test_cmp_000() {
+        int a = -87; int b = 34; boolean c = a <= b;
+        print("cmp="); println(c);
+        println("OK");
+    }
+    public static void test_cmp_001() {
+        int a = 1; int b = 17; boolean c = a < b;
+        print("cmp="); println(c);
+        println("OK");
+    }
+    public static void test_cmp_002() {
+        int a = -45; int b = -87; boolean c = a < b;
+        print("cmp="); println(c);
+        println("OK");
+    }
+    public static void test_cmp_003() {
+        int a = 95; int b = -81; boolean c = a < b;
+        print("cmp="); println(c);
+        println("OK");
+    }
+    public static void test_cmp_004() {
+        int a = 82; int b = -91; boolean c = a == b;
+        print("cmp="); println(c);
+        println("OK");
+    }
+    public static void test_cmp_005() {
+        int a = -36; int b = -16; boolean c = a != b;
+        print("cmp="); println(c);
+        println("OK");
+    }
+    public static void test_cmp_006() {
+        int a = -10; int b = -14; boolean c = a < b;
+        print("cmp="); println(c);
+        println("OK");
+    }
+    public static void test_cmp_007() {
+        int a = -14; int b = 73; boolean c = a == b;
+        print("cmp="); println(c);
+        println("OK");
+    }
+    public static void test_cmp_008() {
+        int a = -64; int b = -6; boolean c = a == b;
+        print("cmp="); println(c);
+        println("OK");
+    }
+    public static void test_cmp_009() {
+        int a = -7; int b = 52; boolean c = a != b;
+        print("cmp="); println(c);
+        println("OK");
+    }
+    public static void test_cmp_010() {
+        int a = 92; int b = 19; boolean c = a >= b;
+        print("cmp="); println(c);
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_cmp_000 START");
+        test_cmp_000();
+        println("[SUB] test_cmp_000 PASS");
+        println("[SUB] test_cmp_001 START");
+        test_cmp_001();
+        println("[SUB] test_cmp_001 PASS");
+        println("[SUB] test_cmp_002 START");
+        test_cmp_002();
+        println("[SUB] test_cmp_002 PASS");
+        println("[SUB] test_cmp_003 START");
+        test_cmp_003();
+        println("[SUB] test_cmp_003 PASS");
+        println("[SUB] test_cmp_004 START");
+        test_cmp_004();
+        println("[SUB] test_cmp_004 PASS");
+        println("[SUB] test_cmp_005 START");
+        test_cmp_005();
+        println("[SUB] test_cmp_005 PASS");
+        println("[SUB] test_cmp_006 START");
+        test_cmp_006();
+        println("[SUB] test_cmp_006 PASS");
+        println("[SUB] test_cmp_007 START");
+        test_cmp_007();
+        println("[SUB] test_cmp_007 PASS");
+        println("[SUB] test_cmp_008 START");
+        test_cmp_008();
+        println("[SUB] test_cmp_008 PASS");
+        println("[SUB] test_cmp_009 START");
+        test_cmp_009();
+        println("[SUB] test_cmp_009 PASS");
+        println("[SUB] test_cmp_010 START");
+        test_cmp_010();
+        println("[SUB] test_cmp_010 PASS");
+    }
+}

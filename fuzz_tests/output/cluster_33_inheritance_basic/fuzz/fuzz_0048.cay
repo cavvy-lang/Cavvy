@@ -1,0 +1,69 @@
+// Fuzz Test: inheritance_basic // Fuzz33_048_FXKWB
+public class Fuzz33_048_FXKWB {
+    public static void test_inh_000() {
+        int v = 95;
+        print("inherit="); println(v);
+        println("OK");
+    }
+    public static void test_inh_001() {
+        int v = 62;
+        print("inherit="); println(v);
+        println("OK");
+    }
+    public static void test_inh_002() {
+        int v = 100;
+        print("inherit="); println(v);
+        println("OK");
+    }
+    public static void test_inh_003() {
+        int v = 45;
+        print("inherit="); println(v);
+        println("OK");
+    }
+    public static void test_inh_004() {
+        int v = 25;
+        print("inherit="); println(v);
+        println("OK");
+    }
+    public static void test_inh_005() {
+        int v = 84;
+        print("inherit="); println(v);
+        println("OK");
+    }
+    public static void test_inh_006() {
+        int v = 3;
+        print("inherit="); println(v);
+        println("OK");
+    }
+    public static void test_inh_007() {
+        int v = 45;
+        print("inherit="); println(v);
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_inh_000 START");
+        test_inh_000();
+        println("[SUB] test_inh_000 PASS");
+        println("[SUB] test_inh_001 START");
+        test_inh_001();
+        println("[SUB] test_inh_001 PASS");
+        println("[SUB] test_inh_002 START");
+        test_inh_002();
+        println("[SUB] test_inh_002 PASS");
+        println("[SUB] test_inh_003 START");
+        test_inh_003();
+        println("[SUB] test_inh_003 PASS");
+        println("[SUB] test_inh_004 START");
+        test_inh_004();
+        println("[SUB] test_inh_004 PASS");
+        println("[SUB] test_inh_005 START");
+        test_inh_005();
+        println("[SUB] test_inh_005 PASS");
+        println("[SUB] test_inh_006 START");
+        test_inh_006();
+        println("[SUB] test_inh_006 PASS");
+        println("[SUB] test_inh_007 START");
+        test_inh_007();
+        println("[SUB] test_inh_007 PASS");
+    }
+}

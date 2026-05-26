@@ -1,0 +1,86 @@
+// Fuzz Test: method_overloading // Fuzz37_059_JIRYT
+public class Fuzz37_059_JIRYT {
+    public static void test_ol_000() {
+        int a=35; int b=89;
+        int c = a + b;
+        print("overload="); println(c);
+        println("OK");
+    }
+    public static void test_ol_001() {
+        int a=60; int b=30;
+        int c = a + b;
+        print("overload="); println(c);
+        println("OK");
+    }
+    public static void test_ol_002() {
+        int a=33; int b=22;
+        int c = a + b;
+        print("overload="); println(c);
+        println("OK");
+    }
+    public static void test_ol_003() {
+        int a=19; int b=27;
+        int c = a + b;
+        print("overload="); println(c);
+        println("OK");
+    }
+    public static void test_ol_004() {
+        int a=78; int b=45;
+        int c = a + b;
+        print("overload="); println(c);
+        println("OK");
+    }
+    public static void test_ol_005() {
+        int a=62; int b=95;
+        int c = a + b;
+        print("overload="); println(c);
+        println("OK");
+    }
+    public static void test_ol_006() {
+        int a=34; int b=20;
+        int c = a + b;
+        print("overload="); println(c);
+        println("OK");
+    }
+    public static void test_ol_007() {
+        int a=39; int b=27;
+        int c = a + b;
+        print("overload="); println(c);
+        println("OK");
+    }
+    public static void test_ol_008() {
+        int a=85; int b=42;
+        int c = a + b;
+        print("overload="); println(c);
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_ol_000 START");
+        test_ol_000();
+        println("[SUB] test_ol_000 PASS");
+        println("[SUB] test_ol_001 START");
+        test_ol_001();
+        println("[SUB] test_ol_001 PASS");
+        println("[SUB] test_ol_002 START");
+        test_ol_002();
+        println("[SUB] test_ol_002 PASS");
+        println("[SUB] test_ol_003 START");
+        test_ol_003();
+        println("[SUB] test_ol_003 PASS");
+        println("[SUB] test_ol_004 START");
+        test_ol_004();
+        println("[SUB] test_ol_004 PASS");
+        println("[SUB] test_ol_005 START");
+        test_ol_005();
+        println("[SUB] test_ol_005 PASS");
+        println("[SUB] test_ol_006 START");
+        test_ol_006();
+        println("[SUB] test_ol_006 PASS");
+        println("[SUB] test_ol_007 START");
+        test_ol_007();
+        println("[SUB] test_ol_007 PASS");
+        println("[SUB] test_ol_008 START");
+        test_ol_008();
+        println("[SUB] test_ol_008 PASS");
+    }
+}

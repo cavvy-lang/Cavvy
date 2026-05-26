@@ -1,0 +1,93 @@
+// Fuzz Test: generics_syntax // Fuzz53_061_JDKLZ
+public class Fuzz53_061_JDKLZ {
+    public static void test_gen_000() {
+        int v = 42;
+        print("gen="); println(v);
+        println("OK");
+    }
+    public static void test_gen_001() {
+        int v = 75;
+        print("gen="); println(v);
+        println("OK");
+    }
+    public static void test_gen_002() {
+        int v = 2;
+        print("gen="); println(v);
+        println("OK");
+    }
+    public static void test_gen_003() {
+        int v = 67;
+        print("gen="); println(v);
+        println("OK");
+    }
+    public static void test_gen_004() {
+        int v = 54;
+        print("gen="); println(v);
+        println("OK");
+    }
+    public static void test_gen_005() {
+        int v = 59;
+        print("gen="); println(v);
+        println("OK");
+    }
+    public static void test_gen_006() {
+        int v = 72;
+        print("gen="); println(v);
+        println("OK");
+    }
+    public static void test_gen_007() {
+        int v = 12;
+        print("gen="); println(v);
+        println("OK");
+    }
+    public static void test_gen_008() {
+        int v = 18;
+        print("gen="); println(v);
+        println("OK");
+    }
+    public static void test_gen_009() {
+        int v = 66;
+        print("gen="); println(v);
+        println("OK");
+    }
+    public static void test_gen_010() {
+        int v = 100;
+        print("gen="); println(v);
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_gen_000 START");
+        test_gen_000();
+        println("[SUB] test_gen_000 PASS");
+        println("[SUB] test_gen_001 START");
+        test_gen_001();
+        println("[SUB] test_gen_001 PASS");
+        println("[SUB] test_gen_002 START");
+        test_gen_002();
+        println("[SUB] test_gen_002 PASS");
+        println("[SUB] test_gen_003 START");
+        test_gen_003();
+        println("[SUB] test_gen_003 PASS");
+        println("[SUB] test_gen_004 START");
+        test_gen_004();
+        println("[SUB] test_gen_004 PASS");
+        println("[SUB] test_gen_005 START");
+        test_gen_005();
+        println("[SUB] test_gen_005 PASS");
+        println("[SUB] test_gen_006 START");
+        test_gen_006();
+        println("[SUB] test_gen_006 PASS");
+        println("[SUB] test_gen_007 START");
+        test_gen_007();
+        println("[SUB] test_gen_007 PASS");
+        println("[SUB] test_gen_008 START");
+        test_gen_008();
+        println("[SUB] test_gen_008 PASS");
+        println("[SUB] test_gen_009 START");
+        test_gen_009();
+        println("[SUB] test_gen_009 PASS");
+        println("[SUB] test_gen_010 START");
+        test_gen_010();
+        println("[SUB] test_gen_010 PASS");
+    }
+}

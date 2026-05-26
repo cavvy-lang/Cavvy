@@ -1,0 +1,101 @@
+// Fuzz Test: for_loop // Fuzz18_030_TMFME
+public class Fuzz18_030_TMFME {
+    public static void test_for_000() {
+        for(int i=8;i>0;i=i-1){println(i);}
+        for(int j=0;j<2;j=j+1){for(int k=0;k<2;k=k+1){println(j*10+k);}}
+        println("OK");
+    }
+    public static void test_for_001() {
+        for(int i=0;i<6;i=i+2){println(i);}
+        for(int j=0;j<2;j=j+1){for(int k=0;k<2;k=k+1){println(j*10+k);}}
+        println("OK");
+    }
+    public static void test_for_002() {
+        for(int i=5;i>0;i=i-1){println(i);}
+        for(int j=0;j<2;j=j+1){for(int k=0;k<2;k=k+1){println(j*10+k);}}
+        println("OK");
+    }
+    public static void test_for_003() {
+        for(int i=8;i>0;i=i-1){println(i);}
+        for(int j=0;j<2;j=j+1){for(int k=0;k<2;k=k+1){println(j*10+k);}}
+        println("OK");
+    }
+    public static void test_for_004() {
+        for(int i=0;i<7;i=i+1){println(i);}
+        for(int j=0;j<2;j=j+1){for(int k=0;k<2;k=k+1){println(j*10+k);}}
+        println("OK");
+    }
+    public static void test_for_005() {
+        for(int i=0;i<7;i=i+1){println(i);}
+        for(int j=0;j<1;j=j+1){for(int k=0;k<1;k=k+1){println(j*10+k);}}
+        println("OK");
+    }
+    public static void test_for_006() {
+        for(int i=1;i>0;i=i-1){println(i);}
+        for(int j=0;j<4;j=j+1){for(int k=0;k<4;k=k+1){println(j*10+k);}}
+        println("OK");
+    }
+    public static void test_for_007() {
+        for(int i=5;i>0;i=i-1){println(i);}
+        for(int j=0;j<4;j=j+1){for(int k=0;k<4;k=k+1){println(j*10+k);}}
+        println("OK");
+    }
+    public static void test_for_008() {
+        for(int i=3;i>0;i=i-1){println(i);}
+        for(int j=0;j<4;j=j+1){for(int k=0;k<4;k=k+1){println(j*10+k);}}
+        println("OK");
+    }
+    public static void test_for_009() {
+        for(int i=0;i<4;i=i+1){println(i);}
+        for(int j=0;j<2;j=j+1){for(int k=0;k<2;k=k+1){println(j*10+k);}}
+        println("OK");
+    }
+    public static void test_for_010() {
+        for(int i=0;i<6;i=i+2){println(i);}
+        for(int j=0;j<1;j=j+1){for(int k=0;k<1;k=k+1){println(j*10+k);}}
+        println("OK");
+    }
+    public static void test_for_011() {
+        for(int i=0;i<10;i=i+1){println(i);}
+        for(int j=0;j<3;j=j+1){for(int k=0;k<3;k=k+1){println(j*10+k);}}
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_for_000 START");
+        test_for_000();
+        println("[SUB] test_for_000 PASS");
+        println("[SUB] test_for_001 START");
+        test_for_001();
+        println("[SUB] test_for_001 PASS");
+        println("[SUB] test_for_002 START");
+        test_for_002();
+        println("[SUB] test_for_002 PASS");
+        println("[SUB] test_for_003 START");
+        test_for_003();
+        println("[SUB] test_for_003 PASS");
+        println("[SUB] test_for_004 START");
+        test_for_004();
+        println("[SUB] test_for_004 PASS");
+        println("[SUB] test_for_005 START");
+        test_for_005();
+        println("[SUB] test_for_005 PASS");
+        println("[SUB] test_for_006 START");
+        test_for_006();
+        println("[SUB] test_for_006 PASS");
+        println("[SUB] test_for_007 START");
+        test_for_007();
+        println("[SUB] test_for_007 PASS");
+        println("[SUB] test_for_008 START");
+        test_for_008();
+        println("[SUB] test_for_008 PASS");
+        println("[SUB] test_for_009 START");
+        test_for_009();
+        println("[SUB] test_for_009 PASS");
+        println("[SUB] test_for_010 START");
+        test_for_010();
+        println("[SUB] test_for_010 PASS");
+        println("[SUB] test_for_011 START");
+        test_for_011();
+        println("[SUB] test_for_011 PASS");
+    }
+}

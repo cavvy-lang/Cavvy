@@ -1,0 +1,85 @@
+// Fuzz Test: return_statement // Fuzz23_090_IHCTB
+public class Fuzz23_090_IHCTB {
+    public static void test_ret_000() {
+        int v = -330;
+        if(v>0){println("pos");}else if(v<0){println("neg");}else{println("zero");}
+        println("OK");
+    }
+    public static void test_ret_001() {
+        int v = 828;
+        if(v>0){println("pos");}else if(v<0){println("neg");}else{println("zero");}
+        println("OK");
+    }
+    public static void test_ret_002() {
+        int v = 563;
+        if(v>0){println("pos");}else if(v<0){println("neg");}else{println("zero");}
+        println("OK");
+    }
+    public static void test_ret_003() {
+        int v = -814;
+        if(v>0){println("pos");}else if(v<0){println("neg");}else{println("zero");}
+        println("OK");
+    }
+    public static void test_ret_004() {
+        int v = -675;
+        if(v>0){println("pos");}else if(v<0){println("neg");}else{println("zero");}
+        println("OK");
+    }
+    public static void test_ret_005() {
+        int v = -2;
+        if(v>0){println("pos");}else if(v<0){println("neg");}else{println("zero");}
+        println("OK");
+    }
+    public static void test_ret_006() {
+        int v = 438;
+        if(v>0){println("pos");}else if(v<0){println("neg");}else{println("zero");}
+        println("OK");
+    }
+    public static void test_ret_007() {
+        int v = -696;
+        if(v>0){println("pos");}else if(v<0){println("neg");}else{println("zero");}
+        println("OK");
+    }
+    public static void test_ret_008() {
+        int v = -631;
+        if(v>0){println("pos");}else if(v<0){println("neg");}else{println("zero");}
+        println("OK");
+    }
+    public static void test_ret_009() {
+        int v = -645;
+        if(v>0){println("pos");}else if(v<0){println("neg");}else{println("zero");}
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_ret_000 START");
+        test_ret_000();
+        println("[SUB] test_ret_000 PASS");
+        println("[SUB] test_ret_001 START");
+        test_ret_001();
+        println("[SUB] test_ret_001 PASS");
+        println("[SUB] test_ret_002 START");
+        test_ret_002();
+        println("[SUB] test_ret_002 PASS");
+        println("[SUB] test_ret_003 START");
+        test_ret_003();
+        println("[SUB] test_ret_003 PASS");
+        println("[SUB] test_ret_004 START");
+        test_ret_004();
+        println("[SUB] test_ret_004 PASS");
+        println("[SUB] test_ret_005 START");
+        test_ret_005();
+        println("[SUB] test_ret_005 PASS");
+        println("[SUB] test_ret_006 START");
+        test_ret_006();
+        println("[SUB] test_ret_006 PASS");
+        println("[SUB] test_ret_007 START");
+        test_ret_007();
+        println("[SUB] test_ret_007 PASS");
+        println("[SUB] test_ret_008 START");
+        test_ret_008();
+        println("[SUB] test_ret_008 PASS");
+        println("[SUB] test_ret_009 START");
+        test_ret_009();
+        println("[SUB] test_ret_009 PASS");
+    }
+}

@@ -1,0 +1,93 @@
+// Fuzz Test: variable_declarations // Fuzz07_088_LXDZI
+public class Fuzz07_088_LXDZI {
+    public static void test_decl_000() {
+        auto z = 3.14;
+        print("auto="); println(z);
+        println("OK");
+    }
+    public static void test_decl_001() {
+        final int MAX = 100;
+        print("final="); println(MAX);
+        println("OK");
+    }
+    public static void test_decl_002() {
+        var x: int = 42;
+        print("var="); println(x);
+        println("OK");
+    }
+    public static void test_decl_003() {
+        let y: String = "hello";
+        print("let="); println(y);
+        println("OK");
+    }
+    public static void test_decl_004() {
+        int x = 42;
+        print("int="); println(x);
+        println("OK");
+    }
+    public static void test_decl_005() {
+        final int MAX = 100;
+        print("final="); println(MAX);
+        println("OK");
+    }
+    public static void test_decl_006() {
+        auto z = 3.14;
+        print("auto="); println(z);
+        println("OK");
+    }
+    public static void test_decl_007() {
+        auto z = 3.14;
+        print("auto="); println(z);
+        println("OK");
+    }
+    public static void test_decl_008() {
+        let y: String = "hello";
+        print("let="); println(y);
+        println("OK");
+    }
+    public static void test_decl_009() {
+        var x: int = 42;
+        print("var="); println(x);
+        println("OK");
+    }
+    public static void test_decl_010() {
+        var x: int = 42;
+        print("var="); println(x);
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_decl_000 START");
+        test_decl_000();
+        println("[SUB] test_decl_000 PASS");
+        println("[SUB] test_decl_001 START");
+        test_decl_001();
+        println("[SUB] test_decl_001 PASS");
+        println("[SUB] test_decl_002 START");
+        test_decl_002();
+        println("[SUB] test_decl_002 PASS");
+        println("[SUB] test_decl_003 START");
+        test_decl_003();
+        println("[SUB] test_decl_003 PASS");
+        println("[SUB] test_decl_004 START");
+        test_decl_004();
+        println("[SUB] test_decl_004 PASS");
+        println("[SUB] test_decl_005 START");
+        test_decl_005();
+        println("[SUB] test_decl_005 PASS");
+        println("[SUB] test_decl_006 START");
+        test_decl_006();
+        println("[SUB] test_decl_006 PASS");
+        println("[SUB] test_decl_007 START");
+        test_decl_007();
+        println("[SUB] test_decl_007 PASS");
+        println("[SUB] test_decl_008 START");
+        test_decl_008();
+        println("[SUB] test_decl_008 PASS");
+        println("[SUB] test_decl_009 START");
+        test_decl_009();
+        println("[SUB] test_decl_009 PASS");
+        println("[SUB] test_decl_010 START");
+        test_decl_010();
+        println("[SUB] test_decl_010 PASS");
+    }
+}

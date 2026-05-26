@@ -59,3 +59,4 @@ sync_docs.py
 
 debug_*
 .sisyphus/
+!/fuzz_tests/**/*.cay

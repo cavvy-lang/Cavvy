@@ -1,0 +1,149 @@
+// Fuzz Test: char_operations // Fuzz04_068_TCXLC
+public class Fuzz04_068_TCXLC {
+    public static void test_char_000() {
+        char a = 't';
+        char b = '%';
+        print("char test: ");
+        print(a);
+        print(" vs ");
+        println(b);
+        println("OK");
+    }
+    public static void test_char_001() {
+        char a = 'p';
+        char b = 'p';
+        print("char test: ");
+        print(a);
+        print(" vs ");
+        println(b);
+        println("OK");
+    }
+    public static void test_char_002() {
+        char a = 'D';
+        char b = 'A';
+        print("char test: ");
+        print(a);
+        print(" vs ");
+        println(b);
+        println("OK");
+    }
+    public static void test_char_003() {
+        char a = '^';
+        char b = 'r';
+        print("char test: ");
+        print(a);
+        print(" vs ");
+        println(b);
+        println("OK");
+    }
+    public static void test_char_004() {
+        char a = 'n';
+        char b = 'h';
+        print("char test: ");
+        print(a);
+        print(" vs ");
+        println(b);
+        println("OK");
+    }
+    public static void test_char_005() {
+        char a = '2';
+        char b = '0';
+        print("char test: ");
+        print(a);
+        print(" vs ");
+        println(b);
+        println("OK");
+    }
+    public static void test_char_006() {
+        char a = 'r';
+        char b = 'W';
+        print("char test: ");
+        print(a);
+        print(" vs ");
+        println(b);
+        println("OK");
+    }
+    public static void test_char_007() {
+        char a = '_';
+        char b = '-';
+        print("char test: ");
+        print(a);
+        print(" vs ");
+        println(b);
+        println("OK");
+    }
+    public static void test_char_008() {
+        char a = 'p';
+        char b = '$';
+        print("char test: ");
+        print(a);
+        print(" vs ");
+        println(b);
+        println("OK");
+    }
+    public static void test_char_009() {
+        char a = 'D';
+        char b = 'd';
+        print("char test: ");
+        print(a);
+        print(" vs ");
+        println(b);
+        println("OK");
+    }
+    public static void test_char_010() {
+        char a = '0';
+        char b = 'B';
+        print("char test: ");
+        print(a);
+        print(" vs ");
+        println(b);
+        println("OK");
+    }
+    public static void test_char_011() {
+        char a = '$';
+        char b = 'Z';
+        print("char test: ");
+        print(a);
+        print(" vs ");
+        println(b);
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_char_000 START");
+        test_char_000();
+        println("[SUB] test_char_000 PASS");
+        println("[SUB] test_char_001 START");
+        test_char_001();
+        println("[SUB] test_char_001 PASS");
+        println("[SUB] test_char_002 START");
+        test_char_002();
+        println("[SUB] test_char_002 PASS");
+        println("[SUB] test_char_003 START");
+        test_char_003();
+        println("[SUB] test_char_003 PASS");
+        println("[SUB] test_char_004 START");
+        test_char_004();
+        println("[SUB] test_char_004 PASS");
+        println("[SUB] test_char_005 START");
+        test_char_005();
+        println("[SUB] test_char_005 PASS");
+        println("[SUB] test_char_006 START");
+        test_char_006();
+        println("[SUB] test_char_006 PASS");
+        println("[SUB] test_char_007 START");
+        test_char_007();
+        println("[SUB] test_char_007 PASS");
+        println("[SUB] test_char_008 START");
+        test_char_008();
+        println("[SUB] test_char_008 PASS");
+        println("[SUB] test_char_009 START");
+        test_char_009();
+        println("[SUB] test_char_009 PASS");
+        println("[SUB] test_char_010 START");
+        test_char_010();
+        println("[SUB] test_char_010 PASS");
+        println("[SUB] test_char_011 START");
+        test_char_011();
+        println("[SUB] test_char_011 PASS");
+    }
+}

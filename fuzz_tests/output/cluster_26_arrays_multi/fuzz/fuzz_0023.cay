@@ -1,0 +1,140 @@
+// Fuzz Test: arrays_multi // Fuzz26_023_OQORT
+public class Fuzz26_023_OQORT {
+    public static void test_am_000() {
+        int[][][] arr = new int[2][2][2];
+        for(int i=0;i<2;i=i+1){
+          for(int j=0;j<2;j=j+1){
+            for(int k=0;k<2;k=k+1){
+              arr[i][j][k]=i*100+j*10+k+1;
+            }
+          }
+        }
+        println(arr[0][0][0]);
+        println("OK");
+    }
+    public static void test_am_001() {
+        int[][][] arr = new int[3][2][2];
+        for(int i=0;i<3;i=i+1){
+          for(int j=0;j<2;j=j+1){
+            for(int k=0;k<2;k=k+1){
+              arr[i][j][k]=i*100+j*10+k+1;
+            }
+          }
+        }
+        println(arr[0][0][0]);
+        println("OK");
+    }
+    public static void test_am_002() {
+        int[][][] arr = new int[3][2][2];
+        for(int i=0;i<3;i=i+1){
+          for(int j=0;j<2;j=j+1){
+            for(int k=0;k<2;k=k+1){
+              arr[i][j][k]=i*100+j*10+k+1;
+            }
+          }
+        }
+        println(arr[0][0][0]);
+        println("OK");
+    }
+    public static void test_am_003() {
+        int[][][] arr = new int[3][3][3];
+        for(int i=0;i<3;i=i+1){
+          for(int j=0;j<3;j=j+1){
+            for(int k=0;k<3;k=k+1){
+              arr[i][j][k]=i*100+j*10+k+1;
+            }
+          }
+        }
+        println(arr[0][0][0]);
+        println("OK");
+    }
+    public static void test_am_004() {
+        int[][][] arr = new int[2][2][2];
+        for(int i=0;i<2;i=i+1){
+          for(int j=0;j<2;j=j+1){
+            for(int k=0;k<2;k=k+1){
+              arr[i][j][k]=i*100+j*10+k+1;
+            }
+          }
+        }
+        println(arr[0][0][0]);
+        println("OK");
+    }
+    public static void test_am_005() {
+        int[][][] arr = new int[2][3][2];
+        for(int i=0;i<2;i=i+1){
+          for(int j=0;j<3;j=j+1){
+            for(int k=0;k<2;k=k+1){
+              arr[i][j][k]=i*100+j*10+k+1;
+            }
+          }
+        }
+        println(arr[0][0][0]);
+        println("OK");
+    }
+    public static void test_am_006() {
+        int[][][] arr = new int[3][3][3];
+        for(int i=0;i<3;i=i+1){
+          for(int j=0;j<3;j=j+1){
+            for(int k=0;k<3;k=k+1){
+              arr[i][j][k]=i*100+j*10+k+1;
+            }
+          }
+        }
+        println(arr[0][0][0]);
+        println("OK");
+    }
+    public static void test_am_007() {
+        int[][][] arr = new int[3][3][3];
+        for(int i=0;i<3;i=i+1){
+          for(int j=0;j<3;j=j+1){
+            for(int k=0;k<3;k=k+1){
+              arr[i][j][k]=i*100+j*10+k+1;
+            }
+          }
+        }
+        println(arr[0][0][0]);
+        println("OK");
+    }
+    public static void test_am_008() {
+        int[][][] arr = new int[3][2][2];
+        for(int i=0;i<3;i=i+1){
+          for(int j=0;j<2;j=j+1){
+            for(int k=0;k<2;k=k+1){
+              arr[i][j][k]=i*100+j*10+k+1;
+            }
+          }
+        }
+        println(arr[0][0][0]);
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_am_000 START");
+        test_am_000();
+        println("[SUB] test_am_000 PASS");
+        println("[SUB] test_am_001 START");
+        test_am_001();
+        println("[SUB] test_am_001 PASS");
+        println("[SUB] test_am_002 START");
+        test_am_002();
+        println("[SUB] test_am_002 PASS");
+        println("[SUB] test_am_003 START");
+        test_am_003();
+        println("[SUB] test_am_003 PASS");
+        println("[SUB] test_am_004 START");
+        test_am_004();
+        println("[SUB] test_am_004 PASS");
+        println("[SUB] test_am_005 START");
+        test_am_005();
+        println("[SUB] test_am_005 PASS");
+        println("[SUB] test_am_006 START");
+        test_am_006();
+        println("[SUB] test_am_006 PASS");
+        println("[SUB] test_am_007 START");
+        test_am_007();
+        println("[SUB] test_am_007 PASS");
+        println("[SUB] test_am_008 START");
+        test_am_008();
+        println("[SUB] test_am_008 PASS");
+    }
+}

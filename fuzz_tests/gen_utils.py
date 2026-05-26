@@ -1,0 +1,221 @@
+"""
+Cavvy Fuzz Test Generator - Shared Utilities
+原子写入、命名冲突避免、模板辅助
+"""
+import os
+import json
+import hashlib
+import random
+import shutil
+import chardet
+
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+OUTPUT_DIR = os.path.join(PROJECT_ROOT, "fuzz_tests", "output")
+
+CLUSTER_DEFS = {
+    "01": "int_arithmetic",
+    "02": "float_operations",
+    "03": "boolean_logic",
+    "04": "char_operations",
+    "05": "string_basics",
+    "06": "string_methods",
+    "07": "variable_declarations",
+    "08": "type_casting",
+    "09": "number_literals",
+    "10": "prefix_postfix",
+    "11": "compound_assignment",
+    "12": "comparison_operators",
+    "13": "logical_operators",
+    "14": "bitwise_operators",
+    "15": "ternary_operator",
+    "16": "if_else_chains",
+    "17": "switch_case",
+    "18": "for_loop",
+    "19": "while_loop",
+    "20": "do_while_loop",
+    "21": "enhanced_for",
+    "22": "break_continue",
+    "23": "return_statement",
+    "24": "arrays_1d",
+    "25": "arrays_2d",
+    "26": "arrays_multi",
+    "27": "array_init",
+    "28": "array_edge",
+    "29": "class_basic",
+    "30": "class_constructor",
+    "31": "class_static",
+    "32": "class_final",
+    "33": "inheritance_basic",
+    "34": "abstract_class",
+    "35": "interfaces",
+    "36": "instanceof_cast",
+    "37": "method_overloading",
+    "38": "varargs",
+    "39": "lambda_expressions",
+    "40": "method_references",
+    "41": "auto_inference",
+    "42": "top_main",
+    "43": "atmain_annotation",
+    "44": "preprocessor_define",
+    "45": "preprocessor_ifdef",
+    "46": "preprocessor_include",
+    "47": "namespace_block",
+    "48": "namespace_using",
+    "49": "ffi_basic",
+    "50": "struct_basic",
+    "51": "enum_declaration",
+    "52": "freefunction",
+    "53": "generics_syntax",
+    "54": "expressions_complex",
+    "55": "modifier_combinations",
+}
+
+
+def atomic_write(filepath, content, encoding="utf-8"):
+    """原子写入：临时文件 → 验证 → 重命名，保留3个bak"""
+    dirpath = os.path.dirname(filepath)
+    os.makedirs(dirpath, exist_ok=True)
+
+    tmp_path = filepath + ".tmp." + hashlib.md5(os.urandom(16)).hexdigest()[:8]
+    with open(tmp_path, "w", encoding=encoding, newline="\n") as f:
+        f.write(content)
+        f.flush()
+        os.fsync(f.fileno())
+
+    with open(tmp_path, "r", encoding=encoding) as f:
+        written = f.read()
+    if len(written) == 0:
+        os.remove(tmp_path)
+        raise RuntimeError(f"Atomic write failed: empty content for {filepath}")
+    if not written.strip():
+        os.remove(tmp_path)
+        raise RuntimeError(f"Atomic write failed: whitespace-only content for {filepath}")
+
+    if os.path.exists(filepath):
+        bak_dir = os.path.join(dirpath, ".bak")
+        os.makedirs(bak_dir, exist_ok=True)
+        base = os.path.basename(filepath)
+        for i in range(2, -1, -1):
+            old_bak = os.path.join(bak_dir, f"{base}.bak.{i}")
+            new_bak = os.path.join(bak_dir, f"{base}.bak.{i + 1}")
+            if os.path.exists(old_bak):
+                if i >= 2:
+                    os.remove(old_bak)
+                else:
+                    os.replace(old_bak, new_bak)
+        bak0 = os.path.join(bak_dir, f"{base}.bak.0")
+        shutil.copy2(filepath, bak0)
+
+    os.replace(tmp_path, filepath)
+
+
+def ensure_dir(path):
+    os.makedirs(path, exist_ok=True)
+
+
+def unique_class_name(cluster_id, file_index):
+    """生成唯一类名避免冲突: Fuzz{NN}_{XXXXX}"""
+    random_suffix = ''.join(random.choices('ABCDEFGHIJKLMNOPQRSTUVWXYZ', k=5))
+    return f"Fuzz{cluster_id}_{file_index:03d}_{random_suffix}"
+
+
+def unique_method_name(prefix, test_index):
+    return f"{prefix}_{test_index:03d}"
+
+
+SEED = 20260526
+
+
+def reset_seed():
+    global SEED
+    random.seed(SEED)
+    SEED += 1
+
+
+def estimate_output_dir(cluster_id):
+    cluster_name = CLUSTER_DEFS[cluster_id]
+    return os.path.join(OUTPUT_DIR, f"cluster_{cluster_id}_{cluster_name}")
+
+
+def setup_cluster_dir(cluster_id):
+    cluster_name = CLUSTER_DEFS[cluster_id]
+    d = os.path.join(OUTPUT_DIR, f"cluster_{cluster_id}_{cluster_name}")
+    fuzz_d = os.path.join(d, "fuzz")
+    ensure_dir(fuzz_d)
+    return d, fuzz_d
+
+
+def write_cay_file(fuzz_dir, filename, content):
+    atomic_write(os.path.join(fuzz_dir, filename), content)
+
+
+def write_runner(cluster_dir, cluster_id, cluster_name, fuzz_files):
+    includes = "\n".join(f'#include "fuzz/{f["filename"]}"' for f in sorted(fuzz_files, key=lambda x: x["filename"]))
+    call_lines = []
+    for fz in sorted(fuzz_files, key=lambda x: x["filename"]):
+        cn = fz["class"]
+        call_lines.append(f'    println("[TEST] {cluster_name}::{fz["filename"]} START");')
+        call_lines.append(f'    {cn}.run_all();')
+        call_lines.append(f'    println("[TEST] {cluster_name}::{fz["filename"]} PASS");')
+    calls = "\n".join(call_lines)
+    runner = f'''// Fuzz Runner: {cluster_name}
+// Auto-generated by fuzz_tests/main.py
+
+{includes}
+
+public int main() {{
+    println("[RUNNER] {cluster_name} START");
+{calls}
+    println("[RUNNER] {cluster_name} DONE");
+    return 0;
+}}
+'''
+    atomic_write(os.path.join(cluster_dir, "runner.cay"), runner)
+
+
+def write_config(cluster_dir, cluster_id, cluster_name, config_data):
+    config = {
+        "cluster_id": cluster_id,
+        "cluster_name": cluster_name,
+        "version": "5.1.0",
+        "tests": config_data,
+        "expected_behavior": "All [TEST] lines must report PASS for each test method"
+    }
+    atomic_write(os.path.join(cluster_dir, "config.json"), json.dumps(config, indent=2, ensure_ascii=False))
+
+
+class FuzzClassBuilder:
+    """Helper to build a single .cay fuzz class"""
+    def __init__(self, class_name, cluster_name):
+        self.class_name = class_name
+        self.cluster_name = cluster_name
+        self.methods = []
+        self.method_names = []
+        self.imports = []
+
+    def add_method(self, name, body_lines):
+        method = f"    public static void {name}() {{\n"
+        for line in body_lines:
+            method += f"        {line}\n"
+        method += "    }\n"
+        self.methods.append(method)
+        self.method_names.append(name)
+        return self
+
+    def build(self):
+        imports = "\n".join(self.imports)
+        header = f"// Fuzz Test: {self.cluster_name} // {self.class_name}"
+        if imports:
+            header = imports + "\n" + header
+        body = f"{header}\npublic class {self.class_name} {{\n"
+        body += "".join(self.methods)
+        # generate run_all entry point
+        body += "    public static void run_all() {\n"
+        for mn in self.method_names:
+            body += f"        println(\"[SUB] {mn} START\");\n"
+            body += f"        {mn}();\n"
+            body += f"        println(\"[SUB] {mn} PASS\");\n"
+        body += "    }\n"
+        body += "}\n"
+        body = body.replace('\\"', '"')
+        return body

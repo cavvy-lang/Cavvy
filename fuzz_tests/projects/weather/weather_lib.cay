@@ -1,0 +1,17 @@
+
+public class WeatherLib {
+    public static double tempSpread(double[] temps) {
+        double max = temps[0];
+        double min = temps[0];
+        for (int i = 1; i < temps.length; i = i + 1) {
+            if (temps[i] > max) max = temps[i];
+            if (temps[i] < min) min = temps[i];
+        }
+        return max - min;
+    }
+    public static double tempAvg(double[] temps) {
+        double sum = 0.0;
+        for (int i = 0; i < temps.length; i = i + 1) { sum = sum + temps[i]; }
+        return sum / temps.length;
+    }
+}

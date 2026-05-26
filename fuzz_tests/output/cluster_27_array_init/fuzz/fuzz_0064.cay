@@ -1,0 +1,126 @@
+// Fuzz Test: array_init // Fuzz27_064_MIZFO
+public class Fuzz27_064_MIZFO {
+    public static void test_ainit_000() {
+        int[] arr = {973,489,746,321};
+        print("len="); println(arr.length);
+        for(int i=0;i<arr.length;i=i+1){println(arr[i]);}
+        int[][] m2 = {{1,2,3},{4,5,6}};
+        println(m2[0][0]); println(m2[1][2]);
+        println("OK");
+    }
+    public static void test_ainit_001() {
+        int[] arr = {858,470,828,235};
+        print("len="); println(arr.length);
+        for(int i=0;i<arr.length;i=i+1){println(arr[i]);}
+        int[][] m2 = {{1,2,3},{4,5,6}};
+        println(m2[0][0]); println(m2[1][2]);
+        println("OK");
+    }
+    public static void test_ainit_002() {
+        int[] arr = {181,390,871};
+        print("len="); println(arr.length);
+        for(int i=0;i<arr.length;i=i+1){println(arr[i]);}
+        int[][] m2 = {{1,2,3},{4,5,6}};
+        println(m2[0][0]); println(m2[1][2]);
+        println("OK");
+    }
+    public static void test_ainit_003() {
+        int[] arr = {365,661,650,114,127,127};
+        print("len="); println(arr.length);
+        for(int i=0;i<arr.length;i=i+1){println(arr[i]);}
+        int[][] m2 = {{1,2,3},{4,5,6}};
+        println(m2[0][0]); println(m2[1][2]);
+        println("OK");
+    }
+    public static void test_ainit_004() {
+        int[] arr = {506,878,943,930,4,101,755,531};
+        print("len="); println(arr.length);
+        for(int i=0;i<arr.length;i=i+1){println(arr[i]);}
+        int[][] m2 = {{1,2,3},{4,5,6}};
+        println(m2[0][0]); println(m2[1][2]);
+        println("OK");
+    }
+    public static void test_ainit_005() {
+        int[] arr = {471,409,578,433};
+        print("len="); println(arr.length);
+        for(int i=0;i<arr.length;i=i+1){println(arr[i]);}
+        int[][] m2 = {{1,2,3},{4,5,6}};
+        println(m2[0][0]); println(m2[1][2]);
+        println("OK");
+    }
+    public static void test_ainit_006() {
+        int[] arr = {951,599,888,418,676,252};
+        print("len="); println(arr.length);
+        for(int i=0;i<arr.length;i=i+1){println(arr[i]);}
+        int[][] m2 = {{1,2,3},{4,5,6}};
+        println(m2[0][0]); println(m2[1][2]);
+        println("OK");
+    }
+    public static void test_ainit_007() {
+        int[] arr = {603,647,462,811,401,517,944};
+        print("len="); println(arr.length);
+        for(int i=0;i<arr.length;i=i+1){println(arr[i]);}
+        int[][] m2 = {{1,2,3},{4,5,6}};
+        println(m2[0][0]); println(m2[1][2]);
+        println("OK");
+    }
+    public static void test_ainit_008() {
+        int[] arr = {359,299,645,466,315};
+        print("len="); println(arr.length);
+        for(int i=0;i<arr.length;i=i+1){println(arr[i]);}
+        int[][] m2 = {{1,2,3},{4,5,6}};
+        println(m2[0][0]); println(m2[1][2]);
+        println("OK");
+    }
+    public static void test_ainit_009() {
+        int[] arr = {486,409,284,189,345,270,659,44};
+        print("len="); println(arr.length);
+        for(int i=0;i<arr.length;i=i+1){println(arr[i]);}
+        int[][] m2 = {{1,2,3},{4,5,6}};
+        println(m2[0][0]); println(m2[1][2]);
+        println("OK");
+    }
+    public static void test_ainit_010() {
+        int[] arr = {946,853,378,349,762};
+        print("len="); println(arr.length);
+        for(int i=0;i<arr.length;i=i+1){println(arr[i]);}
+        int[][] m2 = {{1,2,3},{4,5,6}};
+        println(m2[0][0]); println(m2[1][2]);
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_ainit_000 START");
+        test_ainit_000();
+        println("[SUB] test_ainit_000 PASS");
+        println("[SUB] test_ainit_001 START");
+        test_ainit_001();
+        println("[SUB] test_ainit_001 PASS");
+        println("[SUB] test_ainit_002 START");
+        test_ainit_002();
+        println("[SUB] test_ainit_002 PASS");
+        println("[SUB] test_ainit_003 START");
+        test_ainit_003();
+        println("[SUB] test_ainit_003 PASS");
+        println("[SUB] test_ainit_004 START");
+        test_ainit_004();
+        println("[SUB] test_ainit_004 PASS");
+        println("[SUB] test_ainit_005 START");
+        test_ainit_005();
+        println("[SUB] test_ainit_005 PASS");
+        println("[SUB] test_ainit_006 START");
+        test_ainit_006();
+        println("[SUB] test_ainit_006 PASS");
+        println("[SUB] test_ainit_007 START");
+        test_ainit_007();
+        println("[SUB] test_ainit_007 PASS");
+        println("[SUB] test_ainit_008 START");
+        test_ainit_008();
+        println("[SUB] test_ainit_008 PASS");
+        println("[SUB] test_ainit_009 START");
+        test_ainit_009();
+        println("[SUB] test_ainit_009 PASS");
+        println("[SUB] test_ainit_010 START");
+        test_ainit_010();
+        println("[SUB] test_ainit_010 PASS");
+    }
+}

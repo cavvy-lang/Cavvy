@@ -1,0 +1,8 @@
+
+#include "tax.cay"
+public int main() {
+    println(TaxCalc.calcTax(5000));
+    println(TaxCalc.calcTax(30000));
+    println(TaxCalc.calcTax(100000));
+    return 0;
+}

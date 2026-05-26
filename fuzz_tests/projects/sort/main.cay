@@ -1,0 +1,11 @@
+
+#include "sorting.cay"
+public int main() {
+    int[] arr = {5, 3, 8, 1, 9, 2};
+    println(Sorting.sumArray(arr));
+    Sorting.bubbleSort(arr);
+    println(arr[0]);
+    println(arr[5]);
+    println(Sorting.sumArray(arr));
+    return 0;
+}

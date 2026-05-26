@@ -1,0 +1,148 @@
+// Fuzz Test: float_operations // Fuzz02_116_WNUOU
+public class Fuzz02_116_WNUOU {
+    public static void test_fp_000() {
+        float a = 2.71828;
+        float b = 3.14159;
+        float c = a + b;
+        print("float + result=");
+        println(c);
+        println("OK");
+    }
+    public static void test_fp_001() {
+        float a = 3.40282e+38;
+        float b = 1.41421;
+        float c = a * b;
+        print("float * result=");
+        println(c);
+        println("OK");
+    }
+    public static void test_fp_002() {
+        float a = -1e-05;
+        float b = -2.71828;
+        float c = a + b;
+        print("float + result=");
+        println(c);
+        println("OK");
+    }
+    public static void test_fp_003() {
+        double a = -0.5;
+        double b = -1.0;
+        double c = a * b;
+        print("double * result=");
+        println(c);
+        println("OK");
+    }
+    public static void test_fp_004() {
+        double a = 1.0;
+        double b = 0.0;
+        double c = a + b;
+        print("double + result=");
+        println(c);
+        println("OK");
+    }
+    public static void test_fp_005() {
+        double a = 1.79769e+308;
+        double b = 0.0;
+        double c = a * b;
+        print("double * result=");
+        println(c);
+        println("OK");
+    }
+    public static void test_fp_006() {
+        double a = 1.0;
+        double b = 0.5;
+        double c = a * b;
+        print("double * result=");
+        println(c);
+        println("OK");
+    }
+    public static void test_fp_007() {
+        float a = 1.0;
+        float b = 3.14159;
+        float c = a + b;
+        print("float + result=");
+        println(c);
+        println("OK");
+    }
+    public static void test_fp_008() {
+        float a = -0.0;
+        float b = 1.0;
+        float c = a / b;
+        print("float / result=");
+        println(c);
+        println("OK");
+    }
+    public static void test_fp_009() {
+        double a = 0.5;
+        double b = 0.5;
+        double c = a + b;
+        print("double + result=");
+        println(c);
+        println("OK");
+    }
+    public static void test_fp_010() {
+        float a = -1.0;
+        float b = 1.41421;
+        float c = a - b;
+        print("float - result=");
+        println(c);
+        println("OK");
+    }
+    public static void test_fp_011() {
+        float a = -1e-05;
+        float b = -0.5;
+        float c = a * b;
+        print("float * result=");
+        println(c);
+        println("OK");
+    }
+    public static void test_fp_012() {
+        double a = 0.0;
+        double b = 0.5;
+        double c = a * b;
+        print("double * result=");
+        println(c);
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_fp_000 START");
+        test_fp_000();
+        println("[SUB] test_fp_000 PASS");
+        println("[SUB] test_fp_001 START");
+        test_fp_001();
+        println("[SUB] test_fp_001 PASS");
+        println("[SUB] test_fp_002 START");
+        test_fp_002();
+        println("[SUB] test_fp_002 PASS");
+        println("[SUB] test_fp_003 START");
+        test_fp_003();
+        println("[SUB] test_fp_003 PASS");
+        println("[SUB] test_fp_004 START");
+        test_fp_004();
+        println("[SUB] test_fp_004 PASS");
+        println("[SUB] test_fp_005 START");
+        test_fp_005();
+        println("[SUB] test_fp_005 PASS");
+        println("[SUB] test_fp_006 START");
+        test_fp_006();
+        println("[SUB] test_fp_006 PASS");
+        println("[SUB] test_fp_007 START");
+        test_fp_007();
+        println("[SUB] test_fp_007 PASS");
+        println("[SUB] test_fp_008 START");
+        test_fp_008();
+        println("[SUB] test_fp_008 PASS");
+        println("[SUB] test_fp_009 START");
+        test_fp_009();
+        println("[SUB] test_fp_009 PASS");
+        println("[SUB] test_fp_010 START");
+        test_fp_010();
+        println("[SUB] test_fp_010 PASS");
+        println("[SUB] test_fp_011 START");
+        test_fp_011();
+        println("[SUB] test_fp_011 PASS");
+        println("[SUB] test_fp_012 START");
+        test_fp_012();
+        println("[SUB] test_fp_012 PASS");
+    }
+}

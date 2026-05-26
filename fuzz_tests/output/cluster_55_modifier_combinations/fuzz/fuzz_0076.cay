@@ -1,0 +1,85 @@
+// Fuzz Test: modifier_combinations // Fuzz55_076_IQNNO
+public class Fuzz55_076_IQNNO {
+    public static void test_mod_000() {
+        int v = 3;
+        print("mod="); println(v);
+        println("OK");
+    }
+    public static void test_mod_001() {
+        int v = 3;
+        print("mod="); println(v);
+        println("OK");
+    }
+    public static void test_mod_002() {
+        int v = 81;
+        print("mod="); println(v);
+        println("OK");
+    }
+    public static void test_mod_003() {
+        int v = 3;
+        print("mod="); println(v);
+        println("OK");
+    }
+    public static void test_mod_004() {
+        int v = 43;
+        print("mod="); println(v);
+        println("OK");
+    }
+    public static void test_mod_005() {
+        int v = 91;
+        print("mod="); println(v);
+        println("OK");
+    }
+    public static void test_mod_006() {
+        int v = 36;
+        print("mod="); println(v);
+        println("OK");
+    }
+    public static void test_mod_007() {
+        int v = 22;
+        print("mod="); println(v);
+        println("OK");
+    }
+    public static void test_mod_008() {
+        int v = 1;
+        print("mod="); println(v);
+        println("OK");
+    }
+    public static void test_mod_009() {
+        int v = 16;
+        print("mod="); println(v);
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_mod_000 START");
+        test_mod_000();
+        println("[SUB] test_mod_000 PASS");
+        println("[SUB] test_mod_001 START");
+        test_mod_001();
+        println("[SUB] test_mod_001 PASS");
+        println("[SUB] test_mod_002 START");
+        test_mod_002();
+        println("[SUB] test_mod_002 PASS");
+        println("[SUB] test_mod_003 START");
+        test_mod_003();
+        println("[SUB] test_mod_003 PASS");
+        println("[SUB] test_mod_004 START");
+        test_mod_004();
+        println("[SUB] test_mod_004 PASS");
+        println("[SUB] test_mod_005 START");
+        test_mod_005();
+        println("[SUB] test_mod_005 PASS");
+        println("[SUB] test_mod_006 START");
+        test_mod_006();
+        println("[SUB] test_mod_006 PASS");
+        println("[SUB] test_mod_007 START");
+        test_mod_007();
+        println("[SUB] test_mod_007 PASS");
+        println("[SUB] test_mod_008 START");
+        test_mod_008();
+        println("[SUB] test_mod_008 PASS");
+        println("[SUB] test_mod_009 START");
+        test_mod_009();
+        println("[SUB] test_mod_009 PASS");
+    }
+}

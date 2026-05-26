@@ -1,0 +1,93 @@
+// Fuzz Test: preprocessor_define // Fuzz44_017_AHXYL
+public class Fuzz44_017_AHXYL {
+    public static void test_def_000() {
+        int v = 8;
+        print("define="); println(v);
+        println("OK");
+    }
+    public static void test_def_001() {
+        int v = 73;
+        print("define="); println(v);
+        println("OK");
+    }
+    public static void test_def_002() {
+        int v = 42;
+        print("define="); println(v);
+        println("OK");
+    }
+    public static void test_def_003() {
+        int v = 31;
+        print("define="); println(v);
+        println("OK");
+    }
+    public static void test_def_004() {
+        int v = 96;
+        print("define="); println(v);
+        println("OK");
+    }
+    public static void test_def_005() {
+        int v = 91;
+        print("define="); println(v);
+        println("OK");
+    }
+    public static void test_def_006() {
+        int v = 77;
+        print("define="); println(v);
+        println("OK");
+    }
+    public static void test_def_007() {
+        int v = 85;
+        print("define="); println(v);
+        println("OK");
+    }
+    public static void test_def_008() {
+        int v = 8;
+        print("define="); println(v);
+        println("OK");
+    }
+    public static void test_def_009() {
+        int v = 81;
+        print("define="); println(v);
+        println("OK");
+    }
+    public static void test_def_010() {
+        int v = 50;
+        print("define="); println(v);
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_def_000 START");
+        test_def_000();
+        println("[SUB] test_def_000 PASS");
+        println("[SUB] test_def_001 START");
+        test_def_001();
+        println("[SUB] test_def_001 PASS");
+        println("[SUB] test_def_002 START");
+        test_def_002();
+        println("[SUB] test_def_002 PASS");
+        println("[SUB] test_def_003 START");
+        test_def_003();
+        println("[SUB] test_def_003 PASS");
+        println("[SUB] test_def_004 START");
+        test_def_004();
+        println("[SUB] test_def_004 PASS");
+        println("[SUB] test_def_005 START");
+        test_def_005();
+        println("[SUB] test_def_005 PASS");
+        println("[SUB] test_def_006 START");
+        test_def_006();
+        println("[SUB] test_def_006 PASS");
+        println("[SUB] test_def_007 START");
+        test_def_007();
+        println("[SUB] test_def_007 PASS");
+        println("[SUB] test_def_008 START");
+        test_def_008();
+        println("[SUB] test_def_008 PASS");
+        println("[SUB] test_def_009 START");
+        test_def_009();
+        println("[SUB] test_def_009 PASS");
+        println("[SUB] test_def_010 START");
+        test_def_010();
+        println("[SUB] test_def_010 PASS");
+    }
+}

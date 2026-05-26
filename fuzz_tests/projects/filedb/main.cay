@@ -1,0 +1,13 @@
+
+#include "db_ops.cay"
+public int main() {
+    Record[] db = new Record[4];
+    db[0] = new Record(1, "apple");
+    db[1] = new Record(2, "banana");
+    db[2] = new Record(3, "apricot");
+    db[3] = new Record(4, "cherry");
+    println(DBOps.findValue(db, 2));
+    println(DBOps.findValue(db, 99));
+    println(DBOps.countByPrefix(db, "ap"));
+    return 0;
+}

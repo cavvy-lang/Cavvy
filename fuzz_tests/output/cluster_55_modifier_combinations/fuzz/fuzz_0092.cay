@@ -1,0 +1,69 @@
+// Fuzz Test: modifier_combinations // Fuzz55_092_MGXLO
+public class Fuzz55_092_MGXLO {
+    public static void test_mod_000() {
+        int v = 1;
+        print("mod="); println(v);
+        println("OK");
+    }
+    public static void test_mod_001() {
+        int v = 15;
+        print("mod="); println(v);
+        println("OK");
+    }
+    public static void test_mod_002() {
+        int v = 27;
+        print("mod="); println(v);
+        println("OK");
+    }
+    public static void test_mod_003() {
+        int v = 50;
+        print("mod="); println(v);
+        println("OK");
+    }
+    public static void test_mod_004() {
+        int v = 1;
+        print("mod="); println(v);
+        println("OK");
+    }
+    public static void test_mod_005() {
+        int v = 43;
+        print("mod="); println(v);
+        println("OK");
+    }
+    public static void test_mod_006() {
+        int v = 12;
+        print("mod="); println(v);
+        println("OK");
+    }
+    public static void test_mod_007() {
+        int v = 44;
+        print("mod="); println(v);
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_mod_000 START");
+        test_mod_000();
+        println("[SUB] test_mod_000 PASS");
+        println("[SUB] test_mod_001 START");
+        test_mod_001();
+        println("[SUB] test_mod_001 PASS");
+        println("[SUB] test_mod_002 START");
+        test_mod_002();
+        println("[SUB] test_mod_002 PASS");
+        println("[SUB] test_mod_003 START");
+        test_mod_003();
+        println("[SUB] test_mod_003 PASS");
+        println("[SUB] test_mod_004 START");
+        test_mod_004();
+        println("[SUB] test_mod_004 PASS");
+        println("[SUB] test_mod_005 START");
+        test_mod_005();
+        println("[SUB] test_mod_005 PASS");
+        println("[SUB] test_mod_006 START");
+        test_mod_006();
+        println("[SUB] test_mod_006 PASS");
+        println("[SUB] test_mod_007 START");
+        test_mod_007();
+        println("[SUB] test_mod_007 PASS");
+    }
+}

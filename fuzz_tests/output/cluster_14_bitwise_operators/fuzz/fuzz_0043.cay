@@ -1,0 +1,85 @@
+// Fuzz Test: bitwise_operators // Fuzz14_043_IDVGE
+public class Fuzz14_043_IDVGE {
+    public static void test_bit_000() {
+        int a = 46188; int b = 2; int c = a >> b;
+        print("bit="); println(c);
+        println("OK");
+    }
+    public static void test_bit_001() {
+        int a = 41771; int b = 5; int c = a >> b;
+        print("bit="); println(c);
+        println("OK");
+    }
+    public static void test_bit_002() {
+        int a = 41954; int b = 4; int c = a >> b;
+        print("bit="); println(c);
+        println("OK");
+    }
+    public static void test_bit_003() {
+        int a = 21477; int b = 0; int c = a >> b;
+        print("bit="); println(c);
+        println("OK");
+    }
+    public static void test_bit_004() {
+        int a = 55422; int b = 0; int c = a & b;
+        print("bit="); println(c);
+        println("OK");
+    }
+    public static void test_bit_005() {
+        int a = 35555; int b = 0; int c = a << b;
+        print("bit="); println(c);
+        println("OK");
+    }
+    public static void test_bit_006() {
+        int a = 46308; int b = 9; int c = a | b;
+        print("bit="); println(c);
+        println("OK");
+    }
+    public static void test_bit_007() {
+        int a = 42268; int b = 2; int c = a << b;
+        print("bit="); println(c);
+        println("OK");
+    }
+    public static void test_bit_008() {
+        int a = 28472; int b = 3; int c = a ^ b;
+        print("bit="); println(c);
+        println("OK");
+    }
+    public static void test_bit_009() {
+        int a = 18064; int b = 6; int c = a >> b;
+        print("bit="); println(c);
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_bit_000 START");
+        test_bit_000();
+        println("[SUB] test_bit_000 PASS");
+        println("[SUB] test_bit_001 START");
+        test_bit_001();
+        println("[SUB] test_bit_001 PASS");
+        println("[SUB] test_bit_002 START");
+        test_bit_002();
+        println("[SUB] test_bit_002 PASS");
+        println("[SUB] test_bit_003 START");
+        test_bit_003();
+        println("[SUB] test_bit_003 PASS");
+        println("[SUB] test_bit_004 START");
+        test_bit_004();
+        println("[SUB] test_bit_004 PASS");
+        println("[SUB] test_bit_005 START");
+        test_bit_005();
+        println("[SUB] test_bit_005 PASS");
+        println("[SUB] test_bit_006 START");
+        test_bit_006();
+        println("[SUB] test_bit_006 PASS");
+        println("[SUB] test_bit_007 START");
+        test_bit_007();
+        println("[SUB] test_bit_007 PASS");
+        println("[SUB] test_bit_008 START");
+        test_bit_008();
+        println("[SUB] test_bit_008 PASS");
+        println("[SUB] test_bit_009 START");
+        test_bit_009();
+        println("[SUB] test_bit_009 PASS");
+    }
+}

@@ -1,0 +1,137 @@
+// Fuzz Test: char_operations // Fuzz04_034_DKWGG
+public class Fuzz04_034_DKWGG {
+    public static void test_char_000() {
+        char a = 'Q';
+        char b = 'B';
+        print("char test: ");
+        print(a);
+        print(" vs ");
+        println(b);
+        println("OK");
+    }
+    public static void test_char_001() {
+        char a = 'i';
+        char b = '>';
+        print("char test: ");
+        print(a);
+        print(" vs ");
+        println(b);
+        println("OK");
+    }
+    public static void test_char_002() {
+        char a = 'u';
+        char b = '8';
+        print("char test: ");
+        print(a);
+        print(" vs ");
+        println(b);
+        println("OK");
+    }
+    public static void test_char_003() {
+        char a = '%';
+        char b = 'i';
+        print("char test: ");
+        print(a);
+        print(" vs ");
+        println(b);
+        println("OK");
+    }
+    public static void test_char_004() {
+        char a = 'c';
+        char b = '&';
+        print("char test: ");
+        print(a);
+        print(" vs ");
+        println(b);
+        println("OK");
+    }
+    public static void test_char_005() {
+        char a = 'j';
+        char b = 'H';
+        print("char test: ");
+        print(a);
+        print(" vs ");
+        println(b);
+        println("OK");
+    }
+    public static void test_char_006() {
+        char a = '/';
+        char b = 'R';
+        print("char test: ");
+        print(a);
+        print(" vs ");
+        println(b);
+        println("OK");
+    }
+    public static void test_char_007() {
+        char a = 'L';
+        char b = 'u';
+        print("char test: ");
+        print(a);
+        print(" vs ");
+        println(b);
+        println("OK");
+    }
+    public static void test_char_008() {
+        char a = 'n';
+        char b = '!';
+        print("char test: ");
+        print(a);
+        print(" vs ");
+        println(b);
+        println("OK");
+    }
+    public static void test_char_009() {
+        char a = '/';
+        char b = 'G';
+        print("char test: ");
+        print(a);
+        print(" vs ");
+        println(b);
+        println("OK");
+    }
+    public static void test_char_010() {
+        char a = 'Z';
+        char b = '?';
+        print("char test: ");
+        print(a);
+        print(" vs ");
+        println(b);
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_char_000 START");
+        test_char_000();
+        println("[SUB] test_char_000 PASS");
+        println("[SUB] test_char_001 START");
+        test_char_001();
+        println("[SUB] test_char_001 PASS");
+        println("[SUB] test_char_002 START");
+        test_char_002();
+        println("[SUB] test_char_002 PASS");
+        println("[SUB] test_char_003 START");
+        test_char_003();
+        println("[SUB] test_char_003 PASS");
+        println("[SUB] test_char_004 START");
+        test_char_004();
+        println("[SUB] test_char_004 PASS");
+        println("[SUB] test_char_005 START");
+        test_char_005();
+        println("[SUB] test_char_005 PASS");
+        println("[SUB] test_char_006 START");
+        test_char_006();
+        println("[SUB] test_char_006 PASS");
+        println("[SUB] test_char_007 START");
+        test_char_007();
+        println("[SUB] test_char_007 PASS");
+        println("[SUB] test_char_008 START");
+        test_char_008();
+        println("[SUB] test_char_008 PASS");
+        println("[SUB] test_char_009 START");
+        test_char_009();
+        println("[SUB] test_char_009 PASS");
+        println("[SUB] test_char_010 START");
+        test_char_010();
+        println("[SUB] test_char_010 PASS");
+    }
+}

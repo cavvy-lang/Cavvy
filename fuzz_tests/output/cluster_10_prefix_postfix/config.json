@@ -1,0 +1,408 @@
+{
+  "cluster_id": "10",
+  "cluster_name": "prefix_postfix",
+  "version": "5.1.0",
+  "tests": [
+    {
+      "file": "fuzz_0000.cay",
+      "class": "Fuzz10_000_TOHAG"
+    },
+    {
+      "file": "fuzz_0001.cay",
+      "class": "Fuzz10_001_YAOFX"
+    },
+    {
+      "file": "fuzz_0002.cay",
+      "class": "Fuzz10_002_HTDFJ"
+    },
+    {
+      "file": "fuzz_0003.cay",
+      "class": "Fuzz10_003_GKOED"
+    },
+    {
+      "file": "fuzz_0004.cay",
+      "class": "Fuzz10_004_GELMX"
+    },
+    {
+      "file": "fuzz_0005.cay",
+      "class": "Fuzz10_005_FVGHR"
+    },
+    {
+      "file": "fuzz_0006.cay",
+      "class": "Fuzz10_006_PAAQT"
+    },
+    {
+      "file": "fuzz_0007.cay",
+      "class": "Fuzz10_007_CIHUR"
+    },
+    {
+      "file": "fuzz_0008.cay",
+      "class": "Fuzz10_008_MNXFP"
+    },
+    {
+      "file": "fuzz_0009.cay",
+      "class": "Fuzz10_009_JYDOF"
+    },
+    {
+      "file": "fuzz_0010.cay",
+      "class": "Fuzz10_010_WFXWS"
+    },
+    {
+      "file": "fuzz_0011.cay",
+      "class": "Fuzz10_011_MOFVF"
+    },
+    {
+      "file": "fuzz_0012.cay",
+      "class": "Fuzz10_012_DKPMQ"
+    },
+    {
+      "file": "fuzz_0013.cay",
+      "class": "Fuzz10_013_WMCJV"
+    },
+    {
+      "file": "fuzz_0014.cay",
+      "class": "Fuzz10_014_VZSYB"
+    },
+    {
+      "file": "fuzz_0015.cay",
+      "class": "Fuzz10_015_TTSFX"
+    },
+    {
+      "file": "fuzz_0016.cay",
+      "class": "Fuzz10_016_SSFIH"
+    },
+    {
+      "file": "fuzz_0017.cay",
+      "class": "Fuzz10_017_MKMVS"
+    },
+    {
+      "file": "fuzz_0018.cay",
+      "class": "Fuzz10_018_VKUTB"
+    },
+    {
+      "file": "fuzz_0019.cay",
+      "class": "Fuzz10_019_CGEOZ"
+    },
+    {
+      "file": "fuzz_0020.cay",
+      "class": "Fuzz10_020_ZCHOX"
+    },
+    {
+      "file": "fuzz_0021.cay",
+      "class": "Fuzz10_021_FLYCG"
+    },
+    {
+      "file": "fuzz_0022.cay",
+      "class": "Fuzz10_022_LLBRB"
+    },
+    {
+      "file": "fuzz_0023.cay",
+      "class": "Fuzz10_023_IYDSV"
+    },
+    {
+      "file": "fuzz_0024.cay",
+      "class": "Fuzz10_024_AOTOI"
+    },
+    {
+      "file": "fuzz_0025.cay",
+      "class": "Fuzz10_025_WKLVA"
+    },
+    {
+      "file": "fuzz_0026.cay",
+      "class": "Fuzz10_026_PUAIS"
+    },
+    {
+      "file": "fuzz_0027.cay",
+      "class": "Fuzz10_027_PTNGR"
+    },
+    {
+      "file": "fuzz_0028.cay",
+      "class": "Fuzz10_028_TSBKA"
+    },
+    {
+      "file": "fuzz_0029.cay",
+      "class": "Fuzz10_029_HTWZI"
+    },
+    {
+      "file": "fuzz_0030.cay",
+      "class": "Fuzz10_030_IXXOI"
+    },
+    {
+      "file": "fuzz_0031.cay",
+      "class": "Fuzz10_031_YEEAV"
+    },
+    {
+      "file": "fuzz_0032.cay",
+      "class": "Fuzz10_032_PACLO"
+    },
+    {
+      "file": "fuzz_0033.cay",
+      "class": "Fuzz10_033_XGOJG"
+    },
+    {
+      "file": "fuzz_0034.cay",
+      "class": "Fuzz10_034_HONZH"
+    },
+    {
+      "file": "fuzz_0035.cay",
+      "class": "Fuzz10_035_SWCBT"
+    },
+    {
+      "file": "fuzz_0036.cay",
+      "class": "Fuzz10_036_SJBKM"
+    },
+    {
+      "file": "fuzz_0037.cay",
+      "class": "Fuzz10_037_TKWTI"
+    },
+    {
+      "file": "fuzz_0038.cay",
+      "class": "Fuzz10_038_IDQLG"
+    },
+    {
+      "file": "fuzz_0039.cay",
+      "class": "Fuzz10_039_UXIMU"
+    },
+    {
+      "file": "fuzz_0040.cay",
+      "class": "Fuzz10_040_OUQNW"
+    },
+    {
+      "file": "fuzz_0041.cay",
+      "class": "Fuzz10_041_FOZOG"
+    },
+    {
+      "file": "fuzz_0042.cay",
+      "class": "Fuzz10_042_DDAAH"
+    },
+    {
+      "file": "fuzz_0043.cay",
+      "class": "Fuzz10_043_NDTSC"
+    },
+    {
+      "file": "fuzz_0044.cay",
+      "class": "Fuzz10_044_DTUKA"
+    },
+    {
+      "file": "fuzz_0045.cay",
+      "class": "Fuzz10_045_KZAWB"
+    },
+    {
+      "file": "fuzz_0046.cay",
+      "class": "Fuzz10_046_VITJG"
+    },
+    {
+      "file": "fuzz_0047.cay",
+      "class": "Fuzz10_047_LMOIM"
+    },
+    {
+      "file": "fuzz_0048.cay",
+      "class": "Fuzz10_048_EAHAQ"
+    },
+    {
+      "file": "fuzz_0049.cay",
+      "class": "Fuzz10_049_LNWKM"
+    },
+    {
+      "file": "fuzz_0050.cay",
+      "class": "Fuzz10_050_DYAPH"
+    },
+    {
+      "file": "fuzz_0051.cay",
+      "class": "Fuzz10_051_CBINL"
+    },
+    {
+      "file": "fuzz_0052.cay",
+      "class": "Fuzz10_052_BZDFL"
+    },
+    {
+      "file": "fuzz_0053.cay",
+      "class": "Fuzz10_053_CTHSR"
+    },
+    {
+      "file": "fuzz_0054.cay",
+      "class": "Fuzz10_054_FDLAZ"
+    },
+    {
+      "file": "fuzz_0055.cay",
+      "class": "Fuzz10_055_BJRFJ"
+    },
+    {
+      "file": "fuzz_0056.cay",
+      "class": "Fuzz10_056_SZTOM"
+    },
+    {
+      "file": "fuzz_0057.cay",
+      "class": "Fuzz10_057_ENNSN"
+    },
+    {
+      "file": "fuzz_0058.cay",
+      "class": "Fuzz10_058_YSJAZ"
+    },
+    {
+      "file": "fuzz_0059.cay",
+      "class": "Fuzz10_059_JZDIU"
+    },
+    {
+      "file": "fuzz_0060.cay",
+      "class": "Fuzz10_060_NHDBE"
+    },
+    {
+      "file": "fuzz_0061.cay",
+      "class": "Fuzz10_061_MRXIL"
+    },
+    {
+      "file": "fuzz_0062.cay",
+      "class": "Fuzz10_062_YSNJV"
+    },
+    {
+      "file": "fuzz_0063.cay",
+      "class": "Fuzz10_063_ZTHOV"
+    },
+    {
+      "file": "fuzz_0064.cay",
+      "class": "Fuzz10_064_PHBNE"
+    },
+    {
+      "file": "fuzz_0065.cay",
+      "class": "Fuzz10_065_ADVVG"
+    },
+    {
+      "file": "fuzz_0066.cay",
+      "class": "Fuzz10_066_WJTKG"
+    },
+    {
+      "file": "fuzz_0067.cay",
+      "class": "Fuzz10_067_OJHPD"
+    },
+    {
+      "file": "fuzz_0068.cay",
+      "class": "Fuzz10_068_HNXUB"
+    },
+    {
+      "file": "fuzz_0069.cay",
+      "class": "Fuzz10_069_ZEAZJ"
+    },
+    {
+      "file": "fuzz_0070.cay",
+      "class": "Fuzz10_070_BMGZF"
+    },
+    {
+      "file": "fuzz_0071.cay",
+      "class": "Fuzz10_071_OPWDZ"
+    },
+    {
+      "file": "fuzz_0072.cay",
+      "class": "Fuzz10_072_GNOUP"
+    },
+    {
+      "file": "fuzz_0073.cay",
+      "class": "Fuzz10_073_PBUTQ"
+    },
+    {
+      "file": "fuzz_0074.cay",
+      "class": "Fuzz10_074_GGSMF"
+    },
+    {
+      "file": "fuzz_0075.cay",
+      "class": "Fuzz10_075_YKWWV"
+    },
+    {
+      "file": "fuzz_0076.cay",
+      "class": "Fuzz10_076_NUZCU"
+    },
+    {
+      "file": "fuzz_0077.cay",
+      "class": "Fuzz10_077_IINIS"
+    },
+    {
+      "file": "fuzz_0078.cay",
+      "class": "Fuzz10_078_KJEZC"
+    },
+    {
+      "file": "fuzz_0079.cay",
+      "class": "Fuzz10_079_BGKLE"
+    },
+    {
+      "file": "fuzz_0080.cay",
+      "class": "Fuzz10_080_BJGPU"
+    },
+    {
+      "file": "fuzz_0081.cay",
+      "class": "Fuzz10_081_SLCRJ"
+    },
+    {
+      "file": "fuzz_0082.cay",
+      "class": "Fuzz10_082_UVMDU"
+    },
+    {
+      "file": "fuzz_0083.cay",
+      "class": "Fuzz10_083_GDBKM"
+    },
+    {
+      "file": "fuzz_0084.cay",
+      "class": "Fuzz10_084_DJXIC"
+    },
+    {
+      "file": "fuzz_0085.cay",
+      "class": "Fuzz10_085_LPNVT"
+    },
+    {
+      "file": "fuzz_0086.cay",
+      "class": "Fuzz10_086_YTRBT"
+    },
+    {
+      "file": "fuzz_0087.cay",
+      "class": "Fuzz10_087_WBMBC"
+    },
+    {
+      "file": "fuzz_0088.cay",
+      "class": "Fuzz10_088_FGIOV"
+    },
+    {
+      "file": "fuzz_0089.cay",
+      "class": "Fuzz10_089_JGZMJ"
+    },
+    {
+      "file": "fuzz_0090.cay",
+      "class": "Fuzz10_090_ABFKK"
+    },
+    {
+      "file": "fuzz_0091.cay",
+      "class": "Fuzz10_091_HCRHY"
+    },
+    {
+      "file": "fuzz_0092.cay",
+      "class": "Fuzz10_092_JIMQT"
+    },
+    {
+      "file": "fuzz_0093.cay",
+      "class": "Fuzz10_093_PVLGK"
+    },
+    {
+      "file": "fuzz_0094.cay",
+      "class": "Fuzz10_094_XPYGA"
+    },
+    {
+      "file": "fuzz_0095.cay",
+      "class": "Fuzz10_095_SYWED"
+    },
+    {
+      "file": "fuzz_0096.cay",
+      "class": "Fuzz10_096_RWWRM"
+    },
+    {
+      "file": "fuzz_0097.cay",
+      "class": "Fuzz10_097_FEKNX"
+    },
+    {
+      "file": "fuzz_0098.cay",
+      "class": "Fuzz10_098_IALSQ"
+    },
+    {
+      "file": "fuzz_0099.cay",
+      "class": "Fuzz10_099_KADOR"
+    }
+  ],
+  "expected_behavior": "All [TEST] lines must report PASS for each test method"
+}

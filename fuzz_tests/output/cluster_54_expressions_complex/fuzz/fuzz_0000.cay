@@ -1,0 +1,101 @@
+// Fuzz Test: expressions_complex // Fuzz54_000_LBPYS
+public class Fuzz54_000_LBPYS {
+    public static void test_expr_000() {
+        int r = (45+1)/(50%4+1);
+        print("expr="); println(r);
+        println("OK");
+    }
+    public static void test_expr_001() {
+        int r = (6*48)%(17+3);
+        print("expr="); println(r);
+        println("OK");
+    }
+    public static void test_expr_002() {
+        int r = (26+40)/(5%7+1);
+        print("expr="); println(r);
+        println("OK");
+    }
+    public static void test_expr_003() {
+        int r = 46+29*41;
+        print("expr="); println(r);
+        println("OK");
+    }
+    public static void test_expr_004() {
+        int r = (42+23)/(32%9+1);
+        print("expr="); println(r);
+        println("OK");
+    }
+    public static void test_expr_005() {
+        int r = (36+45)*1;
+        print("expr="); println(r);
+        println("OK");
+    }
+    public static void test_expr_006() {
+        int r = (25+8)/(44%6+1);
+        print("expr="); println(r);
+        println("OK");
+    }
+    public static void test_expr_007() {
+        int r = 26*19-41/3;
+        print("expr="); println(r);
+        println("OK");
+    }
+    public static void test_expr_008() {
+        int r = (5*10)+(49/3);
+        print("expr="); println(r);
+        println("OK");
+    }
+    public static void test_expr_009() {
+        int r = 42*14-23/8;
+        print("expr="); println(r);
+        println("OK");
+    }
+    public static void test_expr_010() {
+        int r = (29+16)*49;
+        print("expr="); println(r);
+        println("OK");
+    }
+    public static void test_expr_011() {
+        int r = (46+31)/(22%7+1);
+        print("expr="); println(r);
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_expr_000 START");
+        test_expr_000();
+        println("[SUB] test_expr_000 PASS");
+        println("[SUB] test_expr_001 START");
+        test_expr_001();
+        println("[SUB] test_expr_001 PASS");
+        println("[SUB] test_expr_002 START");
+        test_expr_002();
+        println("[SUB] test_expr_002 PASS");
+        println("[SUB] test_expr_003 START");
+        test_expr_003();
+        println("[SUB] test_expr_003 PASS");
+        println("[SUB] test_expr_004 START");
+        test_expr_004();
+        println("[SUB] test_expr_004 PASS");
+        println("[SUB] test_expr_005 START");
+        test_expr_005();
+        println("[SUB] test_expr_005 PASS");
+        println("[SUB] test_expr_006 START");
+        test_expr_006();
+        println("[SUB] test_expr_006 PASS");
+        println("[SUB] test_expr_007 START");
+        test_expr_007();
+        println("[SUB] test_expr_007 PASS");
+        println("[SUB] test_expr_008 START");
+        test_expr_008();
+        println("[SUB] test_expr_008 PASS");
+        println("[SUB] test_expr_009 START");
+        test_expr_009();
+        println("[SUB] test_expr_009 PASS");
+        println("[SUB] test_expr_010 START");
+        test_expr_010();
+        println("[SUB] test_expr_010 PASS");
+        println("[SUB] test_expr_011 START");
+        test_expr_011();
+        println("[SUB] test_expr_011 PASS");
+    }
+}

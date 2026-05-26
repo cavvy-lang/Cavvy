@@ -1,0 +1,104 @@
+// Fuzz Test: method_overloading // Fuzz37_091_RVVFQ
+public class Fuzz37_091_RVVFQ {
+    public static void test_ol_000() {
+        int a=17; int b=88;
+        int c = a + b;
+        print("overload="); println(c);
+        println("OK");
+    }
+    public static void test_ol_001() {
+        int a=76; int b=59;
+        int c = a + b;
+        print("overload="); println(c);
+        println("OK");
+    }
+    public static void test_ol_002() {
+        int a=42; int b=82;
+        int c = a + b;
+        print("overload="); println(c);
+        println("OK");
+    }
+    public static void test_ol_003() {
+        int a=41; int b=27;
+        int c = a + b;
+        print("overload="); println(c);
+        println("OK");
+    }
+    public static void test_ol_004() {
+        int a=62; int b=98;
+        int c = a + b;
+        print("overload="); println(c);
+        println("OK");
+    }
+    public static void test_ol_005() {
+        int a=16; int b=54;
+        int c = a + b;
+        print("overload="); println(c);
+        println("OK");
+    }
+    public static void test_ol_006() {
+        int a=35; int b=49;
+        int c = a + b;
+        print("overload="); println(c);
+        println("OK");
+    }
+    public static void test_ol_007() {
+        int a=69; int b=67;
+        int c = a + b;
+        print("overload="); println(c);
+        println("OK");
+    }
+    public static void test_ol_008() {
+        int a=100; int b=44;
+        int c = a + b;
+        print("overload="); println(c);
+        println("OK");
+    }
+    public static void test_ol_009() {
+        int a=41; int b=84;
+        int c = a + b;
+        print("overload="); println(c);
+        println("OK");
+    }
+    public static void test_ol_010() {
+        int a=17; int b=37;
+        int c = a + b;
+        print("overload="); println(c);
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_ol_000 START");
+        test_ol_000();
+        println("[SUB] test_ol_000 PASS");
+        println("[SUB] test_ol_001 START");
+        test_ol_001();
+        println("[SUB] test_ol_001 PASS");
+        println("[SUB] test_ol_002 START");
+        test_ol_002();
+        println("[SUB] test_ol_002 PASS");
+        println("[SUB] test_ol_003 START");
+        test_ol_003();
+        println("[SUB] test_ol_003 PASS");
+        println("[SUB] test_ol_004 START");
+        test_ol_004();
+        println("[SUB] test_ol_004 PASS");
+        println("[SUB] test_ol_005 START");
+        test_ol_005();
+        println("[SUB] test_ol_005 PASS");
+        println("[SUB] test_ol_006 START");
+        test_ol_006();
+        println("[SUB] test_ol_006 PASS");
+        println("[SUB] test_ol_007 START");
+        test_ol_007();
+        println("[SUB] test_ol_007 PASS");
+        println("[SUB] test_ol_008 START");
+        test_ol_008();
+        println("[SUB] test_ol_008 PASS");
+        println("[SUB] test_ol_009 START");
+        test_ol_009();
+        println("[SUB] test_ol_009 PASS");
+        println("[SUB] test_ol_010 START");
+        test_ol_010();
+        println("[SUB] test_ol_010 PASS");
+    }
+}

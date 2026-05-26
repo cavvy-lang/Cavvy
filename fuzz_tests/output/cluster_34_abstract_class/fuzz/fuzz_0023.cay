@@ -1,0 +1,77 @@
+// Fuzz Test: abstract_class // Fuzz34_023_PJMNE
+public class Fuzz34_023_PJMNE {
+    public static void test_abs_000() {
+        int v = 50;
+        print("abs="); println(v);
+        println("OK");
+    }
+    public static void test_abs_001() {
+        int v = 55;
+        print("abs="); println(v);
+        println("OK");
+    }
+    public static void test_abs_002() {
+        int v = 62;
+        print("abs="); println(v);
+        println("OK");
+    }
+    public static void test_abs_003() {
+        int v = 74;
+        print("abs="); println(v);
+        println("OK");
+    }
+    public static void test_abs_004() {
+        int v = 38;
+        print("abs="); println(v);
+        println("OK");
+    }
+    public static void test_abs_005() {
+        int v = 99;
+        print("abs="); println(v);
+        println("OK");
+    }
+    public static void test_abs_006() {
+        int v = 33;
+        print("abs="); println(v);
+        println("OK");
+    }
+    public static void test_abs_007() {
+        int v = 71;
+        print("abs="); println(v);
+        println("OK");
+    }
+    public static void test_abs_008() {
+        int v = 91;
+        print("abs="); println(v);
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_abs_000 START");
+        test_abs_000();
+        println("[SUB] test_abs_000 PASS");
+        println("[SUB] test_abs_001 START");
+        test_abs_001();
+        println("[SUB] test_abs_001 PASS");
+        println("[SUB] test_abs_002 START");
+        test_abs_002();
+        println("[SUB] test_abs_002 PASS");
+        println("[SUB] test_abs_003 START");
+        test_abs_003();
+        println("[SUB] test_abs_003 PASS");
+        println("[SUB] test_abs_004 START");
+        test_abs_004();
+        println("[SUB] test_abs_004 PASS");
+        println("[SUB] test_abs_005 START");
+        test_abs_005();
+        println("[SUB] test_abs_005 PASS");
+        println("[SUB] test_abs_006 START");
+        test_abs_006();
+        println("[SUB] test_abs_006 PASS");
+        println("[SUB] test_abs_007 START");
+        test_abs_007();
+        println("[SUB] test_abs_007 PASS");
+        println("[SUB] test_abs_008 START");
+        test_abs_008();
+        println("[SUB] test_abs_008 PASS");
+    }
+}

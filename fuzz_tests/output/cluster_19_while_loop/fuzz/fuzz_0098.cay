@@ -1,0 +1,85 @@
+// Fuzz Test: while_loop // Fuzz19_098_IGEBE
+public class Fuzz19_098_IGEBE {
+    public static void test_while_000() {
+        int i = 0;
+        while(i < 7){println(i); i=i+1;}
+        int j = 8;
+        while(j > 0){println(j); j=j-1;}
+        println("OK");
+    }
+    public static void test_while_001() {
+        int i = 0;
+        while(i < 3){println(i); i=i+1;}
+        int j = 4;
+        while(j > 0){println(j); j=j-1;}
+        println("OK");
+    }
+    public static void test_while_002() {
+        int i = 0;
+        while(i < 4){println(i); i=i+1;}
+        int j = 5;
+        while(j > 0){println(j); j=j-1;}
+        println("OK");
+    }
+    public static void test_while_003() {
+        int i = 0;
+        while(i < 3){println(i); i=i+1;}
+        int j = 6;
+        while(j > 0){println(j); j=j-1;}
+        println("OK");
+    }
+    public static void test_while_004() {
+        int i = 0;
+        while(i < 6){println(i); i=i+1;}
+        int j = 1;
+        while(j > 0){println(j); j=j-1;}
+        println("OK");
+    }
+    public static void test_while_005() {
+        int i = 0;
+        while(i < 8){println(i); i=i+1;}
+        int j = 4;
+        while(j > 0){println(j); j=j-1;}
+        println("OK");
+    }
+    public static void test_while_006() {
+        int i = 0;
+        while(i < 5){println(i); i=i+1;}
+        int j = 4;
+        while(j > 0){println(j); j=j-1;}
+        println("OK");
+    }
+    public static void test_while_007() {
+        int i = 0;
+        while(i < 7){println(i); i=i+1;}
+        int j = 5;
+        while(j > 0){println(j); j=j-1;}
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_while_000 START");
+        test_while_000();
+        println("[SUB] test_while_000 PASS");
+        println("[SUB] test_while_001 START");
+        test_while_001();
+        println("[SUB] test_while_001 PASS");
+        println("[SUB] test_while_002 START");
+        test_while_002();
+        println("[SUB] test_while_002 PASS");
+        println("[SUB] test_while_003 START");
+        test_while_003();
+        println("[SUB] test_while_003 PASS");
+        println("[SUB] test_while_004 START");
+        test_while_004();
+        println("[SUB] test_while_004 PASS");
+        println("[SUB] test_while_005 START");
+        test_while_005();
+        println("[SUB] test_while_005 PASS");
+        println("[SUB] test_while_006 START");
+        test_while_006();
+        println("[SUB] test_while_006 PASS");
+        println("[SUB] test_while_007 START");
+        test_while_007();
+        println("[SUB] test_while_007 PASS");
+    }
+}

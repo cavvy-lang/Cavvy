@@ -1,0 +1,8 @@
+
+public class CartItem {
+    public String name;
+    public int price;
+    public int qty;
+    public CartItem(String n, int p, int q) { this.name = n; this.price = p; this.qty = q; }
+    public int subtotal() { return this.price * this.qty; }
+}

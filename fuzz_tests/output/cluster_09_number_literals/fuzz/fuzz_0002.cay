@@ -1,0 +1,101 @@
+// Fuzz Test: number_literals // Fuzz09_002_VNQJO
+public class Fuzz09_002_VNQJO {
+    public static void test_lit_000() {
+        int val = 0x7FFFFFFF;
+        print("0x7FFFFFFF="); println(val);
+        println("OK");
+    }
+    public static void test_lit_001() {
+        int val = 0o377;
+        print("0o377="); println(val);
+        println("OK");
+    }
+    public static void test_lit_002() {
+        int val = 0b1;
+        print("0b1="); println(val);
+        println("OK");
+    }
+    public static void test_lit_003() {
+        long val = 1_000_000_000L;
+        print("1_000_000_000L="); println(val);
+        println("OK");
+    }
+    public static void test_lit_004() {
+        float val = 1.0f;
+        print("1.0f="); println(val);
+        println("OK");
+    }
+    public static void test_lit_005() {
+        long val = 1_000_000_000L;
+        print("1_000_000_000L="); println(val);
+        println("OK");
+    }
+    public static void test_lit_006() {
+        int val = 0b1;
+        print("0b1="); println(val);
+        println("OK");
+    }
+    public static void test_lit_007() {
+        int val = 0b1;
+        print("0b1="); println(val);
+        println("OK");
+    }
+    public static void test_lit_008() {
+        int val = 0b1;
+        print("0b1="); println(val);
+        println("OK");
+    }
+    public static void test_lit_009() {
+        int val = 0o377;
+        print("0o377="); println(val);
+        println("OK");
+    }
+    public static void test_lit_010() {
+        int val = 0b1;
+        print("0b1="); println(val);
+        println("OK");
+    }
+    public static void test_lit_011() {
+        float val = 1.0f;
+        print("1.0f="); println(val);
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_lit_000 START");
+        test_lit_000();
+        println("[SUB] test_lit_000 PASS");
+        println("[SUB] test_lit_001 START");
+        test_lit_001();
+        println("[SUB] test_lit_001 PASS");
+        println("[SUB] test_lit_002 START");
+        test_lit_002();
+        println("[SUB] test_lit_002 PASS");
+        println("[SUB] test_lit_003 START");
+        test_lit_003();
+        println("[SUB] test_lit_003 PASS");
+        println("[SUB] test_lit_004 START");
+        test_lit_004();
+        println("[SUB] test_lit_004 PASS");
+        println("[SUB] test_lit_005 START");
+        test_lit_005();
+        println("[SUB] test_lit_005 PASS");
+        println("[SUB] test_lit_006 START");
+        test_lit_006();
+        println("[SUB] test_lit_006 PASS");
+        println("[SUB] test_lit_007 START");
+        test_lit_007();
+        println("[SUB] test_lit_007 PASS");
+        println("[SUB] test_lit_008 START");
+        test_lit_008();
+        println("[SUB] test_lit_008 PASS");
+        println("[SUB] test_lit_009 START");
+        test_lit_009();
+        println("[SUB] test_lit_009 PASS");
+        println("[SUB] test_lit_010 START");
+        test_lit_010();
+        println("[SUB] test_lit_010 PASS");
+        println("[SUB] test_lit_011 START");
+        test_lit_011();
+        println("[SUB] test_lit_011 PASS");
+    }
+}

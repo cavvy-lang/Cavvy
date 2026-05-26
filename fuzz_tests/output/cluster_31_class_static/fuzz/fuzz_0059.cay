@@ -1,0 +1,101 @@
+// Fuzz Test: class_static // Fuzz31_059_ICPOM
+public class Fuzz31_059_ICPOM {
+    public static void test_static_000() {
+        int v = 28;
+        if(v>500){println("big");}else{println("small");}
+        println("OK");
+    }
+    public static void test_static_001() {
+        int v = 184;
+        if(v>500){println("big");}else{println("small");}
+        println("OK");
+    }
+    public static void test_static_002() {
+        int v = 590;
+        if(v>500){println("big");}else{println("small");}
+        println("OK");
+    }
+    public static void test_static_003() {
+        int v = 106;
+        if(v>500){println("big");}else{println("small");}
+        println("OK");
+    }
+    public static void test_static_004() {
+        int v = 711;
+        if(v>500){println("big");}else{println("small");}
+        println("OK");
+    }
+    public static void test_static_005() {
+        int v = 960;
+        if(v>500){println("big");}else{println("small");}
+        println("OK");
+    }
+    public static void test_static_006() {
+        int v = 891;
+        if(v>500){println("big");}else{println("small");}
+        println("OK");
+    }
+    public static void test_static_007() {
+        int v = 468;
+        if(v>500){println("big");}else{println("small");}
+        println("OK");
+    }
+    public static void test_static_008() {
+        int v = 132;
+        if(v>500){println("big");}else{println("small");}
+        println("OK");
+    }
+    public static void test_static_009() {
+        int v = 459;
+        if(v>500){println("big");}else{println("small");}
+        println("OK");
+    }
+    public static void test_static_010() {
+        int v = 873;
+        if(v>500){println("big");}else{println("small");}
+        println("OK");
+    }
+    public static void test_static_011() {
+        int v = 908;
+        if(v>500){println("big");}else{println("small");}
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_static_000 START");
+        test_static_000();
+        println("[SUB] test_static_000 PASS");
+        println("[SUB] test_static_001 START");
+        test_static_001();
+        println("[SUB] test_static_001 PASS");
+        println("[SUB] test_static_002 START");
+        test_static_002();
+        println("[SUB] test_static_002 PASS");
+        println("[SUB] test_static_003 START");
+        test_static_003();
+        println("[SUB] test_static_003 PASS");
+        println("[SUB] test_static_004 START");
+        test_static_004();
+        println("[SUB] test_static_004 PASS");
+        println("[SUB] test_static_005 START");
+        test_static_005();
+        println("[SUB] test_static_005 PASS");
+        println("[SUB] test_static_006 START");
+        test_static_006();
+        println("[SUB] test_static_006 PASS");
+        println("[SUB] test_static_007 START");
+        test_static_007();
+        println("[SUB] test_static_007 PASS");
+        println("[SUB] test_static_008 START");
+        test_static_008();
+        println("[SUB] test_static_008 PASS");
+        println("[SUB] test_static_009 START");
+        test_static_009();
+        println("[SUB] test_static_009 PASS");
+        println("[SUB] test_static_010 START");
+        test_static_010();
+        println("[SUB] test_static_010 PASS");
+        println("[SUB] test_static_011 START");
+        test_static_011();
+        println("[SUB] test_static_011 PASS");
+    }
+}

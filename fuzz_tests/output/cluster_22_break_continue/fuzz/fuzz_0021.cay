@@ -1,0 +1,86 @@
+// Fuzz Test: break_continue // Fuzz22_021_MFAWQ
+public class Fuzz22_021_MFAWQ {
+    public static void test_brk_000() {
+        for(int i=0;i<13;i=i+1){if(i==6) break; println(i);}
+        println("--");
+        for(int i=0;i<13;i=i+1){if(i%2==0) continue; println(i);}
+        println("OK");
+    }
+    public static void test_brk_001() {
+        for(int i=0;i<11;i=i+1){if(i==5) break; println(i);}
+        println("--");
+        for(int i=0;i<11;i=i+1){if(i%2==0) continue; println(i);}
+        println("OK");
+    }
+    public static void test_brk_002() {
+        for(int i=0;i<15;i=i+1){if(i==7) break; println(i);}
+        println("--");
+        for(int i=0;i<15;i=i+1){if(i%2==0) continue; println(i);}
+        println("OK");
+    }
+    public static void test_brk_003() {
+        for(int i=0;i<8;i=i+1){if(i==4) break; println(i);}
+        println("--");
+        for(int i=0;i<8;i=i+1){if(i%2==0) continue; println(i);}
+        println("OK");
+    }
+    public static void test_brk_004() {
+        for(int i=0;i<6;i=i+1){if(i==3) break; println(i);}
+        println("--");
+        for(int i=0;i<6;i=i+1){if(i%2==0) continue; println(i);}
+        println("OK");
+    }
+    public static void test_brk_005() {
+        for(int i=0;i<12;i=i+1){if(i==6) break; println(i);}
+        println("--");
+        for(int i=0;i<12;i=i+1){if(i%2==0) continue; println(i);}
+        println("OK");
+    }
+    public static void test_brk_006() {
+        for(int i=0;i<8;i=i+1){if(i==4) break; println(i);}
+        println("--");
+        for(int i=0;i<8;i=i+1){if(i%2==0) continue; println(i);}
+        println("OK");
+    }
+    public static void test_brk_007() {
+        for(int i=0;i<14;i=i+1){if(i==7) break; println(i);}
+        println("--");
+        for(int i=0;i<14;i=i+1){if(i%2==0) continue; println(i);}
+        println("OK");
+    }
+    public static void test_brk_008() {
+        for(int i=0;i<12;i=i+1){if(i==6) break; println(i);}
+        println("--");
+        for(int i=0;i<12;i=i+1){if(i%2==0) continue; println(i);}
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_brk_000 START");
+        test_brk_000();
+        println("[SUB] test_brk_000 PASS");
+        println("[SUB] test_brk_001 START");
+        test_brk_001();
+        println("[SUB] test_brk_001 PASS");
+        println("[SUB] test_brk_002 START");
+        test_brk_002();
+        println("[SUB] test_brk_002 PASS");
+        println("[SUB] test_brk_003 START");
+        test_brk_003();
+        println("[SUB] test_brk_003 PASS");
+        println("[SUB] test_brk_004 START");
+        test_brk_004();
+        println("[SUB] test_brk_004 PASS");
+        println("[SUB] test_brk_005 START");
+        test_brk_005();
+        println("[SUB] test_brk_005 PASS");
+        println("[SUB] test_brk_006 START");
+        test_brk_006();
+        println("[SUB] test_brk_006 PASS");
+        println("[SUB] test_brk_007 START");
+        test_brk_007();
+        println("[SUB] test_brk_007 PASS");
+        println("[SUB] test_brk_008 START");
+        test_brk_008();
+        println("[SUB] test_brk_008 PASS");
+    }
+}

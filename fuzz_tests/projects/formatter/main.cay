@@ -1,0 +1,8 @@
+
+#include "fmt_utils.cay"
+public int main() {
+    println(FmtUtils.padLeft("42", 5, '0'));
+    println(FmtUtils.repeat("ha", 3));
+    println(FmtUtils.padLeft("123", 8, ' '));
+    return 0;
+}

@@ -1,0 +1,101 @@
+// Fuzz Test: namespace_block // Fuzz47_076_FHBON
+public class Fuzz47_076_FHBON {
+    public static void test_ns_000() {
+        int v = 48;
+        print("ns="); println(v);
+        println("OK");
+    }
+    public static void test_ns_001() {
+        int v = 80;
+        print("ns="); println(v);
+        println("OK");
+    }
+    public static void test_ns_002() {
+        int v = 48;
+        print("ns="); println(v);
+        println("OK");
+    }
+    public static void test_ns_003() {
+        int v = 85;
+        print("ns="); println(v);
+        println("OK");
+    }
+    public static void test_ns_004() {
+        int v = 41;
+        print("ns="); println(v);
+        println("OK");
+    }
+    public static void test_ns_005() {
+        int v = 60;
+        print("ns="); println(v);
+        println("OK");
+    }
+    public static void test_ns_006() {
+        int v = 91;
+        print("ns="); println(v);
+        println("OK");
+    }
+    public static void test_ns_007() {
+        int v = 2;
+        print("ns="); println(v);
+        println("OK");
+    }
+    public static void test_ns_008() {
+        int v = 6;
+        print("ns="); println(v);
+        println("OK");
+    }
+    public static void test_ns_009() {
+        int v = 53;
+        print("ns="); println(v);
+        println("OK");
+    }
+    public static void test_ns_010() {
+        int v = 77;
+        print("ns="); println(v);
+        println("OK");
+    }
+    public static void test_ns_011() {
+        int v = 74;
+        print("ns="); println(v);
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_ns_000 START");
+        test_ns_000();
+        println("[SUB] test_ns_000 PASS");
+        println("[SUB] test_ns_001 START");
+        test_ns_001();
+        println("[SUB] test_ns_001 PASS");
+        println("[SUB] test_ns_002 START");
+        test_ns_002();
+        println("[SUB] test_ns_002 PASS");
+        println("[SUB] test_ns_003 START");
+        test_ns_003();
+        println("[SUB] test_ns_003 PASS");
+        println("[SUB] test_ns_004 START");
+        test_ns_004();
+        println("[SUB] test_ns_004 PASS");
+        println("[SUB] test_ns_005 START");
+        test_ns_005();
+        println("[SUB] test_ns_005 PASS");
+        println("[SUB] test_ns_006 START");
+        test_ns_006();
+        println("[SUB] test_ns_006 PASS");
+        println("[SUB] test_ns_007 START");
+        test_ns_007();
+        println("[SUB] test_ns_007 PASS");
+        println("[SUB] test_ns_008 START");
+        test_ns_008();
+        println("[SUB] test_ns_008 PASS");
+        println("[SUB] test_ns_009 START");
+        test_ns_009();
+        println("[SUB] test_ns_009 PASS");
+        println("[SUB] test_ns_010 START");
+        test_ns_010();
+        println("[SUB] test_ns_010 PASS");
+        println("[SUB] test_ns_011 START");
+        test_ns_011();
+        println("[SUB] test_ns_011 PASS");
+    }
+}

@@ -1,0 +1,25 @@
+
+public class ChessLib {
+    public static boolean isValidPos(int row, int col) {
+        return row >= 0 && row < 8 && col >= 0 && col < 8;
+    }
+    public static int rookMoves(int row, int col) {
+        int moves = 0;
+        if (row > 0) moves = moves + 1;
+        if (row < 7) moves = moves + 1;
+        if (col > 0) moves = moves + 1;
+        if (col < 7) moves = moves + 1;
+        return moves;
+    }
+    public static int kingMoves(int row, int col) {
+        int moves = 0;
+        for (int dr = -1; dr <= 1; dr = dr + 1) {
+            for (int dc = -1; dc <= 1; dc = dc + 1) {
+                if (dr != 0 || dc != 0) {
+                    if (isValidPos(row + dr, col + dc)) moves = moves + 1;
+                }
+            }
+        }
+        return moves;
+    }
+}

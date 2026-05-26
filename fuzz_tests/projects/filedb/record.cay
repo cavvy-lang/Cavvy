@@ -1,0 +1,6 @@
+
+public class Record {
+    public int key;
+    public String value;
+    public Record(int k, String v) { this.key = k; this.value = v; }
+}

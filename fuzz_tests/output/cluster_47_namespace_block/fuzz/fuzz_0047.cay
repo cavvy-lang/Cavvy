@@ -1,0 +1,85 @@
+// Fuzz Test: namespace_block // Fuzz47_047_SMYKJ
+public class Fuzz47_047_SMYKJ {
+    public static void test_ns_000() {
+        int v = 44;
+        print("ns="); println(v);
+        println("OK");
+    }
+    public static void test_ns_001() {
+        int v = 97;
+        print("ns="); println(v);
+        println("OK");
+    }
+    public static void test_ns_002() {
+        int v = 89;
+        print("ns="); println(v);
+        println("OK");
+    }
+    public static void test_ns_003() {
+        int v = 67;
+        print("ns="); println(v);
+        println("OK");
+    }
+    public static void test_ns_004() {
+        int v = 97;
+        print("ns="); println(v);
+        println("OK");
+    }
+    public static void test_ns_005() {
+        int v = 43;
+        print("ns="); println(v);
+        println("OK");
+    }
+    public static void test_ns_006() {
+        int v = 44;
+        print("ns="); println(v);
+        println("OK");
+    }
+    public static void test_ns_007() {
+        int v = 74;
+        print("ns="); println(v);
+        println("OK");
+    }
+    public static void test_ns_008() {
+        int v = 5;
+        print("ns="); println(v);
+        println("OK");
+    }
+    public static void test_ns_009() {
+        int v = 41;
+        print("ns="); println(v);
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_ns_000 START");
+        test_ns_000();
+        println("[SUB] test_ns_000 PASS");
+        println("[SUB] test_ns_001 START");
+        test_ns_001();
+        println("[SUB] test_ns_001 PASS");
+        println("[SUB] test_ns_002 START");
+        test_ns_002();
+        println("[SUB] test_ns_002 PASS");
+        println("[SUB] test_ns_003 START");
+        test_ns_003();
+        println("[SUB] test_ns_003 PASS");
+        println("[SUB] test_ns_004 START");
+        test_ns_004();
+        println("[SUB] test_ns_004 PASS");
+        println("[SUB] test_ns_005 START");
+        test_ns_005();
+        println("[SUB] test_ns_005 PASS");
+        println("[SUB] test_ns_006 START");
+        test_ns_006();
+        println("[SUB] test_ns_006 PASS");
+        println("[SUB] test_ns_007 START");
+        test_ns_007();
+        println("[SUB] test_ns_007 PASS");
+        println("[SUB] test_ns_008 START");
+        test_ns_008();
+        println("[SUB] test_ns_008 PASS");
+        println("[SUB] test_ns_009 START");
+        test_ns_009();
+        println("[SUB] test_ns_009 PASS");
+    }
+}

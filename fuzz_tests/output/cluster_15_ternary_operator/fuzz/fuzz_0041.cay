@@ -1,0 +1,95 @@
+// Fuzz Test: ternary_operator // Fuzz15_041_HHICM
+public class Fuzz15_041_HHICM {
+    public static void test_tern_000() {
+        int a = -64; int b = 15;
+        int r = (-64>=15) ? a : b;
+        print("tern="); println(r);
+        println("OK");
+    }
+    public static void test_tern_001() {
+        int a = 30; int b = 3;
+        int r = (30==0) ? a : b;
+        print("tern="); println(r);
+        println("OK");
+    }
+    public static void test_tern_002() {
+        int a = -78; int b = 76;
+        int r = (-78>=76) ? a : b;
+        print("tern="); println(r);
+        println("OK");
+    }
+    public static void test_tern_003() {
+        int a = 27; int b = 12;
+        int r = (27<0) ? a : b;
+        print("tern="); println(r);
+        println("OK");
+    }
+    public static void test_tern_004() {
+        int a = 51; int b = 4;
+        int r = (51<=0) ? a : b;
+        print("tern="); println(r);
+        println("OK");
+    }
+    public static void test_tern_005() {
+        int a = -12; int b = 20;
+        int r = (-12==0) ? a : b;
+        print("tern="); println(r);
+        println("OK");
+    }
+    public static void test_tern_006() {
+        int a = -19; int b = -84;
+        int r = (-19>0) ? a : b;
+        print("tern="); println(r);
+        println("OK");
+    }
+    public static void test_tern_007() {
+        int a = 5; int b = -27;
+        int r = (5==0) ? a : b;
+        print("tern="); println(r);
+        println("OK");
+    }
+    public static void test_tern_008() {
+        int a = 47; int b = 67;
+        int r = (47>0) ? a : b;
+        print("tern="); println(r);
+        println("OK");
+    }
+    public static void test_tern_009() {
+        int a = 93; int b = -74;
+        int r = (93>0) ? a : b;
+        print("tern="); println(r);
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_tern_000 START");
+        test_tern_000();
+        println("[SUB] test_tern_000 PASS");
+        println("[SUB] test_tern_001 START");
+        test_tern_001();
+        println("[SUB] test_tern_001 PASS");
+        println("[SUB] test_tern_002 START");
+        test_tern_002();
+        println("[SUB] test_tern_002 PASS");
+        println("[SUB] test_tern_003 START");
+        test_tern_003();
+        println("[SUB] test_tern_003 PASS");
+        println("[SUB] test_tern_004 START");
+        test_tern_004();
+        println("[SUB] test_tern_004 PASS");
+        println("[SUB] test_tern_005 START");
+        test_tern_005();
+        println("[SUB] test_tern_005 PASS");
+        println("[SUB] test_tern_006 START");
+        test_tern_006();
+        println("[SUB] test_tern_006 PASS");
+        println("[SUB] test_tern_007 START");
+        test_tern_007();
+        println("[SUB] test_tern_007 PASS");
+        println("[SUB] test_tern_008 START");
+        test_tern_008();
+        println("[SUB] test_tern_008 PASS");
+        println("[SUB] test_tern_009 START");
+        test_tern_009();
+        println("[SUB] test_tern_009 PASS");
+    }
+}

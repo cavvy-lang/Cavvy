@@ -1,0 +1,85 @@
+// Fuzz Test: class_static // Fuzz31_049_HIKKW
+public class Fuzz31_049_HIKKW {
+    public static void test_static_000() {
+        int v = 741;
+        if(v>500){println("big");}else{println("small");}
+        println("OK");
+    }
+    public static void test_static_001() {
+        int v = 870;
+        if(v>500){println("big");}else{println("small");}
+        println("OK");
+    }
+    public static void test_static_002() {
+        int v = 564;
+        if(v>500){println("big");}else{println("small");}
+        println("OK");
+    }
+    public static void test_static_003() {
+        int v = 431;
+        if(v>500){println("big");}else{println("small");}
+        println("OK");
+    }
+    public static void test_static_004() {
+        int v = 710;
+        if(v>500){println("big");}else{println("small");}
+        println("OK");
+    }
+    public static void test_static_005() {
+        int v = 988;
+        if(v>500){println("big");}else{println("small");}
+        println("OK");
+    }
+    public static void test_static_006() {
+        int v = 786;
+        if(v>500){println("big");}else{println("small");}
+        println("OK");
+    }
+    public static void test_static_007() {
+        int v = 308;
+        if(v>500){println("big");}else{println("small");}
+        println("OK");
+    }
+    public static void test_static_008() {
+        int v = 48;
+        if(v>500){println("big");}else{println("small");}
+        println("OK");
+    }
+    public static void test_static_009() {
+        int v = 660;
+        if(v>500){println("big");}else{println("small");}
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_static_000 START");
+        test_static_000();
+        println("[SUB] test_static_000 PASS");
+        println("[SUB] test_static_001 START");
+        test_static_001();
+        println("[SUB] test_static_001 PASS");
+        println("[SUB] test_static_002 START");
+        test_static_002();
+        println("[SUB] test_static_002 PASS");
+        println("[SUB] test_static_003 START");
+        test_static_003();
+        println("[SUB] test_static_003 PASS");
+        println("[SUB] test_static_004 START");
+        test_static_004();
+        println("[SUB] test_static_004 PASS");
+        println("[SUB] test_static_005 START");
+        test_static_005();
+        println("[SUB] test_static_005 PASS");
+        println("[SUB] test_static_006 START");
+        test_static_006();
+        println("[SUB] test_static_006 PASS");
+        println("[SUB] test_static_007 START");
+        test_static_007();
+        println("[SUB] test_static_007 PASS");
+        println("[SUB] test_static_008 START");
+        test_static_008();
+        println("[SUB] test_static_008 PASS");
+        println("[SUB] test_static_009 START");
+        test_static_009();
+        println("[SUB] test_static_009 PASS");
+    }
+}

@@ -1,0 +1,77 @@
+// Fuzz Test: arrays_2d // Fuzz25_066_JRMQF
+public class Fuzz25_066_JRMQF {
+    public static void test_arr2_000() {
+        int[][] m = new int[2][2];
+        for(int i=0;i<2;i=i+1){for(int j=0;j<2;j=j+1){m[i][j]=i*2+j+1;}}
+        for(int i=0;i<2;i=i+1){for(int j=0;j<2;j=j+1){println(m[i][j]);}}
+        println("OK");
+    }
+    public static void test_arr2_001() {
+        int[][] m = new int[4][3];
+        for(int i=0;i<4;i=i+1){for(int j=0;j<3;j=j+1){m[i][j]=i*3+j+1;}}
+        for(int i=0;i<4;i=i+1){for(int j=0;j<3;j=j+1){println(m[i][j]);}}
+        println("OK");
+    }
+    public static void test_arr2_002() {
+        int[][] m = new int[3][4];
+        for(int i=0;i<3;i=i+1){for(int j=0;j<4;j=j+1){m[i][j]=i*4+j+1;}}
+        for(int i=0;i<3;i=i+1){for(int j=0;j<4;j=j+1){println(m[i][j]);}}
+        println("OK");
+    }
+    public static void test_arr2_003() {
+        int[][] m = new int[3][3];
+        for(int i=0;i<3;i=i+1){for(int j=0;j<3;j=j+1){m[i][j]=i*3+j+1;}}
+        for(int i=0;i<3;i=i+1){for(int j=0;j<3;j=j+1){println(m[i][j]);}}
+        println("OK");
+    }
+    public static void test_arr2_004() {
+        int[][] m = new int[3][3];
+        for(int i=0;i<3;i=i+1){for(int j=0;j<3;j=j+1){m[i][j]=i*3+j+1;}}
+        for(int i=0;i<3;i=i+1){for(int j=0;j<3;j=j+1){println(m[i][j]);}}
+        println("OK");
+    }
+    public static void test_arr2_005() {
+        int[][] m = new int[4][4];
+        for(int i=0;i<4;i=i+1){for(int j=0;j<4;j=j+1){m[i][j]=i*4+j+1;}}
+        for(int i=0;i<4;i=i+1){for(int j=0;j<4;j=j+1){println(m[i][j]);}}
+        println("OK");
+    }
+    public static void test_arr2_006() {
+        int[][] m = new int[4][3];
+        for(int i=0;i<4;i=i+1){for(int j=0;j<3;j=j+1){m[i][j]=i*3+j+1;}}
+        for(int i=0;i<4;i=i+1){for(int j=0;j<3;j=j+1){println(m[i][j]);}}
+        println("OK");
+    }
+    public static void test_arr2_007() {
+        int[][] m = new int[3][2];
+        for(int i=0;i<3;i=i+1){for(int j=0;j<2;j=j+1){m[i][j]=i*2+j+1;}}
+        for(int i=0;i<3;i=i+1){for(int j=0;j<2;j=j+1){println(m[i][j]);}}
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_arr2_000 START");
+        test_arr2_000();
+        println("[SUB] test_arr2_000 PASS");
+        println("[SUB] test_arr2_001 START");
+        test_arr2_001();
+        println("[SUB] test_arr2_001 PASS");
+        println("[SUB] test_arr2_002 START");
+        test_arr2_002();
+        println("[SUB] test_arr2_002 PASS");
+        println("[SUB] test_arr2_003 START");
+        test_arr2_003();
+        println("[SUB] test_arr2_003 PASS");
+        println("[SUB] test_arr2_004 START");
+        test_arr2_004();
+        println("[SUB] test_arr2_004 PASS");
+        println("[SUB] test_arr2_005 START");
+        test_arr2_005();
+        println("[SUB] test_arr2_005 PASS");
+        println("[SUB] test_arr2_006 START");
+        test_arr2_006();
+        println("[SUB] test_arr2_006 PASS");
+        println("[SUB] test_arr2_007 START");
+        test_arr2_007();
+        println("[SUB] test_arr2_007 PASS");
+    }
+}

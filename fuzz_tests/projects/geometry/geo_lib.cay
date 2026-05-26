@@ -1,0 +1,7 @@
+
+public class GeoLib {
+    public static final double PI = 3.14159;
+    public static double circleArea(double r) { return PI * r * r; }
+    public static int rectArea(int w, int h) { return w * h; }
+    public static double triangleArea(double b, double h) { return 0.5 * b * h; }
+}

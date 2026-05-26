@@ -1,0 +1,17 @@
+
+#include "record.cay"
+public class DBOps {
+    public static String findValue(Record[] db, int key) {
+        for (int i = 0; i < db.length; i = i + 1) {
+            if (db[i].key == key) { return db[i].value; }
+        }
+        return "NOT_FOUND";
+    }
+    public static int countByPrefix(Record[] db, String prefix) {
+        int count = 0;
+        for (int i = 0; i < db.length; i = i + 1) {
+            if (db[i].value.startsWith(prefix)) { count = count + 1; }
+        }
+        return count;
+    }
+}

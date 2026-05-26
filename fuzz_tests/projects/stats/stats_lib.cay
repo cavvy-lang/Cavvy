@@ -1,0 +1,18 @@
+
+public class StatsLib {
+    public static int max(int[] arr) {
+        int m = arr[0];
+        for (int i = 1; i < arr.length; i = i + 1) { if (arr[i] > m) m = arr[i]; }
+        return m;
+    }
+    public static int min(int[] arr) {
+        int m = arr[0];
+        for (int i = 1; i < arr.length; i = i + 1) { if (arr[i] < m) m = arr[i]; }
+        return m;
+    }
+    public static double average(int[] arr) {
+        int s = 0;
+        for (int i = 0; i < arr.length; i = i + 1) { s = s + arr[i]; }
+        return (double)s / arr.length;
+    }
+}

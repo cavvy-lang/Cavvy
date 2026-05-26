@@ -1,0 +1,77 @@
+// Fuzz Test: lambda_expressions // Fuzz39_087_CZNXI
+public class Fuzz39_087_CZNXI {
+    public static void test_lambda_000() {
+        int a=3; int b=43;
+        int c = a + b;
+        print("lambda="); println(c);
+        println("OK");
+    }
+    public static void test_lambda_001() {
+        int a=88; int b=5;
+        int c = a + b;
+        print("lambda="); println(c);
+        println("OK");
+    }
+    public static void test_lambda_002() {
+        int a=41; int b=43;
+        int c = a + b;
+        print("lambda="); println(c);
+        println("OK");
+    }
+    public static void test_lambda_003() {
+        int a=63; int b=67;
+        int c = a + b;
+        print("lambda="); println(c);
+        println("OK");
+    }
+    public static void test_lambda_004() {
+        int a=1; int b=29;
+        int c = a + b;
+        print("lambda="); println(c);
+        println("OK");
+    }
+    public static void test_lambda_005() {
+        int a=77; int b=66;
+        int c = a + b;
+        print("lambda="); println(c);
+        println("OK");
+    }
+    public static void test_lambda_006() {
+        int a=82; int b=58;
+        int c = a + b;
+        print("lambda="); println(c);
+        println("OK");
+    }
+    public static void test_lambda_007() {
+        int a=26; int b=55;
+        int c = a + b;
+        print("lambda="); println(c);
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_lambda_000 START");
+        test_lambda_000();
+        println("[SUB] test_lambda_000 PASS");
+        println("[SUB] test_lambda_001 START");
+        test_lambda_001();
+        println("[SUB] test_lambda_001 PASS");
+        println("[SUB] test_lambda_002 START");
+        test_lambda_002();
+        println("[SUB] test_lambda_002 PASS");
+        println("[SUB] test_lambda_003 START");
+        test_lambda_003();
+        println("[SUB] test_lambda_003 PASS");
+        println("[SUB] test_lambda_004 START");
+        test_lambda_004();
+        println("[SUB] test_lambda_004 PASS");
+        println("[SUB] test_lambda_005 START");
+        test_lambda_005();
+        println("[SUB] test_lambda_005 PASS");
+        println("[SUB] test_lambda_006 START");
+        test_lambda_006();
+        println("[SUB] test_lambda_006 PASS");
+        println("[SUB] test_lambda_007 START");
+        test_lambda_007();
+        println("[SUB] test_lambda_007 PASS");
+    }
+}

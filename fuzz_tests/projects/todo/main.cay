@@ -1,0 +1,15 @@
+
+#include "todo_manager.cay"
+public int main() {
+    Task[] tasks = new Task[4];
+    tasks[0] = new Task(1, "Buy milk");
+    tasks[1] = new Task(2, "Call mom");
+    tasks[2] = new Task(3, "Write code");
+    tasks[3] = new Task(4, "Exercise");
+    tasks[0].markDone();
+    tasks[2].markDone();
+    println(TodoManager.countDone(tasks));
+    println(tasks[2].done);
+    println(tasks[3].done);
+    return 0;
+}

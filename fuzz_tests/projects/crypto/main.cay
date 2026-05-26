@@ -1,0 +1,7 @@
+
+#include "cipher.cay"
+public int main() {
+    println(Cipher.caesarEncrypt("HELLO", 3));
+    println(Cipher.caesarEncrypt("ABC", 1));
+    return 0;
+}

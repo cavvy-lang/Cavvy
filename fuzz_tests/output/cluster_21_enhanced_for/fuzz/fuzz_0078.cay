@@ -1,0 +1,131 @@
+// Fuzz Test: enhanced_for // Fuzz21_078_EWZKD
+public class Fuzz21_078_EWZKD {
+    public static void test_ef_000() {
+        int[] arr = new int[3];
+        for(int i=0;i<3;i=i+1){arr[i]=i*10+1;}
+        for(int v : arr){println(v);}
+        println("OK");
+    }
+    public static void test_ef_001() {
+        int[] arr = new int[5];
+        for(int i=0;i<5;i=i+1){arr[i]=i*10+1;}
+        for(int v : arr){println(v);}
+        println("OK");
+    }
+    public static void test_ef_002() {
+        int[] arr = new int[7];
+        for(int i=0;i<7;i=i+1){arr[i]=i*10+1;}
+        for(int v : arr){println(v);}
+        println("OK");
+    }
+    public static void test_ef_003() {
+        int[] arr = new int[4];
+        for(int i=0;i<4;i=i+1){arr[i]=i*10+1;}
+        for(int v : arr){println(v);}
+        println("OK");
+    }
+    public static void test_ef_004() {
+        int[] arr = new int[1];
+        for(int i=0;i<1;i=i+1){arr[i]=i*10+1;}
+        for(int v : arr){println(v);}
+        println("OK");
+    }
+    public static void test_ef_005() {
+        int[] arr = new int[8];
+        for(int i=0;i<8;i=i+1){arr[i]=i*10+1;}
+        for(int v : arr){println(v);}
+        println("OK");
+    }
+    public static void test_ef_006() {
+        int[] arr = new int[6];
+        for(int i=0;i<6;i=i+1){arr[i]=i*10+1;}
+        for(int v : arr){println(v);}
+        println("OK");
+    }
+    public static void test_ef_007() {
+        int[] arr = new int[8];
+        for(int i=0;i<8;i=i+1){arr[i]=i*10+1;}
+        for(int v : arr){println(v);}
+        println("OK");
+    }
+    public static void test_ef_008() {
+        int[] arr = new int[5];
+        for(int i=0;i<5;i=i+1){arr[i]=i*10+1;}
+        for(int v : arr){println(v);}
+        println("OK");
+    }
+    public static void test_ef_009() {
+        int[] arr = new int[6];
+        for(int i=0;i<6;i=i+1){arr[i]=i*10+1;}
+        for(int v : arr){println(v);}
+        println("OK");
+    }
+    public static void test_ef_010() {
+        int[] arr = new int[2];
+        for(int i=0;i<2;i=i+1){arr[i]=i*10+1;}
+        for(int v : arr){println(v);}
+        println("OK");
+    }
+    public static void test_ef_011() {
+        int[] arr = new int[2];
+        for(int i=0;i<2;i=i+1){arr[i]=i*10+1;}
+        for(int v : arr){println(v);}
+        println("OK");
+    }
+    public static void test_ef_012() {
+        int[] arr = new int[4];
+        for(int i=0;i<4;i=i+1){arr[i]=i*10+1;}
+        for(int v : arr){println(v);}
+        println("OK");
+    }
+    public static void test_ef_013() {
+        int[] arr = new int[6];
+        for(int i=0;i<6;i=i+1){arr[i]=i*10+1;}
+        for(int v : arr){println(v);}
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_ef_000 START");
+        test_ef_000();
+        println("[SUB] test_ef_000 PASS");
+        println("[SUB] test_ef_001 START");
+        test_ef_001();
+        println("[SUB] test_ef_001 PASS");
+        println("[SUB] test_ef_002 START");
+        test_ef_002();
+        println("[SUB] test_ef_002 PASS");
+        println("[SUB] test_ef_003 START");
+        test_ef_003();
+        println("[SUB] test_ef_003 PASS");
+        println("[SUB] test_ef_004 START");
+        test_ef_004();
+        println("[SUB] test_ef_004 PASS");
+        println("[SUB] test_ef_005 START");
+        test_ef_005();
+        println("[SUB] test_ef_005 PASS");
+        println("[SUB] test_ef_006 START");
+        test_ef_006();
+        println("[SUB] test_ef_006 PASS");
+        println("[SUB] test_ef_007 START");
+        test_ef_007();
+        println("[SUB] test_ef_007 PASS");
+        println("[SUB] test_ef_008 START");
+        test_ef_008();
+        println("[SUB] test_ef_008 PASS");
+        println("[SUB] test_ef_009 START");
+        test_ef_009();
+        println("[SUB] test_ef_009 PASS");
+        println("[SUB] test_ef_010 START");
+        test_ef_010();
+        println("[SUB] test_ef_010 PASS");
+        println("[SUB] test_ef_011 START");
+        test_ef_011();
+        println("[SUB] test_ef_011 PASS");
+        println("[SUB] test_ef_012 START");
+        test_ef_012();
+        println("[SUB] test_ef_012 PASS");
+        println("[SUB] test_ef_013 START");
+        test_ef_013();
+        println("[SUB] test_ef_013 PASS");
+    }
+}

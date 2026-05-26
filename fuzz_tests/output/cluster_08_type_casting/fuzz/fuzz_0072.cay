@@ -1,0 +1,113 @@
+// Fuzz Test: type_casting // Fuzz08_072_ZSHEA
+public class Fuzz08_072_ZSHEA {
+    public static void test_cast_000() {
+        char src = 'A';
+        int dst = (int)src;
+        print("cast="); println(dst);
+        println("OK");
+    }
+    public static void test_cast_001() {
+        long src = 100L;
+        int dst = (int)src;
+        print("cast="); println(dst);
+        println("OK");
+    }
+    public static void test_cast_002() {
+        double src = 3.14;
+        int dst = (int)src;
+        print("cast="); println(dst);
+        println("OK");
+    }
+    public static void test_cast_003() {
+        int src = 42;
+        long dst = (long)src;
+        print("cast="); println(dst);
+        println("OK");
+    }
+    public static void test_cast_004() {
+        int src = 65;
+        char dst = (char)src;
+        print("cast="); println(dst);
+        println("OK");
+    }
+    public static void test_cast_005() {
+        double src = 3.14;
+        int dst = (int)src;
+        print("cast="); println(dst);
+        println("OK");
+    }
+    public static void test_cast_006() {
+        int src = 65;
+        char dst = (char)src;
+        print("cast="); println(dst);
+        println("OK");
+    }
+    public static void test_cast_007() {
+        int src = 65;
+        char dst = (char)src;
+        print("cast="); println(dst);
+        println("OK");
+    }
+    public static void test_cast_008() {
+        int src = 65;
+        char dst = (char)src;
+        print("cast="); println(dst);
+        println("OK");
+    }
+    public static void test_cast_009() {
+        int src = 42;
+        double dst = (double)src;
+        print("cast="); println(dst);
+        println("OK");
+    }
+    public static void test_cast_010() {
+        char src = 'A';
+        int dst = (int)src;
+        print("cast="); println(dst);
+        println("OK");
+    }
+    public static void test_cast_011() {
+        long src = 100L;
+        int dst = (int)src;
+        print("cast="); println(dst);
+        println("OK");
+    }
+    public static void run_all() {
+        println("[SUB] test_cast_000 START");
+        test_cast_000();
+        println("[SUB] test_cast_000 PASS");
+        println("[SUB] test_cast_001 START");
+        test_cast_001();
+        println("[SUB] test_cast_001 PASS");
+        println("[SUB] test_cast_002 START");
+        test_cast_002();
+        println("[SUB] test_cast_002 PASS");
+        println("[SUB] test_cast_003 START");
+        test_cast_003();
+        println("[SUB] test_cast_003 PASS");
+        println("[SUB] test_cast_004 START");
+        test_cast_004();
+        println("[SUB] test_cast_004 PASS");
+        println("[SUB] test_cast_005 START");
+        test_cast_005();
+        println("[SUB] test_cast_005 PASS");
+        println("[SUB] test_cast_006 START");
+        test_cast_006();
+        println("[SUB] test_cast_006 PASS");
+        println("[SUB] test_cast_007 START");
+        test_cast_007();
+        println("[SUB] test_cast_007 PASS");
+        println("[SUB] test_cast_008 START");
+        test_cast_008();
+        println("[SUB] test_cast_008 PASS");
+        println("[SUB] test_cast_009 START");
+        test_cast_009();
+        println("[SUB] test_cast_009 PASS");
+        println("[SUB] test_cast_010 START");
+        test_cast_010();
+        println("[SUB] test_cast_010 PASS");
+        println("[SUB] test_cast_011 START");
+        test_cast_011();
+        println("[SUB] test_cast_011 PASS");
+    }
+}
