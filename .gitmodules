@@ -1,0 +1,3 @@
+[submodule "examples/CavvyN"]
+	path = examples/CavvyN
+	url = https://github.com/cavvy-lang/CavvyN.git
