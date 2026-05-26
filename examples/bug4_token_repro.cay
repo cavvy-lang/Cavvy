@@ -1,0 +1,51 @@
+// More faithful repro: Token-like class with multiple constructors
+public class SourceLocation {
+    public int line;
+    public int column;
+    
+    public SourceLocation(int line, int col) {
+        this.line = line;
+        this.column = col;
+    }
+}
+
+public enum TokenType {
+    INT, STRING, IDENTIFIER
+}
+
+public class Token {
+    public int tokenType;
+    public long intValue;
+    public String strValue;
+    public SourceLocation location;
+    
+    // Constructor 1: int, long, SourceLocation
+    // Parameter name "intValue" matches field name
+    public Token(int type, long intValue, SourceLocation loc) {
+        this.intValue = intValue;
+        this.tokenType = type;
+        this.location = loc;
+        this.strValue = "";
+    }
+    
+    // Constructor 2: just SourceLocation
+    public Token(SourceLocation loc) {
+        this.intValue = 0;
+        this.tokenType = 0;
+        this.location = loc;
+        this.strValue = "";
+    }
+    
+    public long getIntValue() {
+        return this.intValue;
+    }
+}
+
+public class Bug4Test {
+    public static void main() {
+        SourceLocation loc = new SourceLocation(1, 1);
+        Token t = new Token(TokenType.INT, 42, loc);
+        long v = t.getIntValue();
+        println("intValue = " + v);
+    }
+}

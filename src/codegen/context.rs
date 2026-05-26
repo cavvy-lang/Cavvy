@@ -888,6 +888,76 @@ impl IRGenerator {
         }
     }
 
+    /// 从类型注册表查找构造函数的真实参数类型签名
+    /// 当有多个构造函数参数数量相同时，通过类型匹配选择最合适的重载
+    /// 如果类型注册表不可用或找不到匹配的构造函数，回退到 fallback_types
+    pub fn get_constructor_param_signatures(
+        &self,
+        class_name: &str,
+        arg_count: usize,
+        fallback_types: &[String],
+    ) -> Vec<String> {
+        if let Some(ref registry) = self.type_registry {
+            if let Some(class_info) = registry.get_class(class_name) {
+                // 收集所有参数数量匹配的构造函数
+                let candidates: Vec<_> = class_info.constructors.iter()
+                    .filter(|c| c.params.len() == arg_count)
+                    .collect();
+                
+                if candidates.is_empty() {
+                    return fallback_types.to_vec();
+                }
+                
+                // 如果只有一个候选，直接使用
+                if candidates.len() == 1 {
+                    return candidates[0].params.iter()
+                        .map(|p| self.type_to_signature(&p.param_type))
+                        .collect();
+                }
+                
+                // 多个候选：通过类型匹配评分选择最佳重载
+                // 评分规则：完全匹配 +10，整数族 +3，对象族 +5，String 不匹配 -100
+                let best = candidates.iter()
+                    .max_by_key(|ctor| {
+                        let ctor_sigs: Vec<String> = ctor.params.iter()
+                            .map(|p| self.type_to_signature(&p.param_type))
+                            .collect();
+                        let mut score: i32 = 0;
+                        for (c_sig, f_sig) in ctor_sigs.iter().zip(fallback_types.iter()) {
+                            if c_sig == f_sig {
+                                score += 10;  // exact match
+                            } else if Self::is_int_signature(c_sig) && Self::is_int_signature(f_sig) {
+                                score += 3;   // int family (e.g., i32→i64 widening)
+                            } else if Self::is_float_signature(c_sig) && Self::is_float_signature(f_sig) {
+                                score += 3;   // float family
+                            } else if c_sig.starts_with('o') && f_sig.starts_with('o') {
+                                score += if c_sig == f_sig { 5 } else { 1 };
+                            } else if (c_sig == "s") != (f_sig == "s") {
+                                score -= 100; // String vs non-String is a bad match
+                            }
+                        }
+                        score
+                    })
+                    .unwrap_or(&candidates[0]);
+                
+                return best.params.iter()
+                    .map(|p| self.type_to_signature(&p.param_type))
+                    .collect();
+            }
+        }
+        fallback_types.to_vec()
+    }
+    
+    /// 检查签名是否是整数类型（i8, i16, i32, i64 等，但非指针）
+    fn is_int_signature(sig: &str) -> bool {
+        sig.starts_with('i') && !sig.contains('*') && sig != "i8"
+    }
+    
+    /// 检查签名是否是浮点类型（f, d 或 float, double）
+    fn is_float_signature(sig: &str) -> bool {
+        sig == "f" || sig == "d"
+    }
+
     /// 将类型转换为方法签名的一部分
     pub fn type_to_signature(&self, ty: &crate::types::Type) -> String {
         use crate::types::Type;

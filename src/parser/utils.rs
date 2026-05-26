@@ -13,13 +13,27 @@ pub fn is_at_end(parser: &Parser) -> bool {
 }
 
 /// 获取当前令牌
+/// 当已到达令牌流末尾时，返回最后一个有效令牌（用于错误报告）
 pub fn current_token(parser: &Parser) -> &Token {
-    &parser.tokens[parser.pos].token
+    let idx = if parser.pos >= parser.tokens.len() {
+        parser.tokens.len().saturating_sub(1)
+    } else {
+        parser.pos
+    };
+    &parser.tokens[idx].token
 }
 
 /// 获取当前完整位置（包含源文件信息，使用预处理行号）
+/// 当已到达令牌流末尾时，返回最后一个有效令牌的位置
 pub fn current_full_loc(parser: &Parser) -> crate::error::SourceLocation {
-    let token = &parser.tokens[parser.pos];
+    let token = if parser.pos >= parser.tokens.len() && !parser.tokens.is_empty() {
+        &parser.tokens[parser.tokens.len() - 1]
+    } else if parser.pos < parser.tokens.len() {
+        &parser.tokens[parser.pos]
+    } else {
+        // 空令牌流，返回默认位置
+        return crate::error::SourceLocation::default();
+    };
     crate::error::SourceLocation {
         file: token.source_file.clone(),
         line: token.loc.line,  // 使用预处理后的行号，让语义分析器来映射
@@ -43,8 +57,16 @@ pub fn previous_full_loc(parser: &Parser) -> crate::error::SourceLocation {
 
 /// 获取当前位置（向后兼容）
 /// 使用预处理后的行号（loc.line），语义分析器负责映射到原始源文件
+/// 当已到达令牌流末尾时，返回最后一个有效令牌的位置
 pub fn current_loc(parser: &Parser) -> crate::error::SourceLocation {
-    let token = &parser.tokens[parser.pos];
+    let token = if parser.pos >= parser.tokens.len() && !parser.tokens.is_empty() {
+        &parser.tokens[parser.tokens.len() - 1]
+    } else if parser.pos < parser.tokens.len() {
+        &parser.tokens[parser.pos]
+    } else {
+        // 空令牌流，返回默认位置
+        return crate::error::SourceLocation::default();
+    };
     crate::error::SourceLocation {
         file: token.source_file.clone(),
         line: token.loc.line,

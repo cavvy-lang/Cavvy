@@ -1,0 +1,26 @@
+// Regression test for Bug 2: Array element field access
+// Before fix: tokens[0].intValue produced i8* instead of i64, causing E5001.
+public class Token {
+    public int intValue;
+    public String strValue;
+    
+    public Token(int val) {
+        this.intValue = val;
+        this.strValue = "";
+    }
+}
+
+public class Bug2Main {
+    public static void main() {
+        Token[] tokens = new Token[2];
+        tokens[0] = new Token(100);
+        tokens[1] = new Token(200);
+        
+        // This is the key test: accessing field through array element
+        int val = tokens[0].intValue;
+        print(val);
+        
+        // Compare array element field with literal
+        boolean ok = tokens[1].intValue == 200;
+    }
+}

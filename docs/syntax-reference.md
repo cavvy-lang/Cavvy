@@ -36,18 +36,18 @@ digit      = "0".."9";
 ### 关键字
 
 ```
-abstract   boolean    break      byte       case
-catch      char       class      const      continue
-default    do         double     else       enum
-extends    extern     false      final      finally
-float      for        if         implements import
-instanceof int        interface  let        long
-native     new        null       package    private
-protected  public     return     short      static
-strictfp   super      switch     synchronized this
-throw      throws     transient  true       try
-var        void       volatile   while      auto
+abstract   alias      auto       boolean    break
+case       char       class      continue   default
+do         double     else       enum       extends
+extern     false      final      float      fn
+for        if         implements instanceof int
+interface  let        long       namespace  native
+new        null       private    protected  public
+return     scope      static     struct     super
+switch     this       true       using      var
+void       while      __ir
 ```
+> `enum`、`struct`、`fn`、`namespace`、`using`、`scope`、`alias`、`__ir` 为 Cavvy 扩展关键字。
 
 ### 字面量
 
@@ -315,6 +315,81 @@ public final class String {
 public class OldClass {
     // ...
 }
+```
+
+### struct 声明 (v5.1.0+)
+
+```cay
+// 基本 struct — 值类型，栈分配
+public struct Point {
+    public int x;
+    public int y;
+
+    public int getX() { return this.x; }
+    public int getY() { return this.y; }
+}
+
+// 带默认值的 struct
+public struct Config {
+    public int timeout = 5000;
+    public String host = "localhost";
+}
+```
+
+### enum 声明 (v5.1.0+)
+
+```cay
+// 简单枚举（无 payload）
+public enum Color {
+    Red,
+    Green,
+    Blue
+}
+
+// 带 payload 的 tagged union
+public enum Result {
+    Ok(int),
+    Err(String)
+}
+
+// 泛型 enum
+public enum Option<T> {
+    Some(T),
+    None
+}
+```
+
+### @FreeFunction 注解 (v5.1.0+)
+
+```cay
+// 将类的静态方法导出为可直接调用的自由函数
+public class MathUtils {
+    @FreeFunction
+    public static int add(int a, int b) {
+        return a + b;
+    }
+}
+
+// 直接调用，无需 MathUtils. 前缀
+int result = add(1, 2);
+```
+
+### 泛型类型参数 (v5.1.0+)
+
+```cay
+// 声明泛型类型参数
+class Box<T> {
+    private T value;
+}
+
+enum Optional<T> {
+    Some(T),
+    None
+}
+
+// 使用泛型类型实参
+Optional<int> opt = Optional<int>.of(42);
+Box<String> b = new Box<String>();
 ```
 
 ### 接口声明

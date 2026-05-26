@@ -35,6 +35,19 @@ impl IRGenerator {
         Ok(format!("i32 {}", len_val))
     }
 
+    /// 从数组访问表达式获取元素类型的类名（如果是对象类型）
+    /// 用于 ArrayAccess 上的成员访问（如 tokens[0].intValue）
+    fn get_array_element_class_name(&self, arr_access: &ArrayAccessExpr) -> Option<String> {
+        let arr_type = self.get_expression_type(&arr_access.array)?;
+        match arr_type {
+            crate::types::Type::Array(elem) => match *elem {
+                crate::types::Type::Object(class_name) => Some(class_name),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
     /// 生成成员访问表达式代码
     ///
     /// # Arguments
@@ -124,6 +137,9 @@ impl IRGenerator {
                 Ok((_, Some(class_name))) => Some(class_name),
                 _ => None
             }
+        } else if let Expr::ArrayAccess(arr_access) = &*member.object {
+            // 数组元素访问: 获取元素类型，如果是对象类型则返回类名
+            self.get_array_element_class_name(arr_access)
         } else {
             None
         };
@@ -173,8 +189,15 @@ impl IRGenerator {
                     }
                 } else {
                     let obj = self.generate_expression(&member.object)?;
-                    let (_, obj_val) = self.parse_typed_value(&obj);
-                    obj_val
+                    let (obj_type, obj_val) = self.parse_typed_value(&obj);
+                    // 确保对象指针是 i8*，供后续 GEP 使用
+                    if obj_type == "i8*" {
+                        obj_val
+                    } else {
+                        let cast_temp = self.new_temp();
+                        self.emit_line(&format!("  {} = bitcast {} {} to i8*", cast_temp, obj_type, obj_val));
+                        cast_temp
+                    }
                 };
                 
                 // 计算字段地址: obj_ptr + offset
@@ -251,6 +274,9 @@ impl IRGenerator {
                 Ok((_, Some(class_name))) => Some(class_name),
                 _ => None
             }
+        } else if let Expr::ArrayAccess(arr_access) = &*member.object {
+            // 数组元素访问: 获取元素类型，如果是对象类型则返回类名
+            self.get_array_element_class_name(arr_access)
         } else {
             None
         };
@@ -274,8 +300,15 @@ impl IRGenerator {
                 } else {
                     // 对于嵌套成员访问，递归生成对象表达式
                     let obj = self.generate_expression(&member.object)?;
-                    let (_, obj_val) = self.parse_typed_value(&obj);
-                    obj_val
+                    let (obj_type, obj_val) = self.parse_typed_value(&obj);
+                    // 确保对象指针是 i8*，供后续 GEP 使用
+                    if obj_type == "i8*" {
+                        obj_val
+                    } else {
+                        let cast_temp = self.new_temp();
+                        self.emit_line(&format!("  {} = bitcast {} {} to i8*", cast_temp, obj_type, obj_val));
+                        cast_temp
+                    }
                 };
                 
                 // 计算字段地址

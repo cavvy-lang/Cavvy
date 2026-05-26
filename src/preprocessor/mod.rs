@@ -551,6 +551,12 @@ impl Preprocessor {
         // 解析完整路径
         let full_path = self.resolve_include_path(path, is_system, current_file)?;
         
+        // 规范化路径：将相对路径转换为绝对路径，消除 .. 和符号链接
+        // 确保不同路径字符串引用同一文件时被正确去重
+        let full_path = std::fs::canonicalize(&full_path)
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or(full_path);
+        
         // 首先检测循环包含（基于当前处理链）- 使用完整路径
         if self.include_stack.contains(&full_path) {
             return Err(cayError::Preprocessor {

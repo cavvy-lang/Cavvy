@@ -1,0 +1,10 @@
+// Main file that includes the helper - tests cross-file same-name param/field
+#include "bug4_helper.cay"
+
+public class Bug4Includer {
+    public static void main() {
+        TokenHelper t = new TokenHelper(1, 42);
+        long v = t.getIntValue();
+        println("intValue = " + v);
+    }
+}

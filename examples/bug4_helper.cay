@@ -1,0 +1,15 @@
+// Helper class defined in a separate included file
+public class TokenHelper {
+    public long intValue;
+    public int tokenType;
+    
+    // Constructor with same-name parameter and field
+    public TokenHelper(int type, long intValue) {
+        this.intValue = intValue;
+        this.tokenType = type;
+    }
+    
+    public long getIntValue() {
+        return this.intValue;
+    }
+}

@@ -15,6 +15,7 @@ Cavvy 标准库 (caylib) 提供了一系列用于系统编程、网络通信、�
 | [StringBuilder](./stringbuilder.md) | StringBuilder.cay | 高效字符串构建 | 0.5.1.0 |
 | [StringPlus](./stringplus.md) | StringPlus.cay | 字符串增强工具 | 0.5.0.0 |
 | [IOPlus](./ioplus.md) | IOPlus.cay | 输入输出增强 | 0.5.0.0 |
+| [Optional<T>](./optional.md) | Optional.cay | 零开销可选值容器 | 0.5.1.x |
 
 ## 使用示例
 

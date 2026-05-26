@@ -61,12 +61,15 @@ impl IRGenerator {
         self.emit_line(&format!("  store i32 {}, i32* {}", type_id_value, type_id_ptr));
 
         // 调用构造函数（无论是否有参数）
-        // 先推断参数类型
-        let mut param_types = Vec::new();
-        for arg in &new_expr.args {
-            let arg_type = self.infer_argument_type(arg);
-            param_types.push(arg_type);
-        }
+        // 先推断参数类型（作为回退），优先使用类型注册表中的真实构造函数参数类型
+        let fallback_types: Vec<String> = new_expr.args.iter()
+            .map(|arg| self.infer_argument_type(arg))
+            .collect();
+        let param_types = self.get_constructor_param_signatures(
+            &canonical_name,
+            new_expr.args.len(),
+            &fallback_types,
+        );
         
         // 生成参数值
         let mut arg_values = Vec::new();
@@ -75,7 +78,7 @@ impl IRGenerator {
             arg_values.push(arg_val);
         }
         
-        // 生成构造函数名（使用推断的参数类型）
+        // 生成构造函数名（使用类型注册表中的真实参数类型）
         let ctor_name = self.generate_constructor_call_name_with_types(&canonical_name, &param_types);
         
         // struct (值类型) 如果无参构造，跳过构造函数调用（struct 默认值初始化即可）

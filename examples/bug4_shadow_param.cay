@@ -1,0 +1,20 @@
+// Minimal repro: constructor this.field = field with same-name param
+public class Bug4Target {
+    public long value;
+    
+    public Bug4Target(long value) {
+        this.value = value;
+    }
+    
+    public long getValue() {
+        return this.value;
+    }
+}
+
+public class Bug4Main {
+    public static void main() {
+        Bug4Target t = new Bug4Target(42);
+        long v = t.getValue();
+        println("value = " + v);
+    }
+}

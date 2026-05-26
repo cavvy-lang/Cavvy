@@ -1,0 +1,14 @@
+// Regression test for Bug 1: #include path deduplication
+// The helper file is included twice via different paths:
+//   1. indirectly via bug1_sub/bug1_mid.cay (uses "../bug1_helper.cay")
+//   2. directly (uses "bug1_helper.cay")
+// After fix: canonicalize resolves both to the same file, no E4002 duplicate.
+#include "bug1_sub/bug1_mid.cay"
+#include "bug1_helper.cay"
+
+public class Bug1Main {
+    public static void main() {
+        int val = Bug1Helper.getValue();
+        print(val);
+    }
+}

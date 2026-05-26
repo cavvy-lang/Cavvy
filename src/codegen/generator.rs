@@ -940,12 +940,15 @@ impl IRGenerator {
         if let Some(ref call) = ctor.constructor_call {
             match call {
                 crate::ast::ConstructorCall::This(args) => {
-                    // 推断参数类型并生成正确的构造函数名
-                    let mut param_types = Vec::new();
-                    for arg in args {
-                        let arg_type = self.infer_expr_type_for_ctor(arg);
-                        param_types.push(arg_type);
-                    }
+                    // 从类型注册表获取真实的构造函数参数类型签名
+                    let fallback_types: Vec<String> = args.iter()
+                        .map(|arg| self.infer_expr_type_for_ctor(arg))
+                        .collect();
+                    let param_types = self.get_constructor_param_signatures(
+                        class_name,
+                        args.len(),
+                        &fallback_types,
+                    );
                     let target_ctor_name = self.generate_constructor_call_name_with_types(class_name, &param_types);
                     let mut arg_strs = vec!["i8* %this".to_string()];
                     for arg in args {
@@ -959,12 +962,15 @@ impl IRGenerator {
                     if let Some(ref registry) = self.type_registry {
                         if let Some(class_info) = registry.get_class(class_name) {
                             if let Some(ref parent_name) = class_info.parent {
-                                // 推断参数类型并生成正确的构造函数名
-                                let mut param_types = Vec::new();
-                                for arg in args {
-                                    let arg_type = self.infer_expr_type_for_ctor(arg);
-                                    param_types.push(arg_type);
-                                }
+                                // 从类型注册表获取真实的父类构造函数参数类型签名
+                                let fallback_types: Vec<String> = args.iter()
+                                    .map(|arg| self.infer_expr_type_for_ctor(arg))
+                                    .collect();
+                                let param_types = self.get_constructor_param_signatures(
+                                    parent_name,
+                                    args.len(),
+                                    &fallback_types,
+                                );
                                 let parent_ctor_name = self.generate_constructor_call_name_with_types(parent_name, &param_types);
                                 let mut arg_strs = vec!["i8* %this".to_string()];
                                 for arg in args {

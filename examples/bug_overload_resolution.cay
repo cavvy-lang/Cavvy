@@ -1,0 +1,68 @@
+// Regression: constructor overload resolution with same arg count, different types
+// Bug: get_constructor_param_signatures used .find() which picked the FIRST
+// constructor with matching arg count, ignoring type compatibility.
+// 
+// Token(int, long, SourceLocation) vs Token(int, String, SourceLocation)
+// new Token(1, 42, loc) should match the long version, not the String version.
+
+public class SourceLocation {
+    public int line;
+    public int column;
+    
+    public SourceLocation(int line, int col) {
+        this.line = line;
+        this.column = col;
+    }
+}
+
+public class Token {
+    public int tokenType;
+    public long intValue;
+    public String strValue;
+    public SourceLocation location;
+    
+    // Constructor A: int, long, SourceLocation
+    public Token(int type, long intValue, SourceLocation loc) {
+        this.intValue = intValue;
+        this.tokenType = type;
+        this.location = loc;
+        this.strValue = "";
+    }
+    
+    // Constructor B: int, String, SourceLocation
+    // IMPORTANT: listed AFTER Constructor A in source, but the Registry may store 
+    // them in a different order. The scoring system must pick the right one.
+    public Token(int type, String strValue, SourceLocation loc) {
+        this.strValue = strValue;
+        this.tokenType = type;
+        this.intValue = 0;
+        this.location = loc;
+    }
+    
+    public long getIntValue() {
+        return this.intValue;
+    }
+    
+    public String getStrValue() {
+        return this.strValue;
+    }
+}
+
+public class BugOverload {
+    public static void main() {
+        SourceLocation loc = new SourceLocation(1, 1);
+        
+        // Test 1: int literal should match the long constructor (widening int→long)
+        Token t1 = new Token(1, 42, loc);
+        println("t1.intValue = " + t1.getIntValue());  // should be 42
+        
+        // Test 2: long variable should match the long constructor exactly
+        long longVal = 99;
+        Token t2 = new Token(2, longVal, loc);
+        println("t2.intValue = " + t2.getIntValue());  // should be 99
+        
+        // Test 3: String should match the String constructor
+        Token t3 = new Token(3, "hello", loc);
+        println("t3.strValue = " + t3.getStrValue());  // should be hello
+    }
+}

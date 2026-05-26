@@ -1,0 +1,24 @@
+// Regression test for Bug 3: Constructor name mangling with long parameter
+// Before fix: literal 42 was inferred as Int32 ("i") but constructor param is
+// long ("l"), causing name mismatch and linker error.
+public class Bug3Target {
+    public long value;
+    
+    public Bug3Target(long val) {
+        this.value = val;
+    }
+    
+    public long getValue() {
+        return this.value;
+    }
+}
+
+public class Bug3Main {
+    public static void main() {
+        // Key test: constructor call with Int32 literal for long param
+        Bug3Target target = new Bug3Target(42);
+        long val = target.getValue();
+        // Output: should print 42
+        print(val);
+    }
+}

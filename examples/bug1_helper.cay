@@ -1,0 +1,5 @@
+public class Bug1Helper {
+    public static int getValue() {
+        return 42;
+    }
+}

@@ -12,6 +12,10 @@
 - [控制流](#控制流)
 - [函数与方法](#函数与方法)
 - [面向对象编程](#面向对象编程)
+- [struct — 值类型结构体](#struct--值类型结构体)
+- [enum — 标记联合体](#enum--标记联合体)
+- [@FreeFunction 注解](#freefunction-注解)
+- [泛型语法](#泛型语法)
 - [数组与集合](#数组与集合)
 - [字符串处理](#字符串处理)
 - [内存管理](#内存管理)
@@ -694,6 +698,88 @@ public void method() {
     // MAX = 200;  // 错误！
 }
 ```
+
+---
+
+---
+
+## struct — 值类型结构体
+
+`struct` 是 Cavvy 新增的**值类型**，用于创建栈分配的轻量级复合数据，无需 GC 追踪。
+
+```cay
+public struct Point {
+    public int x;
+    public int y;
+}
+```
+
+### 使用示例
+
+```cay
+Point p = new Point();
+p.x = 10;
+p.y = 20;
+int val = p.getX();  // 10
+```
+
+### 特点
+
+- 栈分配，无堆开销
+- 支持字段和方法
+- 不参与继承体系
+- 字段和方法默认公开
+
+参见：[struct 详细文档](struct.md)
+
+---
+
+## enum — 标记联合体
+
+`enum` 是 **Tagged Union / ADT**，用于定义带类型安全变体的联合体。
+
+```cay
+public enum Option<T> {
+    Some(T),
+    None
+}
+
+public enum Result {
+    Ok(int),
+    Err(String)
+}
+```
+
+参见：[enum 详细文档](enum.md)
+
+---
+
+## @FreeFunction 注解
+
+```cay
+public class MathUtils {
+    @FreeFunction
+    public static int add(int a, int b) {
+        return a + b;
+    }
+}
+
+int sum = add(1, 2);
+```
+
+参见：[@FreeFunction 详细文档](freefunction.md)
+
+---
+
+## 泛型语法
+
+```cay
+class Box<T> { private T value; }
+enum Optional<T> { Some(T), None }
+Optional<int> opt = Optional<int>.of(42);
+```
+
+参见：[泛型语法详细文档](generics.md)
 
 ---
 
