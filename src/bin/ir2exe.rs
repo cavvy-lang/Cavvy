@@ -1123,7 +1123,36 @@ fn compile_with_clang(
     // 添加 Cavvy 运行时库路径（libcayrt.a 所在目录）
     let cayrt_path = exe_dir.join("caylibs/bin");
     if cayrt_path.exists() {
-        lib_paths.push(cayrt_path);
+        lib_paths.push(cayrt_path.clone());
+
+        // 检查是否需要自动编译 Linux 版本的运行时库
+        if options.target.contains("linux") {
+            let linux_lib = cayrt_path.join("libcayrt-linux.a");
+            if !linux_lib.exists() {
+                let build_script = cayrt_path.join("build.sh");
+                if build_script.exists() {
+                    eprintln!("  [I] 未找到 Linux 运行时库，正在自动编译...");
+                    let output = std::process::Command::new("bash")
+                        .arg(&build_script)
+                        .arg("linux")
+                        .current_dir(&cayrt_path)
+                        .output();
+
+                    match output {
+                        Ok(result) if result.status.success() => {
+                            eprintln!("  [+] Linux 运行时库编译成功");
+                        }
+                        Ok(result) => {
+                            let stderr = String::from_utf8_lossy(&result.stderr);
+                            print_warning(&format!("自动编译 Linux 运行时库失败: {}", stderr));
+                        }
+                        Err(e) => {
+                            print_warning(&format!("无法执行 build.sh: {}", e));
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // 构建 clang 命令
@@ -1236,15 +1265,21 @@ fn compile_with_clang(
     // 使用 lld 链接器（仅在非内置clang时使用，内置clang需要确保lld在PATH中）
     // 检测是否使用内置clang
     let is_bundled_clang = clang_exe.to_string_lossy().contains("llvm-minimal");
-    
+
     if !is_bundled_clang {
         // 系统clang可以使用 -fuse-ld=lld
         cmd.arg("-fuse-ld=lld");
     }
     // 内置clang使用默认链接器（它会自动找到同目录下的lld-link）
 
-    // 链接 Cavvy 运行时库（所有平台都需要）
-    cmd.arg("-lcayrt");
+    // 根据目标平台选择正确的 Cavvy 运行时库
+    let cayrt_lib_name = if options.target.contains("linux") {
+        "cayrt-linux"
+    } else {
+        // Windows/MinGW 或其他平台使用默认名称
+        "cayrt"
+    };
+    cmd.arg(format!("-l{}", cayrt_lib_name));
 
     // 根据目标平台选择默认库
     if options.target.contains("windows") || options.target.contains("mingw") {
