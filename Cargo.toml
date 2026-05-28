@@ -1,7 +1,7 @@
 [package]
 name = "cavvy"
 # 请注意，自5.1.0-a.1开始，版本号已经改了
-version = "5.1.0-a.6"
+version = "5.1.0-b.1"
 edition = "2024"
 
 [dependencies]
