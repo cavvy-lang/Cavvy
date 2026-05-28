@@ -1312,7 +1312,7 @@ public class HttpRequest {
         /* 解析协议 */
         int protocolEnd = temp.indexOf("://");
         if (protocolEnd > 0) {
-            result.protocol = this.toLowerCase(temp.substring(0, protocolEnd));
+            result.protocol = this._toLowerCase(temp.substring(0, protocolEnd));
             temp = temp.substring(protocolEnd + 3, temp.length());
         }
 
@@ -1357,7 +1357,7 @@ public class HttpRequest {
      * @param str 输入字符串
      * @return 小写字符串
      */
-    private String toLowerCase(String str) {
+    private String _toLowerCase(String str) {
         if (str.isEmpty()) {
             return "";
         }

@@ -62,13 +62,31 @@ pub fn parse_postfix(parser: &mut Parser) -> cayResult<Expr> {
     Ok(expr)
 }
 
-/// 解析参数列表
+/// 解析参数列表（支持命名参数 name=value）
 pub fn parse_arguments(parser: &mut Parser) -> cayResult<Vec<Expr>> {
     let mut args = Vec::new();
 
     if !parser.check(&crate::lexer::Token::RParen) {
         loop {
-            args.push(parse_expression(parser)?);
+            let arg = parse_expression(parser)?;
+            // 检查是否是命名参数: ident = value
+            if let Expr::Assignment(ref assign) = arg {
+                if let Expr::Identifier(ref ident) = *assign.target {
+                    if assign.op == AssignOp::Assign {
+                        // 转换为命名参数
+                        args.push(Expr::NamedArg(NamedArgExpr {
+                            name: ident.name.clone(),
+                            value: assign.value.clone(),
+                            loc: assign.loc.clone(),
+                        }));
+                        if !parser.match_token(&crate::lexer::Token::Comma) {
+                            break;
+                        }
+                        continue;
+                    }
+                }
+            }
+            args.push(arg);
             if !parser.match_token(&crate::lexer::Token::Comma) {
                 break;
             }

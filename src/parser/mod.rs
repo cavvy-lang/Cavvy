@@ -688,8 +688,9 @@ impl Parser {
                     // type... 形式的可变参数，需要一个名称
                     let name = self.consume_identifier("期望参数名\n提示: 可变参数需要名称，例如: int... args")?;
                     params.push(crate::types::ParameterInfo::new_varargs(name, param_type));
+                    // 可变参数之后可以有更多参数（通过命名参数指定）
                     if self.match_token(&Token::Comma) {
-                        return Err(self.error("可变参数必须是最后一个参数\n提示: 可变参数(...)必须放在参数列表的最后"));
+                        continue;
                     }
                     break;
                 } else {

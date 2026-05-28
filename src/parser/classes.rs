@@ -21,6 +21,9 @@ pub fn parse_class(parser: &mut Parser) -> cayResult<ClassDecl> {
 
     let name = parser.consume_identifier("期望类名\n提示: 在 'class' 后应跟类名，例如: class MyClass { ... }")?;
 
+    // 解析泛型类型参数 <T, U, ...>
+    let type_params = parse_generic_type_params(parser)?;
+
     // 支持 extends 关键字或 : 符号作为继承语法
     let parent = if parser.match_token(&Token::Extends) {
         Some(parser.consume_identifier("期望父类名\n提示: 在 'extends' 后应跟父类名，例如: class Child extends Parent { ... }")?)
@@ -55,6 +58,7 @@ pub fn parse_class(parser: &mut Parser) -> cayResult<ClassDecl> {
     Ok(ClassDecl {
         name,
         modifiers,
+        type_params,
         parent,
         interfaces,
         members,
@@ -650,9 +654,9 @@ pub fn parse_parameters(parser: &mut Parser) -> cayResult<Vec<ParameterInfo>> {
                 // type... 形式的可变参数，需要一个名称
                 let name = parser.consume_identifier("期望参数名\n提示: 可变参数需要名称，例如: int... args")?;
                 params.push(ParameterInfo::new_varargs(name, param_type));
-                // 可变参数必须是最后一个参数
+                // 可变参数之后可以有更多参数（通过命名参数指定）
                 if parser.match_token(&Token::Comma) {
-                    return Err(parser.error("可变参数必须是最后一个参数\n提示: 可变参数(...)必须放在参数列表的最后"));
+                    continue;
                 }
                 break;
             } else {

@@ -16,3 +16,4 @@ mod type_inference_result;
 pub use symbol_table::{SemanticSymbolTable, SemanticSymbolInfo};
 pub use analyzer::{SemanticAnalyzer, SemanticErrorInfo};
 pub use type_inference_result::{TypeInferenceResult, TypeInferenceError, TypeInferenceErrorCollector};
+pub use type_utils::resolve_call_args;

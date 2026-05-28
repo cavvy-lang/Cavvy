@@ -5,6 +5,7 @@
 use crate::codegen::context::IRGenerator;
 use crate::ast::*;
 use crate::error::{cayResult, codegen_error_at};
+use crate::semantic::resolve_call_args;
 
 impl IRGenerator {
     /// 生成函数调用表达式代码
@@ -217,12 +218,28 @@ impl IRGenerator {
             _ => return Err(codegen_error_at(call.loc.clone(), "Invalid function call".to_string())),
         };
 
-        // 检查是否是可变参数方法（根据方法名推断）
+        // 检查是否有命名参数需要重排
+        let has_named_args = call.args.iter().any(|a| matches!(a, Expr::NamedArg(_)));
+        let resolved_args: Vec<Expr>;
+        let actual_args: &[Expr] = if has_named_args {
+            // 获取方法形参以进行重排
+            let params = self.get_method_params(&class_name, &method_name)
+                .ok_or_else(|| codegen_error_at(call.loc.clone(), 
+                    format!("Cannot resolve parameters for '{}' to process named arguments", method_name)))?;
+            let resolved = resolve_call_args(&call.args, &params)
+                .map_err(|msg| codegen_error_at(call.loc.clone(), msg))?;
+            resolved_args = resolved.args;
+            &resolved_args
+        } else {
+            &call.args
+        };
+
+        // 检查是否是可变参数方法
         let is_varargs_method = self.is_varargs_method(&class_name, &method_name);
 
-        // 先生成参数以获取参数类型
+        // 生成参数表达式
         let mut arg_results = Vec::new();
-        for arg in &call.args {
+        for arg in actual_args {
             arg_results.push(self.generate_expression(arg)?);
         }
 
@@ -334,11 +351,13 @@ impl IRGenerator {
         }
 
         // 获取实际参数的类型签名
+        // 找到可变参数在形参列表中的位置（用于正确标记数组参数）
+        let varargs_param_index = self.get_varargs_index(class_name, method_name);
         let arg_types: Vec<String> = processed_args.iter()
             .enumerate()
             .map(|(idx, r)| {
                 let (ty, _) = self.parse_typed_value(r);
-                let is_varargs_array = has_varargs_array && idx == processed_args.len() - 1;
+                let is_varargs_array = has_varargs_array && Some(idx) == varargs_param_index;
                 let llvm_type = self.llvm_type_to_signature(&ty);
                 if is_varargs_array {
                     "ai".to_string()
@@ -361,11 +380,11 @@ impl IRGenerator {
                         // 首先尝试找到参数类型完全匹配的方法
                         for method in methods {
                             let param_count = method.params.len();
-                            let is_varargs = method.params.last().map(|p| p.is_varargs).unwrap_or(false);
+                            let is_varargs = method.params.iter().any(|p| p.is_varargs);
+                            let fixed_count = method.params.iter().position(|p| p.is_varargs).unwrap_or(param_count);
                             
                             if is_varargs {
                                 // 可变参数方法
-                                let fixed_count = param_count.saturating_sub(1);
                                 if arg_count >= fixed_count {
                                     // 检查固定参数类型是否匹配
                                     let method_sig = self.build_function_name_from_method(&current_class_name, method_name, &method.params, has_varargs_array);
@@ -387,10 +406,10 @@ impl IRGenerator {
                         // 如果没有找到类型完全匹配的方法，回退到参数数量匹配
                         for method in methods {
                             let param_count = method.params.len();
-                            let is_varargs = method.params.last().map(|p| p.is_varargs).unwrap_or(false);
+                            let is_varargs = method.params.iter().any(|p| p.is_varargs);
+                            let fixed_count = method.params.iter().position(|p| p.is_varargs).unwrap_or(param_count);
                             
                             if is_varargs {
-                                let fixed_count = param_count.saturating_sub(1);
                                 if arg_count >= fixed_count {
                                     return self.build_function_name_from_method(&current_class_name, method_name, &method.params, has_varargs_array);
                                 }
@@ -437,11 +456,10 @@ impl IRGenerator {
         }
 
         let param_types: Vec<String> = params.iter()
-            .enumerate()
-            .map(|(idx, p)| {
-                let is_last_varargs = has_varargs_array && idx == params.len() - 1 && p.is_varargs;
+            .map(|p| {
+                let is_param_varargs = has_varargs_array && p.is_varargs;
                 let resolved_type = self.resolve_type(&p.param_type);
-                self.param_type_to_signature(&resolved_type, is_last_varargs)
+                self.param_type_to_signature(&resolved_type, is_param_varargs)
             })
             .collect();
 
@@ -524,11 +542,12 @@ impl IRGenerator {
     /// 获取方法的返回类型
     fn get_method_return_type(&self, class_name: &str, method_name: &str, processed_args: &[String], has_varargs_array: bool) -> crate::types::Type {
         // 获取实际参数的类型签名
+        let varargs_param_index = self.get_varargs_index(class_name, method_name);
         let arg_types: Vec<String> = processed_args.iter()
             .enumerate()
             .map(|(idx, r)| {
                 let (ty, _) = self.parse_typed_value(r);
-                let is_varargs_array = has_varargs_array && idx == processed_args.len() - 1;
+                let is_varargs_array = has_varargs_array && Some(idx) == varargs_param_index;
                 let llvm_type = self.llvm_type_to_signature(&ty);
                 if is_varargs_array {
                     "ai".to_string()
@@ -547,10 +566,10 @@ impl IRGenerator {
                     // 首先尝试找到参数类型完全匹配的方法
                     for method in methods {
                         let param_count = method.params.len();
-                        let is_varargs = method.params.last().map(|p| p.is_varargs).unwrap_or(false);
+                        let is_varargs = method.params.iter().any(|p| p.is_varargs);
+                        let fixed_count = method.params.iter().position(|p| p.is_varargs).unwrap_or(param_count);
                         
                         if is_varargs {
-                            let fixed_count = param_count.saturating_sub(1);
                             if arg_count >= fixed_count {
                                 let method_sig = self.build_function_name_from_method(class_name, method_name, &method.params, has_varargs_array);
                                 let expected_sig = format!("{}.__{}_{}", llvm_class, method_name, arg_types.join("_"));
@@ -570,10 +589,10 @@ impl IRGenerator {
                     // 如果没有找到类型完全匹配的方法，回退到参数数量匹配
                     for method in methods {
                         let param_count = method.params.len();
-                        let is_varargs = method.params.last().map(|p| p.is_varargs).unwrap_or(false);
+                        let is_varargs = method.params.iter().any(|p| p.is_varargs);
+                        let fixed_count = method.params.iter().position(|p| p.is_varargs).unwrap_or(param_count);
                         
                         if is_varargs {
-                            let fixed_count = param_count.saturating_sub(1);
                             if arg_count >= fixed_count {
                                 return method.return_type.clone();
                             }
@@ -589,6 +608,40 @@ impl IRGenerator {
         crate::types::Type::Int64
     }
 
+    /// 获取方法的形参列表
+    fn get_method_params(&self, class_name: &str, method_name: &str) -> Option<Vec<crate::types::ParameterInfo>> {
+        if let Some(ref registry) = self.type_registry {
+            let mut current = class_name.to_string();
+            loop {
+                if let Some(class_info) = registry.get_class(&current) {
+                    if let Some(methods) = class_info.methods.get(method_name) {
+                        // 返回第一个匹配的方法
+                        return methods.first().map(|m| m.params.clone());
+                    }
+                    if let Some(ref parent) = class_info.parent {
+                        current = parent.clone();
+                        continue;
+                    }
+                }
+                break;
+            }
+        }
+        None
+    }
+
+    /// 获取方法形参个数
+    fn get_method_param_count(&self, class_name: &str, method_name: &str) -> usize {
+        self.get_method_params(class_name, method_name)
+            .map(|p| p.len())
+            .unwrap_or(0)
+    }
+
+    /// 获取可变参数在形参列表中的索引
+    fn get_varargs_index(&self, class_name: &str, method_name: &str) -> Option<usize> {
+        self.get_method_params(class_name, method_name)
+            .and_then(|params| params.iter().position(|p| p.is_varargs))
+    }
+
     /// 检查方法是否是可变参数方法
     /// 查询类型注册表来确定方法是否真的是可变参数方法
     fn is_varargs_method(&self, class_name: &str, method_name: &str) -> bool {
@@ -596,9 +649,9 @@ impl IRGenerator {
         if let Some(ref registry) = self.type_registry {
             if let Some(class_info) = registry.get_class(class_name) {
                 if let Some(methods) = class_info.methods.get(method_name) {
-                    // 检查是否有任何方法是可变参数的
+                    // 检查是否有任何方法是可变参数的（扫描所有参数，不假设可变参数在最后）
                     for method in methods {
-                        if method.params.last().map(|p| p.is_varargs).unwrap_or(false) {
+                        if method.params.iter().any(|p| p.is_varargs) {
                             return true;
                         }
                     }
@@ -651,20 +704,28 @@ impl IRGenerator {
         false
     }
 
-    /// 将可变参数打包成数组
-    /// fixed_param_count: 固定参数的数量
+    /// 将可变参数打包成数组（支持非末尾可变参数）
     fn pack_varargs_args(&mut self, class_name: &str, method_name: &str, arg_results: &[String]) -> cayResult<Vec<String>> {
-        // 从类型注册表获取固定参数数量和可变参数元素类型
-        let (fixed_param_count, varargs_elem_type) = self.get_varargs_info(class_name, method_name);
+        // 从类型注册表获取可变参数位置和元素类型
+        let (varargs_index, varargs_elem_type) = self.get_varargs_info(class_name, method_name);
+        let fixed_param_count = varargs_index;
 
-        if arg_results.len() <= fixed_param_count {
-            // 参数数量不足或刚好，不需要打包
+        // 获取总形参个数以确定可变参数之后还有多少参数
+        let total_param_count = self.get_method_param_count(class_name, method_name);
+        let after_varargs_count = total_param_count.saturating_sub(varargs_index + 1);
+
+        // 可变参数的实参个数 = 总实参 - 固定参数 - 可变参数之后的参数
+        let varargs_min_count = if after_varargs_count > 0 { after_varargs_count } else { 0 };
+        if arg_results.len() <= fixed_param_count + varargs_min_count {
+            // 参数数量不足，不需要打包
             return Ok(arg_results.to_vec());
         }
 
-        // 分割固定参数和可变参数
+        // 分割：固定参数 | 可变参数 | 之后参数
         let fixed_args = &arg_results[..fixed_param_count];
-        let varargs = &arg_results[fixed_param_count..];
+        let varargs_end = arg_results.len() - varargs_min_count;
+        let varargs = &arg_results[fixed_param_count..varargs_end];
+        let after_args = &arg_results[varargs_end..];
 
         // 检查是否只有一个参数且是数组类型（直接传递数组给可变参数）
         if varargs.len() == 1 {
@@ -724,27 +785,28 @@ impl IRGenerator {
             self.store_vararg_element(&elem_ptr_i8, &arg_type, &arg_val, llvm_elem_type);
         }
 
-        // 构建结果：固定参数 + 数组指针（指向元素0，与正常数组布局一致）
+        // 构建结果：固定参数 + 数组指针 + 之后参数
         let mut result = fixed_args.to_vec();
         result.push(format!("i8* {}", array_ptr));
+        result.extend(after_args.iter().cloned());
 
         Ok(result)
     }
 
     /// 获取可变参数方法的固定参数数量和元素类型
+    /// 返回 (varargs_param_index, element_type)，如果未找到可变参数则返回 (0, Int32)
     fn get_varargs_info(&self, class_name: &str, method_name: &str) -> (usize, crate::types::Type) {
         if let Some(ref registry) = self.type_registry {
             if let Some(class_info) = registry.get_class(class_name) {
                 if let Some(methods) = class_info.methods.get(method_name) {
                     for method in methods {
-                        if let Some(last_param) = method.params.last() {
-                            if last_param.is_varargs {
-                                // 可变参数数量 = 总参数数量 - 1（最后一个可变参数）
-                                let fixed_count = method.params.len() - 1;
-                                // 获取可变参数的元素类型
-                                let elem_type = match &last_param.param_type {
+                        // 扫描所有参数，找到可变参数
+                        for (i, param) in method.params.iter().enumerate() {
+                            if param.is_varargs {
+                                let fixed_count = i; // 可变参数之前的固定参数数量
+                                let elem_type = match &param.param_type {
                                     crate::types::Type::Array(elem) => elem.as_ref().clone(),
-                                    _ => last_param.param_type.clone(),
+                                    _ => param.param_type.clone(),
                                 };
                                 return (fixed_count, elem_type);
                             }
@@ -826,15 +888,17 @@ impl IRGenerator {
                         
                         for method in methods {
                             let param_count = method.params.len();
-                            let is_varargs = method.params.last().map(|p| p.is_varargs).unwrap_or(false);
+                            let is_varargs = method.params.iter().any(|p| p.is_varargs);
+                            let varargs_idx = method.params.iter().position(|p| p.is_varargs);
                             
                             if is_varargs {
-                                let fixed_count = param_count.saturating_sub(1);
+                                let fixed_count = varargs_idx.unwrap_or(param_count);
                                 if arg_count >= fixed_count {
-                                    // 返回固定参数类型（不包括可变参数数组）
+                                    // 返回所有非可变参数的参数类型（可变参数之前的+之后的）
                                     return method.params.iter()
-                                        .take(fixed_count)
-                                        .map(|p| p.param_type.clone())
+                                        .enumerate()
+                                        .filter(|(i, p)| !p.is_varargs)
+                                        .map(|(_, p)| p.param_type.clone())
                                         .collect();
                                 }
                             } else if param_count == arg_count {

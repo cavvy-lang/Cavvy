@@ -51,6 +51,7 @@ pub struct FunctionType {
 #[derive(Debug, Clone)]
 pub struct ClassInfo {
     pub name: String,
+    pub type_params: Vec<String>,                    // 泛型类型参数: <T, U, ...>
     pub methods: HashMap<String, Vec<MethodInfo>>,  // 支持方法重载：同名方法可以有多个
     pub fields: HashMap<String, FieldInfo>,
     pub constructors: Vec<ConstructorInfo>,  // 构造函数列表
@@ -128,43 +129,52 @@ impl ClassInfo {
         })
     }
     
-    /// 精确匹配方法参数（不考虑隐式转换）
+    /// 精确匹配方法参数（不考虑隐式转换，支持非末尾可变参数）
     fn match_method_params_exact(params: &[ParameterInfo], arg_types: &[Type]) -> bool {
         if params.is_empty() {
             return arg_types.is_empty();
         }
 
-        // 检查最后一个参数是否是可变参数
-        let last_idx = params.len() - 1;
-        if params[last_idx].is_varargs {
-            // 可变参数：至少需要 params.len() - 1 个参数
-            if arg_types.len() < last_idx {
+        // 找到可变参数的位置（如果有）
+        let varargs_idx = params.iter().position(|p| p.is_varargs);
+        
+        if let Some(vi) = varargs_idx {
+            let fixed_before = vi;                    // 可变参数之前的固定参数
+            let fixed_after = params.len() - vi - 1;  // 可变参数之后的固定参数
+            let min_args = fixed_before + fixed_after;
+            if arg_types.len() < min_args {
                 return false;
             }
-            // 检查固定参数（精确匹配）
-            for i in 0..last_idx {
+
+            // 检查可变参数之前的固定参数（精确匹配）
+            for i in 0..fixed_before {
                 if params[i].param_type != arg_types[i] {
                     return false;
                 }
             }
 
-            // 检查可变参数（精确匹配）
-            let vararg_param_type = &params[last_idx].param_type;
-            let vararg_element_type = match vararg_param_type {
+            // 检查可变参数（精确匹配元素类型）
+            let vararg_elem_type = match &params[vi].param_type {
                 Type::Array(elem) => elem.as_ref(),
-                _ => vararg_param_type,
+                _ => &params[vi].param_type,
             };
+            let varargs_len = arg_types.len() - min_args;
+            let varargs_end = fixed_before + varargs_len;
 
-            // 如果只有一个参数且类型匹配数组类型，直接接受
-            if arg_types.len() == last_idx + 1 {
-                if *vararg_param_type == arg_types[last_idx] {
-                    return true;
+            // 如果恰好一个数组参数且类型匹配，直接接受
+            if varargs_len == 1 && params[vi].param_type == arg_types[fixed_before] {
+                // 直接传递数组给可变参数
+            } else {
+                for i in fixed_before..varargs_end {
+                    if *vararg_elem_type != arg_types[i] {
+                        return false;
+                    }
                 }
             }
 
-            // 按元素类型检查每个参数（精确匹配）
-            for i in last_idx..arg_types.len() {
-                if *vararg_element_type != arg_types[i] {
+            // 检查可变参数之后的固定参数（精确匹配）
+            for i in 0..fixed_after {
+                if params[vi + 1 + i].param_type != arg_types[varargs_end + i] {
                     return false;
                 }
             }
@@ -174,56 +184,60 @@ impl ClassInfo {
             if params.len() != arg_types.len() {
                 return false;
             }
-            // 精确匹配：类型必须完全相同
-            params.iter().zip(arg_types.iter()).all(|(p, a)| {
-                p.param_type == *a
-            })
+            params.iter().zip(arg_types.iter()).all(|(p, a)| p.param_type == *a)
         }
     }
 
-    /// 匹配方法参数（支持可变参数）
+    /// 匹配方法参数（支持可变参数，支持非末尾可变参数）
     fn match_method_params(params: &[ParameterInfo], arg_types: &[Type]) -> bool {
         if params.is_empty() {
             return arg_types.is_empty();
         }
 
-        // 检查最后一个参数是否是可变参数
-        let last_idx = params.len() - 1;
-        if params[last_idx].is_varargs {
-            // 可变参数：至少需要 params.len() - 1 个参数
-            if arg_types.len() < last_idx {
+        let varargs_idx = params.iter().position(|p| p.is_varargs);
+        
+        if let Some(vi) = varargs_idx {
+            let fixed_before = vi;
+            let fixed_after = params.len() - vi - 1;
+            let min_args = fixed_before + fixed_after;
+            if arg_types.len() < min_args {
                 return false;
             }
-            // 检查固定参数
-            for i in 0..last_idx {
+
+            // 检查可变参数之前的固定参数
+            for i in 0..fixed_before {
                 if !Self::types_match(&params[i].param_type, &arg_types[i]) {
                     return false;
                 }
             }
 
-            // 检查可变参数
-            let vararg_param_type = &params[last_idx].param_type;
-            let vararg_element_type = match vararg_param_type {
+            // 检查可变参数（兼容匹配）
+            let vararg_elem_type = match &params[vi].param_type {
                 Type::Array(elem) => elem.as_ref(),
-                _ => vararg_param_type,
+                _ => &params[vi].param_type,
             };
+            let varargs_len = arg_types.len() - min_args;
+            let varargs_end = fixed_before + varargs_len;
 
-            // 如果只有一个参数且类型匹配数组类型，直接接受（传递数组给可变参数）
-            if arg_types.len() == last_idx + 1 {
-                if Self::types_match(vararg_param_type, &arg_types[last_idx]) {
-                    return true;
+            // 如果恰好一个数组参数且类型匹配，直接接受
+            if varargs_len == 1 && Self::types_match(&params[vi].param_type, &arg_types[fixed_before]) {
+                // 直接传递数组给可变参数
+            } else {
+                for i in fixed_before..varargs_end {
+                    if !Self::types_match(vararg_elem_type, &arg_types[i]) {
+                        return false;
+                    }
                 }
             }
 
-            // 否则，按元素类型检查每个参数
-            for i in last_idx..arg_types.len() {
-                if !Self::types_match(vararg_element_type, &arg_types[i]) {
+            // 检查可变参数之后的固定参数
+            for i in 0..fixed_after {
+                if !Self::types_match(&params[vi + 1 + i].param_type, &arg_types[varargs_end + i]) {
                     return false;
                 }
             }
             true
         } else {
-            // 非可变参数：参数数量必须完全匹配
             if params.len() != arg_types.len() {
                 return false;
             }
@@ -520,6 +534,7 @@ impl TypeRegistry {
         // 创建 String 类信息
         let mut string_class = ClassInfo {
             name: "String".to_string(),
+            type_params: Vec::new(),
             methods: HashMap::new(),
             fields: HashMap::new(),
             constructors: Vec::new(),
@@ -680,6 +695,7 @@ impl TypeRegistry {
         // 创建 Integer 类信息
         let mut integer_class = ClassInfo {
             name: "Integer".to_string(),
+            type_params: Vec::new(),
             methods: HashMap::new(),
             fields: HashMap::new(),
             constructors: Vec::new(),

@@ -102,6 +102,45 @@ fn test_freefunction_conflict() {
     );
 }
 
+#[test]
+fn test_freefunction_varargs() {
+    let output = compile_and_run_eol("examples/test_freefunction_varargs.cay")
+        .expect("test_freefunction_varargs.cay should compile and run");
+    assert_output_contains(
+        &output,
+        &[
+            "=== @FreeFunction VarArgs 测试 ===",
+            "sumVarArgs() = 0",
+            "sumVarArgs(42) = 42",
+            "sumVarArgs(1, 2, 3, 4, 5) = 15",
+            "sumVarArgs({10, 20, 30}) = 60",
+            "joinStrings(\", \", \"apple\", \"banana\", \"cherry\") = apple, banana, cherry",
+            "joinStrings(\"-\", \"hello\") = hello",
+            "=== @FreeFunction VarArgs 测试通过 ===",
+        ],
+        "test_freefunction_varargs",
+    );
+}
+
+#[test]
+fn test_named_args() {
+    let output = compile_and_run_eol("examples/test_named_args.cay")
+        .expect("test_named_args.cay should compile and run");
+    assert_output_contains(
+        &output,
+        &[
+            "=== 命名参数测试 ===",
+            "format('apple','banana','cherry', separator=', ') = apple, banana, cherry",
+            "format('x','y', separator='-') = x-y",
+            "add(a=10, b=20) = 30",
+            "add(5, b=15) = 20",
+            "repeat('num:', 1, 2, 3, suffix='!') = num:123!",
+            "=== 命名参数测试通过 ===",
+        ],
+        "test_named_args",
+    );
+}
+
 // ============================================================
 // 泛型语法测试
 // ============================================================

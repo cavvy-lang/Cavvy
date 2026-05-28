@@ -155,6 +155,7 @@ impl SemanticAnalyzer {
             Expr::InstanceOf(instanceof) => self.infer_instanceof_type(instanceof),
             Expr::Alloc(_) => Ok(Type::Int64),  // 0.5.0.0: alloc 返回 long (指针)
             Expr::Dealloc(_) => Ok(Type::Void), // 0.5.0.0: dealloc 返回 void
+            Expr::NamedArg(named) => self.infer_expr_type_internal(&named.value), // 命名参数返回其值的类型
         }
     }
 
@@ -643,21 +644,10 @@ impl SemanticAnalyzer {
             
             // 检查 @FreeFunction 注册的自由函数
             if let Some((_class_name, method_info, _loc)) = self.type_registry.free_functions.get(name.as_ref()).cloned() {
-                // 验证参数
-                if call.args.len() != method_info.params.len() {
-                    return Err(semantic_error_at_loc(
-                        &call.loc,
-                        format!("@FreeFunction '{}' requires {} arguments, but got {}", name, method_info.params.len(), call.args.len())
-                    ));
-                }
-                for (i, (arg, param)) in call.args.iter().zip(method_info.params.iter()).enumerate() {
-                    let arg_type = self.infer_expr_type_internal(arg)?;
-                    if !self.types_compatible(&arg_type, &param.param_type) {
-                        return Err(semantic_error_at_loc(
-                            &call.loc,
-                            format!("@FreeFunction '{}' argument {} type mismatch: expected {}, got {}", name, i + 1, param.param_type, arg_type)
-                        ));
-                    }
+                // 验证参数（使用 check_arguments_compatible 以支持可变参数）
+                if let Err(msg) = self.check_arguments_compatible(&call.args, &method_info.params, call.loc.line, call.loc.column) {
+                    return Err(semantic_error_at_loc(&call.loc,
+                        format!("@FreeFunction '{}' {}", name, msg)));
                 }
                 return Ok(method_info.return_type.clone());
             }

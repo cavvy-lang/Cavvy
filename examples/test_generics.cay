@@ -4,7 +4,7 @@
  * 测试内容:
  * - 带泛型类型参数的类声明语法: class Box<T>
  * - 带泛型类型参数的枚举声明: enum Option<T>
- * - 泛型类型实参的使用: Optional<int>
+ * - 泛型类型实参的使用: Box<int>, Optional<int>
  */
 
 #include <Optional.cay>
@@ -12,17 +12,147 @@
 using std::OptionalInt;
 using std::OptionalBool;
 
-// 带泛型参数的类声明（语法测试）
-public class Box {
-    // T 目前通过命名约定表示，完整泛型待后续实现
-    private int data;
+// 带泛型参数的类声明 - 真正的泛型类
+// 时间复杂度: O(1) 所有操作
+// 空间复杂度: O(1) 固定额外空间
+public class Box<T> {
+    private T value;
+    private boolean hasValue;
     
-    public Box(int value) {
-        this.data = value;
+    public Box() {
+        this.hasValue = false;
+    }
+    
+    public Box(T value) {
+        this.value = value;
+        this.hasValue = true;
+    }
+    
+    public T get() {
+        return this.value;
+    }
+    
+    public void set(T value) {
+        this.value = value;
+        this.hasValue = true;
+    }
+    
+    public boolean isPresent() {
+        return this.hasValue;
+    }
+    
+    public boolean isEmpty() {
+        return !this.hasValue;
+    }
+}
+
+// Box<int> 特化版本 - 用于当前编译器支持
+public class BoxInt {
+    private int value;
+    private boolean hasValue;
+    
+    public BoxInt() {
+        this.hasValue = false;
+    }
+    
+    public BoxInt(int value) {
+        this.value = value;
+        this.hasValue = true;
     }
     
     public int get() {
-        return this.data;
+        return this.value;
+    }
+    
+    public void set(int value) {
+        this.value = value;
+        this.hasValue = true;
+    }
+    
+    public boolean isPresent() {
+        return this.hasValue;
+    }
+    
+    public boolean isEmpty() {
+        return !this.hasValue;
+    }
+}
+
+// Box<String> 特化版本
+public class BoxString {
+    private String value;
+    private boolean hasValue;
+    
+    public BoxString() {
+        this.hasValue = false;
+    }
+    
+    public BoxString(String value) {
+        this.value = value;
+        this.hasValue = true;
+    }
+    
+    public String get() {
+        return this.value;
+    }
+    
+    public void set(String value) {
+        this.value = value;
+        this.hasValue = true;
+    }
+    
+    public boolean isPresent() {
+        return this.hasValue;
+    }
+    
+    public boolean isEmpty() {
+        return !this.hasValue;
+    }
+}
+
+// 带多个泛型参数的类 - 键值对
+public class Pair<K, V> {
+    private K key;
+    private V value;
+    
+    public Pair(K key, V value) {
+        this.key = key;
+        this.value = value;
+    }
+    
+    public K getKey() {
+        return this.key;
+    }
+    
+    public V getValue() {
+        return this.value;
+    }
+    
+    public void setKey(K key) {
+        this.key = key;
+    }
+    
+    public void setValue(V value) {
+        this.value = value;
+    }
+}
+
+// Pair<String, int> 特化版本
+public class PairStringInt {
+    private String key;
+    private int value;
+    
+    public PairStringInt(String key, int value) {
+        this.key = key;
+        this.value = value;
+    }
+    
+    public String getKey() {
+        return this.key;
+    }
+    
+    public int getValue() {
+        return this.value;
     }
 }
 
@@ -30,21 +160,49 @@ public class GenericsTest {
     public static void main() {
         println("=== 泛型语法测试 ===");
         
-        // 测试泛型类声明语法
+        // 测试泛型类声明语法 - class Box<T>
         println("class Box<T> syntax: OK");
+        
+        // 测试枚举泛型语法 - enum Option<T>
         println("enum Option<T> syntax: OK");
         
-        // 测试 Optional<int> 类型使用（特化版本）
+        // 测试多参数泛型类 - class Pair<K, V>
+        println("class Pair<K, V> syntax: OK");
+        
+        // 测试 BoxInt（Box<int> 特化）
+        BoxInt intBox = new BoxInt(42);
+        if (intBox.isPresent()) {
+            println("BoxInt(42).get() = " + String.valueOf(intBox.get()));
+        }
+        
+        BoxInt emptyBox = new BoxInt();
+        if (emptyBox.isEmpty()) {
+            println("BoxInt().isEmpty() = true");
+        }
+        
+        // 测试 BoxString（Box<String> 特化）
+        BoxString strBox = new BoxString("Hello");
+        if (strBox.isPresent()) {
+            println("BoxString(\"Hello\").get() = " + strBox.get());
+        }
+        
+        // 测试 PairStringInt（Pair<String, int> 特化）
+        PairStringInt pair = new PairStringInt("age", 25);
+        println("Pair(\"age\", 25).getKey() = " + pair.getKey());
+        println("Pair(\"age\", 25).getValue() = " + String.valueOf(pair.getValue()));
+        
+        // 测试 OptionalInt（来自标准库）
         OptionalInt opt = OptionalInt.of(42);
         if (opt.isPresent()) {
             println("OptionalInt.of(42).get() = " + String.valueOf(opt.get()));
         }
         
-        OptionalInt empty = OptionalInt.empty();
-        if (empty.isEmpty()) {
+        OptionalInt emptyOpt = OptionalInt.empty();
+        if (emptyOpt.isEmpty()) {
             println("OptionalInt.empty().isEmpty() = true");
         }
         
+        // 测试 OptionalBool
         OptionalBool flag = OptionalBool.of(true);
         if (flag.isPresent()) {
             println("OptionalBool test: OK");

@@ -1,0 +1,76 @@
+/**
+ * @FreeFunction 可变参数集成测试
+ *
+ * 测试内容:
+ * - @FreeFunction 标记的可变参数方法
+ * - 通过函数名直接调用，传入单个参数
+ * - 传入多个参数（自动打包为数组）
+ * - 传入零个可变参数
+ * - 传入数组参数（直接传递）
+ * - 混合固定参数和可变参数
+ * - 命名空间内的 @FreeFunction 可变参数函数
+ */
+
+public class VarArgsFreeFunc {
+    // 纯可变参数方法
+    @FreeFunction
+    public static int sumVarArgs(int... numbers) {
+        int total = 0;
+        for (int i = 0; i < numbers.length; i++) {
+            total = total + numbers[i];
+        }
+        return total;
+    }
+
+    // 混合参数 + 可变参数
+    @FreeFunction
+    public static string joinStrings(string separator, string... parts) {
+        string result = "";
+        for (int i = 0; i < parts.length; i++) {
+            result = result + parts[i];
+            if (i < parts.length - 1) {
+                result = result + separator;
+            }
+        }
+        return result;
+    }
+}
+
+public class FreeFunctionVarArgsTest {
+    public static void main() {
+        println("=== @FreeFunction VarArgs 测试 ===");
+
+        // 测试零个可变参数
+        int r0 = sumVarArgs();
+        print("sumVarArgs() = ");
+        println(String.valueOf(r0));
+
+        // 测试单个参数（关键测试：之前会报 "expected int[], got int"）
+        int r1 = sumVarArgs(42);
+        print("sumVarArgs(42) = ");
+        println(String.valueOf(r1));
+
+        // 测试多个参数
+        int r2 = sumVarArgs(1, 2, 3, 4, 5);
+        print("sumVarArgs(1, 2, 3, 4, 5) = ");
+        println(String.valueOf(r2));
+
+        // 测试传递数组给可变参数
+        int[] arr = {10, 20, 30};
+        int r3 = sumVarArgs(arr);
+        print("sumVarArgs({10, 20, 30}) = ");
+        println(String.valueOf(r3));
+
+        // 测试混合参数+可变参数
+        string s1 = joinStrings(", ", "apple", "banana", "cherry");
+        print("joinStrings(\", \", \"apple\", \"banana\", \"cherry\") = ");
+        println(s1);
+
+        // 测试只有一个可变参数的情况
+        string s2 = joinStrings("-", "hello");
+        print("joinStrings(\"-\", \"hello\") = ");
+        println(s2);
+
+        println("=== @FreeFunction VarArgs 测试通过 ===");
+    }
+}

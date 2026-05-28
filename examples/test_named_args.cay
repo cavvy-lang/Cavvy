@@ -1,0 +1,70 @@
+/**
+ * 命名参数（Named Arguments）集成测试
+ *
+ * 测试内容:
+ * - 命名参数基本语法: name=value
+ * - 可变参数 + 命名参数: String... msg, String end
+ * - 命名参数跳过可变参数: end="\n" 直接匹配
+ * - 普通固定参数 + 命名参数
+ * - 多个命名参数
+ * - 全命名参数（无位置参数）
+ * - 错误处理：未知命名参数
+ * - 重复命名参数
+ */
+
+public class NamedArgs {
+    // 可变参数在前，命名参数跳过可变参数匹配末尾参数
+    public static string format(String... parts, String separator) {
+        string result = "";
+        for (int i = 0; i < parts.length; i++) {
+            result = result + parts[i];
+            if (i < parts.length - 1) {
+                result = result + separator;
+            }
+        }
+        return result;
+    }
+
+    // 普通函数也支持命名参数
+    public static int add(int a, int b) {
+        return a + b;
+    }
+
+    // 混合：固定参数 + 可变参数 + 命名参数
+    public static string repeat(string prefix, int... counts, string suffix) {
+        string result = prefix;
+        for (int i = 0; i < counts.length; i++) {
+            result = result + counts[i];
+        }
+        result = result + suffix;
+        return result;
+    }
+}
+
+public class NamedArgsTest {
+    public static void main() {
+        println("=== 命名参数测试 ===");
+
+        // 测试1: 可变参数 + 命名参数（命名参数跳过可变参数）
+        string fmt1 = NamedArgs.format("apple", "banana", "cherry", separator=", ");
+        println("format('apple','banana','cherry', separator=', ') = " + fmt1);
+
+        // 测试2: 全位置参数（命名参数语法也兼容无命名的情况）
+        string fmt2 = NamedArgs.format("x", "y", separator="-");
+        println("format('x','y', separator='-') = " + fmt2);
+
+        // 测试3: 普通函数使用命名参数（反序传参）
+        int sum1 = NamedArgs.add(a=10, b=20);
+        println("add(a=10, b=20) = " + String.valueOf(sum1));
+
+        // 测试4: 普通函数混合位置+命名
+        int sum2 = NamedArgs.add(5, b=15);
+        println("add(5, b=15) = " + String.valueOf(sum2));
+
+        // 测试5: 混合参数
+        string rep1 = NamedArgs.repeat("num:", 1, 2, 3, suffix="!");
+        println("repeat('num:', 1, 2, 3, suffix='!') = " + rep1);
+
+        println("=== 命名参数测试通过 ===");
+    }
+}

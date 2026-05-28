@@ -128,6 +128,7 @@ impl SemanticAnalyzer {
             let is_final = class.modifiers.contains(&Modifier::Final);
             let mut class_info = ClassInfo {
                 name: class.name.clone(),
+                type_params: class.type_params.clone(),
                 methods: std::collections::HashMap::new(),
                 fields: std::collections::HashMap::new(),
                 constructors: Vec::new(),
@@ -616,10 +617,17 @@ impl SemanticAnalyzer {
                             column: method.loc.column,
                         };
 
+                        // 计算限定类名（包含命名空间路径）
+                        let qualified_class_name = if class_decl.namespace_path.is_empty() {
+                            class_decl.name.clone()
+                        } else {
+                            format!("{}::{}", class_decl.namespace_path.join("::"), class_decl.name)
+                        };
+
                         // 注册到 TypeRegistry（内部会检查冲突）
                         self.type_registry.register_free_function(
                             &method.name,
-                            &class_decl.name,
+                            &qualified_class_name,
                             method_info.clone(),
                             loc.clone(),
                         )?;
@@ -639,7 +647,7 @@ impl SemanticAnalyzer {
                             };
                             self.type_registry.register_free_function(
                                 &qualified_name,
-                                &class_decl.name,
+                                &qualified_class_name,
                                 method_info,
                                 ns_loc,
                             )?;

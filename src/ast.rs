@@ -139,6 +139,7 @@ pub struct EnumVariant {
 pub struct ClassDecl {
     pub name: String,
     pub modifiers: Vec<Modifier>,
+    pub type_params: Vec<String>,      // 泛型类型参数: <T, U, ...>
     pub parent: Option<String>,
     pub interfaces: Vec<String>,  // 实现的接口列表
     pub members: Vec<ClassMember>,
@@ -380,6 +381,7 @@ pub enum Expr {
     InstanceOf(InstanceOfExpr), // instanceof 运算符: obj instanceof Type
     Alloc(AllocExpr),          // 0.5.0.0: 内存分配表达式: __cay_alloc(size)
     Dealloc(DeallocExpr),      // 0.5.0.0: 内存释放表达式: __cay_free(ptr)
+    NamedArg(NamedArgExpr),    // 命名参数: name=value
 }
 
 impl HasLocation for Expr {
@@ -403,6 +405,7 @@ impl HasLocation for Expr {
             Expr::InstanceOf(instance) => &instance.loc,
             Expr::Alloc(alloc) => &alloc.loc,
             Expr::Dealloc(dealloc) => &dealloc.loc,
+            Expr::NamedArg(named) => &named.loc,
         }
     }
 }
@@ -419,6 +422,14 @@ pub struct AllocExpr {
 #[derive(Debug, Clone)]
 pub struct DeallocExpr {
     pub ptr: Box<Expr>,
+    pub loc: SourceLocation,
+}
+
+/// 命名参数表达式: name=value（用于函数调用中的命名传参）
+#[derive(Debug, Clone)]
+pub struct NamedArgExpr {
+    pub name: String,
+    pub value: Box<Expr>,
     pub loc: SourceLocation,
 }
 
