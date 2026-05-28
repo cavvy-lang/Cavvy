@@ -191,6 +191,10 @@ impl IRGenerator {
         self.emit_raw("declare i1 @__cay_string_equals(i8*, i8*)");
         self.emit_raw("declare i1 @__cay_string_equals_ignorecase(i8*, i8*)");
         self.emit_raw("declare i8* @__cay_string_trim(i8*)");
+        self.emit_raw("declare i8* @__cay_string_to_lower(i8*)");
+        self.emit_raw("declare i8* @__cay_string_to_upper(i8*)");
+        self.emit_raw("declare i1 @__cay_string_contains(i8*, i8*)");
+        self.emit_raw("declare i32 @__cay_string_compareto(i8*, i8*)");
 
         // 类型转换
         self.emit_raw("declare i8* @__cay_int_to_string(i32)");

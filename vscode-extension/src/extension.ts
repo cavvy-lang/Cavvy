@@ -17,264 +17,302 @@ import { CavvyLSPClient } from './utils/lspClient';
 let diagnosticProvider: CavvyDiagnosticProvider | undefined;
 let lspClient: CavvyLSPClient | undefined;
 let runner: CavvyRunner | undefined;
+let outputChannel: vscode.OutputChannel | undefined;
 
 /**
  * 插件激活时调用
  * @param context 插件上下文
  */
 export function activate(context: vscode.ExtensionContext): void {
-    console.log('Cavvy Analyzer 插件已激活');
+    outputChannel = vscode.window.createOutputChannel('Cavvy Analyzer');
+    log('Cavvy Analyzer 插件正在激活...');
 
     const config = vscode.workspace.getConfiguration('cavvyAnalyzer');
 
-    // 初始化 LSP 客户端
-    if (config.get<boolean>('enableLSP', true)) {
-        lspClient = new CavvyLSPClient();
-        lspClient.activate(context);
-    }
-
-    // 初始化运行器
-    runner = new CavvyRunner();
-
-    // 注册跳转到定义提供器
-    const definitionProvider = vscode.languages.registerDefinitionProvider(
-        'cavvy',
-        new CavvyDefinitionProvider()
-    );
-    context.subscriptions.push(definitionProvider);
-
-    // 注册文档符号提供器（用于大纲视图）
-    const documentSymbolProvider = vscode.languages.registerDocumentSymbolProvider(
-        'cavvy',
-        new CavvyDocumentSymbolProvider()
-    );
-    context.subscriptions.push(documentSymbolProvider);
-
-    // 注册查找引用提供器
-    const referenceProvider = vscode.languages.registerReferenceProvider(
-        'cavvy',
-        new CavvyReferenceProvider()
-    );
-    context.subscriptions.push(referenceProvider);
-
-    // 注册代码补全提供器
-    const completionProvider = vscode.languages.registerCompletionItemProvider(
-        'cavvy',
-        new CavvyCompletionProvider(),
-        '.',  // 触发字符：点号
-        '(',  // 触发字符：左括号
-        ':'   // 触发字符：冒号（用于方法引用）
-    );
-    context.subscriptions.push(completionProvider);
-
-    // 注册 Hover 提供器
-    const hoverProvider = vscode.languages.registerHoverProvider(
-        'cavvy',
-        new CavvyHoverProvider()
-    );
-    context.subscriptions.push(hoverProvider);
-
-    // 初始化诊断提供器
-    diagnosticProvider = new CavvyDiagnosticProvider();
-    diagnosticProvider.activate(context);
-
-    // 注册命令：运行代码（非调试模式）
-    const runCodeNoDebugCommand = vscode.commands.registerCommand(
-        'cavvyAnalyzer.runCodeNoDebug',
-        async () => {
-            const editor = vscode.window.activeTextEditor;
-            if (!editor || !isCavvyFile(editor.document)) {
-                vscode.window.showWarningMessage('请先打开一个 Cavvy 文件 (.cay, .eol, .caybc, .ll)');
-                return;
+    try {
+        // 初始化 LSP 客户端（使用 await 处理异步错误）
+        if (config.get<boolean>('enableLSP', true)) {
+            try {
+                lspClient = new CavvyLSPClient();
+                lspClient.activate(context).catch(err => {
+                    log(`LSP 客户端激活失败: ${err}`);
+                });
+            } catch (err) {
+                log(`LSP 客户端初始化失败: ${err}`);
             }
-
-            // 先保存文件
-            if (editor.document.isDirty) {
-                await editor.document.save();
-            }
-
-            await runner?.run(editor.document.fileName, { debug: false });
         }
-    );
-    context.subscriptions.push(runCodeNoDebugCommand);
 
-    // 注册命令：运行代码（通用）
-    const runCodeCommand = vscode.commands.registerCommand(
-        'cavvyAnalyzer.runCode',
-        async () => {
-            const editor = vscode.window.activeTextEditor;
-            if (!editor || !isCavvyFile(editor.document)) {
-                vscode.window.showWarningMessage('请先打开一个 Cavvy 文件');
-                return;
-            }
+        // 初始化运行器
+        runner = new CavvyRunner();
 
-            if (editor.document.isDirty) {
-                await editor.document.save();
-            }
+        // 注册跳转到定义提供器
+        const definitionProvider = vscode.languages.registerDefinitionProvider(
+            'cavvy',
+            new CavvyDefinitionProvider()
+        );
+        context.subscriptions.push(definitionProvider);
 
-            await runner?.run(editor.document.fileName, { debug: false });
-        }
-    );
-    context.subscriptions.push(runCodeCommand);
+        // 注册文档符号提供器（用于大纲视图）
+        const documentSymbolProvider = vscode.languages.registerDocumentSymbolProvider(
+            'cavvy',
+            new CavvyDocumentSymbolProvider()
+        );
+        context.subscriptions.push(documentSymbolProvider);
 
-    // 注册命令：手动语法检查
-    const checkSyntaxManualCommand = vscode.commands.registerCommand(
-        'cavvyAnalyzer.checkSyntaxManual',
-        async () => {
-            const editor = vscode.window.activeTextEditor;
-            if (!editor || !isCavvyFile(editor.document)) {
-                vscode.window.showWarningMessage('请先打开一个 Cavvy 文件');
-                return;
-            }
+        // 注册查找引用提供器
+        const referenceProvider = vscode.languages.registerReferenceProvider(
+            'cavvy',
+            new CavvyReferenceProvider()
+        );
+        context.subscriptions.push(referenceProvider);
 
-            // 先保存文件
-            if (editor.document.isDirty) {
-                await editor.document.save();
-            }
+        // 注册代码补全提供器
+        const completionProvider = vscode.languages.registerCompletionItemProvider(
+            'cavvy',
+            new CavvyCompletionProvider(),
+            '.',  // 触发字符：点号
+            '(',  // 触发字符：左括号
+            ':'   // 触发字符：冒号（用于方法引用）
+        );
+        context.subscriptions.push(completionProvider);
 
-            // 显示进度
-            await vscode.window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: '正在检查 Cavvy 语法...',
-                cancellable: false
-            }, async (progress) => {
-                progress.report({ increment: 0 });
+        // 注册 Hover 提供器
+        const hoverProvider = vscode.languages.registerHoverProvider(
+            'cavvy',
+            new CavvyHoverProvider()
+        );
+        context.subscriptions.push(hoverProvider);
 
-                // 使用 LSP 或本地诊断
-                if (lspClient?.isRunning()) {
-                    // 触发 LSP 诊断
-                    await lspClient?.triggerDiagnostics(editor.document);
-                } else {
-                    // 使用本地诊断
-                    await diagnosticProvider?.checkDocument(editor.document);
+        // 初始化诊断提供器
+        diagnosticProvider = new CavvyDiagnosticProvider();
+        diagnosticProvider.activate(context);
+
+        // 注册命令：运行代码（非调试模式）
+        const runCodeNoDebugCommand = vscode.commands.registerCommand(
+            'cavvyAnalyzer.runCodeNoDebug',
+            async () => {
+                const editor = vscode.window.activeTextEditor;
+                if (!editor || !isCavvyFile(editor.document)) {
+                    vscode.window.showWarningMessage('请先打开一个 Cavvy 文件 (.cay, .eol, .caybc, .ll)');
+                    return;
                 }
 
-                progress.report({ increment: 100 });
-            });
+                // 先保存文件
+                if (editor.document.isDirty) {
+                    await editor.document.save();
+                }
 
-            vscode.window.showInformationMessage('语法检查完成');
-        }
-    );
-    context.subscriptions.push(checkSyntaxManualCommand);
-
-    // 注册命令：检查语法（自动触发）
-    const checkSyntaxCommand = vscode.commands.registerCommand(
-        'cavvyAnalyzer.checkSyntax',
-        async () => {
-            const editor = vscode.window.activeTextEditor;
-            if (!editor || !isCavvyFile(editor.document)) {
-                vscode.window.showWarningMessage('请先打开一个 Cavvy 文件');
-                return;
+                await runner?.run(editor.document.fileName, { debug: false });
             }
-            await diagnosticProvider?.checkDocument(editor.document);
-            vscode.window.showInformationMessage('语法检查完成');
-        }
-    );
-    context.subscriptions.push(checkSyntaxCommand);
+        );
+        context.subscriptions.push(runCodeNoDebugCommand);
 
-    // 注册命令：跳转到定义（用于右键菜单）
-    const gotoDefinitionCommand = vscode.commands.registerCommand(
-        'cavvyAnalyzer.gotoDefinition',
-        async () => {
-            const editor = vscode.window.activeTextEditor;
-            if (!editor || !isCavvyFile(editor.document)) {
-                return;
+        // 注册命令：运行代码（通用）
+        const runCodeCommand = vscode.commands.registerCommand(
+            'cavvyAnalyzer.runCode',
+            async () => {
+                const editor = vscode.window.activeTextEditor;
+                if (!editor || !isCavvyFile(editor.document)) {
+                    vscode.window.showWarningMessage('请先打开一个 Cavvy 文件');
+                    return;
+                }
+
+                if (editor.document.isDirty) {
+                    await editor.document.save();
+                }
+
+                await runner?.run(editor.document.fileName, { debug: false });
             }
+        );
+        context.subscriptions.push(runCodeCommand);
 
-            const position = editor.selection.active;
-            const locations = await new CavvyDefinitionProvider().provideDefinition(
-                editor.document,
-                position,
-                new vscode.CancellationTokenSource().token
-            );
+        // 注册命令：手动语法检查
+        const checkSyntaxManualCommand = vscode.commands.registerCommand(
+            'cavvyAnalyzer.checkSyntaxManual',
+            async () => {
+                const editor = vscode.window.activeTextEditor;
+                if (!editor || !isCavvyFile(editor.document)) {
+                    vscode.window.showWarningMessage('请先打开一个 Cavvy 文件');
+                    return;
+                }
 
-            if (locations && locations.length > 0) {
-                const location = locations[0] as vscode.Location;
-                await vscode.window.showTextDocument(location.uri, {
-                    selection: location.range
+                // 先保存文件
+                if (editor.document.isDirty) {
+                    await editor.document.save();
+                }
+
+                // 显示进度
+                await vscode.window.withProgress({
+                    location: vscode.ProgressLocation.Notification,
+                    title: '正在检查 Cavvy 语法...',
+                    cancellable: false
+                }, async (progress) => {
+                    progress.report({ increment: 0 });
+
+                    // 使用 LSP 或本地诊断
+                    if (lspClient?.isRunning()) {
+                        // 触发 LSP 诊断
+                        await lspClient?.triggerDiagnostics(editor.document);
+                    } else {
+                        // 使用本地诊断
+                        await diagnosticProvider?.checkDocument(editor.document);
+                    }
+
+                    progress.report({ increment: 100 });
                 });
-            } else {
-                vscode.window.showInformationMessage('未找到定义');
+
+                vscode.window.showInformationMessage('语法检查完成');
             }
-        }
-    );
-    context.subscriptions.push(gotoDefinitionCommand);
+        );
+        context.subscriptions.push(checkSyntaxManualCommand);
 
-    // 注册命令：重启 LSP 服务器
-    const restartLSPCommand = vscode.commands.registerCommand(
-        'cavvyAnalyzer.restartLSP',
-        async () => {
-            if (lspClient) {
-                await lspClient.restart(context);
-                vscode.window.showInformationMessage('Cavvy LSP 服务器已重启');
-            } else {
-                // 创建新的 LSP 客户端
-                lspClient = new CavvyLSPClient();
-                await lspClient.activate(context);
-                vscode.window.showInformationMessage('Cavvy LSP 服务器已启动');
+        // 注册命令：检查语法（自动触发）- 修复：与 checkSyntaxManual 保持一致
+        const checkSyntaxCommand = vscode.commands.registerCommand(
+            'cavvyAnalyzer.checkSyntax',
+            async () => {
+                const editor = vscode.window.activeTextEditor;
+                if (!editor || !isCavvyFile(editor.document)) {
+                    vscode.window.showWarningMessage('请先打开一个 Cavvy 文件');
+                    return;
+                }
+
+                // 先保存文件
+                if (editor.document.isDirty) {
+                    await editor.document.save();
+                }
+
+                // 显示进度
+                await vscode.window.withProgress({
+                    location: vscode.ProgressLocation.Notification,
+                    title: '正在检查 Cavvy 语法...',
+                    cancellable: false
+                }, async (progress) => {
+                    progress.report({ increment: 0 });
+
+                    // 使用 LSP 或本地诊断
+                    if (lspClient?.isRunning()) {
+                        await lspClient?.triggerDiagnostics(editor.document);
+                    } else {
+                        await diagnosticProvider?.checkDocument(editor.document);
+                    }
+
+                    progress.report({ increment: 100 });
+                });
+
+                vscode.window.showInformationMessage('语法检查完成');
             }
-        }
-    );
-    context.subscriptions.push(restartLSPCommand);
+        );
+        context.subscriptions.push(checkSyntaxCommand);
 
-    // 注册命令：停止 LSP 服务器
-    const stopLSPCommand = vscode.commands.registerCommand(
-        'cavvyAnalyzer.stopLSP',
-        async () => {
-            if (lspClient) {
-                await lspClient.stop();
-                vscode.window.showInformationMessage('Cavvy LSP 服务器已停止');
+        // 注册命令：跳转到定义（用于右键菜单）
+        const gotoDefinitionCommand = vscode.commands.registerCommand(
+            'cavvyAnalyzer.gotoDefinition',
+            async () => {
+                const editor = vscode.window.activeTextEditor;
+                if (!editor || !isCavvyFile(editor.document)) {
+                    return;
+                }
+
+                const position = editor.selection.active;
+                const locations = await new CavvyDefinitionProvider().provideDefinition(
+                    editor.document,
+                    position,
+                    new vscode.CancellationTokenSource().token
+                );
+
+                if (locations && locations.length > 0) {
+                    const location = locations[0] as vscode.Location;
+                    await vscode.window.showTextDocument(location.uri, {
+                        selection: location.range
+                    });
+                } else {
+                    vscode.window.showInformationMessage('未找到定义');
+                }
             }
-        }
-    );
-    context.subscriptions.push(stopLSPCommand);
+        );
+        context.subscriptions.push(gotoDefinitionCommand);
 
-    // 监听文档打开事件，为空文件生成模板
-    const onDidOpenDisposable = vscode.workspace.onDidOpenTextDocument(
-        (document) => {
-            if (isCavvyFile(document) && document.getText().trim().length === 0) {
-                generateTemplate(document);
+        // 注册命令：重启 LSP 服务器
+        const restartLSPCommand = vscode.commands.registerCommand(
+            'cavvyAnalyzer.restartLSP',
+            async () => {
+                if (lspClient) {
+                    await lspClient.restart(context);
+                    vscode.window.showInformationMessage('Cavvy LSP 服务器已重启');
+                } else {
+                    // 创建新的 LSP 客户端
+                    lspClient = new CavvyLSPClient();
+                    await lspClient.activate(context);
+                    vscode.window.showInformationMessage('Cavvy LSP 服务器已启动');
+                }
             }
-        }
-    );
-    context.subscriptions.push(onDidOpenDisposable);
+        );
+        context.subscriptions.push(restartLSPCommand);
 
-    // 检查当前已打开的空文档
-    vscode.workspace.textDocuments.forEach((doc) => {
-        if (isCavvyFile(doc) && doc.getText().trim().length === 0) {
-            generateTemplate(doc);
-        }
-    });
+        // 注册命令：停止 LSP 服务器
+        const stopLSPCommand = vscode.commands.registerCommand(
+            'cavvyAnalyzer.stopLSP',
+            async () => {
+                if (lspClient) {
+                    await lspClient.stop();
+                    vscode.window.showInformationMessage('Cavvy LSP 服务器已停止');
+                }
+            }
+        );
+        context.subscriptions.push(stopLSPCommand);
 
-    // 监听配置变更
-    const configChangeDisposable = vscode.workspace.onDidChangeConfiguration(
-        (event) => {
-            if (event.affectsConfiguration('cavvyAnalyzer')) {
-                diagnosticProvider?.onConfigurationChanged();
-                runner?.onConfigurationChanged();
+        // 监听文档打开事件，为空文件生成模板
+        const onDidOpenDisposable = vscode.workspace.onDidOpenTextDocument(
+            (document) => {
+                if (isCavvyFile(document) && document.getText().trim().length === 0) {
+                    generateTemplate(document);
+                }
+            }
+        );
+        context.subscriptions.push(onDidOpenDisposable);
 
-                // 检查 LSP 配置变更
-                if (event.affectsConfiguration('cavvyAnalyzer.enableLSP') ||
-                    event.affectsConfiguration('cavvyAnalyzer.lspServerPath')) {
-                    const newConfig = vscode.workspace.getConfiguration('cavvyAnalyzer');
-                    const enableLSP = newConfig.get<boolean>('enableLSP', true);
+        // 检查当前已打开的空文档
+        vscode.workspace.textDocuments.forEach((doc) => {
+            if (isCavvyFile(doc) && doc.getText().trim().length === 0) {
+                generateTemplate(doc);
+            }
+        });
 
-                    if (enableLSP && !lspClient?.isRunning()) {
-                        lspClient = new CavvyLSPClient();
-                        lspClient.activate(context);
-                    } else if (!enableLSP && lspClient?.isRunning()) {
-                        lspClient.stop();
+        // 监听配置变更
+        const configChangeDisposable = vscode.workspace.onDidChangeConfiguration(
+            (event) => {
+                if (event.affectsConfiguration('cavvyAnalyzer')) {
+                    diagnosticProvider?.onConfigurationChanged();
+                    runner?.onConfigurationChanged();
+
+                    // 检查 LSP 配置变更
+                    if (event.affectsConfiguration('cavvyAnalyzer.enableLSP') ||
+                        event.affectsConfiguration('cavvyAnalyzer.lspServerPath')) {
+                        const newConfig = vscode.workspace.getConfiguration('cavvyAnalyzer');
+                        const enableLSP = newConfig.get<boolean>('enableLSP', true);
+
+                        if (enableLSP && !lspClient?.isRunning()) {
+                            lspClient = new CavvyLSPClient();
+                            lspClient.activate(context);
+                        } else if (!enableLSP && lspClient?.isRunning()) {
+                            lspClient.stop();
+                        }
                     }
                 }
             }
-        }
-    );
-    context.subscriptions.push(configChangeDisposable);
+        );
+        context.subscriptions.push(configChangeDisposable);
 
-    // 显示激活成功消息
-    vscode.window.showInformationMessage(
-        `Cavvy Analyzer 已激活 (LSP: ${lspClient?.isRunning() ? '已连接' : '未启用'})`
-    );
+        // 显示激活成功消息
+        const lspStatus = lspClient?.isRunning() ? '已连接' : '未启用';
+        vscode.window.showInformationMessage(`Cavvy Analyzer 已激活 (LSP: ${lspStatus})`);
+        log(`Cavvy Analyzer 插件已激活 (LSP: ${lspStatus})`);
+
+    } catch (error) {
+        log(`插件激活失败: ${error}`);
+        vscode.window.showErrorMessage(`Cavvy Analyzer 激活失败: ${error}`);
+        throw error;
+    }
 }
 
 /**
@@ -351,14 +389,24 @@ function toPascalCase(str: string): string {
 }
 
 /**
+ * 记录日志
+ */
+function log(message: string): void {
+    const timestamp = new Date().toISOString();
+    outputChannel?.appendLine(`[${timestamp}] ${message}`);
+}
+
+/**
  * 插件停用时调用
  */
 export function deactivate(): void {
-    console.log('Cavvy Analyzer 插件已停用');
+    log('Cavvy Analyzer 插件正在停用...');
     diagnosticProvider?.dispose();
     lspClient?.dispose();
     runner?.dispose();
     diagnosticProvider = undefined;
     lspClient = undefined;
     runner = undefined;
+    outputChannel?.dispose();
+    outputChannel = undefined;
 }

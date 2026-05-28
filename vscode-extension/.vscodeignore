@@ -5,6 +5,16 @@ out/**/*.map
 .eslintrc.json
 tsconfig.json
 .vscode/
-node_modules/
 *.log
 .vscode-test/
+
+# 排除所有 node_modules，但保留 vscode-languageclient
+node_modules/*
+!node_modules/vscode-languageclient/
+!node_modules/vscode-languageclient/**/
+!node_modules/vscode-languageserver-protocol/
+!node_modules/vscode-languageserver-protocol/**/
+!node_modules/minimatch/
+!node_modules/minimatch/**/
+!node_modules/semver/
+!node_modules/semver/**/

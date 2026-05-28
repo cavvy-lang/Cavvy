@@ -1,8 +1,0 @@
-
-#include "text_utils.cay"
-public int main() {
-    String msg = "hello world from cavvy";
-    println(TextUtils.countWords(msg));
-    println(TextUtils.countChar(msg, 'l'));
-    return 0;
-}

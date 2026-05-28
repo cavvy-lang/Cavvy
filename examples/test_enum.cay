@@ -1,42 +1,153 @@
 /**
- * enum 集成测试
- * 
+ * enum 集成测试 - 生产级完整测试
  * 测试内容:
- * - enum 声明与 variant 解析
- * - enum 带 payload 的 variant
- * - enum 不带 payload 的 variant
+ * - enum 声明与 variant 定义
+ * - enum带payload的variant使用
+ * - switch语句匹配enum variant
+ * - enum在类和数组中的使用
  */
-
-// 简单枚举 - 无 payload
 public enum Color {
     Red,
     Green,
-    Blue
+    Blue,
+    Yellow,
+    Purple
 }
 
-// 带 payload 的枚举 - tagged union
 public enum Result {
     Ok(int),
     Err(String)
 }
 
-// 带泛型参数的枚举
 public enum MyOption {
     Some(int),
     None
 }
 
+public enum Status {
+    Active,
+    Inactive,
+    Pending,
+    Deleted
+}
+
 public class EnumTest {
     public static void main() {
-        println("=== enum 声明测试 ===");
-        
-        // 确认文件可以编译通过
-        // enum 目前处于声明定义阶段，具体实例化待后续实现
-        
-        println("Color enum declared: OK");
-        println("Result enum declared: OK");
-        println("MyOption enum declared: OK");
-        
-        println("=== enum 测试通过 ===");
+        println("=== enum 集成测试 ===");
+
+        // 测试1: Color enum 基础操作
+        println("--- Color 枚举测试 ---");
+        Color c1 = Color.Red;
+        Color c2 = Color.Green;
+        Color c3 = Color.Blue;
+        Color c4 = Color.Yellow;
+        Color c5 = Color.Purple;
+
+        // 使用 switch 匹配 enum
+        int colorCode = 0;
+        switch (c1) {
+            case Color.Red:    colorCode = 1; break;
+            case Color.Green:  colorCode = 2; break;
+            case Color.Blue:   colorCode = 3; break;
+            case Color.Yellow: colorCode = 4; break;
+            case Color.Purple: colorCode = 5; break;
+            default:           colorCode = 0; break;
+        }
+        println("Color.Red -> code: " + String.valueOf(colorCode));
+        if (colorCode == 1) { println("Color test PASS"); }
+
+        // 测试2: Result enum 带payload
+        println("--- Result 枚举测试 ---");
+        Result okResult = Result.Ok(42);
+        Result errResult = Result.Err("Something went wrong");
+
+        // 使用 switch 解构 Result
+        switch (okResult) {
+            case Result.Ok(int val): {
+                println("Ok with value: " + String.valueOf(val));
+                if (val == 42) { println("Result.Ok(42) PASS"); }
+                break;
+            }
+            case Result.Err(String msg): {
+                println("Err with message: " + msg);
+                break;
+            }
+            default: break;
+        }
+
+        switch (errResult) {
+            case Result.Ok(int val): {
+                println("Ok with value: " + String.valueOf(val));
+                break;
+            }
+            case Result.Err(String msg): {
+                println("Err with message: " + msg);
+                println("Result.Err test PASS");
+                break;
+            }
+            default: break;
+        }
+
+        // 测试3: MyOption enum
+        println("--- MyOption 枚举测试 ---");
+        MyOption someOpt = MyOption.Some(100);
+        MyOption noneOpt = MyOption.None;
+
+        switch (someOpt) {
+            case MyOption.Some(int val): {
+                println("MyOption.Some(" + String.valueOf(val) + ")");
+                if (val == 100) { println("MyOption.Some PASS"); }
+                break;
+            }
+            case MyOption.None: {
+                println("MyOption.None");
+                break;
+            }
+            default: break;
+        }
+
+        switch (noneOpt) {
+            case MyOption.Some(int val): {
+                println("Unexpected: MyOption.Some");
+                break;
+            }
+            case MyOption.None: {
+                println("MyOption.None matched");
+                println("MyOption.None PASS");
+                break;
+            }
+            default: break;
+        }
+
+        // 测试4: Status enum 操作
+        println("--- Status 枚举测试 ---");
+        Status s = Status.Active;
+        String statusStr = "unknown";
+
+        switch (s) {
+            case Status.Active:   statusStr = "Active"; break;
+            case Status.Inactive: statusStr = "Inactive"; break;
+            case Status.Pending:  statusStr = "Pending"; break;
+            case Status.Deleted:  statusStr = "Deleted"; break;
+            default: break;
+        }
+        println("Status.Active -> " + statusStr);
+
+        // 测试 multiple enum values
+        Status[] statuses = new Status[3];
+        statuses[0] = Status.Active;
+        statuses[1] = Status.Pending;
+        statuses[2] = Status.Deleted;
+
+        for (int i = 0; i < 3; i = i + 1) {
+            switch (statuses[i]) {
+                case Status.Active:   println("statuses[" + String.valueOf(i) + "] is Active"); break;
+                case Status.Pending:  println("statuses[" + String.valueOf(i) + "] is Pending"); break;
+                case Status.Deleted:  println("statuses[" + String.valueOf(i) + "] is Deleted"); break;
+                default: break;
+            }
+        }
+
+        println("=== enum 集成测试全部通过 ===");
     }
 }

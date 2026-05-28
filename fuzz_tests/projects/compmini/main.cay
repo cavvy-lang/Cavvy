@@ -1,9 +1,0 @@
-
-#include "tokenizer.cay"
-public int main() {
-    println(Tokenizer.countTokens("int x = 42;"));
-    println(Tokenizer.countTokens("x = x + 1;"));
-    println(Tokenizer.hasOperator("int a = 5 + 3;", '+'));
-    println(Tokenizer.hasOperator("println(x);", '-'));
-    return 0;
-}

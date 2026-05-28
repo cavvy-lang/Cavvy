@@ -233,8 +233,8 @@ pub enum Stmt {
     Switch(SwitchStmt),
     Block(Block),
     Scope(ScopeStmt),  // 0.5.0.0: scope 栈分配块
-    Break(Option<String>),  // 可选的标签
-    Continue(Option<String>),  // 可选的标签
+    Break(Option<String>, SourceLocation),  // 可选的标签 + 源码位置
+    Continue(Option<String>, SourceLocation),  // 可选的标签 + 源码位置
     InlineIr(InlineIrStmt),  // 内联IR语句块
 }
 
@@ -297,11 +297,58 @@ pub struct DoWhileStmt {
     pub loc: SourceLocation,
 }
 
+/// switch case 值 - 支持整数常量或 enum variant
+#[derive(Debug, Clone)]
+pub enum CaseValue {
+    Integer(i64),
+    EnumVariant { enum_name: String, variant_name: String },
+}
+
+impl CaseValue {
+    /// 获取整数常量值（如果是Integer变体）
+    pub fn as_integer(&self) -> Option<i64> {
+        match self {
+            CaseValue::Integer(v) => Some(*v),
+            _ => None,
+        }
+    }
+
+    /// 获取enum variant信息（如果是EnumVariant变体）
+    pub fn as_enum_variant(&self) -> Option<(&str, &str)> {
+        match self {
+            CaseValue::EnumVariant { enum_name, variant_name } => {
+                Some((enum_name.as_str(), variant_name.as_str()))
+            }
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for CaseValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CaseValue::Integer(v) => write!(f, "{}", v),
+            CaseValue::EnumVariant { enum_name, variant_name } => {
+                write!(f, "{}.{}", enum_name, variant_name)
+            }
+        }
+    }
+}
+
+/// enum 解构绑定信息（case EnumName.Variant(Type var_name): 中的变量绑定）
+#[derive(Debug, Clone)]
+pub struct PayloadBinding {
+    pub var_type: Type,
+    pub var_name: String,
+}
+
 /// switch case 分支
 #[derive(Debug, Clone)]
 pub struct Case {
-    pub value: i64,
+    pub value: CaseValue,
     pub body: Vec<Stmt>,
+    pub payload_binding: Option<PayloadBinding>,
+    pub loc: SourceLocation,
 }
 
 /// switch 语句

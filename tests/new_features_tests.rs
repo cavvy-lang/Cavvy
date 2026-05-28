@@ -38,11 +38,13 @@ fn test_enum_declaration() {
     assert_output_contains(
         &output,
         &[
-            "=== enum 声明测试 ===",
-            "Color enum declared: OK",
-            "Result enum declared: OK",
-            "MyOption enum declared: OK",
-            "=== enum 测试通过 ===",
+            "=== enum 集成测试 ===",
+            "Color test PASS",
+            "Result.Ok(42) PASS",
+            "Result.Err test PASS",
+            "MyOption.Some PASS",
+            "MyOption.None PASS",
+            "=== enum 集成测试全部通过 ===",
         ],
         "test_enum",
     );

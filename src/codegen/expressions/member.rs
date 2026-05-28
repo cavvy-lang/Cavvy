@@ -109,6 +109,20 @@ impl IRGenerator {
                     return Ok(format!("{} {}", field_info.llvm_type, temp));
                 }
             }
+            
+            // 检查是否是 enum variant 访问: EnumName.VariantName
+            if let Some(ref registry) = self.type_registry {
+                if let Some(enum_info) = registry.get_enum(class_name.as_ref()) {
+                    if let Some(idx) = enum_info.variants.iter().position(|v| v.name == member.member) {
+                        // 构造 struct { i32 discriminant, i64 payload } 值
+                        let struct_val = self.new_temp();
+                        self.emit_line(&format!("  {} = insertvalue {{ i32, i64 }} undef, i32 {}, 0", struct_val, idx));
+                        let struct_val2 = self.new_temp();
+                        self.emit_line(&format!("  {} = insertvalue {{ i32, i64 }} {}, i64 0, 1", struct_val2, struct_val));
+                        return Ok(format!("{{ i32, i64 }} {}", struct_val2));
+                    }
+                }
+            }
         }
 
         // 处理实例字段访问: this.fieldName 或 obj.fieldName 或 super.fieldName

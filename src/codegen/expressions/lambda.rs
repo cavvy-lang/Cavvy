@@ -4,7 +4,8 @@
 
 use crate::codegen::context::IRGenerator;
 use crate::ast::*;
-use crate::error::cayResult;
+use crate::error::{cayResult, codegen_error_at};
+use crate::error::SourceLocation;
 use crate::types::Type;
 
 impl IRGenerator {
@@ -182,7 +183,7 @@ impl IRGenerator {
                 
                 // 如果表达式类型与返回类型不匹配，进行转换
                 if value_type != llvm_return_type {
-                    let converted = self.convert_type(&val_str, &value_type, llvm_return_type)?;
+                    let converted = self.convert_type(&val_str, &value_type, llvm_return_type, lambda.loc.clone())?;
                     self.emit_line(&format!("  ret {} {}", llvm_return_type, converted));
                 } else {
                     self.emit_line(&format!("  ret {} {}", llvm_return_type, val_str));
@@ -224,7 +225,7 @@ impl IRGenerator {
     }
 
     /// 类型转换辅助函数
-    fn convert_type(&mut self, val: &str, from_type: &str, to_type: &str) -> cayResult<String> {
+    fn convert_type(&mut self, val: &str, from_type: &str, to_type: &str, loc: SourceLocation) -> cayResult<String> {
         if from_type == to_type {
             return Ok(val.to_string());
         }
@@ -298,7 +299,7 @@ impl IRGenerator {
         }
 
         // 其他不支持的转换
-        Err(crate::error::codegen_error(format!(
+        Err(codegen_error_at(loc, format!(
             "Unsupported type conversion from {} to {}", from_type, to_type
         )))
     }

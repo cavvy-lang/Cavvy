@@ -11,6 +11,10 @@
 
 use std::process::Command;
 use std::path::Path;
+use std::sync::Mutex;
+
+/// CavvyN 测试互斥锁 - 所有 CavvyN 测试共享同一目录，必须串行执行
+static CAVVYN_LOCK: Mutex<()> = Mutex::new(());
 
 /// CavvyN 项目路径
 const CAVVYN_PATH: &str = "examples/CavvyN";
@@ -59,6 +63,7 @@ fn test_cavvyn_build_verbose() {
         eprintln!("跳过测试: CavvyN 子模块不存在");
         return;
     }
+    let _lock = CAVVYN_LOCK.lock().unwrap();
 
     // 确保 target 目录存在
     let target_dir = Path::new(CAVVYN_PATH).join("target");
@@ -111,6 +116,7 @@ fn test_cavvyn_test() {
         eprintln!("跳过测试: CavvyN 子模块不存在");
         return;
     }
+    let _lock = CAVVYN_LOCK.lock().unwrap();
 
     // 确保 target 目录存在
     let target_dir = Path::new(CAVVYN_PATH).join("target");
@@ -164,6 +170,7 @@ fn test_cavvyn_run() {
         eprintln!("跳过测试: CavvyN 子模块不存在");
         return;
     }
+    let _lock = CAVVYN_LOCK.lock().unwrap();
 
     // 确保 target 目录存在
     let target_dir = Path::new(CAVVYN_PATH).join("target");
@@ -213,6 +220,7 @@ fn test_cavvyn_info() {
         eprintln!("跳过测试: CavvyN 子模块不存在");
         return;
     }
+    let _lock = CAVVYN_LOCK.lock().unwrap();
 
     let cavly_path = get_cavly_path();
     let output = Command::new(&cavly_path)
@@ -243,6 +251,7 @@ fn test_cavvyn_clean() {
         eprintln!("跳过测试: CavvyN 子模块不存在");
         return;
     }
+    let _lock = CAVVYN_LOCK.lock().unwrap();
 
     let cavly_path = get_cavly_path();
 
@@ -284,6 +293,7 @@ fn test_cavvyn_repeated_build() {
         eprintln!("跳过测试: CavvyN 子模块不存在");
         return;
     }
+    let _lock = CAVVYN_LOCK.lock().unwrap();
 
     // 确保 target 目录存在
     let target_dir = Path::new(CAVVYN_PATH).join("target");
@@ -323,6 +333,7 @@ fn test_cavvyn_full_workflow() {
         eprintln!("跳过测试: CavvyN 子模块不存在");
         return;
     }
+    let _lock = CAVVYN_LOCK.lock().unwrap();
 
     // 确保 target 目录存在
     let target_dir = Path::new(CAVVYN_PATH).join("target");

@@ -4,7 +4,7 @@
 
 use crate::codegen::context::IRGenerator;
 use crate::ast::*;
-use crate::error::{cayResult, codegen_error, codegen_error_at};
+use crate::error::{cayResult, codegen_error_at};
 
 impl IRGenerator {
     /// 提升整数操作数到相同类型
@@ -169,7 +169,7 @@ impl IRGenerator {
                     }
                     // 回退到旧系统
                     let var_type = self.var_types.get(name_str)
-                        .ok_or_else(|| codegen_error(format!("Variable '{}' not found", name_str)))?
+                        .ok_or_else(|| codegen_error_at(expr.location().clone(), format!("Variable '{}' not found", name_str)))?
                         .clone();
                     (var_type, name_str.to_string(), false)
                 };
@@ -184,7 +184,7 @@ impl IRGenerator {
                 let (ty, ptr) = self.get_member_field_pointer(member)?;
                 Ok((ty, ptr, false))
             }
-            _ => Err(codegen_error("Invalid lvalue expression".to_string()))
+            _ => Err(codegen_error_at(expr.location().clone(), "Invalid lvalue expression".to_string()))
         }
     }
     
@@ -450,7 +450,7 @@ impl IRGenerator {
             }
         }
 
-        Err(codegen_error(format!(
+        Err(codegen_error_at(member.loc.clone(), format!(
             "Cannot get nested field pointer for member access: {} (object class: {:?})",
             member.member, obj_class_name
         )))
@@ -532,7 +532,7 @@ impl IRGenerator {
             }
         }
 
-        Err(codegen_error(format!(
+        Err(codegen_error_at(member.loc.clone(), format!(
             "Cannot get nested field pointer for member access: {} (object class: {:?})",
             member.member, obj_class_name
         )))

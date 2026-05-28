@@ -1,6 +1,51 @@
+/**
+ * new 表达式集成测试
+ * 测试内容: new 创建数组、new 创建对象、new 表达式作为参数
+ */
 public class TestNewExpr {
+    public static int sumArray(int[] arr) {
+        int total = 0;
+        for (int i = 0; i < arr.length; i = i + 1) {
+            total = total + arr[i];
+        }
+        return total;
+    }
+
     public static void main() {
-        // 测试 new int[5] 作为表达式
-        new int[5];
+        println("=== new 表达式测试 ===");
+
+        // new 作为独立表达式
+        int[] arr1 = new int[5];
+        println("new int[5] length = " + String.valueOf(arr1.length));
+
+        // new 表达式直接使用
+        int[] arr2 = new int[3];
+        arr2[0] = 10;
+        arr2[1] = 20;
+        arr2[2] = 30;
+
+        // new 表达式作为函数参数
+        int result = sumArray(arr2);
+        println("sumArray(new int[3] after init) = " + String.valueOf(result));
+
+        // new 多维数组表达式
+        int[][] matrix = new int[2][2];
+        matrix[0][0] = 1;
+        matrix[0][1] = 2;
+        matrix[1][0] = 3;
+        matrix[1][1] = 4;
+        println("matrix[0][0] = " + String.valueOf(matrix[0][0]));
+        println("matrix[1][1] = " + String.valueOf(matrix[1][1]));
+
+        // new 表达式赋值
+        int x = 5;
+        int[] dynamic = new int[x];
+        println("new int[x] with x=5, length = " + String.valueOf(dynamic.length));
+
+        if (result == 60) {
+            println("sumArray 验证通过");
+        }
+
+        println("=== new 表达式测试完成 ===");
     }
 }

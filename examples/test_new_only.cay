@@ -1,7 +1,51 @@
+/**
+ * new 变量大小数组测试
+ * 测试内容: 使用变量作为 new 表达式参数创建动态大小数组
+ */
 public class TestNewOnly {
     public static void main() {
-        // 只测试 new int[5] 表达式
+        println("=== new 变量大小数组测试 ===");
+
+        // 使用变量确定数组大小
         int x = 5;
         int[] arr = new int[x];
+        println("new int[x] with x=5, length = " + String.valueOf(arr.length));
+
+        // 填充并验证
+        for (int i = 0; i < arr.length; i = i + 1) {
+            arr[i] = i * i;
+        }
+
+        println("数组内容 (i^2):");
+        for (int i = 0; i < arr.length; i = i + 1) {
+            print(String.valueOf(arr[i]));
+            print(" ");
+        }
+        println("");
+
+        // 验证第0和第4个元素
+        if (arr[0] == 0) { println("arr[0]=0 验证通过"); }
+        if (arr[4] == 16) { println("arr[4]=16 验证通过"); }
+
+        // 使用表达式作为大小
+        int n = 3;
+        int[] arr2 = new int[n * 2];
+        println("new int[n*2] with n=3, length = " + String.valueOf(arr2.length));
+
+        // 使用循环变量作为大小
+        for (int s = 1; s <= 3; s = s + 1) {
+            int[] temp = new int[s];
+            temp[0] = s * 100;
+            println("size=" + String.valueOf(s) + ", temp[0]=" + String.valueOf(temp[0]));
+        }
+
+        // 大数组测试
+        int big = 100;
+        int[] large = new int[big];
+        large[0] = 1;
+        large[big - 1] = 999;
+        println("大数组 length=" + String.valueOf(large.length) + ", first=" + String.valueOf(large[0]) + ", last=" + String.valueOf(large[big - 1]));
+
+        println("=== new 变量大小数组测试完成 ===");
     }
 }

@@ -4,7 +4,7 @@
 
 use crate::codegen::context::IRGenerator;
 use crate::ast::*;
-use crate::error::{cayResult, codegen_error};
+use crate::error::{cayResult, codegen_error_at};
 
 impl IRGenerator {
     /// 生成一元表达式代码
@@ -45,7 +45,7 @@ impl IRGenerator {
                         temp, op_type, op_val));
                 } else {
                     // 浮点数不支持位取反，但类型系统应该已经阻止了这种情况
-                    return Err(codegen_error("Bitwise NOT not supported for floating point".to_string()));
+                    return Err(codegen_error_at(unary.loc.clone(), "Bitwise NOT not supported for floating point".to_string()));
                 }
             }
             UnaryOp::PreInc | UnaryOp::PostInc | UnaryOp::PreDec | UnaryOp::PostDec => {
@@ -160,7 +160,7 @@ impl IRGenerator {
         // 解析指针类型，获取指向的类型
         // op_type 应该是 "i32*" 或 "i64*" 等格式
         if !op_type.ends_with('*') {
-            return Err(codegen_error(format!("Cannot dereference non-pointer type: {}", op_type)));
+            return Err(codegen_error_at(unary.loc.clone(), format!("Cannot dereference non-pointer type: {}", op_type)));
         }
         
         // 提取指向的类型（去掉末尾的*）

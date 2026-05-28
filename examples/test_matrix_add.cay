@@ -1,1 +1,68 @@
-public class TestMatrixAdd
+/**
+ * 矩阵加法集成测试
+ * 测试内容: 二维数组基本操作、嵌套循环、矩阵元素加法
+ */
+public class MatrixAddTest {
+    public static void main() {
+        println("=== 矩阵加法测试 ===");
+
+        // 矩阵 A
+        int[][] a = {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}};
+        // 矩阵 B
+        int[][] b = {{9, 8, 7}, {6, 5, 4}, {3, 2, 1}};
+        // 结果矩阵
+        int[][] c = new int[3][3];
+
+        // 计算 C = A + B
+        for (int i = 0; i < 3; i = i + 1) {
+            for (int j = 0; j < 3; j = j + 1) {
+                c[i][j] = a[i][j] + b[i][j];
+            }
+        }
+
+        // 输出结果
+        println("矩阵 A:");
+        for (int i = 0; i < 3; i = i + 1) {
+            for (int j = 0; j < 3; j = j + 1) {
+                print(a[i][j]);
+                print(" ");
+            }
+            println("");
+        }
+
+        println("矩阵 B:");
+        for (int i = 0; i < 3; i = i + 1) {
+            for (int j = 0; j < 3; j = j + 1) {
+                print(b[i][j]);
+                print(" ");
+            }
+            println("");
+        }
+
+        println("矩阵 C = A + B:");
+        for (int i = 0; i < 3; i = i + 1) {
+            for (int j = 0; j < 3; j = j + 1) {
+                print(c[i][j]);
+                print(" ");
+            }
+            println("");
+        }
+
+        // 验证: 每个元素应该等于 10 (1+9, 2+8, ...)
+        int allTen = 1;
+        for (int i = 0; i < 3; i = i + 1) {
+            for (int j = 0; j < 3; j = j + 1) {
+                if (c[i][j] != 10) {
+                    allTen = 0;
+                }
+            }
+        }
+        if (allTen == 1) {
+            println("验证通过: 所有元素均为 10");
+        } else {
+            println("验证失败!");
+        }
+
+        println("=== 矩阵加法测试完成 ===");
+    }
+}

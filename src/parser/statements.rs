@@ -82,7 +82,7 @@ pub fn parse_statement(parser: &mut Parser) -> cayResult<Stmt> {
         crate::lexer::Token::Scope => parse_scope_statement(parser),
         crate::lexer::Token::Return => parse_return_statement(parser),
         crate::lexer::Token::Break => {
-            let _loc = parser.current_loc();
+            let loc = parser.current_loc();
             parser.advance();
             
             // 检查是否有标签
@@ -94,10 +94,10 @@ pub fn parse_statement(parser: &mut Parser) -> cayResult<Stmt> {
             };
             
             parser.consume(&crate::lexer::Token::Semicolon, "期望 ';'\n提示: break 语句应以 ';' 结束")?;
-            Ok(Stmt::Break(label))
+            Ok(Stmt::Break(label, loc))
         }
         crate::lexer::Token::Continue => {
-            let _loc = parser.current_loc();
+            let loc = parser.current_loc();
             parser.advance();
             
             // 检查是否有标签
@@ -109,7 +109,7 @@ pub fn parse_statement(parser: &mut Parser) -> cayResult<Stmt> {
             };
             
             parser.consume(&crate::lexer::Token::Semicolon, "期望 ';'\n提示: continue 语句应以 ';' 结束")?;
-            Ok(Stmt::Continue(label))
+            Ok(Stmt::Continue(label, loc))
         }
         crate::lexer::Token::InlineIr => parse_inline_ir_statement(parser),
         _ => {
@@ -385,25 +385,46 @@ pub fn parse_switch_statement(parser: &mut Parser) -> cayResult<Stmt> {
     
     while !parser.check(&crate::lexer::Token::RBrace) && !parser.is_at_end() {
         if parser.match_token(&crate::lexer::Token::Case) {
-            // 解析 case 值（支持整数和字符常量）
-            let value = match *parser.current_token() {
+            // 解析 case 值（支持整数、字符常量和 enum variant）
+            let case_value = match *parser.current_token() {
                 crate::lexer::Token::IntegerLiteral(Some((v, _))) => {
                     let val = v;  // v 是 i64
                     parser.advance();
-                    val
+                    CaseValue::Integer(val)
                 }
                 crate::lexer::Token::CharLiteral(Some(c)) => {
                     let val = c as i64;  // 字符转换为整数
                     parser.advance();
-                    val
+                    CaseValue::Integer(val)
+                }
+                crate::lexer::Token::Identifier(ref enum_name) => {
+                    // 可能是 enum variant: Color.Red 或带解构: Result.Ok(int val)
+                    let enum_name = enum_name.clone();
+                    parser.advance();
+                    
+                    // 检查是否是 MemberAccess: EnumName.VariantName
+                    if parser.check(&crate::lexer::Token::Dot) {
+                        parser.advance(); // consume '.'
+                        
+                        if let crate::lexer::Token::Identifier(variant_name) = parser.current_token().clone() {
+                            parser.advance();
+                            CaseValue::EnumVariant { enum_name, variant_name }
+                        } else {
+                            return Err(parser.error(&format!(
+                                "期望 enum variant 名称\n提示: case 标签格式为 'EnumName.VariantName'"
+                            )));
+                        }
+                    } else {
+                        // 单独的标识符，可能是常量（未来扩展）
+                        return Err(parser.error(&format!(
+                            "case 标签不支持单独的标识符 '{}'\n提示: 应使用整数常量（如 case 1:）或 enum variant（如 case Color.Red:）",
+                            enum_name
+                        )));
+                    }
                 }
                 _ => {
                     let current_token = parser.current_token();
                     let (token_desc, suggestion) = match current_token {
-                        crate::lexer::Token::Identifier(name) => (
-                            format!("标识符('{}')", name),
-                            format!("case 标签必须是整数常量。可能的问题:\n    - 使用了变量 '{}', 应使用常量，如: case 1:\n    - 需要定义常量: final int {} = 1;", name, name.to_uppercase())
-                        ),
                         crate::lexer::Token::StringLiteral(Some(s)) => (
                             format!("字符串(\"{}\")", s),
                             "case 标签不支持字符串。可能的问题:\n    - 应使用整数常量，如: case 1:\n    - 如果需要字符串匹配，考虑使用 if-else 链".to_string()
@@ -436,16 +457,31 @@ pub fn parse_switch_statement(parser: &mut Parser) -> cayResult<Stmt> {
                             let token_name = super::utils::get_token_name(current_token);
                             (
                                 token_name.clone(),
-                                format!("case 标签必须是整数常量。可能的问题:\n    - 使用了不合法的值\n    - 应使用整数常量，如: case 1:")
+                                format!("case 标签必须是整数常量或 enum variant。可能的问题:\n    - 使用了不合法的值\n    - 应使用整数常量，如: case 1:\n    - 或使用 enum variant，如: case Color.Red:")
                             )
                         }
                     };
                     return Err(parser.error(&format!(
-                        "期望整数常量，但遇到了 {}\n提示: {}",
+                        "期望整数常量或 enum variant，但遇到了 {}\n提示: {}",
                         token_desc, suggestion
                     )));
                 }
             };
+            
+            // 检查是否有枚举 variant 解构绑定: case EnumName.Variant(Type var_name):
+            let mut payload_binding: Option<PayloadBinding> = None;
+            if matches!(case_value, CaseValue::EnumVariant { .. }) && parser.check(&crate::lexer::Token::LParen) {
+                parser.advance(); // consume '('
+                let var_type = super::types::parse_type(parser)?;
+                if let crate::lexer::Token::Identifier(var_name) = parser.current_token().clone() {
+                    parser.advance();
+                    parser.consume(&crate::lexer::Token::RParen, "期望 ')'\n提示: enum variant 解构模式应以 ')' 结束，例如: case Result.Ok(int val):")?;
+                    payload_binding = Some(PayloadBinding { var_type, var_name });
+                } else {
+                    return Err(parser.error("期望变量名\n提示: enum variant 解构格式为 'case EnumName.Variant(Type varName):'"));
+                }
+            }
+            
             parser.consume(&crate::lexer::Token::Colon, "期望 ':'\n提示: case 值后应跟 ':'，例如: case 1:")?;
             
             // 解析 case 体（直到遇到另一个 case、default 或 }）
@@ -455,7 +491,7 @@ pub fn parse_switch_statement(parser: &mut Parser) -> cayResult<Stmt> {
                 body.push(parse_statement(parser)?);
             }
             
-            cases.push(Case { value, body });
+            cases.push(Case { value: case_value, body, payload_binding, loc: parser.current_loc() });
         } else if parser.match_token(&crate::lexer::Token::Default) {
             parser.consume(&crate::lexer::Token::Colon, "期望 ':'\n提示: default 后应跟 ':'，例如: default:")?;
 

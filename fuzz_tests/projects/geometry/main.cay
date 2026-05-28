@@ -1,8 +1,0 @@
-
-#include "geo_lib.cay"
-public int main() {
-    println(GeoLib.circleArea(10.0));
-    println(GeoLib.rectArea(5, 8));
-    println(GeoLib.triangleArea(6.0, 4.0));
-    return 0;
-}

@@ -4,7 +4,7 @@
 
 use crate::codegen::context::IRGenerator;
 use crate::ast::*;
-use crate::error::{cayResult, codegen_error, codegen_error_at};
+use crate::error::{cayResult, codegen_error_at};
 
 impl IRGenerator {
     /// 生成赋值表达式代码

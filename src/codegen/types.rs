@@ -32,7 +32,18 @@ impl IRGenerator {
             Type::Bool => "i1".to_string(),
             Type::String => "i8*".to_string(),
             Type::Char => "i8".to_string(),
-            Type::Object(_) => "i8*".to_string(),
+            Type::Object(name) => {
+                // 检查是否是 enum 类型 - enum 存储为 struct { i32 discriminant, i64 payload }
+                if let Some(ref registry) = self.type_registry {
+                    if registry.get_enum(name).is_some() {
+                        "{ i32, i64 }".to_string()
+                    } else {
+                        "i8*".to_string()
+                    }
+                } else {
+                    "i8*".to_string()
+                }
+            },
             Type::Array(inner) => {
                 // LLVM 不允许 void*，使用 i8* 代替
                 if matches!(inner.as_ref(), Type::CVoid) {
@@ -89,6 +100,34 @@ impl IRGenerator {
 
     /// 解析类型化的值，返回 (类型, 值)
     pub fn parse_typed_value(&self, typed_val: &str) -> (String, String) {
+        // Handle struct types like { i32, i64 } or { i32, i64 }* which contain spaces
+        if typed_val.starts_with('{') {
+            // Find matching closing brace
+            let mut depth = 0;
+            let mut brace_end = 0;
+            for (i, ch) in typed_val.char_indices() {
+                if ch == '{' { depth += 1; }
+                else if ch == '}' { depth -= 1; }
+                if depth == 0 {
+                    brace_end = i + 1;
+                    break;
+                }
+            }
+            if brace_end > 0 {
+                // Check for pointer suffix (*) right after closing brace
+                let after_brace = typed_val[brace_end..].trim_start();
+                let type_end = if after_brace.starts_with('*') {
+                    brace_end + (typed_val[brace_end..].find('*').unwrap_or(0) + 1)
+                } else {
+                    brace_end
+                };
+                let type_part = &typed_val[..type_end];
+                let value_part = typed_val[type_end..].trim();
+                if !value_part.is_empty() {
+                    return (type_part.to_string(), value_part.to_string());
+                }
+            }
+        }
         let parts: Vec<&str> = typed_val.splitn(2, ' ').collect();
         if parts.len() == 2 {
             (parts[0].to_string(), parts[1].to_string())

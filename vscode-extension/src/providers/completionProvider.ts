@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
 
 /**
  * 代码补全提供器
@@ -13,15 +15,17 @@ export class CavvyCompletionProvider implements vscode.CompletionItemProvider {
         // 修饰符
         'static', 'final', 'abstract', 'native', 'Override',
         // 类型声明
-        'class', 'interface', 'enum', 'extends', 'implements', 'namespace',
+        'class', 'interface', 'enum', 'extends', 'implements', 'namespace', 'using',
         // 基本类型
         'void', 'int', 'long', 'float', 'double', 'bool', 'boolean', 'char', 'string',
         // 现代类型声明
         'var', 'let', 'auto',
         // 控制流
         'if', 'else', 'while', 'for', 'do', 'switch', 'case', 'default', 'break', 'continue', 'return',
+        // 异常处理
+        'try', 'catch', 'finally', 'throw',
         // 其他关键字
-        'new', 'null', 'true', 'false', 'this', 'super', 'instanceof', 'extern', 'scope'
+        'new', 'null', 'true', 'false', 'this', 'super', 'instanceof', 'extern', 'scope', 'import', 'package'
     ];
 
     // FFI 类型
@@ -376,8 +380,8 @@ export class CavvyCompletionProvider implements vscode.CompletionItemProvider {
     provideCompletionItems(
         document: vscode.TextDocument,
         position: vscode.Position,
-        token: vscode.CancellationToken,
-        context: vscode.CompletionContext
+        _token: vscode.CancellationToken,
+        _context: vscode.CompletionContext
     ): vscode.ProviderResult<vscode.CompletionItem[] | vscode.CompletionList> {
 
         const completions: vscode.CompletionItem[] = [];
@@ -399,6 +403,13 @@ export class CavvyCompletionProvider implements vscode.CompletionItemProvider {
                 item.sortText = '0' + directive.name; // 让预处理器指令排在前面
                 completions.push(item);
             });
+
+            // 检查是否在 #include 语句中，提供文件路径补全
+            const includeMatch = lineText.match(/^\s*#include\s+["<]([^">]*)$/);
+            if (includeMatch) {
+                const fileCompletions = this.getIncludeFileCompletions(document, includeMatch[1]);
+                completions.push(...fileCompletions);
+            }
         }
 
         // 检查是否在 extern 块内
@@ -420,41 +431,8 @@ export class CavvyCompletionProvider implements vscode.CompletionItemProvider {
             });
         }
 
-        // 添加关键字
-        this.keywords.forEach(keyword => {
-            const item = new vscode.CompletionItem(keyword, vscode.CompletionItemKind.Keyword);
-            item.detail = '关键字';
-            completions.push(item);
-        });
-
-        // 添加 FFI 类型（全局）
-        this.ffiTypes.forEach(type => {
-            const item = new vscode.CompletionItem(type, vscode.CompletionItemKind.TypeParameter);
-            item.detail = 'FFI 类型';
-            item.documentation = new vscode.MarkdownString(`Cavvy FFI 类型: ${type}`);
-            completions.push(item);
-        });
-
-        // 添加内置方法
-        this.builtinMethods.forEach(method => {
-            const item = new vscode.CompletionItem(method.name, vscode.CompletionItemKind.Function);
-            item.detail = method.detail;
-            item.documentation = new vscode.MarkdownString(method.documentation);
-            item.insertText = method.name + '($1)';
-            item.command = { command: 'editor.action.triggerParameterHints', title: '触发参数提示' };
-            completions.push(item);
-        });
-
-        // 添加代码片段
-        this.snippets.forEach(snippet => {
-            const item = new vscode.CompletionItem(snippet.name, vscode.CompletionItemKind.Snippet);
-            item.detail = snippet.detail;
-            if (snippet.documentation) {
-                item.documentation = new vscode.MarkdownString(snippet.documentation);
-            }
-            item.insertText = new vscode.SnippetString(snippet.snippet);
-            completions.push(item);
-        });
+        // 注意：关键字、内置方法和代码片段现在由 LSP 服务器提供
+        // 这里只提供扩展端特有的补全（如预处理器指令、文件路径等）
 
         // 从文档中提取用户定义的符号
         const userSymbols = this.extractUserDefinedSymbols(document);
@@ -564,5 +542,97 @@ export class CavvyCompletionProvider implements vscode.CompletionItemProvider {
         }
 
         return symbols;
+    }
+
+    /**
+     * 获取 #include 的文件路径补全
+     * @param document 当前文档
+     * @param partialPath 已输入的部分路径
+     * @returns 补全项数组
+     */
+    private getIncludeFileCompletions(document: vscode.TextDocument, partialPath: string): vscode.CompletionItem[] {
+        const completions: vscode.CompletionItem[] = [];
+        const documentDir = path.dirname(document.fileName);
+
+        // 搜索路径列表
+        const searchPaths: string[] = [
+            documentDir,
+            path.join(documentDir, 'caylibs'),
+            path.join(documentDir, '..', 'caylibs'),
+        ];
+
+        // 如果工作区有 caylibs 目录，也加入搜索路径
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (workspaceFolders) {
+            for (const folder of workspaceFolders) {
+                const caylibsPath = path.join(folder.uri.fsPath, 'caylibs');
+                if (fs.existsSync(caylibsPath) && !searchPaths.includes(caylibsPath)) {
+                    searchPaths.push(caylibsPath);
+                }
+            }
+        }
+
+        // 确定搜索目录和文件名前缀
+        let searchDir: string;
+        let filePrefix: string;
+
+        if (partialPath.includes('/') || partialPath.includes('\\')) {
+            // 路径包含目录分隔符
+            const lastSepIndex = Math.max(partialPath.lastIndexOf('/'), partialPath.lastIndexOf('\\'));
+            const dirPart = partialPath.substring(0, lastSepIndex);
+            filePrefix = partialPath.substring(lastSepIndex + 1);
+
+            // 尝试相对当前文件目录
+            searchDir = path.join(documentDir, dirPart);
+            if (!fs.existsSync(searchDir)) {
+                // 尝试在每个搜索路径下查找
+                for (const basePath of searchPaths) {
+                    const tryPath = path.join(basePath, dirPart);
+                    if (fs.existsSync(tryPath)) {
+                        searchDir = tryPath;
+                        break;
+                    }
+                }
+            }
+        } else {
+            // 只有文件名前缀，没有目录
+            searchDir = documentDir;
+            filePrefix = partialPath;
+        }
+
+        // 如果搜索目录存在，列出匹配的文件
+        if (fs.existsSync(searchDir) && fs.statSync(searchDir).isDirectory()) {
+            try {
+                const entries = fs.readdirSync(searchDir, { withFileTypes: true });
+
+                for (const entry of entries) {
+                    const entryName = entry.name;
+
+                    // 检查是否匹配前缀
+                    if (!entryName.toLowerCase().startsWith(filePrefix.toLowerCase())) {
+                        continue;
+                    }
+
+                    if (entry.isDirectory()) {
+                        // 添加目录项
+                        const item = new vscode.CompletionItem(entryName + '/', vscode.CompletionItemKind.Folder);
+                        item.detail = '目录';
+                        item.insertText = entryName + '/';
+                        item.command = { command: 'editor.action.triggerSuggest', title: '继续补全' };
+                        completions.push(item);
+                    } else if (entryName.endsWith('.cay') || entryName.endsWith('.h') || entryName.endsWith('.c')) {
+                        // 添加文件项
+                        const item = new vscode.CompletionItem(entryName, vscode.CompletionItemKind.File);
+                        item.detail = '头文件';
+                        item.insertText = entryName;
+                        completions.push(item);
+                    }
+                }
+            } catch (error) {
+                // 忽略读取目录错误
+            }
+        }
+
+        return completions;
     }
 }

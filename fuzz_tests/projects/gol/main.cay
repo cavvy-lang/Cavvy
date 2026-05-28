@@ -1,9 +1,0 @@
-
-#include "gol_lib.cay"
-public int main() {
-    int[][] g = {{0,1,0},{0,0,1},{1,1,1}};
-    println(GoLLib.countNeighbors(g, 1, 1));
-    println(GoLLib.countNeighbors(g, 0, 0));
-    println(GoLLib.countNeighbors(g, 2, 2));
-    return 0;
-}

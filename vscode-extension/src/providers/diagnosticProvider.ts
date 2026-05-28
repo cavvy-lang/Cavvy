@@ -10,15 +10,25 @@ const execAsync = promisify(exec);
  * 用于检测 Cavvy 代码中的语法错误
  */
 export class CavvyDiagnosticProvider {
-    
+
     private diagnosticCollection: vscode.DiagnosticCollection;
     private disposables: vscode.Disposable[] = [];
-    private timeout: NodeJS.Timeout | undefined;
+    // 每个文档独立的定时器，避免快速输入时的冲突
+    private documentTimeouts: Map<string, NodeJS.Timeout> = new Map();
     private config: vscode.WorkspaceConfiguration;
+    private outputChannel: vscode.OutputChannel;
+    // 跟踪每个文档的最后诊断时间，用于清理陈旧的诊断
+    private lastDiagnosticTime: Map<string, number> = new Map();
+    // 定期清理间隔（毫秒）
+    private readonly CLEANUP_INTERVAL = 30000; // 30秒
+    private cleanupTimer: NodeJS.Timeout | undefined;
+    // 记录每个文档的版本号，避免旧检查覆盖新结果
+    private documentVersions: Map<string, number> = new Map();
 
     constructor() {
         this.diagnosticCollection = vscode.languages.createDiagnosticCollection('cavvy');
         this.config = vscode.workspace.getConfiguration('cavvyAnalyzer');
+        this.outputChannel = vscode.window.createOutputChannel('Cavvy Diagnostics');
     }
 
     /**
@@ -47,7 +57,7 @@ export class CavvyDiagnosticProvider {
         context.subscriptions.push(onDidSaveDisposable);
         this.disposables.push(onDidSaveDisposable);
 
-        // 监听文档关闭事件
+        // 监听文档关闭事件 - 清除该文档的诊断
         const onDidCloseDisposable = vscode.workspace.onDidCloseTextDocument(
             (document) => this.onDocumentClose(document)
         );
@@ -56,10 +66,65 @@ export class CavvyDiagnosticProvider {
 
         // 初始化时检查所有已打开的文档
         vscode.workspace.textDocuments.forEach((doc) => {
-            if (doc.languageId === 'cavvy') {
+            if (this.isCavvyFile(doc)) {
                 this.scheduleCheck(doc);
             }
         });
+
+        // 启动定期清理定时器
+        this.startCleanupTimer();
+
+        this.log('诊断提供器已激活');
+    }
+
+    /**
+     * 启动定期清理定时器
+     */
+    private startCleanupTimer(): void {
+        this.cleanupTimer = setInterval(() => {
+            this.cleanupStaleDiagnostics();
+        }, this.CLEANUP_INTERVAL);
+    }
+
+    /**
+     * 清理陈旧的诊断信息
+     */
+    private cleanupStaleDiagnostics(): void {
+        const now = Date.now();
+        const staleThreshold = this.CLEANUP_INTERVAL * 2; // 60秒
+
+        for (const [uri, lastTime] of this.lastDiagnosticTime.entries()) {
+            if (now - lastTime > staleThreshold) {
+                // 清除陈旧的诊断
+                const uriObj = vscode.Uri.parse(uri);
+                this.diagnosticCollection.delete(uriObj);
+                this.lastDiagnosticTime.delete(uri);
+                this.log(`清理陈旧诊断: ${uri}`);
+            }
+        }
+    }
+
+    /**
+     * 更新文档的诊断时间戳
+     */
+    private updateDiagnosticTimestamp(document: vscode.TextDocument): void {
+        this.lastDiagnosticTime.set(document.uri.toString(), Date.now());
+    }
+
+    /**
+     * 检查文档是否是 Cavvy 文件
+     * @param document 文档
+     * @returns 是否是 Cavvy 文件
+     */
+    private isCavvyFile(document: vscode.TextDocument): boolean {
+        // IR 文件 (.ll) 不应该进行 Cavvy 语法检查
+        if (document.fileName.endsWith('.ll')) {
+            return false;
+        }
+        return document.languageId === 'cavvy' ||
+               document.fileName.endsWith('.cay') ||
+               document.fileName.endsWith('.eol') ||
+               document.fileName.endsWith('.caybc');
     }
 
     /**
@@ -67,7 +132,7 @@ export class CavvyDiagnosticProvider {
      * @param document 文档
      */
     private onDocumentOpen(document: vscode.TextDocument): void {
-        if (document.languageId === 'cavvy') {
+        if (this.isCavvyFile(document)) {
             this.scheduleCheck(document);
         }
     }
@@ -77,7 +142,7 @@ export class CavvyDiagnosticProvider {
      * @param event 文本文档变更事件
      */
     private onDocumentChange(event: vscode.TextDocumentChangeEvent): void {
-        if (event.document.languageId === 'cavvy') {
+        if (this.isCavvyFile(event.document)) {
             this.scheduleCheck(event.document);
         }
     }
@@ -87,17 +152,37 @@ export class CavvyDiagnosticProvider {
      * @param document 文档
      */
     private onDocumentSave(document: vscode.TextDocument): void {
-        if (document.languageId === 'cavvy') {
+        if (this.isCavvyFile(document)) {
             this.checkDocument(document);
         }
     }
 
     /**
-     * 文档关闭时的处理
+     * 文档关闭时的处理 - 清除诊断
      * @param document 文档
      */
     private onDocumentClose(document: vscode.TextDocument): void {
         this.diagnosticCollection.delete(document.uri);
+        this.log(`清除已关闭文档的诊断: ${document.fileName}`);
+    }
+
+    /**
+     * 清除所有诊断
+     */
+    clearAllDiagnostics(): void {
+        this.diagnosticCollection.clear();
+        this.log('清除所有诊断');
+    }
+
+    /**
+     * 清除指定文档的诊断
+     * @param document 文档
+     */
+    clearDocumentDiagnostics(document: vscode.TextDocument): void {
+        if (this.isCavvyFile(document)) {
+            this.diagnosticCollection.delete(document.uri);
+            this.log(`清除文档诊断: ${document.fileName}`);
+        }
     }
 
     /**
@@ -109,16 +194,35 @@ export class CavvyDiagnosticProvider {
             return;
         }
 
-        // 清除之前的定时器
-        if (this.timeout) {
-            clearTimeout(this.timeout);
+        const uri = document.uri.toString();
+        const currentVersion = document.version;
+
+        // 记录文档版本号
+        this.documentVersions.set(uri, currentVersion);
+
+        // 清除该文档之前的定时器
+        const existingTimeout = this.documentTimeouts.get(uri);
+        if (existingTimeout) {
+            clearTimeout(existingTimeout);
         }
 
+        // 立即清除该文档的旧诊断，避免错误残留
+        this.diagnosticCollection.delete(document.uri);
+
         // 设置新的定时器
-        const delay = this.config.get<number>('diagnosticDelay', 500);
-        this.timeout = setTimeout(() => {
+        const delay = this.config.get<number>('diagnosticDelay', 300);
+        const timeout = setTimeout(() => {
+            // 检查文档版本是否已变更，避免旧检查覆盖新结果
+            const latestVersion = this.documentVersions.get(uri);
+            if (latestVersion !== undefined && latestVersion > currentVersion) {
+                this.log(`跳过过时的检查: ${document.fileName} (版本 ${currentVersion} < ${latestVersion})`);
+                return;
+            }
             this.checkDocument(document);
+            this.documentTimeouts.delete(uri);
         }, delay);
+
+        this.documentTimeouts.set(uri, timeout);
     }
 
     /**
@@ -130,24 +234,65 @@ export class CavvyDiagnosticProvider {
             return;
         }
 
+        const uri = document.uri.toString();
+        const checkVersion = document.version;
+
+        // 再次检查版本，确保不会用旧结果覆盖新结果
+        const latestVersion = this.documentVersions.get(uri);
+        if (latestVersion !== undefined && latestVersion > checkVersion) {
+            this.log(`跳过过时的文档检查: ${document.fileName} (版本 ${checkVersion} < ${latestVersion})`);
+            return;
+        }
+
+        this.log(`检查文档: ${document.fileName} (版本 ${checkVersion})`);
         const diagnostics: vscode.Diagnostic[] = [];
+
+        // 检查是否只使用 LSP 诊断（默认 true）
+        const useLspOnly = this.config.get<boolean>('useLspDiagnosticsOnly', true);
         
+        if (useLspOnly) {
+            // 只使用 LSP 诊断，跳过内置检查
+            this.log('使用 LSP 诊断模式，跳过内置语法检查');
+            // 清除之前的诊断，让 LSP 接管
+            this.diagnosticCollection.delete(document.uri);
+            return;
+        }
+
         try {
             // 首先进行基本的语法检查
             const basicDiagnostics = this.performBasicSyntaxCheck(document);
             diagnostics.push(...basicDiagnostics);
-            
-            // 如果配置了编译器路径，尝试使用编译器进行更详细的检查
-            const compilerPath = this.config.get<string>('compilerPath', 'eolc');
-            if (compilerPath && compilerPath !== '') {
-                const compilerDiagnostics = await this.runCompilerCheck(document, compilerPath);
-                diagnostics.push(...compilerDiagnostics);
+
+            // 如果配置了检查器路径，尝试使用检查器进行更详细的检查
+            const checkerPath = this.config.get<string>('checkerPath', 'cay-check');
+            if (checkerPath && checkerPath !== '') {
+                try {
+                    const checkerDiagnostics = await this.runChecker(document, checkerPath);
+                    diagnostics.push(...checkerDiagnostics);
+                } catch (error) {
+                    this.log(`检查器运行失败: ${error}`);
+                }
             }
+
+            this.log(`发现 ${diagnostics.length} 个问题`);
         } catch (error) {
+            this.log(`语法检查出错: ${error}`);
             console.error('Cavvy 语法检查出错:', error);
         }
 
+        // 最终版本检查，确保异步操作期间文档没有被修改
+        const finalVersion = this.documentVersions.get(uri);
+        if (finalVersion !== undefined && finalVersion > checkVersion) {
+            this.log(`放弃过时的检查结果: ${document.fileName} (版本 ${checkVersion} < ${finalVersion})`);
+            return;
+        }
+
+        // 设置诊断前清除旧的诊断
+        this.diagnosticCollection.delete(document.uri);
         this.diagnosticCollection.set(document.uri, diagnostics);
+
+        // 更新诊断时间戳
+        this.updateDiagnosticTimestamp(document);
     }
 
     /**
@@ -159,13 +304,25 @@ export class CavvyDiagnosticProvider {
         const diagnostics: vscode.Diagnostic[] = [];
         const text = document.getText();
         const lines = text.split('\n');
-        
+
         let inBlockComment = false;
-        let braceStack: { char: string; line: number; col: number }[] = [];
-        
+        const braceStack: { char: string; line: number; col: number }[] = [];
+
+        // 重置上下文
+        this.currentContext = {
+            inClass: false,
+            inMethod: false,
+            className: null,
+            methodName: null,
+            hasMainMethod: false,
+            braceDepth: 0,
+            loopStack: [],
+            returnLines: new Set()
+        };
+
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
-            
+
             // 处理块注释
             if (inBlockComment) {
                 const endIndex = line.indexOf('*/');
@@ -174,7 +331,7 @@ export class CavvyDiagnosticProvider {
                 }
                 continue;
             }
-            
+
             // 检查块注释开始
             const blockCommentStart = line.indexOf('/*');
             if (blockCommentStart !== -1) {
@@ -182,18 +339,19 @@ export class CavvyDiagnosticProvider {
                 if (blockCommentEnd === -1) {
                     inBlockComment = true;
                 }
+                continue;
             }
-            
+
             // 跳过纯注释行
             const trimmedLine = line.trim();
             if (trimmedLine.startsWith('//')) {
                 continue;
             }
-            
+
             // 检查括号匹配
             for (let j = 0; j < line.length; j++) {
                 const char = line[j];
-                
+
                 // 跳过字符串内的字符
                 if (char === '"' || char === "'") {
                     j++;
@@ -203,14 +361,17 @@ export class CavvyDiagnosticProvider {
                     }
                     continue;
                 }
-                
+
                 // 跳过行注释
                 if (char === '/' && j + 1 < line.length && line[j + 1] === '/') {
                     break;
                 }
-                
+
                 if (char === '{' || char === '(' || char === '[') {
                     braceStack.push({ char, line: i, col: j });
+                    if (char === '{') {
+                        this.currentContext.braceDepth++;
+                    }
                 } else if (char === '}' || char === ')' || char === ']') {
                     const expectedOpen = char === '}' ? '{' : (char === ')' ? '(' : '[');
                     if (braceStack.length === 0 || braceStack[braceStack.length - 1].char !== expectedOpen) {
@@ -224,15 +385,18 @@ export class CavvyDiagnosticProvider {
                         diagnostics.push(diagnostic);
                     } else {
                         braceStack.pop();
+                        if (char === '}') {
+                            this.currentContext.braceDepth--;
+                        }
                     }
                 }
             }
-            
+
             // 检查基本语法错误
             const lineDiagnostics = this.checkLineSyntax(document, line, i);
             diagnostics.push(...lineDiagnostics);
         }
-        
+
         // 检查未闭合的括号
         for (const unclosed of braceStack) {
             const range = new vscode.Range(unclosed.line, unclosed.col, unclosed.line, unclosed.col + 1);
@@ -245,7 +409,7 @@ export class CavvyDiagnosticProvider {
             diagnostic.code = 'unclosed-brace';
             diagnostics.push(diagnostic);
         }
-        
+
         return diagnostics;
     }
 
@@ -257,8 +421,8 @@ export class CavvyDiagnosticProvider {
         methodName: string | null;
         hasMainMethod: boolean;
         braceDepth: number;
-        loopStack: number[];  // 循环栈，存储循环开始的行号
-        returnLines: Set<number>;  // 记录有 return 语句的行号
+        loopStack: string[];
+        returnLines: Set<number>;
     } = {
         inClass: false,
         inMethod: false,
@@ -274,479 +438,348 @@ export class CavvyDiagnosticProvider {
      * 检查单行语法
      * @param document 文档
      * @param line 行内容
-     * @param lineNumber 行号
+     * @param lineNum 行号
      * @returns 诊断数组
      */
-    private checkLineSyntax(document: vscode.TextDocument, line: string, lineNumber: number): vscode.Diagnostic[] {
+    private checkLineSyntax(
+        document: vscode.TextDocument,
+        line: string,
+        lineNum: number
+    ): vscode.Diagnostic[] {
         const diagnostics: vscode.Diagnostic[] = [];
         const trimmedLine = line.trim();
-        
+
         // 跳过空行和纯注释行
-        if (!trimmedLine || trimmedLine.startsWith('//')) {
+        if (trimmedLine.length === 0 || trimmedLine.startsWith('//')) {
             return diagnostics;
         }
-        
-        // 移除行内注释以便检查
-        const lineWithoutComment = trimmedLine.replace(/\/\/.*$/, '').trim();
-        
-        // 更新花括号深度
-        const openBraces = (lineWithoutComment.match(/{/g) || []).length;
-        const closeBraces = (lineWithoutComment.match(/}/g) || []).length;
-        
-        // 检查类声明语法
-        const classPattern = /^(?:\s*(?:public|private|protected|abstract|final)\s+)*class\s+([a-zA-Z_][a-zA-Z0-9_]*)/;
-        const classMatch = classPattern.exec(lineWithoutComment);
+
+        // 检查类声明
+        const classMatch = trimmedLine.match(/^(?:public\s+|abstract\s+|final\s+)*class\s+(\w+)/);
         if (classMatch) {
             this.currentContext.inClass = true;
             this.currentContext.className = classMatch[1];
-            
-            // 检查类名是否以大写字母开头（Java 命名规范）
-            if (!/^[A-Z]/.test(classMatch[1])) {
-                const classIndex = line.indexOf(classMatch[1]);
-                const range = new vscode.Range(lineNumber, classIndex, lineNumber, classIndex + classMatch[1].length);
-                const diagnostic = new vscode.Diagnostic(
-                    range,
-                    `类名 '${classMatch[1]}' 建议以大写字母开头（遵循 PascalCase 命名规范）`,
-                    vscode.DiagnosticSeverity.Information
-                );
-                diagnostic.code = 'class-name-convention';
-                diagnostics.push(diagnostic);
-            }
-        }
-        
-        // 检查方法声明语法
-        const methodPattern = /\b(public|private|protected|static|final|abstract|native)?\s*(static)?\s*(final)?\s*(int|long|float|double|bool|string|char|void)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(/;
-        const methodMatch = methodPattern.exec(lineWithoutComment);
-        if (methodMatch && !lineWithoutComment.includes('class')) {
-            this.currentContext.inMethod = true;
-            this.currentContext.methodName = methodMatch[5];
-            
-            // 检查是否是 main 方法
-            if (methodMatch[5] === 'main' && methodMatch[4] === 'void') {
-                this.currentContext.hasMainMethod = true;
-            }
-            
-            // 检查方法名是否以小写字母开头（Java 命名规范）
-            if (/^[A-Z]/.test(methodMatch[5])) {
-                const methodIndex = line.indexOf(methodMatch[5]);
-                const range = new vscode.Range(lineNumber, methodIndex, lineNumber, methodIndex + methodMatch[5].length);
-                const diagnostic = new vscode.Diagnostic(
-                    range,
-                    `方法名 '${methodMatch[5]}' 建议以小写字母开头（遵循 camelCase 命名规范）`,
-                    vscode.DiagnosticSeverity.Information
-                );
-                diagnostic.code = 'method-name-convention';
-                diagnostics.push(diagnostic);
-            }
-            
-            // 检查方法体是否存在
-            if (!lineWithoutComment.includes('{')) {
-                // 检查下一行是否有 {
-                if (!line.includes('{')) {
-                    const range = new vscode.Range(lineNumber, line.length - 1, lineNumber, line.length);
-                    const diagnostic = new vscode.Diagnostic(
-                        range,
-                        `方法 '${methodMatch[5]}' 可能缺少方法体起始符号 '{'`,
-                        vscode.DiagnosticSeverity.Warning
-                    );
-                    diagnostic.code = 'missing-method-body';
-                    diagnostics.push(diagnostic);
-                }
-            }
-        }
-        
-        // 检查变量声明语法
-        const varPattern = /\b(int|long|float|double|bool|string|char)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:=|;)/;
-        const varMatch = varPattern.exec(lineWithoutComment);
-        if (varMatch) {
-            // 检查变量名是否以大写字母开头
-            if (/^[A-Z]/.test(varMatch[2])) {
-                const varIndex = line.indexOf(varMatch[2]);
-                const range = new vscode.Range(lineNumber, varIndex, lineNumber, varIndex + varMatch[2].length);
-                const diagnostic = new vscode.Diagnostic(
-                    range,
-                    `变量名 '${varMatch[2]}' 建议以小写字母开头（遵循 camelCase 命名规范）`,
-                    vscode.DiagnosticSeverity.Information
-                );
-                diagnostic.code = 'variable-name-convention';
-                diagnostics.push(diagnostic);
-            }
-        }
-        
-        // 检查变量未声明就使用
-        const undefinedVarPattern = /\b([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:=|\+\+|--)/;
-        const undefinedMatch = undefinedVarPattern.exec(lineWithoutComment);
-        if (undefinedMatch) {
-            const varName = undefinedMatch[1];
-            // 检查是否是关键字或已知类型
-            const keywords = ['if', 'for', 'while', 'switch', 'case', 'return', 'new', 'true', 'false', 'null'];
-            const types = ['int', 'long', 'float', 'double', 'bool', 'char', 'string', 'void'];
-            if (!keywords.includes(varName) && !types.includes(varName)) {
-                // 检查整个文档中是否有声明
-                if (!this.isVariableDeclared(document, varName, lineNumber) && !lineWithoutComment.includes(varName + ' =')) {
-                    const varIndex = line.indexOf(varName);
-                    const range = new vscode.Range(lineNumber, varIndex, lineNumber, varIndex + varName.length);
-                    const diagnostic = new vscode.Diagnostic(
-                        range,
-                        `变量 '${varName}' 可能未声明就使用`,
-                        vscode.DiagnosticSeverity.Warning
-                    );
-                    diagnostic.code = 'undeclared-variable';
-                    diagnostics.push(diagnostic);
-                }
-            }
-        }
-        
-        // 检查字符串引号匹配（先移除转义序列再检查）
-        // 步骤1: 移除所有转义的引号，避免误判
-        const lineWithEscapesRemoved = lineWithoutComment
-            .replace(/\\"/g, '\x00')  // 将 \" 替换为占位符
-            .replace(/\\'/g, '\x01');  // 将 \' 替换为占位符
-        
-        // 步骤2: 检查双引号是否成对
-        const doubleQuotes = (lineWithEscapesRemoved.match(/"/g) || []).length;
-        if (doubleQuotes % 2 !== 0) {
-            // 找到最后一个未匹配的引号位置（在原始行中）
-            let quoteCount = 0;
-            let lastQuoteIndex = -1;
-            for (let i = 0; i < lineWithoutComment.length; i++) {
-                const char = lineWithoutComment[i];
-                if (char === '"' && (i === 0 || lineWithoutComment[i-1] !== '\\')) {
-                    quoteCount++;
-                    lastQuoteIndex = i;
-                }
-            }
-            if (quoteCount % 2 !== 0 && lastQuoteIndex !== -1) {
-                const range = new vscode.Range(lineNumber, lastQuoteIndex, lineNumber, line.length);
-                const diagnostic = new vscode.Diagnostic(
-                    range,
-                    '字符串引号未闭合',
-                    vscode.DiagnosticSeverity.Error
-                );
-                diagnostic.code = 'unclosed-string';
-                diagnostics.push(diagnostic);
-            }
-        }
-        
-        // 步骤3: 检查单引号是否成对（同样移除转义序列）
-        const singleQuotes = (lineWithEscapesRemoved.match(/'/g) || []).length;
-        if (singleQuotes % 2 !== 0) {
-            // 找到最后一个未匹配的引号位置（在原始行中）
-            let quoteCount = 0;
-            let lastQuoteIndex = -1;
-            for (let i = 0; i < lineWithoutComment.length; i++) {
-                const char = lineWithoutComment[i];
-                if (char === "'" && (i === 0 || lineWithoutComment[i-1] !== '\\')) {
-                    quoteCount++;
-                    lastQuoteIndex = i;
-                }
-            }
-            if (quoteCount % 2 !== 0 && lastQuoteIndex !== -1) {
-                const range = new vscode.Range(lineNumber, lastQuoteIndex, lineNumber, line.length);
-                const diagnostic = new vscode.Diagnostic(
-                    range,
-                    '字符引号未闭合',
-                    vscode.DiagnosticSeverity.Error
-                );
-                diagnostic.code = 'unclosed-char';
-                diagnostics.push(diagnostic);
-            }
-        }
-        
-        // 检查 break/continue 是否在循环内
-        const breakPattern = /\bbreak\b/;
-        const continuePattern = /\bcontinue\b/;
+            this.currentContext.hasMainMethod = false;
 
-        if (breakPattern.test(lineWithoutComment) && !this.isInLoop(document, lineNumber)) {
-            const breakIndex = line.indexOf('break');
-            const range = new vscode.Range(lineNumber, breakIndex, lineNumber, breakIndex + 5);
+            // 检查类名是否符合 PascalCase
+            const className = classMatch[1];
+            if (!/^[A-Z]/.test(className)) {
+                const startIdx = line.indexOf(className);
+                const range = new vscode.Range(lineNum, startIdx, lineNum, startIdx + className.length);
+                const diagnostic = new vscode.Diagnostic(
+                    range,
+                    `类名 '${className}' 应该使用 PascalCase（首字母大写）`,
+                    vscode.DiagnosticSeverity.Warning
+                );
+                diagnostic.code = 'class-naming-convention';
+                diagnostics.push(diagnostic);
+            }
+
+            // 检查是否有 @main 注解
+            if (lineNum > 0) {
+                const prevLine = document.lineAt(lineNum - 1).text.trim();
+                if (prevLine === '@main') {
+                    this.currentContext.hasMainMethod = true;
+                }
+            }
+        }
+
+        // 检查方法声明
+        const methodMatch = trimmedLine.match(
+            /^(?:public|private|protected)?\s*(?:static|final|abstract|native)?\s*(?:int|long|float|double|bool|string|char|void|\w+)\s+(\w+)\s*\(/
+        );
+        if (methodMatch) {
+            const methodName = methodMatch[1];
+            const isInClass = this.currentContext.inClass;
+
+            // 只有在类内部或者是顶层 main 方法时才处理
+            if (isInClass || methodName === 'main') {
+                this.currentContext.inMethod = true;
+                this.currentContext.methodName = methodName;
+                this.currentContext.returnLines.clear();
+
+                // 检查 main 方法
+                if (methodName === 'main') {
+                    this.currentContext.hasMainMethod = true;
+
+                    // 只有在类内部的 main 方法才需要 static
+                    // Cavvy 支持顶层 main 函数，不需要 static
+                    if (isInClass && !trimmedLine.includes('static')) {
+                        const startIdx = line.indexOf('main');
+                        const range = new vscode.Range(lineNum, startIdx, lineNum, startIdx + 4);
+                        const diagnostic = new vscode.Diagnostic(
+                            range,
+                            "类中的 main 方法应该是 static 的",
+                            vscode.DiagnosticSeverity.Error
+                        );
+                        diagnostic.code = 'main-not-static';
+                        diagnostics.push(diagnostic);
+                    }
+
+                    // 检查 main 方法的返回类型 - Cavvy 支持 int 或 void
+                    const returnTypeMatch = trimmedLine.match(/^(?:public|private|protected)?\s*(?:static|final|abstract|native)?\s*(\w+)\s+main/);
+                    if (returnTypeMatch) {
+                        const returnType = returnTypeMatch[1];
+                        if (returnType !== 'void' && returnType !== 'int') {
+                            const startIdx = line.indexOf(returnType);
+                            const range = new vscode.Range(lineNum, startIdx, lineNum, startIdx + returnType.length);
+                            const diagnostic = new vscode.Diagnostic(
+                                range,
+                                "main 方法应该返回 void 或 int",
+                                vscode.DiagnosticSeverity.Error
+                            );
+                            diagnostic.code = 'main-return-type';
+                            diagnostics.push(diagnostic);
+                        }
+                    }
+                }
+
+                // 检查方法名是否符合 camelCase（main 方法除外）
+                if (!/^[a-z]/.test(methodName) && methodName !== 'main') {
+                    const startIdx = line.indexOf(methodName);
+                    const range = new vscode.Range(lineNum, startIdx, lineNum, startIdx + methodName.length);
+                    const diagnostic = new vscode.Diagnostic(
+                        range,
+                        `方法名 '${methodName}' 应该使用 camelCase（首字母小写）`,
+                        vscode.DiagnosticSeverity.Warning
+                    );
+                    diagnostic.code = 'method-naming-convention';
+                    diagnostics.push(diagnostic);
+                }
+            }
+        }
+
+        // 检查变量声明
+        const varMatch = trimmedLine.match(
+            /^(?:int|long|float|double|bool|string|char|\w+)\s+(\w+)\s*=/
+        );
+        if (varMatch && this.currentContext.inMethod) {
+            const varName = varMatch[1];
+
+            // 检查变量名是否符合 camelCase
+            if (!/^[a-z]/.test(varName)) {
+                const startIdx = line.indexOf(varName);
+                const range = new vscode.Range(lineNum, startIdx, lineNum, startIdx + varName.length);
+                const diagnostic = new vscode.Diagnostic(
+                    range,
+                    `变量名 '${varName}' 应该使用 camelCase（首字母小写）`,
+                    vscode.DiagnosticSeverity.Warning
+                );
+                diagnostic.code = 'variable-naming-convention';
+                diagnostics.push(diagnostic);
+            }
+        }
+
+        // 检查循环结构
+        if (trimmedLine.startsWith('for ') || trimmedLine.startsWith('while ') || trimmedLine.startsWith('do ')) {
+            this.currentContext.loopStack.push(trimmedLine.split(' ')[0]);
+        }
+
+        // 检查 break/continue
+        if ((trimmedLine.startsWith('break') || trimmedLine.startsWith('continue')) &&
+            this.currentContext.loopStack.length === 0) {
+            const keyword = trimmedLine.split(' ')[0];
+            const range = new vscode.Range(lineNum, 0, lineNum, keyword.length);
             const diagnostic = new vscode.Diagnostic(
                 range,
-                "'break' 语句应在循环或 switch 语句内使用",
+                `'${keyword}' 只能在循环内部使用`,
                 vscode.DiagnosticSeverity.Error
             );
             diagnostic.code = 'break-outside-loop';
             diagnostics.push(diagnostic);
         }
 
-        if (continuePattern.test(lineWithoutComment) && !this.isInLoop(document, lineNumber)) {
-            const continueIndex = line.indexOf('continue');
-            const range = new vscode.Range(lineNumber, continueIndex, lineNumber, continueIndex + 8);
-            const diagnostic = new vscode.Diagnostic(
-                range,
-                "'continue' 语句应在循环内使用",
-                vscode.DiagnosticSeverity.Error
-            );
-            diagnostic.code = 'continue-outside-loop';
-            diagnostics.push(diagnostic);
-        }
-        
         // 检查 return 语句
-        if (/\breturn\b/.test(lineWithoutComment)) {
-            if (!this.currentContext.inMethod) {
-                const returnIndex = line.indexOf('return');
-                const range = new vscode.Range(lineNumber, returnIndex, lineNumber, returnIndex + 6);
-                const diagnostic = new vscode.Diagnostic(
-                    range,
-                    'return 语句应在方法体内使用',
-                    vscode.DiagnosticSeverity.Error
-                );
-                diagnostic.code = 'return-outside-method';
-                diagnostics.push(diagnostic);
+        if (trimmedLine.startsWith('return')) {
+            this.currentContext.returnLines.add(lineNum);
+
+            // 检查 void 方法是否返回值
+            if (this.currentContext.methodName &&
+                trimmedLine.match(/return\s+\w+/) &&
+                this.currentContext.methodName !== 'main') {
+                // 这里简化处理，实际需要检查方法返回类型
             }
         }
-        
-        // 检查空语句（连续分号）
-        if (/;;/.test(lineWithoutComment)) {
-            const range = new vscode.Range(lineNumber, line.indexOf(';;'), lineNumber, line.indexOf(';;') + 2);
+
+        // 检查未使用的变量（简化检查）
+        const unusedVarMatch = trimmedLine.match(/^(?:int|long|float|double|bool|string|char)\s+(\w+)\s*;?$/);
+        if (unusedVarMatch) {
+            const varName = unusedVarMatch[1];
+            const range = new vscode.Range(lineNum, line.indexOf(varName), lineNum, line.indexOf(varName) + varName.length);
             const diagnostic = new vscode.Diagnostic(
                 range,
-                '发现空语句（连续分号）',
-                vscode.DiagnosticSeverity.Warning
+                `变量 '${varName}' 可能未使用`,
+                vscode.DiagnosticSeverity.Information
             );
-            diagnostic.code = 'empty-statement';
+            diagnostic.code = 'unused-variable';
             diagnostics.push(diagnostic);
         }
-        
-        // 检查死代码（return 后的代码）
-        if (this.hasReturnOnLine(document, lineNumber - 1) && lineWithoutComment && !lineWithoutComment.startsWith('}')) {
-            const range = new vscode.Range(lineNumber, 0, lineNumber, line.length);
-            const diagnostic = new vscode.Diagnostic(
-                range,
-                'return 语句后的代码不可达（死代码）',
-                vscode.DiagnosticSeverity.Warning
-            );
-            diagnostic.code = 'unreachable-code';
-            diagnostics.push(diagnostic);
-        }
-        
-        // 检查语句结束符
-        if (!lineWithoutComment.endsWith('{') &&
-            !lineWithoutComment.endsWith('}') &&
-            !lineWithoutComment.endsWith(')') &&
-            !lineWithoutComment.endsWith(';') &&
-            !lineWithoutComment.endsWith(':') &&
+
+        // 检查分号
+        if (!trimmedLine.endsWith(';') &&
+            !trimmedLine.endsWith('{') &&
+            !trimmedLine.endsWith('}') &&
+            !trimmedLine.startsWith('//') &&
             !trimmedLine.startsWith('/*') &&
             !trimmedLine.startsWith('*') &&
             !trimmedLine.startsWith('import') &&
             !trimmedLine.startsWith('package') &&
             !trimmedLine.startsWith('@') &&
             !trimmedLine.startsWith('#') &&  // 排除预处理器指令
-            lineWithoutComment.length > 0) {
-            // 这是一个可能的错误，但不是所有情况都需要分号
-            // 例如：if/for/while/switch 语句后面不需要分号
-            // 例如：case/default 标签以冒号结尾
-            const controlFlowPattern = /\b(if|for|while|switch|do)\s*[{(]/;
-            const casePattern = /\b(case\s+.+|default)\s*:/;
-            const elsePattern = /\belse\b/;
-            if (!controlFlowPattern.test(lineWithoutComment) &&
-                !casePattern.test(lineWithoutComment) &&
-                !elsePattern.test(lineWithoutComment)) {
-                const range = new vscode.Range(lineNumber, Math.max(0, line.length - 1), lineNumber, line.length);
+            trimmedLine.length > 0) {
+            // 检查是否是类或方法声明
+            if (!trimmedLine.match(/^(?:public|private|protected)?\s*(?:static|final|abstract|native)?\s*(?:class|int|long|float|double|bool|string|char|void|\w+)\s+\w+\s*[{(]/)) {
+                const range = new vscode.Range(lineNum, line.length - 1, lineNum, line.length);
                 const diagnostic = new vscode.Diagnostic(
                     range,
-                    '语句可能缺少分号结束符',
-                    vscode.DiagnosticSeverity.Warning
+                    "语句应该以分号结束",
+                    vscode.DiagnosticSeverity.Error
                 );
                 diagnostic.code = 'missing-semicolon';
                 diagnostics.push(diagnostic);
             }
         }
-        
+
         return diagnostics;
     }
-    
+
     /**
-     * 检查变量是否在文档中已声明（在当前行之前）
+     * 运行检查器
      * @param document 文档
-     * @param varName 变量名
-     * @param currentLine 当前行号
-     * @returns 是否已声明
-     */
-    private isVariableDeclared(document: vscode.TextDocument, varName: string, currentLine: number): boolean {
-        const text = document.getText();
-        const lines = text.split('\n');
-
-        // 检查当前行之前的所有行
-        for (let i = 0; i < currentLine && i < lines.length; i++) {
-            const line = lines[i];
-            const lineWithoutString = this.removeStrings(line);
-            const lineWithoutComment = lineWithoutString.replace(/\/\/.*$/, '');
-
-            // 检查是否有变量声明
-            const varDeclarationPattern = new RegExp(`\\b(int|long|float|double|bool|string|char)\\s+${varName}\\b`);
-            if (varDeclarationPattern.test(lineWithoutComment)) {
-                return true;
-            }
-
-            // 检查是否是 for 循环中的变量声明（如 for (int i = 0; ...)）
-            const forLoopPattern = new RegExp(`\\bfor\\s*\\([^;]*\\b(int|long|float|double|bool|string|char)\\s+${varName}\\b`);
-            if (forLoopPattern.test(lineWithoutComment)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * 检查指定行是否在循环体内
-     * 通过分析文档内容跟踪循环上下文
-     */
-    private isInLoop(document: vscode.TextDocument, lineNumber: number): boolean {
-        const text = document.getText();
-        const lines = text.split('\n');
-        let loopDepth = 0;
-        let braceDepth = 0;
-
-        for (let i = 0; i <= lineNumber && i < lines.length; i++) {
-            const line = lines[i];
-            const lineWithoutString = this.removeStrings(line);
-            const lineWithoutComment = lineWithoutString.replace(/\/\/.*$/, '');
-
-            // 检查循环开始（for, while, do）
-            const loopStartPattern = /\b(for|while)\s*\(/;
-            const doPattern = /\bdo\b/;
-
-            if (loopStartPattern.test(lineWithoutComment)) {
-                loopDepth++;
-            } else if (doPattern.test(lineWithoutComment)) {
-                loopDepth++;
-            }
-
-            // 跟踪花括号深度
-            for (const char of lineWithoutComment) {
-                if (char === '{') braceDepth++;
-                if (char === '}') {
-                    braceDepth--;
-                    // 如果退出循环体的花括号，减少循环深度
-                    if (loopDepth > 0 && braceDepth < this.currentContext.braceDepth) {
-                        loopDepth--;
-                    }
-                }
-            }
-
-            // 检查当前行是否在循环体内
-            if (i === lineNumber) {
-                return loopDepth > 0;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * 从行中移除字符串内容，避免误判
-     */
-    private removeStrings(line: string): string {
-        let result = '';
-        let inString = false;
-        let stringChar = '';
-        let escaped = false;
-
-        for (const char of line) {
-            if (escaped) {
-                escaped = false;
-                if (!inString) result += char;
-                continue;
-            }
-
-            if (char === '\\') {
-                escaped = true;
-                if (!inString) result += char;
-                continue;
-            }
-
-            if (!inString && (char === '"' || char === "'")) {
-                inString = true;
-                stringChar = char;
-                result += char;
-            } else if (inString && char === stringChar) {
-                inString = false;
-                result += char;
-            } else if (!inString) {
-                result += char;
-            }
-        }
-
-        return result;
-    }
-
-    /**
-     * 检查前一行是否有 return 语句
-     */
-    private hasReturnOnLine(document: vscode.TextDocument, lineNumber: number): boolean {
-        if (lineNumber < 0 || lineNumber >= document.lineCount) {
-            return false;
-        }
-
-        const line = document.lineAt(lineNumber).text;
-        const lineWithoutString = this.removeStrings(line);
-        const lineWithoutComment = lineWithoutString.replace(/\/\/.*$/, '');
-
-        // 检查是否有 return 语句（不在字符串内）
-        const returnPattern = /\breturn\b/;
-        return returnPattern.test(lineWithoutComment);
-    }
-
-    /**
-     * 运行编译器检查
-     * @param document 文档
-     * @param compilerPath 编译器路径
+     * @param checkerPath 检查器路径
      * @returns 诊断数组
      */
-    private async runCompilerCheck(
+    private async runChecker(
         document: vscode.TextDocument,
-        compilerPath: string
+        checkerPath: string
     ): Promise<vscode.Diagnostic[]> {
         const diagnostics: vscode.Diagnostic[] = [];
-        
+
         try {
-            // 使用 eol-check 检查语法
             const { stdout, stderr } = await execAsync(
-                `"${compilerPath}" --check "${document.fileName}"`,
+                `"${checkerPath}" "${document.fileName}"`,
                 { timeout: 30000 }
             );
-            
-            // 解析编译器输出
+
             const output = stdout || stderr;
             if (output) {
-                const compilerDiagnostics = this.parseCompilerOutput(output, document);
-                diagnostics.push(...compilerDiagnostics);
+                const checkerDiagnostics = this.parseCheckerOutput(output, document);
+                diagnostics.push(...checkerDiagnostics);
             }
         } catch (error: any) {
-            // 编译器返回非零退出码表示有错误
-            if (error.stdout || error.stderr) {
+            // 处理 MultipleErrors 格式
+            if (error.message && error.message.includes('MultipleErrors')) {
+                const parsedErrors = this.parseMultipleErrors(error.message, document);
+                diagnostics.push(...parsedErrors);
+            } else if (error.stdout || error.stderr) {
                 const output = error.stdout || error.stderr;
-                const compilerDiagnostics = this.parseCompilerOutput(output, document);
-                diagnostics.push(...compilerDiagnostics);
+                const checkerDiagnostics = this.parseCheckerOutput(output, document);
+                diagnostics.push(...checkerDiagnostics);
             }
         }
-        
+
         return diagnostics;
     }
 
     /**
-     * 解析编译器输出
-     * @param output 编译器输出
+     * 解析 MultipleErrors 格式
+     * @param errorMessage 错误消息
      * @param document 文档
      * @returns 诊断数组
      */
-    private parseCompilerOutput(output: string, document: vscode.TextDocument): vscode.Diagnostic[] {
+    private parseMultipleErrors(errorMessage: string, document: vscode.TextDocument): vscode.Diagnostic[] {
+        const diagnostics: vscode.Diagnostic[] = [];
+
+        // 匹配 MultipleErrors 中的各个错误
+        // 格式: Semantic { file: None, line: 762, column: 28, message: "...", suggestion: "..." }
+        const semanticPattern = /Semantic\s*\{\s*file:\s*(?:None|Some\("([^"]+)"\)),\s*line:\s*(\d+),\s*column:\s*(\d+),\s*message:\s*"([^"]+)"(?:,\s*suggestion:\s*"([^"]*)")?\s*\}/g;
+
+        let match;
+        while ((match = semanticPattern.exec(errorMessage)) !== null) {
+            const [, filePath, lineStr, colStr, message, suggestion] = match;
+            const lineNum = parseInt(lineStr, 10) - 1;
+            const colNum = parseInt(colStr, 10) - 1;
+
+            // 如果没有文件路径或文件路径匹配当前文档
+            if (!filePath || document.fileName.includes(filePath) || filePath.includes(path.basename(document.fileName))) {
+                const range = new vscode.Range(
+                    lineNum,
+                    Math.max(0, colNum),
+                    lineNum,
+                    Math.max(0, colNum) + 1
+                );
+
+                let fullMessage = message;
+                if (suggestion) {
+                    fullMessage += ` (${suggestion})`;
+                }
+
+                const diagnostic = new vscode.Diagnostic(
+                    range,
+                    fullMessage,
+                    vscode.DiagnosticSeverity.Error
+                );
+                diagnostic.code = 'cavvy-semantic-error';
+                diagnostics.push(diagnostic);
+            }
+        }
+
+        // 也尝试匹配 Cavvy 编译器的错误格式
+        // 格式: ╭─[.\hello.cay:5:28]
+        const cavvyErrorPattern = /╭─\[(.+?):(\d+):(\d+)\][\s\S]*?×\s*\[E\d+\]\s*(.+?)(?=\n\s*╰────|$)/g;
+
+        while ((match = cavvyErrorPattern.exec(errorMessage)) !== null) {
+            const [, filePath, lineStr, colStr, message] = match;
+            const lineNum = parseInt(lineStr, 10) - 1;
+            const colNum = parseInt(colStr, 10) - 1;
+
+            if (document.fileName.includes(filePath) || filePath.includes(path.basename(document.fileName))) {
+                const range = new vscode.Range(
+                    lineNum,
+                    Math.max(0, colNum),
+                    lineNum,
+                    Math.max(0, colNum) + 1
+                );
+
+                const diagnostic = new vscode.Diagnostic(
+                    range,
+                    message.trim(),
+                    vscode.DiagnosticSeverity.Error
+                );
+                diagnostic.code = 'cavvy-error';
+                diagnostics.push(diagnostic);
+            }
+        }
+
+        return diagnostics;
+    }
+
+    /**
+     * 解析检查器输出
+     * @param output 检查器输出
+     * @param document 文档
+     * @returns 诊断数组
+     */
+    private parseCheckerOutput(output: string, document: vscode.TextDocument): vscode.Diagnostic[] {
         const diagnostics: vscode.Diagnostic[] = [];
         const lines = output.split('\n');
-        
+
         // 匹配常见的错误格式: file.cay:10:5: error: message
         const errorPattern = /(.+?):(\d+):(\d+):\s*(error|warning|note):\s*(.+)/i;
-        
-        for (const line of lines) {
+
+        // 匹配 Cavvy 编译器的错误格式: ╭─[file.cay:5:28]
+        const cavvyErrorPattern = /╭─\[(.+?):(\d+):(\d+)\]/;
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+
+            // 尝试匹配标准格式
             const match = errorPattern.exec(line);
             if (match) {
                 const [, filePath, lineStr, colStr, severity, message] = match;
-                const lineNum = parseInt(lineStr, 10) - 1; // 转换为 0-based
+                const lineNum = parseInt(lineStr, 10) - 1;
                 const colNum = parseInt(colStr, 10) - 1;
-                
-                // 只处理当前文档的错误
+
                 if (document.fileName.includes(filePath) || filePath.includes(path.basename(document.fileName))) {
                     const range = new vscode.Range(
                         lineNum,
@@ -754,15 +787,47 @@ export class CavvyDiagnosticProvider {
                         lineNum,
                         colNum + 1
                     );
-                    
+
                     const diagnosticSeverity = this.parseSeverity(severity);
                     const diagnostic = new vscode.Diagnostic(range, message.trim(), diagnosticSeverity);
-                    diagnostic.code = 'compiler-error';
+                    diagnostic.code = 'checker-error';
+                    diagnostics.push(diagnostic);
+                }
+                continue;
+            }
+
+            // 尝试匹配 Cavvy 编译器格式
+            const cavvyMatch = cavvyErrorPattern.exec(line);
+            if (cavvyMatch) {
+                const [, filePath, lineStr, colStr] = cavvyMatch;
+                const lineNum = parseInt(lineStr, 10) - 1;
+                const colNum = parseInt(colStr, 10) - 1;
+
+                // 查找下一行的错误消息
+                let message = '未知错误';
+                for (let j = i + 1; j < lines.length && j < i + 10; j++) {
+                    const msgLine = lines[j];
+                    if (msgLine.includes('×') || msgLine.includes('error:')) {
+                        message = msgLine.replace(/^[\s│·─╰]*[×]\s*/, '').replace(/error:\s*/i, '').trim();
+                        break;
+                    }
+                }
+
+                if (document.fileName.includes(filePath) || filePath.includes(path.basename(document.fileName))) {
+                    const range = new vscode.Range(
+                        lineNum,
+                        Math.max(0, colNum),
+                        lineNum,
+                        Math.max(0, colNum) + 1
+                    );
+
+                    const diagnostic = new vscode.Diagnostic(range, message, vscode.DiagnosticSeverity.Error);
+                    diagnostic.code = 'cavvy-error';
                     diagnostics.push(diagnostic);
                 }
             }
         }
-        
+
         return diagnostics;
     }
 
@@ -786,14 +851,22 @@ export class CavvyDiagnosticProvider {
     }
 
     /**
+     * 记录日志
+     */
+    private log(message: string): void {
+        const timestamp = new Date().toISOString();
+        this.outputChannel.appendLine(`[${timestamp}] ${message}`);
+    }
+
+    /**
      * 配置变更时的处理
      */
     onConfigurationChanged(): void {
         this.config = vscode.workspace.getConfiguration('cavvyAnalyzer');
-        
+
         // 重新检查所有打开的文档
         vscode.workspace.textDocuments.forEach((doc) => {
-            if (doc.languageId === 'cavvy') {
+            if (this.isCavvyFile(doc)) {
                 this.scheduleCheck(doc);
             }
         });
@@ -803,10 +876,17 @@ export class CavvyDiagnosticProvider {
      * 释放资源
      */
     dispose(): void {
-        if (this.timeout) {
-            clearTimeout(this.timeout);
+        this.log('释放诊断提供器资源');
+        // 清除所有文档的定时器
+        for (const timeout of this.documentTimeouts.values()) {
+            clearTimeout(timeout);
+        }
+        this.documentTimeouts.clear();
+        if (this.cleanupTimer) {
+            clearInterval(this.cleanupTimer);
         }
         this.diagnosticCollection.dispose();
         this.disposables.forEach(d => d.dispose());
+        this.outputChannel.dispose();
     }
 }

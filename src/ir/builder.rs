@@ -15,7 +15,7 @@ use super::module::{
 };
 use crate::ast::*;
 use crate::types::{Type, TypeRegistry};
-use crate::error::cayResult;
+use crate::error::{cayResult, codegen_error_at, SourceLocation};
 use std::collections::HashMap;
 
 /// 循环上下文（用于 break/continue）
@@ -267,7 +267,7 @@ impl IrBuilder {
     /// 在当前基本块中添加指令
     fn emit(&mut self, inst: IrInstruction) -> cayResult<()> {
         let block = self.current_block_mut()
-            .ok_or_else(|| crate::error::codegen_error("No current block".to_string()))?;
+            .ok_or_else(|| crate::error::codegen_error_at(SourceLocation::default(), "No current block".to_string()))?;
         block.push(inst);
         Ok(())
     }
@@ -275,7 +275,7 @@ impl IrBuilder {
     /// 设置当前块的终止指令
     fn set_terminator(&mut self, term: IrTerminator) -> cayResult<()> {
         let block = self.current_block_mut()
-            .ok_or_else(|| crate::error::codegen_error("No current block".to_string()))?;
+            .ok_or_else(|| crate::error::codegen_error_at(SourceLocation::default(), "No current block".to_string()))?;
         block.set_terminator(term);
         Ok(())
     }
@@ -283,7 +283,7 @@ impl IrBuilder {
     /// 创建新基本块并设置为当前块
     fn new_block(&mut self, label: String) -> cayResult<()> {
         let func = self.current_function.as_mut()
-            .ok_or_else(|| crate::error::codegen_error("No current function".to_string()))?;
+            .ok_or_else(|| crate::error::codegen_error_at(SourceLocation::default(), "No current function".to_string()))?;
         func.add_block(IrBasicBlock::new(label));
         Ok(())
     }
@@ -677,8 +677,8 @@ impl IrBuilder {
                 }
                 self.scope_manager.exit_scope();
             }
-            Stmt::Break(label) => self.build_break(label)?,
-            Stmt::Continue(label) => self.build_continue(label)?,
+            Stmt::Break(label, loc) => self.build_break(label, loc)?,
+            Stmt::Continue(label, loc) => self.build_continue(label, loc)?,
             Stmt::InlineIr(inline_ir) => self.build_inline_ir(inline_ir)?,
         }
         Ok(())
@@ -977,13 +977,42 @@ impl IrBuilder {
         Ok(())
     }
 
+    /// 将 CaseValue 转换为 i64 常量值
+    fn resolve_case_value(&self, case: &Case) -> cayResult<i64> {
+        match &case.value {
+            CaseValue::Integer(v) => Ok(*v),
+            CaseValue::EnumVariant { enum_name, variant_name } => {
+                // 在类型注册表中查找 enum 定义
+                if let Some(ref registry) = self.type_registry {
+                    if let Some(enum_info) = registry.get_enum(enum_name) {
+                        // 在 variants 中查找 variant 的索引
+                        for (idx, variant) in enum_info.variants.iter().enumerate() {
+                            if variant.name == *variant_name {
+                                return Ok(idx as i64);
+                            }
+                        }
+                        return Err(codegen_error_at(case.loc.clone(), format!(
+                            "enum '{}' 中不存在 variant '{}'",
+                            enum_name, variant_name
+                        )));
+                    }
+                }
+                Err(codegen_error_at(case.loc.clone(), format!(
+                    "未知的 enum '{}' 在 case 标签中",
+                    enum_name
+                )))
+            }
+        }
+    }
+
     fn build_switch(&mut self, switch: &SwitchStmt) -> cayResult<()> {
         let end_label = self.new_label("switch.end");
         let default_label = self.new_label("switch.default");
         let mut case_labels: Vec<(i64, String)> = Vec::new();
 
         for (i, case) in switch.cases.iter().enumerate() {
-            case_labels.push((case.value, self.new_label(&format!("switch.case{}", i))));
+            let value = self.resolve_case_value(case)?;
+            case_labels.push((value, self.new_label(&format!("switch.case{}", i))));
         }
 
         // 将 switch 结束标签压入栈，支持 break
@@ -1064,31 +1093,31 @@ impl IrBuilder {
         Ok(())
     }
 
-    fn build_break(&mut self, label: &Option<String>) -> cayResult<()> {
+    fn build_break(&mut self, label: &Option<String>, loc: &SourceLocation) -> cayResult<()> {
         let target = if let Some(l) = label {
             self.loop_stack.iter().rev()
                 .find(|ctx| ctx.label.as_deref() == Some(l.as_str()))
                 .map(|ctx| ctx.end_label.clone())
-                .ok_or_else(|| crate::error::codegen_error(format!("break label '{}' not found", l)))?
+                .ok_or_else(|| crate::error::codegen_error_at(loc.clone(), format!("break label '{}' not found", l)))?
         } else {
             self.loop_stack.last()
                 .map(|ctx| ctx.end_label.clone())
-                .ok_or_else(|| crate::error::codegen_error("break outside loop".to_string()))?
+                .ok_or_else(|| crate::error::codegen_error_at(loc.clone(), "break outside loop".to_string()))?
         };
         self.set_terminator(IrTerminator::Branch { target })?;
         Ok(())
     }
 
-    fn build_continue(&mut self, label: &Option<String>) -> cayResult<()> {
+    fn build_continue(&mut self, label: &Option<String>, loc: &SourceLocation) -> cayResult<()> {
         let target = if let Some(l) = label {
             self.loop_stack.iter().rev()
                 .find(|ctx| ctx.label.as_deref() == Some(l.as_str()))
                 .map(|ctx| ctx.cond_label.clone())
-                .ok_or_else(|| crate::error::codegen_error(format!("continue label '{}' not found", l)))?
+                .ok_or_else(|| crate::error::codegen_error_at(loc.clone(), format!("continue label '{}' not found", l)))?
         } else {
             self.loop_stack.last()
                 .map(|ctx| ctx.cond_label.clone())
-                .ok_or_else(|| crate::error::codegen_error("continue outside loop".to_string()))?
+                .ok_or_else(|| crate::error::codegen_error_at(loc.clone(), "continue outside loop".to_string()))?
         };
         self.set_terminator(IrTerminator::Branch { target })?;
         Ok(())
@@ -1123,7 +1152,7 @@ impl IrBuilder {
             Expr::ArrayCreation(arr) => self.build_array_creation(arr),
             Expr::ArrayAccess(arr) => self.build_array_access(arr),
             Expr::ArrayInit(init) => self.build_array_init(init),
-            _ => Err(crate::error::codegen_error(
+            _ => Err(crate::error::codegen_error_at(expr.location().clone(),
                 format!("Expression type not yet implemented in IR builder")
             )),
         }
@@ -1325,7 +1354,7 @@ impl IrBuilder {
                 }
             }
             _ => {
-                return Err(crate::error::codegen_error(
+                return Err(crate::error::codegen_error_at(unary.loc.clone(),
                     format!("Unary operator {:?} not yet implemented in IR builder", unary.op)
                 ));
             }
@@ -1352,7 +1381,7 @@ impl IrBuilder {
                 self.build_array_assignment(arr, value)
             }
             _ => {
-                Err(crate::error::codegen_error(
+                Err(crate::error::codegen_error_at(target.location().clone(),
                     "Complex assignment target not yet implemented in IR builder".to_string()
                 ))
             }
@@ -1400,7 +1429,7 @@ impl IrBuilder {
                 // obj.method() - 需要虚调用分派
                 format!("{}.{}", self.current_class, member.member)
             }
-            _ => return Err(crate::error::codegen_error("Complex callee not yet supported in IR builder".to_string())),
+            _ => return Err(crate::error::codegen_error_at(call.loc.clone(), "Complex callee not yet supported in IR builder".to_string())),
         };
 
         let mut args: Vec<IrValue> = Vec::new();
@@ -1481,7 +1510,7 @@ impl IrBuilder {
                 self.build_array_assignment(arr, final_value.clone())?;
             }
             _ => {
-                return Err(crate::error::codegen_error(
+                return Err(crate::error::codegen_error_at(assign.loc.clone(),
                     "Complex assignment target not yet implemented in IR builder".to_string()
                 ));
             }
@@ -1580,7 +1609,7 @@ impl IrBuilder {
         }
 
         // 如果找不到字段，返回错误
-        Err(crate::error::codegen_error(
+        Err(crate::error::codegen_error_at(member.loc.clone(),
             format!("Field '{}' not found in class '{}'", member.member, class_name)
         ))
     }
@@ -1618,7 +1647,7 @@ impl IrBuilder {
         }
 
         let result = self.new_temp(to_ty.clone());
-        let kind = self.determine_cast_kind(&from_ty, &to_ty)?;
+        let kind = self.determine_cast_kind(&from_ty, &to_ty, cast.loc.clone())?;
 
         self.emit(IrInstruction::Cast {
             result: result.clone(),
@@ -1809,7 +1838,7 @@ impl IrBuilder {
     // 辅助方法
     // ============================================================
 
-    fn determine_cast_kind(&self, from: &IrType, to: &IrType) -> cayResult<IrCastKind> {
+    fn determine_cast_kind(&self, from: &IrType, to: &IrType, loc: SourceLocation) -> cayResult<IrCastKind> {
         match (from, to) {
             // 整数扩展/截断
             (IrType::I1, IrType::I8 | IrType::I16 | IrType::I32 | IrType::I64) => Ok(IrCastKind::ZeroExt),
@@ -1833,7 +1862,7 @@ impl IrBuilder {
             (IrType::Pointer(_), _) if to.is_integer() => Ok(IrCastKind::PtrToInt),
             (_, IrType::Pointer(_)) if from.is_integer() => Ok(IrCastKind::IntToPtr),
 
-            _ => Err(crate::error::codegen_error(
+            _ => Err(crate::error::codegen_error_at(loc,
                 format!("Cannot cast from {} to {}", from.to_llvm_str(), to.to_llvm_str())
             )),
         }

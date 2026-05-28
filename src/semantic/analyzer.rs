@@ -247,6 +247,11 @@ impl SemanticAnalyzer {
         self.source_map = Some(source_map);
     }
 
+    /// 获取 TypeRegistry 的引用（用于 LSP 符号提取）
+    pub fn type_registry(&self) -> &TypeRegistry {
+        &self.type_registry
+    }
+
     /// 根据行号解析对应的源文件路径
     ///
     /// 逻辑：

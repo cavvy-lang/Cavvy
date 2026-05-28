@@ -6,7 +6,7 @@
 use super::module::IrModule;
 use super::function::{IrFunction, IrLinkage};
 use super::value::IrInstruction;
-use crate::error::cayResult;
+use crate::error::{cayResult, SourceLocation};
 use std::collections::{HashMap, HashSet};
 
 /// 内联器配置
@@ -158,7 +158,7 @@ impl Inliner {
         // 克隆被调函数（因为需要借用 module）
         let callee = match module.find_function(callee_name) {
             Some(f) => f.clone(),
-            None => return Err(crate::error::codegen_error("Callee not found".to_string())),
+            None => return Err(crate::error::codegen_error_at(SourceLocation::default(), "Callee not found".to_string())),
         };
 
         if callee.linkage == IrLinkage::Declare || callee.blocks.is_empty() {

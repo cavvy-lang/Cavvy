@@ -1,9 +1,0 @@
-
-#include "chess_lib.cay"
-public int main() {
-    println(ChessLib.rookMoves(0, 0));
-    println(ChessLib.rookMoves(3, 4));
-    println(ChessLib.kingMoves(0, 0));
-    println(ChessLib.kingMoves(4, 4));
-    return 0;
-}

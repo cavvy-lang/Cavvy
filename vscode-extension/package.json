@@ -2,11 +2,15 @@
   "name": "cavvy-analyzer",
   "displayName": "Cavvy Analyzer",
   "description": "Cavvy (EOL) 语言支持插件 - 语法高亮、跳转定义、语法错误提示、一键运行、LSP支持",
-  "version": "0.3.0",
+  "version": "0.3.2",
   "publisher": "ethernos-studio",
   "license": "GPL-3.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ethernos-studio/cavvy.git"
+  },
   "engines": {
-    "vscode": "^1.74.0"
+    "vscode": "^1.82.0"
   },
   "categories": [
     "Programming Languages",
@@ -23,7 +27,14 @@
     "lsp"
   ],
   "activationEvents": [
-    "onLanguage:cavvy"
+    "onLanguage:cavvy",
+    "onCommand:cavvyAnalyzer.checkSyntax",
+    "onCommand:cavvyAnalyzer.checkSyntaxManual",
+    "onCommand:cavvyAnalyzer.runCode",
+    "onCommand:cavvyAnalyzer.runCodeNoDebug",
+    "onCommand:cavvyAnalyzer.gotoDefinition",
+    "onCommand:cavvyAnalyzer.restartLSP",
+    "onCommand:cavvyAnalyzer.stopLSP"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -89,6 +100,11 @@
           "type": "boolean",
           "default": true,
           "description": "启用语法错误诊断"
+        },
+        "cavvyAnalyzer.useLspDiagnosticsOnly": {
+          "type": "boolean",
+          "default": true,
+          "description": "只使用 LSP 提供的诊断信息（禁用内置语法检查）"
         },
         "cavvyAnalyzer.diagnosticDelay": {
           "type": "number",
@@ -190,7 +206,23 @@
           "when": "editorLangId == cavvy"
         },
         {
+          "command": "cavvyAnalyzer.checkSyntax",
+          "when": "editorLangId == cavvy"
+        },
+        {
           "command": "cavvyAnalyzer.checkSyntaxManual",
+          "when": "editorLangId == cavvy"
+        },
+        {
+          "command": "cavvyAnalyzer.gotoDefinition",
+          "when": "editorLangId == cavvy"
+        },
+        {
+          "command": "cavvyAnalyzer.restartLSP",
+          "when": "editorLangId == cavvy"
+        },
+        {
+          "command": "cavvyAnalyzer.stopLSP",
           "when": "editorLangId == cavvy"
         }
       ]

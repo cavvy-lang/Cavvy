@@ -74,7 +74,18 @@ impl IRGenerator {
             Type::Bool => 1,
             Type::Char => 1,
             Type::String => 8, // 指针大小
-            Type::Object(_) => 8, // 指针大小
+            Type::Object(name) => {
+                // 检查是否是 enum 类型（struct { i32, i64 } = 16 bytes）
+                if let Some(ref registry) = self.type_registry {
+                    if registry.get_enum(name).is_some() {
+                        16 // enum struct { i32, i64 }
+                    } else {
+                        8 // 普通对象指针大小
+                    }
+                } else {
+                    8
+                }
+            },
             Type::Array(_) => 8, // 指针大小
             _ => 8, // 默认
         };

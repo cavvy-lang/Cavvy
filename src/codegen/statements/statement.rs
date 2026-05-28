@@ -68,11 +68,11 @@ impl IRGenerator {
                 self.set_source_from_loc(&scope_stmt.loc, &source_file);
                 self.generate_scope(scope_stmt)?;
             }
-            Stmt::Break(label) => {
-                self.generate_break_statement(label)?;
+            Stmt::Break(label, loc) => {
+                self.generate_break_statement(label, loc.clone())?;
             }
-            Stmt::Continue(label) => {
-                self.generate_continue_statement(label)?;
+            Stmt::Continue(label, loc) => {
+                self.generate_continue_statement(label, loc.clone())?;
             }
             Stmt::InlineIr(inline_ir) => {
                 self.set_source_from_loc(&inline_ir.loc, &source_file);

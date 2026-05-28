@@ -1,6 +1,66 @@
+/**
+ * new 数组分配集成测试
+ * 测试内容: new 创建各种维度和类型的数组
+ */
 public class TestNewArray {
     public static void main() {
-        // 只测试 new int[5]
-        int[] arr = new int[5];
+        println("=== new 数组分配测试 ===");
+
+        // 一维数组
+        int[] arr1 = new int[5];
+        for (int i = 0; i < arr1.length; i = i + 1) {
+            arr1[i] = i * 10;
+        }
+        println("一维数组分配:");
+        for (int i = 0; i < arr1.length; i = i + 1) {
+            print(String.valueOf(arr1[i]));
+            print(" ");
+        }
+        println("");
+
+        // 二维数组
+        int[][] arr2 = new int[3][4];
+        for (int i = 0; i < 3; i = i + 1) {
+            for (int j = 0; j < 4; j = j + 1) {
+                arr2[i][j] = i * 4 + j + 1;
+            }
+        }
+        println("二维数组分配 (3x4):");
+        for (int i = 0; i < 3; i = i + 1) {
+            for (int j = 0; j < 4; j = j + 1) {
+                print(String.valueOf(arr2[i][j]));
+                print(" ");
+            }
+            println("");
+        }
+
+        // 零长度数组
+        int[] empty = new int[0];
+        println("零长度数组 length = " + String.valueOf(empty.length));
+        if (empty.length == 0) {
+            println("零长度数组测试通过");
+        }
+
+        // 单元素数组
+        int[] single = new int[1];
+        single[0] = 99;
+        println("单元素数组: " + String.valueOf(single[0]));
+
+        // 验证 arr1 和 arr2
+        int sum1 = 0;
+        for (int i = 0; i < arr1.length; i = i + 1) {
+            sum1 = sum1 + arr1[i];
+        }
+        println("一维数组总和 = " + String.valueOf(sum1));
+
+        int sum2 = 0;
+        for (int i = 0; i < 3; i = i + 1) {
+            for (int j = 0; j < 4; j = j + 1) {
+                sum2 = sum2 + arr2[i][j];
+            }
+        }
+        println("二维数组总和 = " + String.valueOf(sum2));
+
+        println("=== new 数组分配测试完成 ===");
     }
 }

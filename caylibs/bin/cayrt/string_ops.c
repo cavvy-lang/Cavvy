@@ -321,3 +321,59 @@ char* __cay_string_trim(const char* str) {
     }
     return result;
 }
+
+/** 转换为小写 */
+char* __cay_string_to_lower(const char* str) {
+    if (!str) return (char*)__cay_empty_string;
+
+    int64_t len = (int64_t)strlen(str);
+    char* result = calloc(1, (size_t)(len + 1));
+    if (!result) return (char*)__cay_empty_string;
+
+    for (int64_t i = 0; i < len; i++) {
+        result[i] = __cay_to_lower(str[i]);
+    }
+    result[len] = '\0';
+    return result;
+}
+
+/** 转换为大写 (将字符转换为大写) */
+static char __cay_to_upper(char c) {
+    if (c >= 'a' && c <= 'z') {
+        return c - 32;
+    }
+    return c;
+}
+
+/** 转换为大写 */
+char* __cay_string_to_upper(const char* str) {
+    if (!str) return (char*)__cay_empty_string;
+
+    int64_t len = (int64_t)strlen(str);
+    char* result = calloc(1, (size_t)(len + 1));
+    if (!result) return (char*)__cay_empty_string;
+
+    for (int64_t i = 0; i < len; i++) {
+        result[i] = __cay_to_upper(str[i]);
+    }
+    result[len] = '\0';
+    return result;
+}
+
+/** 检查字符串是否包含子串 */
+bool __cay_string_contains(const char* str, const char* substr) {
+    if (!str || !substr) return false;
+    return __cay_string_indexof(str, substr) != -1;
+}
+
+/** 字符串比较 (按字典序，区分大小写)，返回 -1/0/1 */
+int32_t __cay_string_compareto(const char* str1, const char* str2) {
+    if (!str1 && !str2) return 0;
+    if (!str1) return -1;
+    if (!str2) return 1;
+
+    int cmp = strcmp(str1, str2);
+    if (cmp < 0) return -1;
+    if (cmp > 0) return 1;
+    return 0;
+}

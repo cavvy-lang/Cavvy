@@ -1,9 +1,0 @@
-
-#include "stats_lib.cay"
-public int main() {
-    int[] data = {45, 78, 23, 91, 56, 12, 67, 89};
-    println(StatsLib.max(data));
-    println(StatsLib.min(data));
-    println(StatsLib.average(data));
-    return 0;
-}

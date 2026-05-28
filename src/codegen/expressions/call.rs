@@ -130,6 +130,37 @@ impl IRGenerator {
                             // 不是函数指针字段，按普通方法处理
                             (self.current_class.clone(), member.member.clone(), Some(member.object.clone()), false)
                         } else {
+                            // 检查是否是 enum 构造函数调用: EnumName.VariantName(args)
+                            if let Some(ref registry) = self.type_registry {
+                                if let Some(enum_info) = registry.get_enum(obj_name_str) {
+                                    if let Some(idx) = enum_info.variants.iter().position(|v| v.name == member.member) {
+                                        let has_payload = enum_info.variants[idx].payload_type.is_some();
+                                        let payload_val = if has_payload {
+                                            let val = self.generate_expression(&call.args[0])?;
+                                            let (pl_type, pl_val) = self.parse_typed_value(&val);
+                                            if pl_type == "i32" {
+                                                let ext = self.new_temp();
+                                                self.emit_line(&format!("  {} = sext i32 {} to i64", ext, pl_val));
+                                                ext
+                                            } else if pl_type == "i8*" || pl_type.ends_with('*') {
+                                                let ptr_to_i64 = self.new_temp();
+                                                self.emit_line(&format!("  {} = ptrtoint {} {} to i64", ptr_to_i64, pl_type, pl_val));
+                                                ptr_to_i64
+                                            } else {
+                                                pl_val.to_string()
+                                            }
+                                        } else {
+                                            "0".to_string()
+                                        };
+                                        // 构造 struct { i32 discriminant, i64 payload }
+                                        let struct_val = self.new_temp();
+                                        self.emit_line(&format!("  {} = insertvalue {{ i32, i64 }} undef, i32 {}, 0", struct_val, idx));
+                                        let struct_val2 = self.new_temp();
+                                        self.emit_line(&format!("  {} = insertvalue {{ i32, i64 }} {}, i64 {}, 1", struct_val2, struct_val, payload_val));
+                                        return Ok(format!("{{ i32, i64 }} {}", struct_val2));
+                                    }
+                                }
+                            }
                             // 首先检查是否是已知的类名
                             let (class_name, is_class) = if let Some(ref registry) = self.type_registry {
                                 if registry.class_exists(obj_name_str) {

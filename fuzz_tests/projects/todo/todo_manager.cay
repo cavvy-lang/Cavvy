@@ -1,9 +1,0 @@
-
-#include "task.cay"
-public class TodoManager {
-    public static int countDone(Task[] tasks) {
-        int c = 0;
-        for (int i = 0; i < tasks.length; i = i + 1) { if (tasks[i].done) c = c + 1; }
-        return c;
-    }
-}

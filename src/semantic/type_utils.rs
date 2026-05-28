@@ -433,6 +433,38 @@ impl SemanticAnalyzer {
                 }
                 Ok(Type::String)
             }
+            "toLowerCase" => {
+                if !args.is_empty() {
+                    return Err(self.report_error(line, column, "String.toLowerCase() takes no arguments".to_string()));
+                }
+                Ok(Type::String)
+            }
+            "toUpperCase" => {
+                if !args.is_empty() {
+                    return Err(self.report_error(line, column, "String.toUpperCase() takes no arguments".to_string()));
+                }
+                Ok(Type::String)
+            }
+            "contains" => {
+                if args.len() != 1 {
+                    return Err(self.report_error(line, column, "String.contains() takes 1 argument".to_string()));
+                }
+                let arg_type = self.infer_expr_type_collect_errors(&args[0]);
+                if arg_type != Type::String {
+                    return Err(self.report_error(line, column, format!("Argument of contains() must be string, got {}", arg_type)));
+                }
+                Ok(Type::Bool)
+            }
+            "compareTo" => {
+                if args.len() != 1 {
+                    return Err(self.report_error(line, column, "String.compareTo() takes 1 argument".to_string()));
+                }
+                let arg_type = self.infer_expr_type_collect_errors(&args[0]);
+                if arg_type != Type::String {
+                    return Err(self.report_error(line, column, format!("Argument of compareTo() must be string, got {}", arg_type)));
+                }
+                Ok(Type::Int32)
+            }
             _ => Err(self.report_error(line, column, format!("Unknown String method '{}'", method_name))),
         }
     }

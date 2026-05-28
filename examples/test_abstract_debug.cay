@@ -1,7 +1,74 @@
+/**
+ * 抽象类调试测试
+ * 测试内容: 抽象类 + 具体方法组合、多子类继承、方法重写
+ */
 public abstract class TestAbstract {
     public abstract int method1();
     public abstract double method2();
+
     public void normalMethod() {
         println("normal");
+    }
+
+    public int add(int a, int b) {
+        return a + b;
+    }
+}
+
+public class ImplA extends TestAbstract {
+    public int method1() {
+        return 100;
+    }
+
+    public double method2() {
+        return 1.5;
+    }
+}
+
+public class ImplB extends TestAbstract {
+    private int factor;
+
+    public ImplB(int f) {
+        this.factor = f;
+    }
+
+    public int method1() {
+        return 200 * this.factor;
+    }
+
+    public double method2() {
+        return 2.71828;
+    }
+}
+
+public class AbstractDebugTest {
+    public static void main() {
+        println("=== 抽象类调试测试 ===");
+
+        // 测试 ImplA
+        ImplA a = new ImplA();
+        println("ImplA.method1() = " + String.valueOf(a.method1()));
+        println("ImplA.method2() = " + String.valueOf(a.method2()));
+        a.normalMethod();
+        int sumA = a.add(10, 20);
+        println("ImplA.add(10, 20) = " + String.valueOf(sumA));
+
+        // 测试 ImplB
+        ImplB b = new ImplB(3);
+        println("ImplB.method1() = " + String.valueOf(b.method1()));
+        println("ImplB.method2() = " + String.valueOf(b.method2()));
+        b.normalMethod();
+        int sumB = b.add(5, 15);
+        println("ImplB.add(5, 15) = " + String.valueOf(sumB));
+
+        // 验证
+        if (sumA == 30) {
+            println("ImplA.add 验证通过");
+        }
+        if (sumB == 20) {
+            println("ImplB.add 验证通过");
+        }
+
+        println("=== 抽象类调试测试通过 ===");
     }
 }

@@ -1,5 +1,90 @@
-public class Test {
+/**
+ * 预处理器集成测试 - 生产级完整测试
+ * 测试内容:
+ * - #define 宏定义与替换
+ * - #ifdef / #ifndef / #endif 条件编译
+ * - #if / #else / #elif 条件判断
+ * - 宏嵌套和复杂表达式
+ */
+#define PLATFORM "Windows"
+#define VERSION 510
+#define DEBUG_MODE
+
+#ifdef DEBUG_MODE
+#define LOG_LEVEL 2
+#else
+#define LOG_LEVEL 0
+#endif
+
+#define PI 3.14159
+
+public class PreprocessTest {
     public static void main() {
-        print("test");
+        println("=== 预处理器集成测试 ===");
+
+        // 测试1: 基本宏替换
+        println("--- 基本宏替换 ---");
+        println("Platform: " + PLATFORM);
+
+        int ver = VERSION;
+        println("Version: " + String.valueOf(ver));
+
+        // 测试2: 条件编译
+        println("--- 条件编译 ---");
+        #ifdef DEBUG_MODE
+        println("DEBUG_MODE is defined");
+        println("LOG_LEVEL = " + String.valueOf(LOG_LEVEL));
+        #else
+        println("DEBUG_MODE is NOT defined");
+        #endif
+
+        #ifndef RELEASE
+        println("RELEASE is not defined (as expected)");
+        #endif
+
+        // 测试3: 数值宏
+        println("--- 数值宏 ---");
+        double circleArea = PI * 10.0 * 10.0;
+        println("Circle area (r=10): " + String.valueOf(circleArea));
+
+        // 测试4: 函数式宏
+        println("--- 函数式宏 ---");
+        // Cavvy不允许函数式宏，以下代码会报错
+        // #define MAX(a, b) ((a) > (b) ? (a) : (b))
+        // #define SQUARE(x) ((x) * (x))
+
+        // int a = 15;
+        // int b = 42;
+        // int maxVal = MAX(a, b);
+        // println("MAX(" + String.valueOf(a) + ", " + String.valueOf(b) + ") = " + String.valueOf(maxVal));
+
+        // int sq = SQUARE(7);
+        // println("SQUARE(7) = " + String.valueOf(sq));
+
+        // 测试5: 条件判断
+        println("--- 条件判断 ---");
+        #if VERSION >= 500
+        println("VERSION >= 500: TRUE");
+        #else
+        println("VERSION >= 500: FALSE");
+        #endif
+
+        #if VERSION == 510
+        println("VERSION == 510: TRUE");
+        #elif VERSION == 500
+        println("VERSION == 500: TRUE");
+        #else
+        println("VERSION is something else");
+        #endif
+
+        // 测试6: 组合使用
+        println("--- 组合测试 ---");
+        #ifdef DEBUG_MODE
+        #if LOG_LEVEL >= 2
+        println("Detailed logging enabled (LOG_LEVEL >= 2)");
+        #endif
+        #endif
+
+        println("=== 预处理器集成测试通过 ===");
     }
 }

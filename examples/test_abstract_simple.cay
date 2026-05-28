@@ -1,4 +1,49 @@
-public class TestAbstract {
+/**
+ * 抽象类基础集成测试
+ * 测试内容: 抽象类声明、抽象方法、具体子类实现、多态调用
+ */
+public abstract class TestAbstract {
     public abstract int method1();
     public abstract double method2();
+    public abstract void printInfo();
+}
+
+public class ConcreteImpl extends TestAbstract {
+    public int method1() {
+        return 42;
+    }
+
+    public double method2() {
+        return 3.14159;
+    }
+
+    public void printInfo() {
+        println("ConcreteImpl: method1()=" + String.valueOf(this.method1()) + ", method2()=" + String.valueOf(this.method2()));
+    }
+}
+
+public class AbstractSimpleTest {
+    public static void main() {
+        println("=== 抽象类基础测试 ===");
+
+        ConcreteImpl obj = new ConcreteImpl();
+
+        int r1 = obj.method1();
+        println("method1() = " + String.valueOf(r1));
+
+        double r2 = obj.method2();
+        println("method2() = " + String.valueOf(r2));
+
+        obj.printInfo();
+
+        // 验证返回值
+        if (r1 == 42) {
+            println("method1 验证通过");
+        }
+        if (r2 > 3.0) {
+            println("method2 验证通过");
+        }
+
+        println("=== 抽象类基础测试通过 ===");
+    }
 }

@@ -484,9 +484,10 @@ pub fn codegen_error_at(loc: SourceLocation, message: impl Into<String>) -> cayE
 }
 
 // 代码生成错误（无源码位置 — 用于无法获取 AST 节点位置的场景）
-pub fn codegen_error(message: impl Into<String>) -> cayError {
-    codegen_error_at(SourceLocation::default(), message)
-}
+// 不能使用了，因为没有源码位置
+// pub fn codegen_error(message: impl Into<String>) -> cayError {
+//     codegen_error_at(SourceLocation::default(), message)
+// }
 
 // 类型不匹配错误
 pub fn type_mismatch_error(
@@ -825,6 +826,7 @@ pub fn print_miette_error(error_type: &str, message: &str, help: Option<&str>) {
 /// use cavvy::error::print_compile_error;
 /// print_compile_error("词法分析", "无效的字符", "test.cay", Some("请检查字符编码"));
 /// ```
+#[deprecated()]
 pub fn print_compile_error(stage: &str, error: &str, source_path: &str, help: Option<&str>) {
     eprintln!("\n  × cavvy::compile_error: {}阶段错误", stage);
     eprintln!("   ╭─[{}]", source_path);
@@ -853,6 +855,7 @@ pub fn print_compile_error(stage: &str, error: &str, source_path: &str, help: Op
 /// use cavvy::error::print_tool_error;
 /// print_tool_error("clang", "编译失败", Some("请检查 LLVM 安装"));
 /// ```
+#[deprecated()]
 pub fn print_tool_error(tool: &str, message: &str, help: Option<&str>) {
     eprintln!("\n  × cavvy::tool_error: {} 执行失败", tool);
     eprintln!("   │");
@@ -895,6 +898,7 @@ pub fn print_warning(message: &str) {
 /// use cavvy::error::print_warning_with_location;
 /// print_warning_with_location("未使用的变量", "test.cay", 10, 5);
 /// ```
+#[deprecated()]
 pub fn print_warning_with_location(message: &str, filename: &str, line: usize, column: usize) {
     eprintln!("  ⚠ cavvy::warning: {}", message);
     eprintln!("     位置: {}:{}:{}", filename, line, column);
@@ -982,13 +986,6 @@ mod tests {
     // ============================================================
     // 旧构造函数兼容性测试
     // ============================================================
-
-    #[test]
-    fn test_codegen_error_uses_error_code() {
-        let err = codegen_error("Unsupported feature: lambda in static context");
-        let compiler: CompilerError = err.into();
-        assert_eq!(compiler.0.code, "E5001"); // CODEGEN_UNSUPPORTED_FEATURE
-    }
 
     #[test]
     fn test_semantic_error_uses_error_code() {

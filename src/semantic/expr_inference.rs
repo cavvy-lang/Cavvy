@@ -260,7 +260,19 @@ impl SemanticAnalyzer {
     fn infer_unary_type(&mut self, unary: &UnaryExpr) -> cayResult<Type> {
         let operand_type = self.infer_expr_type_internal(&unary.operand)?;
         match unary.op {
-            UnaryOp::Neg => Ok(operand_type),
+            UnaryOp::Neg => {
+                // 特殊处理：-2147483648 (i32::MIN)
+                // 正数 2147483648 超出 i32::MAX，被解析为 Int64，
+                // 但取反后 -2147483648 = i32::MIN，应该被视为 Int32
+                if let Expr::Literal(lit) = unary.operand.as_ref() {
+                    if let LiteralValue::Int64(val) = lit.value {
+                        if val == -(i32::MIN as i64) {
+                            return Ok(Type::Int32);
+                        }
+                    }
+                }
+                Ok(operand_type)
+            }
             UnaryOp::Not => {
                 if operand_type == Type::Bool {
                     Ok(Type::Bool)
@@ -491,6 +503,54 @@ impl SemanticAnalyzer {
                     }
                 }
             }
+            
+            // 检查是否是 enum 构造函数调用: EnumName.VariantName(args)
+            if let Expr::Identifier(class_name) = &*member.object {
+                let class_name_str = class_name.as_ref().to_string();
+                let member_name = member.member.clone();
+                if let Some(enum_info) = self.type_registry.get_enum(&class_name_str) {
+                    if let Some(variant) = enum_info.variants.iter().find(|v| v.name == member_name) {
+                        let payload_type_opt = variant.payload_type.clone();
+                        drop(member); // 释放对 call 的借用
+                        drop(enum_info);
+                        // 验证参数数量
+                        match &payload_type_opt {
+                            Some(expected_payload_type) => {
+                                if call.args.len() != 1 {
+                                    return Err(semantic_error_at_loc(
+                                        &call.loc,
+                                        format!("Enum variant '{}.{}' with payload expects 1 argument, but got {}", 
+                                            class_name_str, member_name, call.args.len())
+                                    ));
+                                }
+                                // 验证参数类型
+                                let arg_type = self.infer_expr_type_internal(&call.args[0])?;
+                                if !self.types_compatible(&arg_type, expected_payload_type) {
+                                    return Err(semantic_error_at_loc(
+                                        &call.loc,
+                                        format!("Enum variant '{}.{}' payload type mismatch: expected {}, got {}",
+                                            class_name_str, member_name, expected_payload_type, arg_type)
+                                    ));
+                                }
+                            }
+                            None => {
+                                if !call.args.is_empty() {
+                                    return Err(semantic_error_at_loc(
+                                        &call.loc,
+                                        format!("Enum variant '{}.{}' has no payload, but got {} argument(s)",
+                                            class_name_str, member_name, call.args.len())
+                                    ));
+                                }
+                            }
+                        }
+                        return Ok(Type::Object(class_name_str));
+                    }
+                    return Err(semantic_error_at_loc(
+                        &call.loc,
+                        format!("Unknown variant '{}' for enum {}", member_name, class_name_str)
+                    ));
+                }
+            }
 
             // 处理数组类型的 length() 方法调用（作为 .length 属性的语法糖）
             if let Type::Array(_) = &obj_type {
@@ -718,6 +778,18 @@ impl SemanticAnalyzer {
                     }
                 }
             }
+            
+            // 检查是否是 enum variant 访问: EnumName.VariantName
+            if let Some(enum_info) = self.type_registry.get_enum(class_name.as_ref()) {
+                let variant_exists = enum_info.variants.iter().any(|v| v.name == member.member);
+                if variant_exists {
+                    return Ok(Type::Object(class_name.to_string()));
+                }
+                return Err(semantic_error_at_loc(
+                    &member.loc,
+                    format!("Unknown variant '{}' for enum {}", member.member, class_name)
+                ));
+            }
         }
 
         // 成员访问类型检查
@@ -778,6 +850,12 @@ impl SemanticAnalyzer {
                         }
                     }
                     return Ok(field_info.field_type.clone());
+                }
+            }
+            // 检查是否是 enum variant 访问
+            if let Some(enum_info) = self.type_registry.get_enum(&class_name) {
+                if enum_info.variants.iter().any(|v| v.name == member.member) {
+                    return Ok(Type::Object(class_name));
                 }
             }
             return Err(semantic_error_at_loc(

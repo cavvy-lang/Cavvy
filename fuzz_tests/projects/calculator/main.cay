@@ -1,9 +1,0 @@
-
-#include "math_ops.cay"
-public int main() {
-    println(MathOps.add(10, 20));
-    println(MathOps.sub(50, 30));
-    println(MathOps.mul(7, 6));
-    println(MathOps.div(100, 4));
-    return 0;
-}

@@ -1,9 +1,0 @@
-
-#include "prime.cay"
-public int main() {
-    println(PrimeUtils.isPrime(17));
-    println(PrimeUtils.isPrime(100));
-    println(PrimeUtils.gcd(48, 18));
-    println(PrimeUtils.lcm(12, 18));
-    return 0;
-}

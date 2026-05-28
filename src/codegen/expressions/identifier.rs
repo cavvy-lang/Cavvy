@@ -34,10 +34,10 @@ impl IRGenerator {
             return Ok(format!("{} @{}", llvm_func_type, func_name));
         }
 
-        // 检查是否是类名（静态成员访问的上下文）
+        // 检查是否是类名或枚举名（静态成员访问的上下文）
         if let Some(ref registry) = self.type_registry {
-            if registry.class_exists(name) {
-                // 类名不应该单独作为表达式使用
+            if registry.class_exists(name) || registry.get_enum(name).is_some() {
+                // 类名/枚举名不应该单独作为表达式使用
                 // 返回一个占位符，实际使用应该在 MemberAccess 中处理
                 return Ok("i8* null".to_string());
             }

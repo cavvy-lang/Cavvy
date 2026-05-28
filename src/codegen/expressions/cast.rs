@@ -4,7 +4,7 @@
 
 use crate::codegen::context::IRGenerator;
 use crate::ast::*;
-use crate::error::{cayResult, codegen_error};
+use crate::error::{cayResult, codegen_error_at};
 
 impl IRGenerator {
     /// 生成类型转换表达式代码
@@ -233,6 +233,6 @@ impl IRGenerator {
             }
         }
 
-        Err(codegen_error(format!("Unsupported cast from {} to {}", from_type, to_type)))
+        Err(codegen_error_at(cast.loc.clone(), format!("Unsupported cast from {} to {}", from_type, to_type)))
     }
 }

@@ -116,10 +116,11 @@ impl IRGenerator {
                         if let crate::types::Type::String = var_cay_type {
                             // String 类型特殊处理
                             if member.member == "length" || member.member == "indexOf" || 
-                               member.member == "lastIndexOf" {
+                               member.member == "lastIndexOf" || member.member == "compareTo" {
                                 return Some(crate::types::Type::Int32);
                             } else if member.member == "substring" || 
-                                      member.member == "toString" || member.member == "replace" {
+                                      member.member == "toString" || member.member == "replace" ||
+                                      member.member == "toLowerCase" || member.member == "toUpperCase" {
                                 return Some(crate::types::Type::String);
                             } else if member.member == "equals" || member.member == "isEmpty" ||
                                       member.member == "startsWith" || member.member == "endsWith" ||
@@ -140,10 +141,11 @@ impl IRGenerator {
                         } else if let crate::types::Type::String = obj_type {
                             // String 类型特殊处理
                             if member.member == "length" || member.member == "indexOf" || 
-                               member.member == "lastIndexOf" {
+                               member.member == "lastIndexOf" || member.member == "compareTo" {
                                 return Some(crate::types::Type::Int32);
                             } else if member.member == "substring" || 
-                                      member.member == "toString" || member.member == "replace" {
+                                      member.member == "toString" || member.member == "replace" ||
+                                      member.member == "toLowerCase" || member.member == "toUpperCase" {
                                 return Some(crate::types::Type::String);
                             } else if member.member == "equals" || member.member == "isEmpty" ||
                                       member.member == "startsWith" || member.member == "endsWith" ||
@@ -310,9 +312,9 @@ impl IRGenerator {
                     }
                     else {
                         // 类型不兼容，报错
-                        return Err(crate::error::codegen_error(
-                            format!("Cannot convert {} to {} in variable initialization '{}' at line {}", 
-                                value_type, var_type, var.name, var.loc.line)
+                        return Err(crate::error::codegen_error_at(var.loc.clone(),
+                            format!("Cannot convert {} to {} in variable initialization '{}'", 
+                                value_type, var_type, var.name)
                         ));
                     }
                 } else {

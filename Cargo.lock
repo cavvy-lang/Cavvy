@@ -535,6 +535,7 @@ dependencies = [
  "env_logger",
  "logos",
  "miette",
+ "regex",
  "rfd",
  "serde",
  "serde_json",

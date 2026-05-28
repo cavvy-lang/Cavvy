@@ -4,7 +4,7 @@
 
 use crate::codegen::context::IRGenerator;
 use crate::ast::*;
-use crate::error::{cayResult, codegen_error};
+use crate::error::{cayResult, codegen_error_at};
 
 impl IRGenerator {
     /// 生成 instanceof 表达式代码
@@ -44,7 +44,7 @@ impl IRGenerator {
         let target_type = &instanceof.target_type;
         let target_class = match target_type {
             crate::types::Type::Object(name) => name.clone(),
-            _ => return Err(codegen_error("instanceof target must be an object type".to_string())),
+            _ => return Err(codegen_error_at(instanceof.loc.clone(), "instanceof target must be an object type".to_string())),
         };
 
         let is_interface = self.type_registry.as_ref()
