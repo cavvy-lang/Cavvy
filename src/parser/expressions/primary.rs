@@ -533,7 +533,20 @@ pub fn parse_base_type(parser: &mut Parser) -> cayResult<Type> {
                 let next = super::super::utils::consume_identifier(parser, "期望命名空间后的标识符\n提示: 限定类型名格式为 'ns::Type'")?;
                 name = format!("{}::{}", name, next);
             }
-            Ok(Type::Object(name))
+            // 检查是否有泛型类型参数 <...>
+            if parser.check(&crate::lexer::Token::Lt) {
+                // 解析泛型类型参数: Optional<int>, Box<String>
+                let type_args = crate::parser::classes::parse_generic_type_args(parser)?;
+                // 将泛型类型格式化为完整的类型名称: "Optional<int>"
+                let type_args_str = type_args.iter()
+                    .map(|t| type_to_string(t))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let generic_name = format!("{}<{}>", name, type_args_str);
+                Ok(Type::Object(generic_name))
+            } else {
+                Ok(Type::Object(name))
+            }
         }
         _ => {
             let current_token = super::super::utils::get_token_name(parser.current_token());
@@ -560,4 +573,56 @@ fn parse_arguments(parser: &mut Parser) -> cayResult<Vec<Expr>> {
     }
 
     Ok(args)
+}
+
+/// 将 Type 转换为字符串表示
+/// 用于构建泛型类型名称，如 Optional<int>
+fn type_to_string(ty: &Type) -> String {
+    match ty {
+        Type::Void => "void".to_string(),
+        Type::Int32 => "int".to_string(),
+        Type::Int64 => "long".to_string(),
+        Type::Float32 => "float".to_string(),
+        Type::Float64 => "double".to_string(),
+        Type::Bool => "boolean".to_string(),
+        Type::String => "String".to_string(),
+        Type::Char => "char".to_string(),
+        Type::Object(name) => name.clone(),
+        Type::Array(elem_type) => format!("{}[]", type_to_string(elem_type)),
+        Type::Pointer(elem_type) => format!("{}*", type_to_string(elem_type)),
+        Type::Function(func_type) => {
+            let params = func_type.params.iter()
+                .map(type_to_string)
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("fn({}) -> {}", params, type_to_string(&func_type.return_type))
+        }
+        Type::Auto => "auto".to_string(),
+        Type::GenericParam(name) => name.clone(),
+        Type::Generic(name, args) => {
+            let args_str = args.iter()
+                .map(type_to_string)
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("{}<{}>", name, args_str)
+        }
+        // FFI 类型
+        Type::CInt => "c_int".to_string(),
+        Type::CUInt => "c_uint".to_string(),
+        Type::CLong => "c_long".to_string(),
+        Type::CULong => "c_ulong".to_string(),
+        Type::CShort => "c_short".to_string(),
+        Type::CUShort => "c_ushort".to_string(),
+        Type::CChar => "c_char".to_string(),
+        Type::CUChar => "c_uchar".to_string(),
+        Type::CFloat => "c_float".to_string(),
+        Type::CDouble => "c_double".to_string(),
+        Type::SizeT => "size_t".to_string(),
+        Type::SSizeT => "ssize_t".to_string(),
+        Type::UIntPtr => "uintptr_t".to_string(),
+        Type::IntPtr => "intptr_t".to_string(),
+        Type::CVoid => "c_void".to_string(),
+        Type::CBool => "c_bool".to_string(),
+        Type::Struct(name) => format!("struct {}", name),
+    }
 }

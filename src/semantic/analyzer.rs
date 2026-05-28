@@ -30,6 +30,8 @@ pub struct SemanticAnalyzer {
     pub(super) source_map: Option<std::collections::HashMap<usize, (String, usize)>>,
     /// 启用的语言特性
     pub(super) features: Vec<String>,
+    /// 当前类的泛型类型参数: <T, U, ...>
+    pub(super) current_class_type_params: Vec<String>,
 }
 
 impl SemanticAnalyzer {
@@ -50,6 +52,7 @@ impl SemanticAnalyzer {
             current_file: None,
             source_map: None,
             features,
+            current_class_type_params: Vec::new(),
         };
         
         // 注册内置函数

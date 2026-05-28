@@ -11,6 +11,7 @@ impl SemanticAnalyzer {
     pub fn type_check_program(&mut self, program: &Program) -> cayResult<()> {
         for class in &program.classes {
             self.current_class = Some(class.name.clone());
+            self.current_class_type_params = class.type_params.clone();
             self.type_registry.current_namespace = class.namespace_path.clone();
             
             for member in &class.members {

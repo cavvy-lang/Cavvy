@@ -109,8 +109,14 @@ impl IRGenerator {
                 self.emit_line(&format!("  %{} = alloca {}, align {}", llvm_name, var_type, align));
                 self.var_types.insert(binding.var_name.clone(), var_type.clone());
                 self.var_cay_types.insert(binding.var_name.clone(), binding.var_type.clone());
-                if let crate::types::Type::Object(ref class_name) = binding.var_type {
-                    self.var_class_map.insert(binding.var_name.clone(), class_name.clone());
+                match &binding.var_type {
+                    crate::types::Type::Object(class_name) => {
+                        self.var_class_map.insert(binding.var_name.clone(), class_name.clone());
+                    }
+                    crate::types::Type::Generic(class_name, _) => {
+                        self.var_class_map.insert(binding.var_name.clone(), class_name.clone());
+                    }
+                    _ => {}
                 }
                 // 从 enum struct 中提取 payload
                 let store_val = if let Some((ref st_type, ref st_val)) = enum_struct_ref {

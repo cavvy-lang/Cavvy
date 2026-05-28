@@ -131,13 +131,13 @@ impl IRGenerator {
             computed: &mut std::collections::HashSet<String>,
             generator: &mut IRGenerator
         ) {
-            // 构建限定名用于追踪和存储
-            let qname = if class.namespace_path.is_empty() {
+            // 构建基础限定名（不含泛型参数）用于追踪和存储
+            let base_qname = if class.namespace_path.is_empty() {
                 class.name.clone()
             } else {
                 format!("{}::{}", class.namespace_path.join("::"), class.name)
             };
-            if computed.contains(&qname) {
+            if computed.contains(&base_qname) {
                 return;
             }
             
@@ -148,15 +148,15 @@ impl IRGenerator {
                 }
             }
             
-            // 计算当前类
+            // 计算当前类（使用基础类名存储布局）
             let instance_fields: Vec<_> = class.members.iter()
                 .filter_map(|m| match m {
                     ClassMember::Field(f) => Some(f.clone()),
                     _ => None,
                 })
                 .collect();
-            generator.compute_class_layout(&qname, &instance_fields, class.parent.as_deref());
-            computed.insert(qname);
+            generator.compute_class_layout(&base_qname, &instance_fields, class.parent.as_deref());
+            computed.insert(base_qname);
         }
         
         for class in &program.classes {
@@ -686,11 +686,18 @@ impl IRGenerator {
             registry.current_namespace = class.namespace_path.clone();
         }
 
-        // 构建限定名（用于 LLVM 名称改编）
-        let qname = if class.namespace_path.is_empty() {
+        // 构建完整类名（包含泛型参数，用于 LLVM 名称改编）
+        let full_class_name = if class.type_params.is_empty() {
             class.name.clone()
         } else {
-            format!("{}::{}", class.namespace_path.join("::"), class.name)
+            format!("{}<{}>", class.name, class.type_params.join(", "))
+        };
+
+        // 构建限定名（用于 LLVM 名称改编）
+        let qname = if class.namespace_path.is_empty() {
+            full_class_name
+        } else {
+            format!("{}::{}", class.namespace_path.join("::"), full_class_name)
         };
 
         // 检查是否有显式构造函数
@@ -773,10 +780,16 @@ impl IRGenerator {
         let fn_name = self.generate_method_name(class_name, method);
         self.current_function = fn_name.clone();
         // 从可能包含 :: 的限定名中提取简单名用于 current_class
-        self.current_class = if class_name.contains("::") {
+        let raw_class_name = if class_name.contains("::") {
             class_name.split("::").last().unwrap().to_string()
         } else {
             class_name.to_string()
+        };
+        // 提取简单类名（不含泛型参数）用于参数名生成
+        self.current_class = if let Some(pos) = raw_class_name.find('<') {
+            raw_class_name[..pos].to_string()
+        } else {
+            raw_class_name
         };
         self.current_return_type = self.type_to_llvm(&method.return_type);
 
@@ -850,9 +863,15 @@ impl IRGenerator {
                 self.var_types.insert(param.name.clone(), array_type.clone());
                 // 存储Cavvy类型信息，用于准确的类型推断
                 self.var_cay_types.insert(param.name.clone(), param.param_type.clone());
-                // 如果参数类型是对象，记录其类名以便后续方法调用解析
-                if let crate::types::Type::Object(ref class_name) = param.param_type {
-                    self.var_class_map.insert(param.name.clone(), class_name.clone());
+                // 如果参数类型是对象或泛型，记录其类名以便后续方法调用解析
+                match &param.param_type {
+                    crate::types::Type::Object(class_name) => {
+                        self.var_class_map.insert(param.name.clone(), class_name.clone());
+                    }
+                    crate::types::Type::Generic(class_name, _) => {
+                        self.var_class_map.insert(param.name.clone(), class_name.clone());
+                    }
+                    _ => {}
                 }
             } else {
                 let param_type = self.type_to_llvm(&param.param_type);
@@ -863,9 +882,15 @@ impl IRGenerator {
                 self.var_types.insert(param.name.clone(), param_type.clone());
                 // 存储Cavvy类型信息，用于准确的类型推断
                 self.var_cay_types.insert(param.name.clone(), param.param_type.clone());
-                // 如果参数类型是对象，记录其类名以便后续方法调用解析
-                if let crate::types::Type::Object(ref class_name) = param.param_type {
-                    self.var_class_map.insert(param.name.clone(), class_name.clone());
+                // 如果参数类型是对象或泛型，记录其类名以便后续方法调用解析
+                match &param.param_type {
+                    crate::types::Type::Object(class_name) => {
+                        self.var_class_map.insert(param.name.clone(), class_name.clone());
+                    }
+                    crate::types::Type::Generic(class_name, _) => {
+                        self.var_class_map.insert(param.name.clone(), class_name.clone());
+                    }
+                    _ => {}
                 }
             }
         }
@@ -894,10 +919,16 @@ impl IRGenerator {
         let fn_name = self.generate_constructor_name(class_name, ctor);
         self.current_function = fn_name.clone();
         // 从可能包含 :: 的限定名中提取简单名用于 current_class
-        self.current_class = if class_name.contains("::") {
+        let raw_class_name = if class_name.contains("::") {
             class_name.split("::").last().unwrap().to_string()
         } else {
             class_name.to_string()
+        };
+        // 提取简单类名（不含泛型参数）用于参数名生成
+        self.current_class = if let Some(pos) = raw_class_name.find('<') {
+            raw_class_name[..pos].to_string()
+        } else {
+            raw_class_name
         };
         self.current_return_type = "void".to_string();
 
@@ -1006,10 +1037,16 @@ impl IRGenerator {
         let fn_name = format!("{}.__ctor", llvm_class);
         self.current_function = fn_name.clone();
         // 从可能包含 :: 的限定名中提取简单名用于 current_class
-        self.current_class = if class_name.contains("::") {
+        let raw_class_name = if class_name.contains("::") {
             class_name.split("::").last().unwrap().to_string()
         } else {
             class_name.to_string()
+        };
+        // 提取简单类名（不含泛型参数）用于参数名生成
+        self.current_class = if let Some(pos) = raw_class_name.find('<') {
+            raw_class_name[..pos].to_string()
+        } else {
+            raw_class_name
         };
         self.current_return_type = "void".to_string();
 
@@ -1058,10 +1095,16 @@ impl IRGenerator {
         let fn_name = format!("{}.__dtor", llvm_class);
         self.current_function = fn_name.clone();
         // 从可能包含 :: 的限定名中提取简单名用于 current_class
-        self.current_class = if class_name.contains("::") {
+        let raw_class_name = if class_name.contains("::") {
             class_name.split("::").last().unwrap().to_string()
         } else {
             class_name.to_string()
+        };
+        // 提取简单类名（不含泛型参数）用于参数名生成
+        self.current_class = if let Some(pos) = raw_class_name.find('<') {
+            raw_class_name[..pos].to_string()
+        } else {
+            raw_class_name
         };
         self.current_return_type = "void".to_string();
 

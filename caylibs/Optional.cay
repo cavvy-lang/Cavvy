@@ -21,22 +21,24 @@
 namespace std {
 
 /**
- * OptionalInt - int 类型的 Optional 特化版本
+ * Optional<T> - 泛型可选值容器
  * 
- * 这是 Optional<int> 的单态化实现。
- * 当泛型系统完全实现后，将由 Optional<int> 自动生成此代码。
+ * 时间复杂度: O(1) 所有操作
+ * 空间复杂度: O(1) 固定额外空间 (boolean + T)
+ * 
+ * 注意: 当前为泛型类声明，类型参数 T 在编译期通过单态化特化
  */
-public class OptionalInt {
+public class Optional<T> {
     private boolean hasValue;
-    private int value;       // 未初始化时占位，编译器保证 hasValue=false 时不访问
-    
-    // ========== 构造 ==========
+    private T value;
     
     /**
      * 创建一个包含值的 Optional
+     * 时间复杂度: O(1)
+     * 空间复杂度: O(1)
      */
-    public static OptionalInt of(int value) {
-        OptionalInt opt = new OptionalInt();
+    public static Optional<T> of(T value) {
+        Optional<T> opt = new Optional<T>();
         opt.hasValue = true;
         opt.value = value;
         return opt;
@@ -44,18 +46,18 @@ public class OptionalInt {
     
     /**
      * 创建一个空的 Optional
+     * 时间复杂度: O(1)
+     * 空间复杂度: O(1)
      */
-    public static OptionalInt empty() {
-        OptionalInt opt = new OptionalInt();
+    public static Optional<T> empty() {
+        Optional<T> opt = new Optional<T>();
         opt.hasValue = false;
-        // value 保持未初始化，编译器保证不被访问
         return opt;
     }
     
-    // ========== 检查 ==========
-    
     /**
      * 检查是否包含值
+     * 时间复杂度: O(1)
      */
     public boolean isPresent() {
         return hasValue;
@@ -63,26 +65,72 @@ public class OptionalInt {
     
     /**
      * 检查是否为空
+     * 时间复杂度: O(1)
      */
     public boolean isEmpty() {
         return !hasValue;
     }
     
-    // ========== 取值 ==========
-    
     /**
      * 获取值（不安全 - 需先检查 isPresent()）
      * 如果为空，行为未定义（release 模式跳过检查）
+     * 时间复杂度: O(1)
      */
-    public int get() {
-        // 注意：release 模式下跳过检查以实现零开销
-        // debug 模式下可添加断言
+    public T get() {
         return value;
     }
     
     /**
      * 安全取值：为空时返回默认值
+     * 时间复杂度: O(1)
      */
+    public T orElse(T defaultValue) {
+        if (hasValue) {
+            return value;
+        } else {
+            return defaultValue;
+        }
+    }
+}
+
+/**
+ * OptionalInt - int 类型的 Optional 特化版本
+ * 
+ * 这是 Optional<int> 的单态化实现。
+ * 当泛型系统完全实现后，将由 Optional<int> 自动生成此代码。
+ * 
+ * 时间复杂度: O(1) 所有操作
+ * 空间复杂度: O(1)
+ */
+public class OptionalInt {
+    private boolean hasValue;
+    private int value;
+    
+    public static OptionalInt of(int value) {
+        OptionalInt opt = new OptionalInt();
+        opt.hasValue = true;
+        opt.value = value;
+        return opt;
+    }
+    
+    public static OptionalInt empty() {
+        OptionalInt opt = new OptionalInt();
+        opt.hasValue = false;
+        return opt;
+    }
+    
+    public boolean isPresent() {
+        return hasValue;
+    }
+    
+    public boolean isEmpty() {
+        return !hasValue;
+    }
+    
+    public int get() {
+        return value;
+    }
+    
     public int orElse(int defaultValue) {
         if (hasValue) {
             return value;
@@ -94,6 +142,8 @@ public class OptionalInt {
 
 /**
  * OptionalBool - boolean 类型的 Optional 特化版本
+ * 时间复杂度: O(1) 所有操作
+ * 空间复杂度: O(1)
  */
 public class OptionalBool {
     private boolean hasValue;
@@ -135,6 +185,8 @@ public class OptionalBool {
 
 /**
  * OptionalDouble - double 类型的 Optional 特化版本
+ * 时间复杂度: O(1) 所有操作
+ * 空间复杂度: O(1)
  */
 public class OptionalDouble {
     private boolean hasValue;
@@ -175,37 +227,5 @@ public class OptionalDouble {
 }
 
 } // namespace std
-
-/*
- * ============================================================
- * Optional<T> 完整 API 设计（待泛型系统完成后实现）
- * ============================================================
- * 
- * public class Optional<T> {
- *     private boolean hasValue;
- *     private T value;          // 未初始化时占位，编译器保证不访问
- * 
- *     // 构造
- *     public static Optional<T> of(T value);
- *     public static Optional<T> empty();
- * 
- *     // 检查
- *     public boolean isPresent();
- *     public boolean isEmpty();
- * 
- *     // 取值（不安全 - 需手动检查）
- *     public T get();                        // throw if empty
- * 
- *     // 安全取值
- *     public T orElse(T defaultValue);
- *     public T orElseGet(fn() -> T supplier);
- *     public Optional<U> map(fn(T) -> U mapper);
- *     public Optional<U> flatMap(fn(T) -> Optional<U> mapper);
- * 
- *     // 条件操作
- *     public void ifPresent(fn(T) -> void consumer);
- *     public Optional<T> filter(fn(T) -> boolean predicate);
- * }
- */
 
 #endif // CAY_OPTIONAL_H

@@ -814,28 +814,45 @@ impl SemanticAnalyzer {
         }
 
         // 类/struct 成员访问
-        if let Type::Object(class_name) = obj_type {
+        // 处理 Type::Object 和 Type::Generic
+        let base_class_name_opt = match &obj_type {
+            Type::Object(class_name) => {
+                // 解析泛型类名: "Optional<T>" -> "Optional"
+                if let Some(pos) = class_name.find('<') {
+                    Some(&class_name[..pos])
+                } else {
+                    Some(class_name.as_str())
+                }
+            }
+            Type::Generic(class_name, _) => {
+                // Type::Generic 直接返回类名
+                Some(class_name.as_str())
+            }
+            _ => None
+        };
+        
+        if let Some(base_class_name) = base_class_name_opt {
             // 先查 struct
-            if let Some(struct_info) = self.type_registry.get_struct(&class_name) {
+            if let Some(struct_info) = self.type_registry.get_struct(base_class_name) {
                 if let Some(field_info) = struct_info.fields.get(&member.member) {
                     return Ok(field_info.field_type.clone());
                 }
             }
-            if let Some(class_info) = self.type_registry.get_class(&class_name) {
+            if let Some(class_info) = self.type_registry.get_class(base_class_name) {
                 if let Some(field_info) = class_info.fields.get(&member.member) {
                     // 检查私有字段访问权限
                     if !field_info.is_public {
                         if let Some(current_class) = &self.current_class {
-                            if current_class != &class_name {
+                            if current_class != base_class_name {
                                 return Err(semantic_error_at_loc(
                                     &member.loc,
-                                    format!("{} has private access in {}", member.member, class_name)
+                                    format!("{} has private access in {}", member.member, base_class_name)
                                 ));
                             }
                         } else {
                             return Err(semantic_error_at_loc(
                                 &member.loc,
-                                format!("{} has private access in {}", member.member, class_name)
+                                format!("{} has private access in {}", member.member, base_class_name)
                             ));
                         }
                     }
@@ -843,14 +860,14 @@ impl SemanticAnalyzer {
                 }
             }
             // 检查是否是 enum variant 访问
-            if let Some(enum_info) = self.type_registry.get_enum(&class_name) {
+            if let Some(enum_info) = self.type_registry.get_enum(base_class_name) {
                 if enum_info.variants.iter().any(|v| v.name == member.member) {
-                    return Ok(Type::Object(class_name));
+                    return Ok(obj_type.clone());
                 }
             }
             return Err(semantic_error_at_loc(
                 &member.loc,
-                format!("Unknown member '{}' for class {}", member.member, class_name)
+                format!("Unknown member '{}' for class {}", member.member, base_class_name)
             ));
         }
 
@@ -862,22 +879,60 @@ impl SemanticAnalyzer {
 
     /// 推断 new 表达式类型
     fn infer_new_type(&mut self, new_expr: &NewExpr) -> cayResult<Type> {
-        if let Some(class_info) = self.type_registry.get_class(&new_expr.class_name) {
+        // 解析泛型类名: "Optional<T>" -> ("Optional", Some("T"))
+        let (base_class_name, type_param) = if let Some(pos) = new_expr.class_name.find('<') {
+            let base = &new_expr.class_name[..pos];
+            let param_start = pos + 1;
+            let param_end = new_expr.class_name.len().saturating_sub(1);
+            let param = if param_end > param_start {
+                Some(&new_expr.class_name[param_start..param_end])
+            } else {
+                None
+            };
+            (base.to_string(), param)
+        } else {
+            (new_expr.class_name.clone(), None)
+        };
+        
+        // 检查基础类是否存在
+        if let Some(class_info) = self.type_registry.get_class(&base_class_name) {
             // 检查是否是抽象类
             if class_info.is_abstract {
                 return Err(semantic_error_at_loc(
                     &new_expr.loc,
-                    format!("Cannot instantiate abstract class '{}'", new_expr.class_name)
+                    format!("Cannot instantiate abstract class '{}'", base_class_name)
                 ));
             }
-            Ok(Type::Object(new_expr.class_name.clone()))
-        } else if self.type_registry.get_struct(&new_expr.class_name).is_some() {
+            
+            // 如果类有泛型参数，验证类型参数是否合法
+            if !class_info.type_params.is_empty() {
+                if let Some(param) = type_param {
+                    // 检查类型参数是否是当前类的泛型参数或者是已知类型
+                    let is_valid_param = class_info.type_params.contains(&param.to_string())
+                        || self.type_registry.class_exists(param)
+                        || self.type_registry.get_struct(param).is_some()
+                        || matches!(param, "int" | "long" | "float" | "double" | "boolean" | "char" | "String");
+                    
+                    if !is_valid_param {
+                        return Err(semantic_error_at_loc(
+                            &new_expr.loc,
+                            format!("Unknown type parameter '{}' for class '{}'", param, base_class_name)
+                        ));
+                    }
+                }
+                // 返回泛型类型
+                Ok(Type::Object(new_expr.class_name.clone()))
+            } else {
+                // 非泛型类
+                Ok(Type::Object(base_class_name))
+            }
+        } else if self.type_registry.get_struct(&base_class_name).is_some() {
             // struct 是值类型，用 Object 包装
             Ok(Type::Object(new_expr.class_name.clone()))
         } else {
             Err(semantic_error_at_loc(
                 &new_expr.loc,
-                format!("Unknown class or struct: {}", new_expr.class_name)
+                format!("Unknown class or struct: {}", base_class_name)
             ))
         }
     }

@@ -13,24 +13,36 @@ impl IRGenerator {
     /// * `new_expr` - new 表达式
     pub fn generate_new_expression(&mut self, new_expr: &NewExpr) -> cayResult<String> {
         let class_name = &new_expr.class_name;
-        // 如果类是命名空间限定的，解析到TypeRegistry中获取规范名称
-        let canonical_name = if class_name.contains("::") {
-            if let Some(ref registry) = self.type_registry {
-                if let Some(class_info) = registry.get_class(class_name) {
-                    class_info.name.clone()
-                } else {
-                    class_name.clone()
-                }
-            } else {
-                class_name.clone()
-            }
+        
+        // 提取基础类名（不含泛型参数）用于类型注册表查找
+        // 例如: "Optional<T>" -> "Optional", "std::Optional<T>" -> "std::Optional"
+        let base_class_name = if let Some(pos) = class_name.find('<') {
+            class_name[..pos].to_string()
         } else {
             class_name.clone()
         };
-        let type_id_value = self.get_type_id_value(&canonical_name).unwrap_or(0);
+        
+        // 如果类是命名空间限定的，解析到TypeRegistry中获取规范名称
+        let registry_name = if base_class_name.contains("::") {
+            if let Some(ref registry) = self.type_registry {
+                if let Some(class_info) = registry.get_class(&base_class_name) {
+                    class_info.name.clone()
+                } else {
+                    base_class_name.clone()
+                }
+            } else {
+                base_class_name.clone()
+            }
+        } else {
+            base_class_name.clone()
+        };
+        
+        // 使用完整的泛型类名用于代码生成（确保构造函数名一致）
+        let canonical_name = class_name.clone();
+        let type_id_value = self.get_type_id_value(&registry_name).unwrap_or(0);
 
-        // 获取类布局信息，确定对象大小
-        let obj_size = self.get_class_layout(&canonical_name)
+        // 获取类布局信息，确定对象大小（使用基础类名查找）
+        let obj_size = self.get_class_layout(&registry_name)
             .map(|layout| layout.total_size as i64)
             .unwrap_or(8i64); // 默认最小大小
 
@@ -65,8 +77,9 @@ impl IRGenerator {
         let fallback_types: Vec<String> = new_expr.args.iter()
             .map(|arg| self.infer_argument_type(arg))
             .collect();
+        // 使用基础类名查找构造函数参数类型
         let param_types = self.get_constructor_param_signatures(
-            &canonical_name,
+            &registry_name,
             new_expr.args.len(),
             &fallback_types,
         );

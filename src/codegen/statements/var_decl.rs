@@ -226,8 +226,15 @@ impl IRGenerator {
         // 存储Cavvy类型信息，用于准确的类型推断
         self.var_cay_types.insert(var.name.clone(), actual_type.clone());
         // 如果变量类型是对象，记录其类名以便后续方法调用解析
-        if let Type::Object(class_name) = &actual_type {
-            self.var_class_map.insert(var.name.clone(), class_name.clone());
+        match &actual_type {
+            Type::Object(class_name) => {
+                self.var_class_map.insert(var.name.clone(), class_name.clone());
+            }
+            Type::Generic(class_name, _) => {
+                // 泛型类型：记录基础类名
+                self.var_class_map.insert(var.name.clone(), class_name.clone());
+            }
+            _ => {}
         }
 
         if let Some(init) = var.initializer.as_ref() {

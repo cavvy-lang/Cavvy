@@ -150,8 +150,51 @@ impl SemanticAnalyzer {
             (Type::Int64, Type::Float64) => true,
             (Type::Float32, Type::Float64) => true,
             (Type::Float64, Type::Float32) => true, // 允许double到float转换（可能有精度损失）
+            // 泛型类型兼容性：Type::Generic 和 Type::Object 之间的兼容
+            (Type::Generic(from_name, _), Type::Object(to_name)) |
+            (Type::Object(to_name), Type::Generic(from_name, _)) => {
+                // 解析泛型类名: "Optional<T>" -> "Optional"
+                let from_base = if let Some(pos) = from_name.find('<') {
+                    &from_name[..pos]
+                } else {
+                    from_name.as_str()
+                };
+                let to_base = if let Some(pos) = to_name.find('<') {
+                    &to_name[..pos]
+                } else {
+                    to_name.as_str()
+                };
+                // 如果基础类名相同，认为是兼容的（泛型类型擦除）
+                if from_base == to_base {
+                    return true;
+                }
+                // 否则检查继承关系：from_name 是否是 to_name 的子类
+                self.is_subtype_of(from_name, to_name)
+            }
+            (Type::Generic(from_name, _), Type::Generic(to_name, _)) => {
+                // 两个泛型类型：检查基础类名是否相同
+                if from_name == to_name {
+                    return true;
+                }
+                self.is_subtype_of(from_name, to_name)
+            }
             (Type::Object(from_name), Type::Object(to_name)) => {
-                // 检查继承关系：from_name 是否是 to_name 的子类
+                // 解析泛型类名: "Optional<T>" -> "Optional"
+                let from_base = if let Some(pos) = from_name.find('<') {
+                    &from_name[..pos]
+                } else {
+                    from_name.as_str()
+                };
+                let to_base = if let Some(pos) = to_name.find('<') {
+                    &to_name[..pos]
+                } else {
+                    to_name.as_str()
+                };
+                // 如果基础类名相同，认为是兼容的（泛型类型擦除）
+                if from_base == to_base {
+                    return true;
+                }
+                // 否则检查继承关系：from_name 是否是 to_name 的子类
                 self.is_subtype_of(from_name, to_name)
             }
             // char 可以赋值给 int (ASCII 码值)

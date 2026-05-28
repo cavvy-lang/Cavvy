@@ -789,24 +789,33 @@ impl IRGenerator {
 
     /// 获取带命名空间的类名（用于 LLVM IR 标识符）
     /// 使用 Itanium ABI 名称改编: _ZN<len>ns1<len>ns2<len>classNameE
+    /// 泛型类型名中的 < > 会被替换为 _ 以生成合法的 LLVM 标识符
     pub(crate) fn get_qualified_class_name(&self, class_name: &str) -> String {
-        // 如果 class_name 已经包含 ::，直接从中提取命名空间和简单名
-        if class_name.contains("::") {
-            let parts: Vec<&str> = class_name.split("::").collect();
-            let simple_name = parts.last().unwrap_or(&class_name);
+        // 将泛型类型名中的 < > , 和空格替换为 _
+        // 例如: "Optional<T>" -> "Optional_T_", "Pair<K, V>" -> "Pair_K_V_"
+        let mangled_name = class_name
+            .replace("<", "_")
+            .replace(">", "_")
+            .replace(",", "_")
+            .replace(" ", "_");
+        
+        // 如果 mangled_name 已经包含 ::，直接从中提取命名空间和简单名
+        if mangled_name.contains("::") {
+            let parts: Vec<&str> = mangled_name.split("::").collect();
+            let simple_name = parts.last().unwrap_or(&"").to_string();
             let namespace: Vec<String> = parts[..parts.len()-1].iter().map(|s| s.to_string()).collect();
             if namespace.is_empty() {
-                simple_name.to_string()
+                simple_name
             } else {
-                self.mangle_namespace(&namespace, simple_name)
+                self.mangle_namespace(&namespace, &simple_name)
             }
         } else {
-            let namespace = self.get_class_namespace(class_name);
+            let namespace = self.get_class_namespace(&mangled_name);
             if namespace.is_empty() {
-                class_name.to_string()
+                mangled_name
             } else {
                 // 使用 Itanium ABI 格式
-                self.mangle_namespace(&namespace, class_name)
+                self.mangle_namespace(&namespace, &mangled_name)
             }
         }
     }
@@ -833,14 +842,27 @@ impl IRGenerator {
 
     /// 获取类的命名空间路径
     pub(crate) fn get_class_namespace(&self, class_name: &str) -> Vec<String> {
+        // 提取基础类名（移除泛型参数）
+        // 例如: "Optional_T_" -> "Optional", "std::Optional_T_" -> "std::Optional"
+        let base_class_name = if let Some(pos) = class_name.find('_') {
+            // 检查是否是泛型参数后缀（如 _T_）
+            if class_name[pos..].starts_with("_T") || class_name[pos..].starts_with("_") {
+                &class_name[..pos]
+            } else {
+                class_name
+            }
+        } else {
+            class_name
+        };
+        
         // 直接查找（限定名 key）
-        if let Some(ns) = self.class_namespaces.get(class_name) {
+        if let Some(ns) = self.class_namespaces.get(base_class_name) {
             return ns.clone();
         }
         // 回退：在当前命名空间上下文中查找
         if let Some(ref registry) = self.type_registry {
             if !registry.current_namespace.is_empty() {
-                let qualified = format!("{}::{}", registry.current_namespace.join("::"), class_name);
+                let qualified = format!("{}::{}", registry.current_namespace.join("::"), base_class_name);
                 if let Some(ns) = self.class_namespaces.get(&qualified) {
                     return ns.clone();
                 }
@@ -848,7 +870,7 @@ impl IRGenerator {
         }
         // 再回退：遍历查找（通过 :: 后缀匹配简单名）
         for (qname, ns) in &self.class_namespaces {
-            if qname.ends_with(&format!("::{}", class_name)) {
+            if qname.ends_with(&format!("::{}", base_class_name)) {
                 return ns.clone();
             }
         }
