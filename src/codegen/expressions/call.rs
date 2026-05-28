@@ -163,8 +163,15 @@ impl IRGenerator {
                                 }
                             }
                             // 首先检查是否是已知的类名
+                            // 对于泛型类型如 FileResult<File>，需要提取基础类名 FileResult 进行检查
+                            let base_obj_name = if let Some(lt_pos) = obj_name_str.find('<') {
+                                &obj_name_str[..lt_pos]
+                            } else {
+                                obj_name_str
+                            };
                             let (class_name, is_class) = if let Some(ref registry) = self.type_registry {
-                                if registry.class_exists(obj_name_str) {
+                                if registry.class_exists(base_obj_name) {
+                                    // 是类名，保留原始泛型类型名（如 FileResult<File>）
                                     (obj_name_str.to_string(), true)
                                 } else {
                                     // 不是类名，尝试从变量映射获取
@@ -370,10 +377,16 @@ impl IRGenerator {
         // 尝试从类型注册表获取方法信息（支持继承查找）
         if let Some(ref registry) = self.type_registry {
             // 首先在当前类中查找方法
-            let mut current_class_name = class_name.to_string();
-            let llvm_current = self.get_qualified_class_name(&current_class_name);
+            // 对于泛型类如 FileResult<File>，需要使用基础类名 FileResult 查找
+            let base_class_name = if let Some(lt_pos) = class_name.find('<') {
+                &class_name[..lt_pos]
+            } else {
+                class_name
+            };
+            let mut lookup_class_name = base_class_name.to_string();
+            let llvm_current = self.get_qualified_class_name(class_name);
             loop {
-                if let Some(class_info) = registry.get_class(&current_class_name) {
+                if let Some(class_info) = registry.get_class(&lookup_class_name) {
                     if let Some(methods) = class_info.methods.get(method_name) {
                         let arg_count = processed_args.len();
                         
@@ -387,7 +400,8 @@ impl IRGenerator {
                                 // 可变参数方法
                                 if arg_count >= fixed_count {
                                     // 检查固定参数类型是否匹配
-                                    let method_sig = self.build_function_name_from_method(&current_class_name, method_name, &method.params, has_varargs_array);
+                                    // 使用原始类名（包含泛型参数）生成函数名
+                                    let method_sig = self.build_function_name_from_method(class_name, method_name, &method.params, has_varargs_array);
                                     let expected_sig = format!("{}.__{}_{}", llvm_current, method_name, arg_types.join("_"));
                                     if method_sig == expected_sig {
                                         return method_sig;
@@ -395,7 +409,8 @@ impl IRGenerator {
                                 }
                             } else if param_count == arg_count {
                                 // 非可变参数方法：检查参数类型是否匹配
-                                let method_sig = self.build_function_name_from_method(&current_class_name, method_name, &method.params, has_varargs_array);
+                                // 使用原始类名（包含泛型参数）生成函数名
+                                let method_sig = self.build_function_name_from_method(class_name, method_name, &method.params, has_varargs_array);
                                 let expected_sig = format!("{}.__{}_{}", llvm_current, method_name, arg_types.join("_"));
                                 if method_sig == expected_sig {
                                     return method_sig;
@@ -411,17 +426,19 @@ impl IRGenerator {
                             
                             if is_varargs {
                                 if arg_count >= fixed_count {
-                                    return self.build_function_name_from_method(&current_class_name, method_name, &method.params, has_varargs_array);
+                                    // 使用实际定义方法的类名生成函数名（支持继承）
+                                    return self.build_function_name_from_method(&lookup_class_name, method_name, &method.params, has_varargs_array);
                                 }
                             } else if param_count == arg_count {
-                                return self.build_function_name_from_method(&current_class_name, method_name, &method.params, has_varargs_array);
+                                // 使用实际定义方法的类名生成函数名（支持继承）
+                                return self.build_function_name_from_method(&lookup_class_name, method_name, &method.params, has_varargs_array);
                             }
                         }
                     }
                     
                     // 如果在当前类中没找到，尝试在父类中查找
                     if let Some(ref parent_name) = class_info.parent {
-                        current_class_name = parent_name.clone();
+                        lookup_class_name = parent_name.clone();
                         continue;
                     }
                 }
@@ -455,11 +472,40 @@ impl IRGenerator {
             return format!("{}.{}", llvm_cls, method_name);
         }
 
+        // 获取基础类名（去除泛型参数）以查找类信息
+        let base_class_name = if let Some(pos) = class_name.find('<') {
+            &class_name[..pos]
+        } else {
+            class_name
+        };
+
+        // 获取类的泛型参数列表
+        let class_type_params = if let Some(ref registry) = self.type_registry {
+            registry.get_class(base_class_name)
+                .map(|c| c.type_params.clone())
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+
         let param_types: Vec<String> = params.iter()
             .map(|p| {
                 let is_param_varargs = has_varargs_array && p.is_varargs;
                 let resolved_type = self.resolve_type(&p.param_type);
-                self.param_type_to_signature(&resolved_type, is_param_varargs)
+                
+                // 检查参数类型是否是泛型参数
+                // 如果是，使用泛型参数名（如 T）而不是具体类型
+                match &resolved_type {
+                    crate::types::Type::Object(name) => {
+                        if class_type_params.contains(name) {
+                            // 这是泛型参数，使用参数名
+                            format!("o{}", name)
+                        } else {
+                            self.param_type_to_signature(&resolved_type, is_param_varargs)
+                        }
+                    }
+                    _ => self.param_type_to_signature(&resolved_type, is_param_varargs)
+                }
             })
             .collect();
 
@@ -540,6 +586,7 @@ impl IRGenerator {
     }
 
     /// 获取方法的返回类型
+    /// 支持继承查找：如果在当前类中找不到方法，会递归查找父类
     fn get_method_return_type(&self, class_name: &str, method_name: &str, processed_args: &[String], has_varargs_array: bool) -> crate::types::Type {
         // 获取实际参数的类型签名
         let varargs_param_index = self.get_varargs_index(class_name, method_name);
@@ -558,49 +605,60 @@ impl IRGenerator {
             .collect();
         
         if let Some(ref registry) = self.type_registry {
-            if let Some(class_info) = registry.get_class(class_name) {
-                if let Some(methods) = class_info.methods.get(method_name) {
-                    let arg_count = processed_args.len();
-                    let llvm_class = self.get_qualified_class_name(class_name);
-                    
-                    // 首先尝试找到参数类型完全匹配的方法
-                    for method in methods {
-                        let param_count = method.params.len();
-                        let is_varargs = method.params.iter().any(|p| p.is_varargs);
-                        let fixed_count = method.params.iter().position(|p| p.is_varargs).unwrap_or(param_count);
+            // 支持继承查找：在当前类及其父类中查找方法
+            let mut current_class = class_name.to_string();
+            loop {
+                if let Some(class_info) = registry.get_class(&current_class) {
+                    if let Some(methods) = class_info.methods.get(method_name) {
+                        let arg_count = processed_args.len();
+                        let llvm_class = self.get_qualified_class_name(&current_class);
                         
-                        if is_varargs {
-                            if arg_count >= fixed_count {
-                                let method_sig = self.build_function_name_from_method(class_name, method_name, &method.params, has_varargs_array);
+                        // 首先尝试找到参数类型完全匹配的方法
+                        for method in methods {
+                            let param_count = method.params.len();
+                            let is_varargs = method.params.iter().any(|p| p.is_varargs);
+                            let fixed_count = method.params.iter().position(|p| p.is_varargs).unwrap_or(param_count);
+                            
+                            if is_varargs {
+                                if arg_count >= fixed_count {
+                                    let method_sig = self.build_function_name_from_method(&current_class, method_name, &method.params, has_varargs_array);
+                                    let expected_sig = format!("{}.__{}_{}", llvm_class, method_name, arg_types.join("_"));
+                                    if method_sig == expected_sig {
+                                        return method.return_type.clone();
+                                    }
+                                }
+                            } else if param_count == arg_count {
+                                let method_sig = self.build_function_name_from_method(&current_class, method_name, &method.params, has_varargs_array);
                                 let expected_sig = format!("{}.__{}_{}", llvm_class, method_name, arg_types.join("_"));
                                 if method_sig == expected_sig {
                                     return method.return_type.clone();
                                 }
                             }
-                        } else if param_count == arg_count {
-                            let method_sig = self.build_function_name_from_method(class_name, method_name, &method.params, has_varargs_array);
-                            let expected_sig = format!("{}.__{}_{}", llvm_class, method_name, arg_types.join("_"));
-                            if method_sig == expected_sig {
+                        }
+                        
+                        // 如果没有找到类型完全匹配的方法，回退到参数数量匹配
+                        for method in methods {
+                            let param_count = method.params.len();
+                            let is_varargs = method.params.iter().any(|p| p.is_varargs);
+                            let fixed_count = method.params.iter().position(|p| p.is_varargs).unwrap_or(param_count);
+                            
+                            if is_varargs {
+                                if arg_count >= fixed_count {
+                                    return method.return_type.clone();
+                                }
+                            } else if param_count == arg_count {
                                 return method.return_type.clone();
                             }
                         }
                     }
                     
-                    // 如果没有找到类型完全匹配的方法，回退到参数数量匹配
-                    for method in methods {
-                        let param_count = method.params.len();
-                        let is_varargs = method.params.iter().any(|p| p.is_varargs);
-                        let fixed_count = method.params.iter().position(|p| p.is_varargs).unwrap_or(param_count);
-                        
-                        if is_varargs {
-                            if arg_count >= fixed_count {
-                                return method.return_type.clone();
-                            }
-                        } else if param_count == arg_count {
-                            return method.return_type.clone();
-                        }
+                    // 如果在当前类中没找到，尝试在父类中查找
+                    if let Some(ref parent_name) = class_info.parent {
+                        current_class = parent_name.clone();
+                        continue;
                     }
                 }
+                break;
             }
         }
         

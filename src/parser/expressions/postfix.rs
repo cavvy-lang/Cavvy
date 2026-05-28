@@ -1,10 +1,12 @@
 //! 后缀表达式解析
 //!
 //! 处理函数调用、成员访问、数组索引、后缀自增自减等后缀表达式。
+//! 支持泛型静态方法调用: Type<T>.method()
 
 use crate::ast::*;
 use crate::error::cayResult;
 use super::super::Parser;
+use super::super::types::parse_type;
 use super::primary::parse_primary;
 use super::assignment::parse_expression;
 
@@ -14,6 +16,67 @@ pub fn parse_postfix(parser: &mut Parser) -> cayResult<Expr> {
 
     loop {
         let loc = parser.current_loc();
+        
+        // 检查是否是泛型参数: Type<T> 或 Type<T, U>
+        // 这用于支持 FileResult<File>.ok(file) 语法
+        if parser.check(&crate::lexer::Token::Lt) {
+            // 向前看，检查是否是泛型参数列表
+            let checkpoint = parser.pos;
+            parser.advance(); // 消费 '<'
+            
+            // 尝试解析类型参数列表
+            let mut type_args = Vec::new();
+            let mut is_generic = true;
+            
+            loop {
+                // 检查是否到达结束
+                if parser.check(&crate::lexer::Token::Gt) {
+                    parser.advance(); // 消费 '>'
+                    break;
+                }
+                
+                // 尝试解析类型
+                match parse_type(parser) {
+                    Ok(ty) => {
+                        type_args.push(ty);
+                        // 检查是否有逗号
+                        if parser.check(&crate::lexer::Token::Comma) {
+                            parser.advance(); // 消费 ','
+                        } else if !parser.check(&crate::lexer::Token::Gt) {
+                            // 既不是逗号也不是 >，说明不是泛型参数
+                            is_generic = false;
+                            break;
+                        }
+                    }
+                    Err(_) => {
+                        // 解析类型失败，回退
+                        is_generic = false;
+                        break;
+                    }
+                }
+            }
+            
+            if is_generic && !type_args.is_empty() {
+                // 成功解析泛型参数，检查后面是否有 '.'
+                if parser.check(&crate::lexer::Token::Dot) {
+                    // 这是泛型静态方法调用: Type<T>.method()
+                    // 将标识符和泛型参数组合成新的标识符
+                    if let Expr::Identifier(ident) = &expr {
+                        let generic_name = format!("{}<{}>", ident.name, 
+                            type_args.iter().map(|t| t.to_string()).collect::<Vec<_>>().join(", "));
+                        expr = Expr::Identifier(IdentifierExpr {
+                            name: generic_name,
+                            loc: loc.clone(),
+                        });
+                        continue; // 继续循环，处理 '.'
+                    }
+                }
+            }
+            
+            // 不是泛型静态方法调用，回退
+            parser.pos = checkpoint;
+        }
+        
         if parser.match_token(&crate::lexer::Token::LParen) {
             // 函数调用
             let args = parse_arguments(parser)?;

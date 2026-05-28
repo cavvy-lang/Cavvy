@@ -790,18 +790,62 @@ impl IRGenerator {
     /// 获取带命名空间的类名（用于 LLVM IR 标识符）
     /// 使用 Itanium ABI 名称改编: _ZN<len>ns1<len>ns2<len>classNameE
     /// 泛型类型名中的 < > 会被替换为 _ 以生成合法的 LLVM 标识符
+    /// 对于泛型类（如 FileResult<T>），使用原始泛型类名（FileResult_T_）
     pub(crate) fn get_qualified_class_name(&self, class_name: &str) -> String {
-        // 将泛型类型名中的 < > , 和空格替换为 _
-        // 例如: "Optional<T>" -> "Optional_T_", "Pair<K, V>" -> "Pair_K_V_"
-        let mangled_name = class_name
-            .replace("<", "_")
-            .replace(">", "_")
-            .replace(",", "_")
-            .replace(" ", "_");
+        // 提取基础类名（去除泛型参数）
+        let base_name = if let Some(lt_pos) = class_name.find('<') {
+            &class_name[..lt_pos]
+        } else {
+            class_name
+        };
         
-        // 如果 mangled_name 已经包含 ::，直接从中提取命名空间和简单名
-        if mangled_name.contains("::") {
-            let parts: Vec<&str> = mangled_name.split("::").collect();
+        // 检查是否是泛型类
+        let processed_name = if let Some(ref registry) = self.type_registry {
+            if let Some(class_info) = registry.get_class(base_name) {
+                if !class_info.type_params.is_empty() {
+                    // 这是泛型类，使用原始类型参数名（如 T）
+                    let type_param_suffix = class_info.type_params.join("_");
+                    format!("{}_{}_", base_name, type_param_suffix)
+                } else {
+                    // 不是泛型类，正常处理
+                    if class_name.contains('<') {
+                        class_name
+                            .replace("<", "_")
+                            .replace(">", "_")
+                            .replace(",", "_")
+                            .replace(" ", "_")
+                    } else {
+                        class_name.to_string()
+                    }
+                }
+            } else {
+                // 类不存在，正常处理
+                if class_name.contains('<') {
+                    class_name
+                        .replace("<", "_")
+                        .replace(">", "_")
+                        .replace(",", "_")
+                        .replace(" ", "_")
+                } else {
+                    class_name.to_string()
+                }
+            }
+        } else {
+            // 类型注册表不可用，正常处理
+            if class_name.contains('<') {
+                class_name
+                    .replace("<", "_")
+                    .replace(">", "_")
+                    .replace(",", "_")
+                    .replace(" ", "_")
+            } else {
+                class_name.to_string()
+            }
+        };
+        
+        // 如果 processed_name 已经包含 ::，直接从中提取命名空间和简单名
+        if processed_name.contains("::") {
+            let parts: Vec<&str> = processed_name.split("::").collect();
             let simple_name = parts.last().unwrap_or(&"").to_string();
             let namespace: Vec<String> = parts[..parts.len()-1].iter().map(|s| s.to_string()).collect();
             if namespace.is_empty() {
@@ -810,12 +854,12 @@ impl IRGenerator {
                 self.mangle_namespace(&namespace, &simple_name)
             }
         } else {
-            let namespace = self.get_class_namespace(&mangled_name);
+            let namespace = self.get_class_namespace(&processed_name);
             if namespace.is_empty() {
-                mangled_name
+                processed_name
             } else {
                 // 使用 Itanium ABI 格式
-                self.mangle_namespace(&namespace, &mangled_name)
+                self.mangle_namespace(&namespace, &processed_name)
             }
         }
     }
@@ -885,6 +929,18 @@ impl IRGenerator {
         }
         result.push_str(&format!("{}{}E", name.len(), name));
         result
+    }
+
+    /// Mangle 变量名以确保是合法的 LLVM 标识符
+    /// 将 < > , 空格等非法字符替换为 _
+    /// 时间复杂度: O(n)，n为名称长度
+    /// 空间复杂度: O(n)，返回新字符串
+    pub fn mangle_var_name(&self, name: &str) -> String {
+        name.replace("<", "_")
+            .replace(">", "_")
+            .replace(",", "_")
+            .replace(" ", "_")
+            .replace("::", "_")
     }
 
     /// 将可变参数类型转换为签名

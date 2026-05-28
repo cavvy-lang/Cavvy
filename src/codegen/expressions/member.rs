@@ -52,19 +52,34 @@ impl IRGenerator {
     ///
     /// # Arguments
     /// * `member` - 成员访问表达式
+    /// 从泛型类名中提取基础类名
+    /// 例如: "FileResult<File>" -> "FileResult", "Optional<T>" -> "Optional"
+    /// 时间复杂度: O(n)，n为名称长度
+    fn extract_base_class_name(&self, name: &str) -> String {
+        if let Some(pos) = name.find('<') {
+            name[..pos].to_string()
+        } else {
+            name.to_string()
+        }
+    }
+
     pub fn generate_member_access(&mut self, member: &MemberAccessExpr) -> cayResult<String> {
         // 检查是否是类名.静态方法访问: ClassName.methodName
         if let Expr::Identifier(class_name) = &*member.object {
+            // 提取基础类名（处理泛型类型如 FileResult<File>）
+            let base_class_name = self.extract_base_class_name(class_name.as_ref());
+            
             // 首先检查是否是静态方法访问（返回函数指针）
             if let Some(ref registry) = self.type_registry {
-                if let Some(class_info) = registry.get_class(class_name.as_ref()) {
+                // 使用基础类名查找类信息
+                if let Some(class_info) = registry.get_class(&base_class_name) {
                     if let Some(methods) = class_info.methods.get(&member.member) {
                         // 查找静态方法
                         if let Some(method_info) = methods.iter().find(|m| m.is_static) {
                             // 生成函数指针（函数地址）
                             // 使用 build_function_name_from_method 生成正确的函数名
                             let func_name = self.build_function_name_from_method(
-                                class_name.as_ref(), 
+                                &base_class_name, 
                                 &member.member, 
                                 &method_info.params, 
                                 false
@@ -86,7 +101,8 @@ impl IRGenerator {
             }
             
             // 检查是否是静态字段访问: ClassName.fieldName
-            let static_key = format!("{}.{}", class_name, member.member);
+            // 使用基础类名构建静态字段键
+            let static_key = format!("{}.{}", base_class_name, member.member);
             if let Some(field_info) = self.static_field_map.get(&static_key).cloned() {
                 // 检查是否是数组类型
                 let is_array = matches!(field_info.field_type, crate::types::Type::Array(_));
@@ -111,8 +127,9 @@ impl IRGenerator {
             }
             
             // 检查是否是 enum variant 访问: EnumName.VariantName
+            // 使用基础类名查找 enum
             if let Some(ref registry) = self.type_registry {
-                if let Some(enum_info) = registry.get_enum(class_name.as_ref()) {
+                if let Some(enum_info) = registry.get_enum(&base_class_name) {
                     if let Some(idx) = enum_info.variants.iter().position(|v| v.name == member.member) {
                         // 构造 struct { i32 discriminant, i64 payload } 值
                         let struct_val = self.new_temp();

@@ -9,7 +9,7 @@
  * - SeekOrigin: 文件定位原点枚举
  * - FileUtils: 文件工具类
  * - FileError: 文件错误枚举
- * - FileResult<T>: 文件操作结果类型
+ * - FileResult<T>: 文件操作结果类型（泛型实现）
  *
  * 特性：
  * - 面向对象API设计
@@ -17,10 +17,12 @@
  * - 完整的错误处理（Result<T, FileError>）
  * - 支持文本和二进制操作
  * - 流式读写支持
+ * - 泛型支持（FileResult<T>）
  *
- * 版本: 0.5.2.0
+ * 版本: 0.6.0.0
  * 时间复杂度: 标注于各方法
  * 磁盘I/O: 所有读写操作涉及磁盘I/O
+ * 更新日期: 2024
  */
 
 #ifndef CAY_FILE_H
@@ -146,16 +148,17 @@ public class FileError {
 }
 
 /**
- * 文件操作结果类型
- * TODO: 当Cavvy支持泛型后，改为 FileResult<T>
- * 当前使用 Object 类型作为通用容器
+ * 文件操作结果类型 - 泛型实现 FileResult<T>
+ * 提供类型安全的文件操作结果封装
+ * 时间复杂度: O(1) 所有操作
+ * 空间复杂度: O(1) 固定大小
  */
-public class FileResult {
-    private Object value;
+public class FileResult<T> {
+    private T value;
     private int errorCode;
     private bool isSuccess;
     
-    private FileResult(Object value) {
+    private FileResult(T value) {
         this.value = value;
         this.errorCode = FileError.None;
         this.isSuccess = true;
@@ -166,12 +169,12 @@ public class FileResult {
         this.isSuccess = false;
     }
     
-    public static FileResult ok(Object value) {
-        return new FileResult(value);
+    public static FileResult<T> ok(T value) {
+        return new FileResult<T>(value);
     }
     
-    public static FileResult err(int errorCode) {
-        return new FileResult(errorCode);
+    public static FileResult<T> err(int errorCode) {
+        return new FileResult<T>(errorCode);
     }
     
     public bool isOk() {
@@ -182,7 +185,7 @@ public class FileResult {
         return !this.isSuccess;
     }
     
-    public Object unwrap() {
+    public T unwrap() {
         return this.value;
     }
     
@@ -393,17 +396,19 @@ public class File {
     
     /**
      * 打开文件（返回Result的现代API）
-     * TODO: 当Cavvy支持泛型后，返回类型改为 FileResult<File>
+     * 使用泛型 FileResult<File> 提供类型安全
      * @param path 文件路径
      * @param mode 打开模式
-     * @return FileResult
+     * @return FileResult<File>
+     * 时间复杂度: O(1)
+     * 磁盘I/O: 打开文件涉及磁盘I/O
      */
-    public static FileResult openResult(String path, FileMode mode) {
+    public static FileResult<File> openResult(String path, FileMode mode) {
         File file = new File();
         if (file.open(path, mode)) {
-            return FileResult.ok(file);
+            return FileResult<File>.ok(file);
         } else {
-            return FileResult.err(FileError.NotFound);
+            return FileResult<File>.err(FileError.NotFound);
         }
     }
 
@@ -739,20 +744,22 @@ public class File {
     
     /**
      * 检查文件是否存在（返回Result的现代API）
-     * TODO: 当Cavvy支持泛型后，返回类型改为 FileResult<bool>
+     * 使用泛型 FileResult<boolean> 提供类型安全
      * @param path 文件路径
-     * @return FileResult
+     * @return FileResult<boolean>
+     * 时间复杂度: O(1)
+     * 磁盘I/O: 仅检查文件系统元数据
      */
-    public static FileResult existsResult(String path) {
+    public static FileResult<boolean> existsResult(String path) {
         if (path == null || path.isEmpty()) {
-            return FileResult.err(FileError.InvalidPath);
+            return FileResult<boolean>.err(FileError.InvalidPath);
         }
         
         c_int result = access(path.c_str(), 0);
         if (result == 0) {
-            return FileResult.ok(true);
+            return FileResult<boolean>.ok(true);
         } else {
-            return FileResult.ok(false);
+            return FileResult<boolean>.ok(false);
         }
     }
     

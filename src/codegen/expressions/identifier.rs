@@ -35,8 +35,15 @@ impl IRGenerator {
         }
 
         // 检查是否是类名或枚举名（静态成员访问的上下文）
+        // 需要处理泛型类型名如 FileResult<File>
         if let Some(ref registry) = self.type_registry {
-            if registry.class_exists(name) || registry.get_enum(name).is_some() {
+            // 提取基础类名（去除泛型参数）
+            let base_name = if let Some(pos) = name.find('<') {
+                &name[..pos]
+            } else {
+                name
+            };
+            if registry.class_exists(base_name) || registry.get_enum(base_name).is_some() {
                 // 类名/枚举名不应该单独作为表达式使用
                 // 返回一个占位符，实际使用应该在 MemberAccess 中处理
                 return Ok("i8* null".to_string());
@@ -113,11 +120,14 @@ impl IRGenerator {
         }
 
         // 未定义的变量，回退到旧行为（可能会报错）
+        // 注意：需要对变量名进行 mangle 处理，以处理泛型类型名如 FileResult<File>
         let temp = self.new_temp();
         let var_type = self.var_types.get(name).cloned().unwrap_or_else(|| "i64".to_string());
         let align = self.get_type_align(&var_type);
+        // 使用 mangle 后的变量名，确保是合法的 LLVM 标识符
+        let mangled_name = self.mangle_var_name(name);
         self.emit_line(&format!("  {} = load {}, {}* %{}, align {}",
-            temp, var_type, var_type, name, align));
+            temp, var_type, var_type, mangled_name, align));
         Ok(format!("{} {}", var_type, temp))
     }
 }
