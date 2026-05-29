@@ -11,10 +11,6 @@ pub mod codegen;
 pub mod ir;
 pub mod rcpl;
 pub mod bytecode;
-
-// GUI模块（cay-idle使用）
-pub mod idle;
-
 // Cavly 包管理器模块
 pub mod cavly;
 

@@ -8,7 +8,7 @@
 .DESCRIPTION
     1. 构建Release版项目
     2. 删除所有.gdb, .d等调试文件
-    3. 生成4个不同配置的压缩包
+    3. 生成3个不同配置的压缩包
 #>
 
 $ErrorActionPreference = "Stop"
@@ -124,7 +124,7 @@ function Main {
     }
 
     # 检查必要的可执行文件
-    $requiredBins = @("cayc.exe", "cay-ir.exe", "ir2exe.exe", "cay-run.exe", "cay-rcpl.exe", "cay-idle.exe", "cay-lsp.exe", "cay-check.exe", "cay-bcgen.exe", "cay-pre.exe")
+    $requiredBins = @("cayc.exe", "cay-ir.exe", "ir2exe.exe", "cay-run.exe", "cay-rcpl.exe", "cay-lsp.exe", "cay-check.exe", "cay-bcgen.exe", "cay-pre.exe")
     $missingBins = @()
     foreach ($bin in $requiredBins) {
         $binPath = Join-Path $releaseDir $bin
@@ -156,7 +156,6 @@ function Main {
         "$releaseDir\cay-check.exe",
         "$releaseDir\cay-run.exe",
         "$releaseDir\cay-rcpl.exe",
-        "$releaseDir\cay-idle.exe",
         "$releaseDir\cay-lsp.exe",
         "$releaseDir\cay-bcgen.exe",
         "$releaseDir\cay-pre.exe"
@@ -164,7 +163,7 @@ function Main {
 
     # ========== 压缩包1: cavvy-版本-win86-64-mingw64-llvm21.zip ==========
     Write-Host ""
-    Write-Host "📦 构建压缩包 1/4: cavvy-$version-win86-64-mingw64-llvm21.zip" -ForegroundColor $ColorInfo
+    Write-Host "📦 构建压缩包 1/3: cavvy-$version-win86-64-mingw64-llvm21.zip" -ForegroundColor $ColorInfo
 
     $tempDir1 = "..\temp_release_1"
     $includeDirs1 = @("examples", "third-party", "lib", "caylibs", "llvm-minimal", "mingw-minimal")
@@ -177,7 +176,7 @@ function Main {
 
     # ========== 压缩包2: cavvy-版本-win86-64-core.zip ==========
     Write-Host ""
-    Write-Host "📦 构建压缩包 2/4: cavvy-$version-win86-64-core.zip" -ForegroundColor $ColorInfo
+    Write-Host "📦 构建压缩包 2/3: cavvy-$version-win86-64-core.zip" -ForegroundColor $ColorInfo
 
     $tempDir2 = "..\temp_release_2"
     $includeDirs2 = @("examples", "third-party", "caylibs")
@@ -190,7 +189,7 @@ function Main {
 
     # ========== 压缩包3: cavvy-版本-win86-64-only-lib.zip ==========
     Write-Host ""
-    Write-Host "📦 构建压缩包 3/4: cavvy-$version-win86-64-only-lib.zip" -ForegroundColor $ColorInfo
+    Write-Host "📦 构建压缩包 3/3: cavvy-$version-win86-64-only-lib.zip" -ForegroundColor $ColorInfo
 
     $tempDir3 = "..\temp_release_3"
     $includeDirs3 = @("examples", "third-party", "lib", "caylibs")
@@ -200,32 +199,6 @@ function Main {
     Remove-DebugFiles -Path $tempDir3
     New-ReleaseZip -SourceDir $tempDir3 -ZipFile "$distDir\cavvy-$version-win86-64-only-lib.zip"
     Remove-Item -Recurse -Force $tempDir3
-
-    # ========== 压缩包4: cavvy-版本-win86-64-core-no-idle.zip ==========
-    Write-Host ""
-    Write-Host "📦 构建压缩包 4/4: cavvy-$version-win86-64-core-no-idle.zip" -ForegroundColor $ColorInfo
-
-    # 不包含 cay-idle.exe 的列表
-    $coreBinsNoIdle = @(
-        "$releaseDir\cayc.exe",
-        "$releaseDir\cay-ir.exe",
-        "$releaseDir\ir2exe.exe",
-        "$releaseDir\cay-check.exe",
-        "$releaseDir\cay-run.exe",
-        "$releaseDir\cay-rcpl.exe",
-        "$releaseDir\cay-lsp.exe",
-        "$releaseDir\cay-bcgen.exe",
-        "$releaseDir\cay-pre.exe"
-    )
-
-    $tempDir4 = "..\temp_release_4"
-    $includeDirs4 = @("examples", "third-party", "caylibs")
-    $includeFiles4 = $coreBinsNoIdle
-
-    New-ReleaseStructure -TempDir $tempDir4 -IncludeDirs $includeDirs4 -IncludeFiles $includeFiles4
-    Remove-DebugFiles -Path $tempDir4
-    New-ReleaseZip -SourceDir $tempDir4 -ZipFile "$distDir\cavvy-$version-win86-64-core-no-idle.zip"
-    Remove-Item -Recurse -Force $tempDir4
 
     # 完成
     Write-Host ""

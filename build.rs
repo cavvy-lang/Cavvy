@@ -186,13 +186,6 @@ fn main() {
                 }
             }
 
-            // 设置 CAY-IDLE 版本
-            if let Some(cay_idle_section) = verinfo.get("CAY-IDLE") {
-                if let Some(version) = cay_idle_section.get("version") {
-                    println!("cargo:rustc-env=CAY_IDLE_VERSION={}", build_full_version(version));
-                }
-            }
-
             // 设置 CAY-RCPL 版本
             if let Some(cay_rcpl_section) = verinfo.get("CAY-RCPL") {
                 if let Some(version) = cay_rcpl_section.get("version") {
@@ -223,7 +216,6 @@ fn main() {
             println!("cargo:rustc-env=CAY_BCGEN_VERSION={}", build_full_version(default_version));
             println!("cargo:rustc-env=CAY_DT_VERSION={}", build_full_version(default_version));
             println!("cargo:rustc-env=CAY_DP_VERSION={}", build_full_version(default_version));
-            println!("cargo:rustc-env=CAY_IDLE_VERSION={}", build_full_version(default_version));
             println!("cargo:rustc-env=CAY_RCPL_VERSION={}", build_full_version(default_version));
             println!("cargo:rustc-env=VERSION={}", build_full_version(default_version));
         }

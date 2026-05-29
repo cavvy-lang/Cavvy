@@ -35,7 +35,7 @@ cargo test --release --verbose
 
 **遗留临时文件**：测试运行会在 `tests/` 和 `examples/` 中留下 `temp_*.exe`、`temp_*.ll`、`temp_*.cay`。这些文件被 git 忽略但会在本地累积。请勿提交它们。
 
-## 二进制文件（12 个，而非 README 声称的 6 个）
+## 二进制文件（11 个，而非 README 声称的 6 个）
 
 | 二进制文件 | 用途 |
 |---|---|
@@ -50,7 +50,6 @@ cargo test --release --verbose
 | `cavly` | 包管理器 |
 | `cay-dt` | 文档工具 |
 | `cay-dp` | 依赖工具 |
-| `cay-idle` | GUI IDE（基于 egui） |
 | `cay-pre` | 独立预处理器 |
 
 所有入口点位于 `src/bin/*.rs`。它们都依赖库 crate（`src/lib.rs`，crate 名 `cavvy`）。
@@ -78,7 +77,6 @@ cargo test --release --verbose
 - `cavly/` —— 包管理器逻辑
 - `bytecode/` —— CayBC 字节码格式
 - `rcpl/` —— RCPL 逻辑
-- `idle/` —— GUI IDE
 
 `lib.rs` 暴露一个 `Compiler` 结构体，封装完整流水线。二进制文件通过 `use cavvy::Compiler` 使用它。
 
