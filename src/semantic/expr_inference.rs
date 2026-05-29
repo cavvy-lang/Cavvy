@@ -609,17 +609,17 @@ impl SemanticAnalyzer {
                 } else {
                     // 如果直接查找失败，尝试查找限定类名
                     if let Some(qualified_name) = self.type_registry.find_qualified_class(&class_name) {
-                        eprintln!("[DEBUG] Found qualified class: {} -> {}", class_name, qualified_name);
+                        // eprintln!("[DEBUG] Found qualified class: {} -> {}", class_name, qualified_name);
                         self.type_registry.find_method(&qualified_name, &member.member, &arg_types)
                             .map(|m| (m.return_type.clone(), m.params.clone()))
                     } else {
-                        eprintln!("[DEBUG] Could not find qualified class for: {}", class_name);
+                        // eprintln!("[DEBUG] Could not find qualified class for: {}", class_name);
                         None
                     }
                 };
                 
                 if let Some((return_type, params)) = method_result {
-                    eprintln!("[DEBUG] Found method: {}.{}, params={:?}, return_type={:?}", class_name, member.member, params, return_type);
+                    // eprintln!("[DEBUG] Found method: {}.{}, params={:?}, return_type={:?}", class_name, member.member, params, return_type);
                     // 检查参数类型兼容性（支持可变参数）
                     if let Err(msg) = self.check_arguments_compatible(&call.args, &params, call.loc.line, call.loc.column) {
                         return Err(semantic_error_at_loc(&call.loc, msg));

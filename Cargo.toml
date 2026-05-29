@@ -29,6 +29,10 @@ regex = "1.0"
 toml = "0.8"
 tempfile = "3.0"
 
+# LLVM 嵌入式支持 (用于 --use-embedded-llc)
+llvm-sys = "191"
+libc = "0.2"
+
 # Windows平台构建所有bin（包括依赖MinGW的ir2exe）
 [[bin]]
 name = "cayc"
@@ -77,3 +81,8 @@ path = "src/bin/cay-dt.rs"
 [[bin]]
 name = "cay-dp"
 path = "src/bin/cay-dp.rs"
+
+[features]
+default = []
+# 保留特性标志以向后兼容，但 llvm-sys 现在是默认依赖
+embedded-llvm = []

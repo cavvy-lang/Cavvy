@@ -16,18 +16,6 @@ use cavvy::semantic;
 
 const VERSION: &str = env!("CAY_LSP_VERSION");
 
-/// 源映射信息 - 用于将预处理后的位置映射回原始文件位置
-#[derive(Debug, Clone)]
-struct SourceMapping {
-    /// 预处理后的行号
-    processed_line: usize,
-    /// 原始文件路径
-    original_file: String,
-    /// 原始行号
-    original_line: usize,
-    /// 原始列号
-    original_column: usize,
-}
 
 /// 文档状态
 #[derive(Debug, Clone)]
@@ -36,8 +24,6 @@ struct DocumentState {
     content: String,
     version: i32,
     diagnostics: Vec<Diagnostic>,
-    /// 源映射表
-    source_mappings: Vec<SourceMapping>,
 }
 
 /// Cavvy 语言服务器
@@ -46,23 +32,6 @@ struct CavvyLanguageServer {
     documents: Arc<DashMap<String, DocumentState>>,
 }
 
-/// 服务器配置
-#[derive(Debug, Deserialize, Serialize)]
-struct ServerConfig {
-    #[serde(default)]
-    enable_preprocessing: bool,
-    #[serde(default)]
-    enable_semantic_tokens: bool,
-}
-
-impl Default for ServerConfig {
-    fn default() -> Self {
-        Self {
-            enable_preprocessing: true,
-            enable_semantic_tokens: false,
-        }
-    }
-}
 
 /// 补全符号信息
 #[derive(Debug, Clone)]
@@ -162,7 +131,6 @@ impl LanguageServer for CavvyLanguageServer {
             content: content.clone(),
             version,
             diagnostics: Vec::new(),
-            source_mappings: Vec::new(),
         };
 
         self.documents.insert(uri.clone(), state);
@@ -187,7 +155,6 @@ impl LanguageServer for CavvyLanguageServer {
                     content: content.clone(),
                     version,
                     diagnostics: Vec::new(),
-                    source_mappings: Vec::new(),
                 };
                 self.documents.insert(uri.clone(), state);
             }

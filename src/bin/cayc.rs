@@ -4,48 +4,7 @@ use std::process;
 use std::path::{Path, PathBuf};
 use cavvy::Compiler;
 use cavvy::error::{print_error_with_context, print_miette_error, print_tool_error, print_warning};
-
-/// 根据平台获取 llvm-minimal 下的 clang 路径
-#[cfg(target_os = "windows")]
-fn get_bundled_clang_path(exe_dir: &Path) -> PathBuf {
-    exe_dir.join("llvm-minimal/bin/clang.exe")
-}
-
-#[cfg(target_os = "linux")]
-fn get_bundled_clang_path(exe_dir: &Path) -> PathBuf {
-    exe_dir.join("llvm-minimal/bin-linux/clang-21")
-}
-
-#[cfg(not(any(target_os = "windows", target_os = "linux")))]
-fn get_bundled_clang_path(exe_dir: &Path) -> PathBuf {
-    exe_dir.join("llvm-minimal/bin/clang")
-}
-
-/// 查找 clang 可执行文件
-/// 1. 首先尝试直接调用 "clang"（系统 PATH 中）
-/// 2. 如果失败，尝试查找编译器所在目录下的 llvm-minimal/bin/clang
-/// 3. 如果都找不到，返回错误
-fn find_clang() -> Result<PathBuf, String> {
-    // 1. 首先尝试系统 PATH 中的 clang
-    if let Ok(output) = process::Command::new("clang").arg("--version").output() {
-        if output.status.success() {
-            return Ok(PathBuf::from("clang"));
-        }
-    }
-    
-    // 2. 尝试编译器所在目录下的 llvm-minimal
-    if let Ok(exe_path) = env::current_exe() {
-        if let Some(exe_dir) = exe_path.parent() {
-            let bundled_clang = get_bundled_clang_path(exe_dir);
-            if bundled_clang.exists() {
-                return Ok(bundled_clang);
-            }
-        }
-    }
-    
-    // 3. 都找不到，返回错误
-    Err("找不到 clang 编译器。请确保 clang 已安装并在 PATH 中，或将 llvm-minimal 放在编译器同目录下。".to_string())
-}
+use cavvy::ir2exe_lib::{Ir2ExeOptions, compile_ir_to_exe, parse_source_map_from_ir, IRSourceMap};
 
 const VERSION: &str = env!("CAYC_VERSION");
 
@@ -85,7 +44,8 @@ struct CompileOptions {
     fvectorize: bool,             // -fvectorize
     fslp_vectorize: bool,         // -fslp-vectorize
     // 工具链选项
-    use_llc_lld: bool,            // --use-llc-lld
+    use_llc_lld: bool,            // --use-clang (反向控制，false表示使用llc-lld)
+    use_embedded_llc: bool,       // --use-embedded-llc (实验性)
     // 语言特性
     features: Vec<String>,        // -F/--feature=<feature>
     // 测试模式
@@ -148,6 +108,7 @@ impl Default for CompileOptions {
             fvectorize: false,
             fslp_vectorize: false,
             use_llc_lld: false,
+            use_embedded_llc: false,
             features: Vec::new(),
             test_mode: false,
         }
@@ -189,7 +150,8 @@ fn print_usage() {
     println!("  --cflags <flags>      传递额外的编译器标志");
     println!("  --static              静态链接");
     println!("  -fPIC                 生成位置无关代码");
-    println!("  --use-llc-lld         使用 llc+lld 工具链（不使用 clang）");
+    println!("  --use-clang           使用 clang 工具链（默认使用 llc+lld）");
+    println!("  --use-embedded-llc    实验性: 使用内嵌 llc (llvm-sys) 提高编译速度");
     println!("  -fno-exceptions       禁用异常处理");
     println!("  -fno-rtti             禁用运行时类型信息");
     println!("");
@@ -263,8 +225,11 @@ fn parse_args(args: &[String]) -> Result<(CompileOptions, String, String), Strin
             "-fslp-vectorize" => {
                 options.fslp_vectorize = true;
             }
-            "--use-llc-lld" => {
-                options.use_llc_lld = true;
+            "--use-clang" => {
+                options.use_llc_lld = false;
+            }
+            "--use-embedded-llc" => {
+                options.use_embedded_llc = true;
             }
             "--test" => {
                 options.test_mode = true;
@@ -430,32 +395,7 @@ fn parse_args(args: &[String]) -> Result<(CompileOptions, String, String), Strin
     Ok((options, input_file, output_file))
 }
 
-fn optimize_ir(ir_file: &str, opt_level: &str) -> Result<(), String> {
-    let clang_exe = find_clang()?;
 
-    let temp_file = format!("{}.opt.tmp", ir_file);
-
-    let output = process::Command::new(&clang_exe)
-        .arg("-x").arg("ir")
-        .arg(ir_file)
-        .arg("-S")
-        .arg("-emit-llvm")
-        .arg(opt_level)
-        .arg("-o").arg(&temp_file)
-        .output()
-        .map_err(|e| format!("执行 clang 失败: {}", e))?;
-
-    if !output.status.success() {
-        let error_msg = String::from_utf8_lossy(&output.stderr);
-        let _ = fs::remove_file(&temp_file);
-        return Err(format!("IR 优化失败: {}", error_msg));
-    }
-
-    fs::rename(&temp_file, ir_file)
-        .map_err(|e| format!("无法替换 IR 文件: {}", e))?;
-
-    Ok(())
-}
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -531,7 +471,12 @@ fn main() {
         println!("循环展开: 启用");
     }
     if options.use_llc_lld {
-        println!("工具链: llc+lld");
+        println!("工具链: clang");
+    } else {
+        println!("工具链: llc+lld (默认)");
+    }
+    if options.use_embedded_llc {
+        println!("实验性: 使用内嵌 llc");
     }
     if options.debug {
         println!("调试信息: 启用");
@@ -585,216 +530,86 @@ fn main() {
     if options.opt_ir {
         println!("");
         println!("[2] IR 优化 ({})...", options.optimization);
-        match optimize_ir(&ir_file, &options.optimization) {
-            Ok(_) => {
-                println!("  [+] IR 优化完成");
-            }
-            Err(e) => {
-                print_warning(&format!("IR 优化失败: {}", e));
-                println!("  [I] 继续编译未优化的 IR");
-            }
-        }
+        // IR 优化现在由 ir2exe_lib 在编译时自动处理
+        println!("  [I] IR 优化将在编译阶段自动进行");
     }
 
-    // 3. IR → EXE (调用ir2exe)
+    // 3. IR → EXE (直接调用 ir2exe_lib)
     println!("");
     let step_num = if options.opt_ir { "[3]" } else { "[2]" };
     println!("{} IR → EXE 编译...", step_num);
 
-    let current_exe = match env::current_exe() {
-        Ok(path) => path,
-        Err(_) => {
+    // 读取IR文件内容以解析源映射
+    let ir_content = match fs::read_to_string(&ir_file) {
+        Ok(content) => content,
+        Err(e) => {
             print_miette_error(
-                "cavvy::internal_error",
-                "无法获取当前执行路径",
-                Some("请尝试重新运行编译器")
+                "cavvy::io_error",
+                &format!("无法读取IR文件 '{}': {}", ir_file, e),
+                Some("请检查IR文件路径是否正确")
             );
             process::exit(1);
         }
     };
 
-    let bin_dir = current_exe.parent().unwrap_or_else(|| {
-        print_miette_error(
-            "cavvy::internal_error",
-            "无法获取执行目录",
-            Some("请检查编译器安装")
-        );
-        process::exit(1);
-    });
+    // 解析源映射
+    let source_map = parse_source_map_from_ir(&ir_content);
+    if !source_map.mappings.is_empty() {
+        println!("  [I] 已加载源映射: {} 个映射点", source_map.mappings.len());
+    }
 
-    // 尝试搜索 ir2exe 和 ir2exe.exe 两个文件名
-    let ir2exe_paths = [
-        bin_dir.join("ir2exe"),
-        bin_dir.join("ir2exe.exe")
-    ];
-    
-    let ir2exe_path = match ir2exe_paths.iter().find(|path| path.exists()) {
-        Some(path) => path,
-        None => {
-            let paths_str = ir2exe_paths.iter()
-                .map(|p| format!("  {:?}", p))
-                .collect::<Vec<_>>()
-                .join("\n");
-            print_miette_error(
-                "cavvy::tool_not_found",
-                &format!("找不到 ir2exe 或 ir2exe.exe\n搜索位置:\n{}", paths_str),
-                Some("请确保 ir2exe 与 cayc 在同一目录下")
-            );
-            let _ = fs::remove_file(&ir_file);
-            process::exit(1);
-        }
+    // 构建 ir2exe 选项
+    let mut ir2exe_options = Ir2ExeOptions {
+        optimization: options.optimization.clone(),
+        debug: options.debug,
+        extra_lib_paths: options.extra_lib_paths.clone(),
+        extra_libs: options.extra_libs.clone(),
+        extra_ldflags: options.extra_ldflags.clone(),
+        extra_cflags: options.extra_cflags.clone(),
+        target: options.target.clone(),
+        static_link: options.static_link,
+        position_independent: options.position_independent,
+        lto: options.lto,
+        lto_thin: options.lto_thin,
+        march: options.march.clone(),
+        mtune: options.mtune.clone(),
+        mcpu: options.mcpu.clone(),
+        msse: options.msse.clone(),
+        mavx: options.mavx.clone(),
+        mneon: options.mneon,
+        pgo_gen: options.pgo_gen,
+        pgo_use: options.pgo_use.clone(),
+        pgo_cs: options.pgo_cs,
+        fno_exceptions: options.fno_exceptions,
+        fno_rtti: options.fno_rtti,
+        fomit_frame_pointer: options.fomit_frame_pointer,
+        funroll_loops: options.funroll_loops,
+        fvectorize: options.fvectorize,
+        fslp_vectorize: options.fslp_vectorize,
+        use_llc_lld: options.use_llc_lld,
+        use_embedded_llc: options.use_embedded_llc,
     };
 
-
-    // 构建 ir2exe 参数
-    let mut ir2exe_args: Vec<String> = vec![];
-
-    // 目标平台
-    ir2exe_args.push("--target".to_string());
-    ir2exe_args.push(options.target.clone());
-
-    // 基础优化
-    ir2exe_args.push(options.optimization.clone());
-
-    // LTO
-    if options.lto {
-        if options.lto_thin {
-            ir2exe_args.push("--lto=thin".to_string());
-        } else {
-            ir2exe_args.push("--lto=full".to_string());
-        }
-    }
-
-    // CPU 指令集
-    if let Some(ref march) = options.march {
-        ir2exe_args.push(format!("-march={}", march));
-    }
-    if let Some(ref mtune) = options.mtune {
-        ir2exe_args.push(format!("-mtune={}", mtune));
-    }
-    if let Some(ref mcpu) = options.mcpu {
-        ir2exe_args.push(format!("-mcpu={}", mcpu));
-    }
-    if let Some(ref msse) = options.msse {
-        ir2exe_args.push(format!("-msse={}", msse));
-    }
-    if let Some(ref mavx) = options.mavx {
-        ir2exe_args.push(format!("-mavx={}", mavx));
-    }
-    if options.mneon {
-        ir2exe_args.push("--mneon".to_string());
-    }
-
-    // PGO
-    if options.pgo_gen {
-        ir2exe_args.push("-fprofile-generate".to_string());
-    }
-    if options.pgo_cs {
-        ir2exe_args.push("-fcs-profile-generate".to_string());
-    }
-    if let Some(ref pgo_data) = options.pgo_use {
-        ir2exe_args.push(format!("-fprofile-use={}", pgo_data));
-    }
-
-    // 调试信息
-    if options.debug {
-        ir2exe_args.push("-g".to_string());
-    }
-
-    // 位置无关代码
-    if options.position_independent {
-        ir2exe_args.push("-fPIC".to_string());
-    }
-
-    // 静态链接
-    if options.static_link {
-        ir2exe_args.push("--static".to_string());
-    }
-
-    // 代码生成选项
-    if options.fno_exceptions {
-        ir2exe_args.push("-fno-exceptions".to_string());
-    }
-    if options.fno_rtti {
-        ir2exe_args.push("-fno-rtti".to_string());
-    }
-    if options.fomit_frame_pointer {
-        ir2exe_args.push("-fomit-frame-pointer".to_string());
-    }
-    if options.funroll_loops {
-        ir2exe_args.push("-funroll-loops".to_string());
-    }
-    if options.fvectorize {
-        ir2exe_args.push("-fvectorize".to_string());
-    }
-    if options.fslp_vectorize {
-        ir2exe_args.push("-fslp-vectorize".to_string());
-    }
-
-    // 工具链选项
-    if options.use_llc_lld {
-        ir2exe_args.push("--use-llc-lld".to_string());
-    }
-
-    // 额外库路径
-    for path in &options.extra_lib_paths {
-        ir2exe_args.push(format!("-L{}", path));
-    }
-
-    
+    // Windows 平台自动检测 socket 相关函数并添加 ws2_32 库
     #[cfg(target_os = "windows")]
-    if let Ok(ir_content) = fs::read_to_string(&ir_file) {
-        if ir_content.contains("WSAStartup") || ir_content.contains("socket(") || ir_content.contains("@socket(") {
-            ir2exe_args.push("-lws2_32".to_string());
+    if ir_content.contains("WSAStartup") || ir_content.contains("socket(") || ir_content.contains("@socket(") {
+        ir2exe_options.extra_libs.push("ws2_32".to_string());
+    }
+
+    // 调用 ir2exe_lib 进行编译
+    match compile_ir_to_exe(&ir_file, &exe_output, &ir2exe_options, Some(&source_map)) {
+        Ok(result) => {
+            for msg in &result.messages {
+                println!("  {}", msg);
+            }
         }
-    }
-
-    // extra libs
-    for lib in &options.extra_libs {
-        ir2exe_args.push(format!("-l{}", lib));
-    }
-
-    // cflags
-    if !options.extra_cflags.is_empty() {
-        ir2exe_args.push("--cflags".to_string());
-        ir2exe_args.push(options.extra_cflags.join(" "));
-    }
-
-    // 额外的链接器标志
-    if !options.extra_ldflags.is_empty() {
-        ir2exe_args.push("--ldflags".to_string());
-        ir2exe_args.push(options.extra_ldflags.join(" "));
-    }
-
-    // 输入输出文件
-    ir2exe_args.push(ir_file.clone());
-    ir2exe_args.push(exe_output.clone());
-
-    // 调试：显示实际调用的命令
-    println!("  [D] 调用: {} {}", ir2exe_path.display(), ir2exe_args.join(" "));
-    
-    // 调试：显示实际调用的命令
-    println!("  [D] 调用: {} {}", ir2exe_path.display(), ir2exe_args.join(" "));
-    
-    // 调用ir2exe
-    let output = process::Command::new(&ir2exe_path)
-        .args(&ir2exe_args)
-        .output()
-        .unwrap_or_else(|e| {
-            print_tool_error("ir2exe", &format!("执行失败: {}", e), Some("请检查 ir2exe 是否正确安装"));
+        Err(e) => {
+            print_tool_error("ir2exe", "IR→EXE编译失败", Some(&e));
             if !options.keep_ir {
                 let _ = fs::remove_file(&ir_file);
             }
             process::exit(1);
-        });
-
-    if !output.status.success() {
-        let error_msg = String::from_utf8_lossy(&output.stderr);
-        print_tool_error("ir2exe", "IR→EXE编译失败", Some(&error_msg));
-        if !options.keep_ir {
-            let _ = fs::remove_file(&ir_file);
         }
-        process::exit(1);
     }
 
     // 清理IR文件（如果不保留）

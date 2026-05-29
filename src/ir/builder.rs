@@ -1435,30 +1435,30 @@ impl IrBuilder {
                     // 对于泛型方法，我们需要查找类型注册表来确定正确的函数名
                     // 因为泛型方法的参数类型在定义时是 GenericParam，但在调用时是实际类型
                     let qualified_class = self.get_qualified_class_name(class_name);
-                    eprintln!("[DEBUG] build_call: class_name={}, qualified_class={}, method_name={}", class_name, qualified_class, method_name);
+                    // eprintln!("[DEBUG] build_call: class_name={}, qualified_class={}, method_name={}", class_name, qualified_class, method_name);
                     let func_name_result = if let Some(ref registry) = self.type_registry {
                         // 尝试查找类信息
-                        eprintln!("[DEBUG] Looking up class in registry: {}", class_name);
+                        // eprintln!("[DEBUG] Looking up class in registry: {}", class_name);
                         if let Some(class_info) = registry.get_class(class_name) {
-                            eprintln!("[DEBUG] Found class: {}, type_params={:?}, methods={:?}", 
-                                class_name, class_info.type_params, 
-                                class_info.methods.keys().collect::<Vec<_>>());
+                            // eprintln!("[DEBUG] Found class: {}, type_params={:?}, methods={:?}", 
+                            //     class_name, class_info.type_params, 
+                            //     class_info.methods.keys().collect::<Vec<_>>());
                             // 构建参数类型列表用于查找方法
                             let arg_type_list: Vec<crate::types::Type> = call.args.iter()
                                 .map(|arg| self.infer_expr_type(arg))
                                 .filter_map(|ty| ty.ok())
                                 .collect();
-                            eprintln!("[DEBUG] Arg types: {:?}", arg_type_list);
+                            // eprintln!("[DEBUG] Arg types: {:?}", arg_type_list);
 
                             // 查找匹配的方法
                             if let Some(method_info) = class_info.find_method(method_name, &arg_type_list) {
-                                eprintln!("[DEBUG] Found method: {}, params={:?}", method_name, 
-                                    method_info.params.iter().map(|p| format!("{:?}", p.param_type)).collect::<Vec<_>>());
+                                // eprintln!("[DEBUG] Found method: {}, params={:?}", method_name, 
+                                //     method_info.params.iter().map(|p| format!("{:?}", p.param_type)).collect::<Vec<_>>());
                                 // 使用方法定义时的参数类型生成函数名
                                 let param_types: Vec<String> = method_info.params.iter()
                                     .map(|p| self.type_to_signature(&p.param_type))
                                     .collect();
-                                eprintln!("[DEBUG] Param signatures: {:?}", param_types);
+                                // eprintln!("[DEBUG] Param signatures: {:?}", param_types);
 
                                 if param_types.is_empty() {
                                     format!("{}.{}", qualified_class, method_name)
@@ -1466,7 +1466,7 @@ impl IrBuilder {
                                     format!("{}.__{}_{}", qualified_class, method_name, param_types.join("_"))
                                 }
                             } else {
-                                eprintln!("[DEBUG] Method not found: {} with args {:?}", method_name, arg_type_list);
+                                // eprintln!("[DEBUG] Method not found: {} with args {:?}", method_name, arg_type_list);
                                 // 方法未找到，回退到简单处理
                                 let arg_types: Vec<String> = call.args.iter()
                                     .map(|_| "x".to_string())
@@ -1478,7 +1478,7 @@ impl IrBuilder {
                                 }
                             }
                         } else {
-                            eprintln!("[DEBUG] Class not found in registry: {}", class_name);
+                            // eprintln!("[DEBUG] Class not found in registry: {}", class_name);
                             // 类未找到，回退到简单处理
                             let arg_types: Vec<String> = call.args.iter()
                                 .map(|_| "x".to_string())
@@ -1490,7 +1490,7 @@ impl IrBuilder {
                             }
                         }
                     } else {
-                        eprintln!("[DEBUG] Type registry is None");
+                        // eprintln!("[DEBUG] Type registry is None");
                         // 回退到简单处理：使用 "x" 作为泛型参数的签名
                         let arg_types: Vec<String> = call.args.iter()
                             .map(|_| "x".to_string())
@@ -1502,7 +1502,7 @@ impl IrBuilder {
                             format!("{}.__{}_{}", qualified_class, method_name, arg_types.join("_"))
                         }
                     };
-                    eprintln!("[DEBUG] Generated func_name: {}", func_name_result);
+                    // eprintln!("[DEBUG] Generated func_name: {}", func_name_result);
                     func_name_result
                 } else {
                     // obj.method() - 需要虚调用分派

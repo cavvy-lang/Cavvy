@@ -18,6 +18,12 @@ pub mod idle;
 // Cavly 包管理器模块
 pub mod cavly;
 
+// IR 到 EXE 编译模块（被 cayc 和 ir2exe 共享）
+pub mod ir2exe_lib;
+
+// 嵌入式 LLVM LLC 编译器模块（实验性）
+pub mod embedded_llc;
+
 /// 新的统一错误类型（推荐使用）
 pub use error::CompilerError;
 pub use error::CompilerResult;

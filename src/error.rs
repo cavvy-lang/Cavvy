@@ -855,7 +855,6 @@ pub fn print_compile_error(stage: &str, error: &str, source_path: &str, help: Op
 /// use cavvy::error::print_tool_error;
 /// print_tool_error("clang", "编译失败", Some("请检查 LLVM 安装"));
 /// ```
-#[deprecated()]
 pub fn print_tool_error(tool: &str, message: &str, help: Option<&str>) {
     eprintln!("\n  × cavvy::tool_error: {} 执行失败", tool);
     eprintln!("   │");
