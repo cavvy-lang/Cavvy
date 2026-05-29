@@ -9,8 +9,7 @@
 
 #include <Optional.cay>
 
-using std::OptionalInt;
-using std::OptionalBool;
+using std::Optional;
 
 // 带泛型参数的类声明 - 真正的泛型类
 // 时间复杂度: O(1) 所有操作
@@ -33,70 +32,6 @@ public class Box<T> {
     }
     
     public void set(T value) {
-        this.value = value;
-        this.hasValue = true;
-    }
-    
-    public boolean isPresent() {
-        return this.hasValue;
-    }
-    
-    public boolean isEmpty() {
-        return !this.hasValue;
-    }
-}
-
-// Box<int> 特化版本 - 用于当前编译器支持
-public class BoxInt {
-    private int value;
-    private boolean hasValue;
-    
-    public BoxInt() {
-        this.hasValue = false;
-    }
-    
-    public BoxInt(int value) {
-        this.value = value;
-        this.hasValue = true;
-    }
-    
-    public int get() {
-        return this.value;
-    }
-    
-    public void set(int value) {
-        this.value = value;
-        this.hasValue = true;
-    }
-    
-    public boolean isPresent() {
-        return this.hasValue;
-    }
-    
-    public boolean isEmpty() {
-        return !this.hasValue;
-    }
-}
-
-// Box<String> 特化版本
-public class BoxString {
-    private String value;
-    private boolean hasValue;
-    
-    public BoxString() {
-        this.hasValue = false;
-    }
-    
-    public BoxString(String value) {
-        this.value = value;
-        this.hasValue = true;
-    }
-    
-    public String get() {
-        return this.value;
-    }
-    
-    public void set(String value) {
         this.value = value;
         this.hasValue = true;
     }
@@ -137,25 +72,6 @@ public class Pair<K, V> {
     }
 }
 
-// Pair<String, int> 特化版本
-public class PairStringInt {
-    private String key;
-    private int value;
-    
-    public PairStringInt(String key, int value) {
-        this.key = key;
-        this.value = value;
-    }
-    
-    public String getKey() {
-        return this.key;
-    }
-    
-    public int getValue() {
-        return this.value;
-    }
-}
-
 public class GenericsTest {
     public static void main() {
         println("=== 泛型语法测试 ===");
@@ -170,40 +86,40 @@ public class GenericsTest {
         println("class Pair<K, V> syntax: OK");
         
         // 测试 BoxInt（Box<int> 特化）
-        BoxInt intBox = new BoxInt(42);
+        Box<int> intBox = new Box(42);
         if (intBox.isPresent()) {
             println("BoxInt(42).get() = " + String.valueOf(intBox.get()));
         }
         
-        BoxInt emptyBox = new BoxInt();
+        Box<int> emptyBox = new Box();
         if (emptyBox.isEmpty()) {
             println("BoxInt().isEmpty() = true");
         }
         
         // 测试 BoxString（Box<String> 特化）
-        BoxString strBox = new BoxString("Hello");
+        Box<String> strBox = new Box("Hello");
         if (strBox.isPresent()) {
             println("BoxString(\"Hello\").get() = " + strBox.get());
         }
         
         // 测试 PairStringInt（Pair<String, int> 特化）
-        PairStringInt pair = new PairStringInt("age", 25);
+        Pair<String, int> pair = new Pair("age", 25);
         println("Pair(\"age\", 25).getKey() = " + pair.getKey());
         println("Pair(\"age\", 25).getValue() = " + String.valueOf(pair.getValue()));
         
         // 测试 OptionalInt（来自标准库）
-        OptionalInt opt = OptionalInt.of(42);
+        Optional<int> opt = Optional.of(42);
         if (opt.isPresent()) {
             println("OptionalInt.of(42).get() = " + String.valueOf(opt.get()));
         }
         
-        OptionalInt emptyOpt = OptionalInt.empty();
+        Optional<int> emptyOpt = Optional.empty();
         if (emptyOpt.isEmpty()) {
             println("OptionalInt.empty().isEmpty() = true");
         }
         
         // 测试 OptionalBool
-        OptionalBool flag = OptionalBool.of(true);
+        Optional<bool> flag = Optional.of(true);
         if (flag.isPresent()) {
             println("OptionalBool test: OK");
         }

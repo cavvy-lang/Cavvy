@@ -292,6 +292,81 @@ impl IRGenerator {
             self.emit_line(&format!("  store {} {}, {}* %{}, align {}", var_type, temp, var_type, llvm_name, align));
             return Ok(format!("{} {}", var_type, temp));
         }
+        // i8* 解箱转换（用于泛型类型返回值）
+        else if value_type == "i8*" {
+            // i8* -> i1 (bool)
+            if var_type == "i1" {
+                let int_val = self.new_temp();
+                self.emit_line(&format!("  {} = ptrtoint i8* {} to i64", int_val, val));
+                let trunc_i8 = self.new_temp();
+                self.emit_line(&format!("  {} = trunc i64 {} to i8", trunc_i8, int_val));
+                self.emit_line(&format!("  {} = trunc i8 {} to i1", temp, trunc_i8));
+                let align = self.get_type_align(var_type);
+                self.emit_line(&format!("  store i1 {}, i1* %{}, align {}", temp, llvm_name, align));
+                return Ok(format!("i1 {}", temp));
+            }
+            // i8* -> i8 (char)
+            else if var_type == "i8" {
+                let int_val = self.new_temp();
+                self.emit_line(&format!("  {} = ptrtoint i8* {} to i64", int_val, val));
+                self.emit_line(&format!("  {} = trunc i64 {} to i8", temp, int_val));
+                let align = self.get_type_align(var_type);
+                self.emit_line(&format!("  store i8 {}, i8* %{}, align {}", temp, llvm_name, align));
+                return Ok(format!("i8 {}", temp));
+            }
+            // i8* -> i16
+            else if var_type == "i16" {
+                let int_val = self.new_temp();
+                self.emit_line(&format!("  {} = ptrtoint i8* {} to i64", int_val, val));
+                self.emit_line(&format!("  {} = trunc i64 {} to i16", temp, int_val));
+                let align = self.get_type_align(var_type);
+                self.emit_line(&format!("  store i16 {}, i16* %{}, align {}", temp, llvm_name, align));
+                return Ok(format!("i16 {}", temp));
+            }
+            // i8* -> i32
+            else if var_type == "i32" {
+                let int_val = self.new_temp();
+                self.emit_line(&format!("  {} = ptrtoint i8* {} to i64", int_val, val));
+                self.emit_line(&format!("  {} = trunc i64 {} to i32", temp, int_val));
+                let align = self.get_type_align(var_type);
+                self.emit_line(&format!("  store i32 {}, i32* %{}, align {}", temp, llvm_name, align));
+                return Ok(format!("i32 {}", temp));
+            }
+            // i8* -> i64
+            else if var_type == "i64" {
+                self.emit_line(&format!("  {} = ptrtoint i8* {} to i64", temp, val));
+                let align = self.get_type_align(var_type);
+                self.emit_line(&format!("  store i64 {}, i64* %{}, align {}", temp, llvm_name, align));
+                return Ok(format!("i64 {}", temp));
+            }
+            // i8* -> float
+            else if var_type == "float" {
+                let int_val = self.new_temp();
+                self.emit_line(&format!("  {} = ptrtoint i8* {} to i64", int_val, val));
+                let double_val = self.new_temp();
+                self.emit_line(&format!("  {} = bitcast i64 {} to double", double_val, int_val));
+                self.emit_line(&format!("  {} = fptrunc double {} to float", temp, double_val));
+                let align = self.get_type_align(var_type);
+                self.emit_line(&format!("  store float {}, float* %{}, align {}", temp, llvm_name, align));
+                return Ok(format!("float {}", temp));
+            }
+            // i8* -> double
+            else if var_type == "double" {
+                let int_val = self.new_temp();
+                self.emit_line(&format!("  {} = ptrtoint i8* {} to i64", int_val, val));
+                self.emit_line(&format!("  {} = bitcast i64 {} to double", temp, int_val));
+                let align = self.get_type_align(var_type);
+                self.emit_line(&format!("  store double {}, double* %{}, align {}", temp, llvm_name, align));
+                return Ok(format!("double {}", temp));
+            }
+            // i8* -> 其他指针类型
+            else if var_type.ends_with("*") {
+                self.emit_line(&format!("  {} = bitcast i8* {} to {}", temp, val, var_type));
+                let align = self.get_type_align(var_type);
+                self.emit_line(&format!("  store {} {}, {}* %{}, align {}", var_type, temp, var_type, llvm_name, align));
+                return Ok(format!("{} {}", var_type, temp));
+            }
+        }
         // 整数类型转换
         else if value_type.starts_with("i") && var_type.starts_with("i")
             && !value_type.ends_with("*") && !var_type.ends_with("*") {

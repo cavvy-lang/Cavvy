@@ -129,6 +129,15 @@ impl ClassInfo {
         })
     }
     
+    /// 检查类型是否精确匹配（支持泛型参数）
+    fn types_match_exact(param_type: &Type, arg_type: &Type) -> bool {
+        // 泛型参数类型可以匹配任何类型
+        if matches!(param_type, Type::GenericParam(_)) {
+            return true;
+        }
+        param_type == arg_type
+    }
+
     /// 精确匹配方法参数（不考虑隐式转换，支持非末尾可变参数）
     fn match_method_params_exact(params: &[ParameterInfo], arg_types: &[Type]) -> bool {
         if params.is_empty() {
@@ -146,14 +155,14 @@ impl ClassInfo {
                 return false;
             }
 
-            // 检查可变参数之前的固定参数（精确匹配）
+            // 检查可变参数之前的固定参数（精确匹配，支持泛型参数）
             for i in 0..fixed_before {
-                if params[i].param_type != arg_types[i] {
+                if !Self::types_match_exact(&params[i].param_type, &arg_types[i]) {
                     return false;
                 }
             }
 
-            // 检查可变参数（精确匹配元素类型）
+            // 检查可变参数（精确匹配元素类型，支持泛型参数）
             let vararg_elem_type = match &params[vi].param_type {
                 Type::Array(elem) => elem.as_ref(),
                 _ => &params[vi].param_type,
@@ -162,19 +171,19 @@ impl ClassInfo {
             let varargs_end = fixed_before + varargs_len;
 
             // 如果恰好一个数组参数且类型匹配，直接接受
-            if varargs_len == 1 && params[vi].param_type == arg_types[fixed_before] {
+            if varargs_len == 1 && Self::types_match_exact(&params[vi].param_type, &arg_types[fixed_before]) {
                 // 直接传递数组给可变参数
             } else {
                 for i in fixed_before..varargs_end {
-                    if *vararg_elem_type != arg_types[i] {
+                    if !Self::types_match_exact(vararg_elem_type, &arg_types[i]) {
                         return false;
                     }
                 }
             }
 
-            // 检查可变参数之后的固定参数（精确匹配）
+            // 检查可变参数之后的固定参数（精确匹配，支持泛型参数）
             for i in 0..fixed_after {
-                if params[vi + 1 + i].param_type != arg_types[varargs_end + i] {
+                if !Self::types_match_exact(&params[vi + 1 + i].param_type, &arg_types[varargs_end + i]) {
                     return false;
                 }
             }
@@ -184,7 +193,7 @@ impl ClassInfo {
             if params.len() != arg_types.len() {
                 return false;
             }
-            params.iter().zip(arg_types.iter()).all(|(p, a)| p.param_type == *a)
+            params.iter().zip(arg_types.iter()).all(|(p, a)| Self::types_match_exact(&p.param_type, a))
         }
     }
 
@@ -255,6 +264,10 @@ impl ClassInfo {
     /// 检查类型是否匹配（支持基本类型转换）
     fn types_match(param_type: &Type, arg_type: &Type) -> bool {
         if param_type == arg_type {
+            return true;
+        }
+        // 泛型参数类型匹配：GenericParam 可以匹配任何类型
+        if matches!(param_type, Type::GenericParam(_)) {
             return true;
         }
         // 允许 int -> long, int -> float, int -> double 等隐式转换

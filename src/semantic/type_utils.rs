@@ -127,6 +127,11 @@ impl SemanticAnalyzer {
             return true;
         }
 
+        // 泛型参数类型可以匹配任何类型
+        if matches!(to, Type::GenericParam(_)) {
+            return true;
+        }
+
         // null 可以赋值给任何引用类型（包括 string 和指针）
         if let Type::Object(obj_name) = from {
             if obj_name == "Object" {

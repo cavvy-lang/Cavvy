@@ -6,9 +6,7 @@
 
 #include <Optional.cay>
 
-using std::OptionalInt;
-using std::OptionalBool;
-using std::OptionalDouble;
+using std::Optional;
 
 public class OptionalTest {
     public static void main() {
@@ -16,14 +14,14 @@ public class OptionalTest {
         println("=== OptionalInt 测试 ===");
         
         // 创建包含值的 Optional
-        OptionalInt some = OptionalInt.of(42);
+        Optional<int> some = Optional.of(42);
         if (some.isPresent()) {
             println("some.isPresent() = true");
             println("some.get() = " + String.valueOf(some.get()));
         }
         
         // 创建空的 Optional
-        OptionalInt none = OptionalInt.empty();
+        Optional<int> none = Optional.empty();
         if (none.isEmpty()) {
             println("none.isEmpty() = true");
         }
@@ -38,7 +36,7 @@ public class OptionalTest {
         println("");
         println("=== OptionalBool 测试 ===");
         
-        OptionalBool flag = OptionalBool.of(true);
+        Optional<bool> flag = Optional.of(true);
         if (flag.isPresent()) {
             println("flag.isPresent() = true, flag.get() = true");
         }
@@ -47,7 +45,7 @@ public class OptionalTest {
         println("");
         println("=== OptionalDouble 测试 ===");
         
-        OptionalDouble pi = OptionalDouble.of(3.14159);
+        Optional<double> pi = Optional.of(3.14159);
         if (pi.isPresent()) {
             println("pi.isPresent() = true");
             println("pi.orElse(0.0) = " + String.valueOf(pi.orElse(0.0)));

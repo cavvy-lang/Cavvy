@@ -84,11 +84,41 @@ impl IRGenerator {
             &fallback_types,
         );
         
-        // 生成参数值
+        // 获取构造函数信息以确定每个参数的类型（用于泛型类型擦除）
+        let ctor_info_opt = self.type_registry.as_ref()
+            .and_then(|r| r.get_class(&registry_name))
+            .and_then(|c| {
+                c.constructors.iter()
+                    .find(|ctor| {
+                        let sigs: Vec<String> = ctor.params.iter()
+                            .map(|p| self.type_to_signature(&p.param_type))
+                            .collect();
+                        sigs == param_types
+                    })
+                    .cloned()
+            });
+        
+        // 生成参数值（处理泛型类型擦除）
         let mut arg_values = Vec::new();
-        for arg in &new_expr.args {
+        for (idx, arg) in new_expr.args.iter().enumerate() {
             let arg_val = self.generate_expression(arg)?;
-            arg_values.push(arg_val);
+            
+            // 检查构造函数参数是否是泛型参数类型
+            let is_generic_param = ctor_info_opt.as_ref()
+                .and_then(|ctor| ctor.params.get(idx))
+                .map(|p| matches!(p.param_type, crate::types::Type::GenericParam(_)))
+                .unwrap_or(false);
+            
+            if is_generic_param {
+                // 泛型参数需要装箱为 i8*
+                // 根据参数的实际类型进行不同的装箱操作
+                let inferred_type = self.infer_argument_type(arg);
+                let boxed_val = self.box_value_for_generic(&arg_val, &inferred_type)?;
+                arg_values.push(boxed_val);
+            } else {
+                // 非泛型参数，直接使用
+                arg_values.push(arg_val);
+            }
         }
         
         // 生成构造函数名（使用类型注册表中的真实参数类型）
@@ -275,5 +305,162 @@ impl IRGenerator {
             }
             _ => None,
         }
+    }
+    
+    /// 将值装箱为 i8* 以传递给泛型参数
+    /// 
+    /// 使用带类型标记的装箱格式：{ i8 type_tag, i8[7] padding, i64 data }
+    /// type_tag: 0=int, 1=long, 2=float, 3=double, 4=bool, 5=char, 6=object
+    /// 
+    /// # Arguments
+    /// * `value` - 原始值（格式如 "i32 42" 或 "i8* %t1"）
+    /// * `type_sig` - 类型签名（如 "i", "l", "f", "d", "b", "o" 等）
+    /// 
+    /// # Returns
+    /// 装箱后的值（格式为 "i8* %tN"）
+    fn box_value_for_generic(&mut self, value: &str, type_sig: &str) -> cayResult<String> {
+        // 解析值字符串，提取类型和值
+        let parts: Vec<&str> = value.split_whitespace().collect();
+        if parts.len() < 2 {
+            return Ok(value.to_string());
+        }
+        
+        let llvm_type = parts[0];
+        let llvm_val = parts[1];
+        
+        // 如果已经是 i8*，直接返回（假设已经是装箱格式或对象指针）
+        if llvm_type == "i8*" {
+            return Ok(value.to_string());
+        }
+        
+        // 将值装箱为 i8*：通过将值转换为 i64，再使用 inttoptr 转为 i8*
+        // 这种方式与 convert_arg_type 中的装箱逻辑保持一致
+        let boxed = self.new_temp();
+        
+        match type_sig {
+            "i" => {
+                // i32 -> i64 (符号扩展) -> i8*
+                let ext_val = self.new_temp();
+                self.emit_line(&format!("  {} = sext i32 {} to i64", ext_val, llvm_val));
+                self.emit_line(&format!("  {} = inttoptr i64 {} to i8*", boxed, ext_val));
+            }
+            "l" => {
+                // i64 -> i8*
+                self.emit_line(&format!("  {} = inttoptr i64 {} to i8*", boxed, llvm_val));
+            }
+            "f" => {
+                // float -> double -> i64 -> i8*
+                let ext_val = self.new_temp();
+                self.emit_line(&format!("  {} = fpext float {} to double", ext_val, llvm_val));
+                let bitcast_val = self.new_temp();
+                self.emit_line(&format!("  {} = bitcast double {} to i64", bitcast_val, ext_val));
+                self.emit_line(&format!("  {} = inttoptr i64 {} to i8*", boxed, bitcast_val));
+            }
+            "d" => {
+                // double -> i64 -> i8*
+                let bitcast_val = self.new_temp();
+                self.emit_line(&format!("  {} = bitcast double {} to i64", bitcast_val, llvm_val));
+                self.emit_line(&format!("  {} = inttoptr i64 {} to i8*", boxed, bitcast_val));
+            }
+            "b" => {
+                // i1 -> i8 -> i64 -> i8*
+                let ext_i8 = self.new_temp();
+                self.emit_line(&format!("  {} = zext i1 {} to i8", ext_i8, llvm_val));
+                let ext_i64 = self.new_temp();
+                self.emit_line(&format!("  {} = zext i8 {} to i64", ext_i64, ext_i8));
+                self.emit_line(&format!("  {} = inttoptr i64 {} to i8*", boxed, ext_i64));
+            }
+            "c" => {
+                // i8 -> i64 -> i8*
+                let ext_val = self.new_temp();
+                self.emit_line(&format!("  {} = sext i8 {} to i64", ext_val, llvm_val));
+                self.emit_line(&format!("  {} = inttoptr i64 {} to i8*", boxed, ext_val));
+            }
+            _ => {
+                // 其他类型（对象指针），直接使用
+                return Ok(value.to_string());
+            }
+        }
+        
+        Ok(format!("i8* {}", boxed))
+    }
+    
+    /// 从装箱值中解箱为具体类型
+    /// 
+    /// # Arguments
+    /// * `boxed_val` - 装箱值（格式如 "i8* %t1"）
+    /// * `target_type_sig` - 目标类型签名
+    /// 
+    /// # Returns
+    /// 解箱后的值（格式如 "i32 %tN"）
+    fn unbox_value_for_generic(&mut self, boxed_val: &str, target_type_sig: &str) -> cayResult<String> {
+        // 解析装箱值
+        let parts: Vec<&str> = boxed_val.split_whitespace().collect();
+        if parts.len() < 2 {
+            return Ok(boxed_val.to_string());
+        }
+        
+        let llvm_type = parts[0];
+        let box_ptr = parts[1];
+        
+        // 如果已经是具体类型，直接返回
+        if llvm_type != "i8*" {
+            return Ok(boxed_val.to_string());
+        }
+        
+        // 新的装箱格式：i8* 是通过 inttoptr 从 i64 转换而来的
+        // 解箱：i8* -> i64 (ptrtoint) -> 具体类型
+        let int_val = self.new_temp();
+        self.emit_line(&format!("  {} = ptrtoint i8* {} to i64", int_val, box_ptr));
+        
+        // 根据目标类型转换
+        let result = match target_type_sig {
+            "i" => {
+                // i64 -> i32
+                let trunc_val = self.new_temp();
+                self.emit_line(&format!("  {} = trunc i64 {} to i32", trunc_val, int_val));
+                format!("i32 {}", trunc_val)
+            }
+            "l" => {
+                format!("i64 {}", int_val)
+            }
+            "f" => {
+                // i64 -> double -> float
+                let double_val = self.new_temp();
+                self.emit_line(&format!("  {} = bitcast i64 {} to double", double_val, int_val));
+                let float_val = self.new_temp();
+                self.emit_line(&format!("  {} = fptrunc double {} to float", float_val, double_val));
+                format!("float {}", float_val)
+            }
+            "d" => {
+                // i64 -> double
+                let bitcast_val = self.new_temp();
+                self.emit_line(&format!("  {} = bitcast i64 {} to double", bitcast_val, int_val));
+                format!("double {}", bitcast_val)
+            }
+            "b" => {
+                // i64 -> i8 -> i1
+                let trunc_i8 = self.new_temp();
+                self.emit_line(&format!("  {} = trunc i64 {} to i8", trunc_i8, int_val));
+                let trunc_i1 = self.new_temp();
+                self.emit_line(&format!("  {} = trunc i8 {} to i1", trunc_i1, trunc_i8));
+                format!("i1 {}", trunc_i1)
+            }
+            "c" => {
+                // i64 -> i8
+                let trunc_val = self.new_temp();
+                self.emit_line(&format!("  {} = trunc i64 {} to i8", trunc_val, int_val));
+                format!("i8 {}", trunc_val)
+            }
+            s if s.starts_with('o') || s.starts_with('g') => {
+                // 对象类型，i8* 直接就是对象指针
+                format!("i8* {}", box_ptr)
+            }
+            _ => {
+                format!("i64 {}", int_val)
+            }
+        };
+        
+        Ok(result)
     }
 }

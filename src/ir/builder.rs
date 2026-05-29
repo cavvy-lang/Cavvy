@@ -1426,8 +1426,88 @@ impl IrBuilder {
         let func_name = match call.callee.as_ref() {
             Expr::Identifier(ident) => ident.name.clone(),
             Expr::MemberAccess(member) => {
-                // obj.method() - 需要虚调用分派
-                format!("{}.{}", self.current_class, member.member)
+                // 检查是否是静态方法调用: ClassName.methodName(args)
+                if let Expr::Identifier(class_ident) = member.object.as_ref() {
+                    // 可能是静态方法调用
+                    let class_name = &class_ident.name;
+                    let method_name = &member.member;
+
+                    // 对于泛型方法，我们需要查找类型注册表来确定正确的函数名
+                    // 因为泛型方法的参数类型在定义时是 GenericParam，但在调用时是实际类型
+                    let qualified_class = self.get_qualified_class_name(class_name);
+                    eprintln!("[DEBUG] build_call: class_name={}, qualified_class={}, method_name={}", class_name, qualified_class, method_name);
+                    let func_name_result = if let Some(ref registry) = self.type_registry {
+                        // 尝试查找类信息
+                        eprintln!("[DEBUG] Looking up class in registry: {}", class_name);
+                        if let Some(class_info) = registry.get_class(class_name) {
+                            eprintln!("[DEBUG] Found class: {}, type_params={:?}, methods={:?}", 
+                                class_name, class_info.type_params, 
+                                class_info.methods.keys().collect::<Vec<_>>());
+                            // 构建参数类型列表用于查找方法
+                            let arg_type_list: Vec<crate::types::Type> = call.args.iter()
+                                .map(|arg| self.infer_expr_type(arg))
+                                .filter_map(|ty| ty.ok())
+                                .collect();
+                            eprintln!("[DEBUG] Arg types: {:?}", arg_type_list);
+
+                            // 查找匹配的方法
+                            if let Some(method_info) = class_info.find_method(method_name, &arg_type_list) {
+                                eprintln!("[DEBUG] Found method: {}, params={:?}", method_name, 
+                                    method_info.params.iter().map(|p| format!("{:?}", p.param_type)).collect::<Vec<_>>());
+                                // 使用方法定义时的参数类型生成函数名
+                                let param_types: Vec<String> = method_info.params.iter()
+                                    .map(|p| self.type_to_signature(&p.param_type))
+                                    .collect();
+                                eprintln!("[DEBUG] Param signatures: {:?}", param_types);
+
+                                if param_types.is_empty() {
+                                    format!("{}.{}", qualified_class, method_name)
+                                } else {
+                                    format!("{}.__{}_{}", qualified_class, method_name, param_types.join("_"))
+                                }
+                            } else {
+                                eprintln!("[DEBUG] Method not found: {} with args {:?}", method_name, arg_type_list);
+                                // 方法未找到，回退到简单处理
+                                let arg_types: Vec<String> = call.args.iter()
+                                    .map(|_| "x".to_string())
+                                    .collect();
+                                if arg_types.is_empty() {
+                                    format!("{}.{}", qualified_class, method_name)
+                                } else {
+                                    format!("{}.__{}_{}", qualified_class, method_name, arg_types.join("_"))
+                                }
+                            }
+                        } else {
+                            eprintln!("[DEBUG] Class not found in registry: {}", class_name);
+                            // 类未找到，回退到简单处理
+                            let arg_types: Vec<String> = call.args.iter()
+                                .map(|_| "x".to_string())
+                                .collect();
+                            if arg_types.is_empty() {
+                                format!("{}.{}", qualified_class, method_name)
+                            } else {
+                                format!("{}.__{}_{}", qualified_class, method_name, arg_types.join("_"))
+                            }
+                        }
+                    } else {
+                        eprintln!("[DEBUG] Type registry is None");
+                        // 回退到简单处理：使用 "x" 作为泛型参数的签名
+                        let arg_types: Vec<String> = call.args.iter()
+                            .map(|_| "x".to_string())
+                            .collect();
+
+                        if arg_types.is_empty() {
+                            format!("{}.{}", qualified_class, method_name)
+                        } else {
+                            format!("{}.__{}_{}", qualified_class, method_name, arg_types.join("_"))
+                        }
+                    };
+                    eprintln!("[DEBUG] Generated func_name: {}", func_name_result);
+                    func_name_result
+                } else {
+                    // obj.method() - 需要虚调用分派
+                    format!("{}.{}", self.current_class, member.member)
+                }
             }
             _ => return Err(crate::error::codegen_error_at(call.loc.clone(), "Complex callee not yet supported in IR builder".to_string())),
         };
@@ -1870,7 +1950,14 @@ impl IrBuilder {
 
     fn infer_type_from_expr(&self, expr: Option<&Expr>) -> cayResult<Type> {
         match expr {
-            Some(Expr::Literal(lit_expr)) => match &lit_expr.value {
+            Some(e) => self.infer_expr_type(e),
+            None => Ok(Type::Int32), // 默认
+        }
+    }
+
+    fn infer_expr_type(&self, expr: &Expr) -> cayResult<Type> {
+        match expr {
+            Expr::Literal(lit_expr) => match &lit_expr.value {
                 LiteralValue::Int32(_) => Ok(Type::Int32),
                 LiteralValue::Int64(_) => Ok(Type::Int64),
                 LiteralValue::Float32(_) => Ok(Type::Float32),
@@ -1884,25 +1971,137 @@ impl IrBuilder {
         }
     }
 
+    /// 获取带命名空间的类名（用于 LLVM IR 标识符）
+    /// 使用 Itanium ABI 名称改编: _ZN<len>ns1<len>ns2<len>classNameE
+    /// 泛型类型名中的 < > 会被替换为 _ 以生成合法的 LLVM 标识符
+    /// 对于泛型类（如 FileResult<T>），使用原始泛型类名（FileResult_T_）
+    fn get_qualified_class_name(&self, class_name: &str) -> String {
+        // 提取基础类名（去除泛型参数）
+        let base_name = if let Some(lt_pos) = class_name.find('<') {
+            &class_name[..lt_pos]
+        } else {
+            class_name
+        };
+
+        // 检查是否是泛型类
+        let processed_name = if let Some(ref registry) = self.type_registry {
+            if let Some(class_info) = registry.get_class(base_name) {
+                if !class_info.type_params.is_empty() {
+                    // 这是泛型类，使用原始类型参数名（如 T）
+                    let type_param_suffix = class_info.type_params.join("_");
+                    format!("{}_{}_", base_name, type_param_suffix)
+                } else {
+                    // 不是泛型类，正常处理
+                    if class_name.contains('<') {
+                        class_name
+                            .replace("<", "_")
+                            .replace(">", "_")
+                            .replace(",", "_")
+                            .replace(" ", "_")
+                    } else {
+                        class_name.to_string()
+                    }
+                }
+            } else {
+                // 类不存在，正常处理
+                if class_name.contains('<') {
+                    class_name
+                        .replace("<", "_")
+                        .replace(">", "_")
+                        .replace(",", "_")
+                        .replace(" ", "_")
+                } else {
+                    class_name.to_string()
+                }
+            }
+        } else {
+            // 类型注册表不可用，正常处理
+            if class_name.contains('<') {
+                class_name
+                    .replace("<", "_")
+                    .replace(">", "_")
+                    .replace(",", "_")
+                    .replace(" ", "_")
+            } else {
+                class_name.to_string()
+            }
+        };
+
+        // 如果 processed_name 已经包含 ::，直接从中提取命名空间和简单名
+        if processed_name.contains("::") {
+            let parts: Vec<&str> = processed_name.split("::").collect();
+            let simple_name = parts.last().unwrap_or(&"").to_string();
+            let namespace: Vec<String> = parts[..parts.len()-1].iter().map(|s| s.to_string()).collect();
+            if namespace.is_empty() {
+                simple_name
+            } else {
+                self.mangle_namespace(&namespace, &simple_name)
+            }
+        } else {
+            let namespace = self.get_class_namespace(&processed_name);
+            if namespace.is_empty() {
+                processed_name
+            } else {
+                // 使用 Itanium ABI 格式
+                self.mangle_namespace(&namespace, &processed_name)
+            }
+        }
+    }
+
+    /// 获取类的命名空间路径
+    fn get_class_namespace(&self, class_name: &str) -> Vec<String> {
+        // 提取基础类名（移除泛型参数）
+        let base_class_name = if let Some(pos) = class_name.find('_') {
+            // 检查是否是泛型参数后缀（如 _T_）
+            if class_name[pos..].starts_with("_T") || class_name[pos..].starts_with("_") {
+                &class_name[..pos]
+            } else {
+                class_name
+            }
+        } else {
+            class_name
+        };
+
+        // 直接查找（限定名 key）
+        if let Some(ref registry) = self.type_registry {
+            if let Some(ns) = registry.class_namespace_paths.get(base_class_name) {
+                return ns.clone();
+            }
+        }
+        Vec::new()
+    }
+
+    /// Itanium ABI 名称改编: _ZN<len>ns1<len>ns2<len>classNameE
+    fn mangle_namespace(&self, namespace_path: &[String], name: &str) -> String {
+        let mut result = "_ZN".to_string();
+        for part in namespace_path {
+            result.push_str(&format!("{}{}", part.len(), part));
+        }
+        result.push_str(&format!("{}{}E", name.len(), name));
+        result
+    }
+
     fn generate_method_name(&self, class_name: &str, method: &MethodDecl) -> String {
+        let qualified_class = self.get_qualified_class_name(class_name);
         if method.params.is_empty() {
-            format!("{}.{}", class_name, method.name)
+            format!("{}.{}", qualified_class, method.name)
         } else {
             let param_types: Vec<String> = method.params.iter()
                 .map(|p| self.type_to_signature(&p.param_type))
                 .collect();
-            format!("{}.__{}_{}", class_name, method.name, param_types.join("_"))
+            format!("{}.__{}_{}", qualified_class, method.name, param_types.join("_"))
         }
     }
 
     fn generate_constructor_name(&self, class_name: &str, ctor: &ConstructorDecl) -> String {
+        let qualified_class = self.get_qualified_class_name(class_name);
         if ctor.params.is_empty() {
-            format!("{}.__ctor", class_name)
+            format!("{}.__ctor", qualified_class)
         } else {
             let param_types: Vec<String> = ctor.params.iter()
                 .map(|p| self.type_to_signature(&p.param_type))
                 .collect();
-            format!("{}.__ctor_{}", class_name, param_types.join("_"))
+            format!("{}.__ctor_{}", qualified_class, param_types.join("_"))
         }
     }
 
@@ -1917,7 +2116,14 @@ impl IrBuilder {
             Type::String => "s".to_string(),
             Type::Char => "c".to_string(),
             Type::Object(name) => format!("o{}", name),
+            Type::GenericParam(name) => format!("g{}", name),
             Type::Array(inner) => format!("a{}", self.type_to_signature(inner)),
+            Type::Generic(name, args) => {
+                let args_sig: String = args.iter()
+                    .map(|arg| self.type_to_signature(arg))
+                    .collect();
+                format!("G{}{}", name, args_sig)
+            }
             _ => "x".to_string(),
         }
     }

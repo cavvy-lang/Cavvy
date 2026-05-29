@@ -499,10 +499,14 @@ impl IRGenerator {
                     crate::types::Type::Object(name) => {
                         if class_type_params.contains(name) {
                             // 这是泛型参数，使用参数名
-                            format!("o{}", name)
+                            format!("g{}", name)
                         } else {
                             self.param_type_to_signature(&resolved_type, is_param_varargs)
                         }
+                    }
+                    crate::types::Type::GenericParam(name) => {
+                        // 泛型参数类型，使用参数名
+                        format!("g{}", name)
                     }
                     _ => self.param_type_to_signature(&resolved_type, is_param_varargs)
                 }
@@ -529,6 +533,7 @@ impl IRGenerator {
             crate::types::Type::String => "s".to_string(),
             crate::types::Type::Char => "c".to_string(),
             crate::types::Type::Object(name) => format!("o{}", name),
+            crate::types::Type::GenericParam(name) => format!("g{}", name),
             crate::types::Type::Array(inner) => format!("a{}", self.param_type_to_signature(inner, false)),
             // FFI 类型
             crate::types::Type::CInt => "ci".to_string(),
@@ -1028,6 +1033,68 @@ impl IRGenerator {
             return format!("{} {}", param_llvm_type, converted);
         }
 
+        // 值类型 -> i8* 装箱转换（用于泛型类型存储）
+        // 对于泛型类如 Box<T>，需要将具体值类型装箱为 i8* 存储
+        if param_llvm_type == "i8*" {
+            // i1 (bool) -> i8*：先扩展到 i8，再扩展到 i64，最后转指针
+            if arg_type == "i1" {
+                let ext_to_i8 = self.new_temp();
+                self.emit_line(&format!("  {} = zext i1 {} to i8", ext_to_i8, arg_val));
+                let ext_to_i64 = self.new_temp();
+                self.emit_line(&format!("  {} = zext i8 {} to i64", ext_to_i64, ext_to_i8));
+                let ptr = self.new_temp();
+                self.emit_line(&format!("  {} = inttoptr i64 {} to i8*", ptr, ext_to_i64));
+                return format!("i8* {}", ptr);
+            }
+            
+            // i8 (char) -> i8*：扩展到 i64，再转指针
+            if arg_type == "i8" {
+                let ext_to_i64 = self.new_temp();
+                self.emit_line(&format!("  {} = sext i8 {} to i64", ext_to_i64, arg_val));
+                let ptr = self.new_temp();
+                self.emit_line(&format!("  {} = inttoptr i64 {} to i8*", ptr, ext_to_i64));
+                return format!("i8* {}", ptr);
+            }
+            
+            // i16 -> i8*：扩展到 i64，再转指针
+            if arg_type == "i16" {
+                let ext_to_i64 = self.new_temp();
+                self.emit_line(&format!("  {} = sext i16 {} to i64", ext_to_i64, arg_val));
+                let ptr = self.new_temp();
+                self.emit_line(&format!("  {} = inttoptr i64 {} to i8*", ptr, ext_to_i64));
+                return format!("i8* {}", ptr);
+            }
+            
+            // i32 -> i8*：扩展到 i64，再转指针
+            if arg_type == "i32" {
+                let ext_to_i64 = self.new_temp();
+                self.emit_line(&format!("  {} = sext i32 {} to i64", ext_to_i64, arg_val));
+                let ptr = self.new_temp();
+                self.emit_line(&format!("  {} = inttoptr i64 {} to i8*", ptr, ext_to_i64));
+                return format!("i8* {}", ptr);
+            }
+            
+            // float -> i8*：先扩展到 double，再 bitcast 到 i64，最后转指针
+            if arg_type == "float" {
+                let ext_to_double = self.new_temp();
+                self.emit_line(&format!("  {} = fpext float {} to double", ext_to_double, arg_val));
+                let bits = self.new_temp();
+                self.emit_line(&format!("  {} = bitcast double {} to i64", bits, ext_to_double));
+                let ptr = self.new_temp();
+                self.emit_line(&format!("  {} = inttoptr i64 {} to i8*", ptr, bits));
+                return format!("i8* {}", ptr);
+            }
+            
+            // double -> i8*：bitcast 到 i64，再转指针
+            if arg_type == "double" {
+                let bits = self.new_temp();
+                self.emit_line(&format!("  {} = bitcast double {} to i64", bits, arg_val));
+                let ptr = self.new_temp();
+                self.emit_line(&format!("  {} = inttoptr i64 {} to i8*", ptr, bits));
+                return format!("i8* {}", ptr);
+            }
+        }
+
         // 默认：不进行转换
         format!("{} {}", arg_type, arg_val)
     }
@@ -1337,7 +1404,71 @@ impl IRGenerator {
                     temp, arg_val));
             }
             "i8*" => {
-                // String -> String (直接返回)
+                // 可能是装箱的泛型值，尝试推断实际类型并解箱
+                // 首先检查参数表达式是否是方法调用（如 Box<T>.get()）
+                if let Expr::Call(call_expr) = &args[0] {
+                    if let Expr::MemberAccess(member) = &*call_expr.callee {
+                        // 尝试推断方法返回的实际类型
+                        if let Some(obj_type) = self.get_expression_type(&member.object) {
+                            match obj_type {
+                                crate::types::Type::Generic(class_name, type_args) => {
+                                    // 泛型类型，从方法签名推断返回类型
+                                    if let Some(ref registry) = self.type_registry {
+                                        if let Some(class_info) = registry.get_class(&class_name) {
+                                            // 查找方法信息（methods是HashMap<String, Vec<MethodInfo>>）
+                                            if let Some(method_overloads) = class_info.methods.get(&member.member) {
+                                                // 使用第一个重载（无参方法通常只有一个重载）
+                                                if let Some(method_info) = method_overloads.first() {
+                                                    // 根据返回类型推断
+                                                    let return_type_sig = match &method_info.return_type {
+                                                        crate::types::Type::GenericParam(param_name) => {
+                                                            // 返回类型是泛型参数（如 T 或 V）
+                                                            // 找到对应的类型参数索引
+                                                            if let Some(idx) = class_info.type_params.iter().position(|p| p == param_name) {
+                                                                if let Some(type_arg) = type_args.get(idx) {
+                                                                    self.type_to_signature(type_arg)
+                                                                } else {
+                                                                    "o".to_string() // 默认对象类型
+                                                                }
+                                                            } else {
+                                                                "o".to_string()
+                                                            }
+                                                        }
+                                                        other => self.type_to_signature(other)
+                                                    };
+                                                    return self.generate_string_valueof_with_unbox(&arg_val, &return_type_sig, temp);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    // 无法从方法签名推断，回退到第一个类型参数
+                                    if let Some(first_arg) = type_args.first() {
+                                        let type_sig = self.type_to_signature(first_arg);
+                                        return self.generate_string_valueof_with_unbox(&arg_val, &type_sig, temp);
+                                    }
+                                }
+                                crate::types::Type::Object(class_name) => {
+                                    // 检查是否是泛型类实例（如 Box<int>）
+                                    if let Some(ref registry) = self.type_registry {
+                                        if let Some(class_info) = registry.get_class(&class_name) {
+                                            // 获取泛型参数（如 int）
+                                            if !class_info.type_params.is_empty() {
+                                                // 这是一个泛型类，尝试从类名推断实际类型
+                                                // 例如：Box<int> 的类名可能是 "Box<int>" 或 "Box_T_"
+                                                // 我们需要找到实际的类型参数
+                                                let actual_type = self.infer_generic_arg_type(&class_name);
+                                                return self.generate_string_valueof_with_unbox(&arg_val, &actual_type, temp);
+                                            }
+                                        }
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+                
+                // 无法推断类型，假设是 String -> String (直接返回)
                 return Ok(format!("i8* {}", arg_val));
             }
             _ => {
@@ -1345,6 +1476,94 @@ impl IRGenerator {
             }
         }
 
+        Ok(format!("i8* {}", temp))
+    }
+    
+    /// 辅助函数：从泛型类名推断实际类型参数
+    fn infer_generic_arg_type(&self, class_name: &str) -> String {
+        // 尝试从类名解析泛型参数，如 "Box<int>" -> "i"
+        // 或者从类型注册表查找
+        if let Some(ref registry) = self.type_registry {
+            if let Some(class_info) = registry.get_class(class_name) {
+                // 如果有类型参数，返回第一个
+                if let Some(first_param) = class_info.type_params.first() {
+                    // 根据参数名推断类型签名
+                    return match first_param.as_str() {
+                        "int" => "i".to_string(),
+                        "long" => "l".to_string(),
+                        "float" => "f".to_string(),
+                        "double" => "d".to_string(),
+                        "boolean" => "b".to_string(),
+                        "char" => "c".to_string(),
+                        "String" => "s".to_string(),
+                        _ => "o".to_string(), // 默认对象类型
+                    };
+                }
+            }
+        }
+        "i".to_string() // 默认 int
+    }
+    
+    /// 辅助函数：生成带解箱的 String.valueOf 调用
+    fn generate_string_valueof_with_unbox(&mut self, arg_val: &str, type_sig: &str, temp: String) -> cayResult<String> {
+        // 根据类型签名解箱并转换为字符串
+        match type_sig {
+            "i" => {
+                // i8* -> i32 -> String
+                let int_val = self.new_temp();
+                self.emit_line(&format!("  {} = ptrtoint i8* {} to i64", int_val, arg_val));
+                let trunc_val = self.new_temp();
+                self.emit_line(&format!("  {} = trunc i64 {} to i32", trunc_val, int_val));
+                self.emit_line(&format!("  {} = call i8* @__cay_int_to_string(i32 {})", temp, trunc_val));
+            }
+            "l" => {
+                // i8* -> i64 -> String
+                let int_val = self.new_temp();
+                self.emit_line(&format!("  {} = ptrtoint i8* {} to i64", int_val, arg_val));
+                self.emit_line(&format!("  {} = call i8* @__cay_long_to_string(i64 {})", temp, int_val));
+            }
+            "f" => {
+                // i8* -> double -> float -> String
+                let int_val = self.new_temp();
+                self.emit_line(&format!("  {} = ptrtoint i8* {} to i64", int_val, arg_val));
+                let double_val = self.new_temp();
+                self.emit_line(&format!("  {} = bitcast i64 {} to double", double_val, int_val));
+                let float_val = self.new_temp();
+                self.emit_line(&format!("  {} = fptrunc double {} to float", float_val, double_val));
+                self.emit_line(&format!("  {} = call i8* @__cay_float_to_string(float {})", temp, float_val));
+            }
+            "d" => {
+                // i8* -> double -> String
+                let int_val = self.new_temp();
+                self.emit_line(&format!("  {} = ptrtoint i8* {} to i64", int_val, arg_val));
+                let double_val = self.new_temp();
+                self.emit_line(&format!("  {} = bitcast i64 {} to double", double_val, int_val));
+                self.emit_line(&format!("  {} = call i8* @__cay_double_to_string(double {})", temp, double_val));
+            }
+            "b" => {
+                // i8* -> i8 -> i1 -> String
+                let int_val = self.new_temp();
+                self.emit_line(&format!("  {} = ptrtoint i8* {} to i64", int_val, arg_val));
+                let trunc_i8 = self.new_temp();
+                self.emit_line(&format!("  {} = trunc i64 {} to i8", trunc_i8, int_val));
+                let trunc_i1 = self.new_temp();
+                self.emit_line(&format!("  {} = trunc i8 {} to i1", trunc_i1, trunc_i8));
+                self.emit_line(&format!("  {} = call i8* @__cay_bool_to_string(i1 {})", temp, trunc_i1));
+            }
+            "c" => {
+                // i8* -> i8 -> String
+                let int_val = self.new_temp();
+                self.emit_line(&format!("  {} = ptrtoint i8* {} to i64", int_val, arg_val));
+                let trunc_val = self.new_temp();
+                self.emit_line(&format!("  {} = trunc i64 {} to i8", trunc_val, int_val));
+                self.emit_line(&format!("  {} = call i8* @__cay_char_to_string(i8 {})", temp, trunc_val));
+            }
+            "s" | _ => {
+                // String 类型，直接使用
+                return Ok(format!("i8* {}", arg_val));
+            }
+        }
+        
         Ok(format!("i8* {}", temp))
     }
 

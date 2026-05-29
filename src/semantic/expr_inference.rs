@@ -561,7 +561,14 @@ impl SemanticAnalyzer {
             }
 
             // 处理类实例方法调用 - 支持方法重载
-            if let Type::Object(class_name) = &obj_type {
+            // 获取类名（支持 Type::Object 和 Type::Generic）
+            let class_name_opt = match &obj_type {
+                Type::Object(class_name) => Some(class_name.clone()),
+                Type::Generic(class_name, _) => Some(class_name.clone()),
+                _ => None,
+            };
+            
+            if let Some(class_name) = class_name_opt {
                 // 先推断所有参数类型
                 let mut arg_types = Vec::new();
                 for arg in &call.args {
@@ -570,7 +577,7 @@ impl SemanticAnalyzer {
 
                 // 首先检查是否是函数指针字段调用
                 // 查找类的字段，看是否是函数指针类型
-                if let Some(class_info) = self.type_registry.get_class(class_name) {
+                if let Some(class_info) = self.type_registry.get_class(&class_name) {
                     if let Some(field_info) = class_info.fields.get(&member.member) {
                         if let Type::Function(func_type) = &field_info.field_type {
                             // 是函数指针字段调用
@@ -596,15 +603,40 @@ impl SemanticAnalyzer {
                 }
 
                 // 使用参数类型查找匹配的方法
-                if let Some(method_info) = self.type_registry.find_method(class_name, &member.member, &arg_types) {
-                    let return_type = method_info.return_type.clone();
-                    let params = method_info.params.clone();
+                // 首先尝试直接使用类名查找
+                let method_result = if let Some(method_info) = self.type_registry.find_method(&class_name, &member.member, &arg_types) {
+                    Some((method_info.return_type.clone(), method_info.params.clone()))
+                } else {
+                    // 如果直接查找失败，尝试查找限定类名
+                    if let Some(qualified_name) = self.type_registry.find_qualified_class(&class_name) {
+                        eprintln!("[DEBUG] Found qualified class: {} -> {}", class_name, qualified_name);
+                        self.type_registry.find_method(&qualified_name, &member.member, &arg_types)
+                            .map(|m| (m.return_type.clone(), m.params.clone()))
+                    } else {
+                        eprintln!("[DEBUG] Could not find qualified class for: {}", class_name);
+                        None
+                    }
+                };
+                
+                if let Some((return_type, params)) = method_result {
+                    eprintln!("[DEBUG] Found method: {}.{}, params={:?}, return_type={:?}", class_name, member.member, params, return_type);
                     // 检查参数类型兼容性（支持可变参数）
                     if let Err(msg) = self.check_arguments_compatible(&call.args, &params, call.loc.line, call.loc.column) {
                         return Err(semantic_error_at_loc(&call.loc, msg));
                     }
 
-                    return Ok(return_type);
+                    // 如果对象是泛型类型，替换返回类型中的泛型参数
+                    let final_return_type = if let Type::Generic(_, type_args) = &obj_type {
+                        if let Some(class_info) = self.type_registry.get_class(&class_name) {
+                            self.substitute_type_params(&return_type, &class_info.type_params, type_args)
+                        } else {
+                            return_type
+                        }
+                    } else {
+                        return_type
+                    };
+
+                    return Ok(final_return_type);
                 } else {
                     return Err(semantic_error_at_loc(&call.loc, format!("Unknown method '{}' for class {}", member.member, class_name)
                     ));
@@ -1503,5 +1535,46 @@ impl SemanticAnalyzer {
             Type::CFloat | Type::CDouble | Type::SizeT | Type::SSizeT |
             Type::UIntPtr | Type::IntPtr
         )
+    }
+
+    /// 替换类型中的泛型参数为实际类型
+    /// 
+    /// 例如：将 GenericParam("T") 替换为 Int32
+    fn substitute_type_params(&self, ty: &Type, type_params: &[String], type_args: &[Type]) -> Type {
+        match ty {
+            Type::GenericParam(name) => {
+                // 查找泛型参数在列表中的位置
+                if let Some(idx) = type_params.iter().position(|p| p == name) {
+                    if idx < type_args.len() {
+                        return type_args[idx].clone();
+                    }
+                }
+                ty.clone()
+            }
+            Type::Array(elem) => {
+                Type::Array(Box::new(self.substitute_type_params(elem, type_params, type_args)))
+            }
+            Type::Generic(name, args) => {
+                let new_args = args.iter()
+                    .map(|arg| self.substitute_type_params(arg, type_params, type_args))
+                    .collect();
+                Type::Generic(name.clone(), new_args)
+            }
+            Type::Function(func_type) => {
+                let new_params = func_type.params.iter()
+                    .map(|p| self.substitute_type_params(p, type_params, type_args))
+                    .collect();
+                let new_return = self.substitute_type_params(&func_type.return_type, type_params, type_args);
+                Type::Function(Box::new(crate::types::FunctionType {
+                    params: new_params,
+                    return_type: Box::new(new_return),
+                    is_static: func_type.is_static,
+                }))
+            }
+            Type::Pointer(inner) => {
+                Type::Pointer(Box::new(self.substitute_type_params(inner, type_params, type_args)))
+            }
+            _ => ty.clone(),
+        }
     }
 }

@@ -2,11 +2,10 @@
 
 using std::Optional;
 
-public class DebugTest {
+public class DebugTest2 {
     public static void main() {
         Optional<int> opt = Optional.of(42);
-        if (opt.isPresent()) {
-            println("opt.get() = " + String.valueOf(opt.get()));
-        }
+        int val = opt.orElse(0);
+        println("val = " + String.valueOf(val));
     }
 }

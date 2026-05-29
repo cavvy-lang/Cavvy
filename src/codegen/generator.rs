@@ -1169,6 +1169,63 @@ impl IRGenerator {
 
     fn generate_constructor_name(&self, class_name: &str, ctor: &crate::ast::ConstructorDecl) -> String {
         let cls = self.get_qualified_class_name(class_name);
+        
+        // 只对泛型类尝试从类型注册表获取构造函数信息
+        if class_name.contains('<') {
+            if let Some(ref registry) = self.type_registry {
+                let base_class_name = if let Some(pos) = class_name.find('<') {
+                    &class_name[..pos]
+                } else {
+                    class_name
+                };
+                
+                if let Some(class_info) = registry.get_class(base_class_name) {
+                    if !class_info.type_params.is_empty() {
+                        // 获取当前构造函数参数的签名（用于匹配）
+                        let ctor_sigs: Vec<String> = ctor.params.iter()
+                            .map(|p| self.type_to_signature(&p.param_type))
+                            .collect();
+                        
+                        // 找到参数数量和类型都匹配的构造函数
+                        for ctor_info in &class_info.constructors {
+                            if ctor_info.params.len() != ctor.params.len() {
+                                continue;
+                            }
+                            
+                            // 获取注册表中构造函数的参数签名
+                            let info_sigs: Vec<String> = ctor_info.params.iter()
+                                .map(|p| self.type_to_signature(&p.param_type))
+                                .collect();
+                            
+                            // 比较签名是否匹配
+                            if ctor_sigs == info_sigs {
+                                if ctor_info.params.is_empty() {
+                                    return format!("{}.__ctor", cls);
+                                } else {
+                                    return format!("{}.__ctor_{}", cls, info_sigs.join("_"));
+                                }
+                            }
+                        }
+                        
+                        // 如果没有精确匹配，回退到参数数量匹配（第一个）
+                        for ctor_info in &class_info.constructors {
+                            if ctor_info.params.len() == ctor.params.len() {
+                                let info_sigs: Vec<String> = ctor_info.params.iter()
+                                    .map(|p| self.type_to_signature(&p.param_type))
+                                    .collect();
+                                if ctor_info.params.is_empty() {
+                                    return format!("{}.__ctor", cls);
+                                } else {
+                                    return format!("{}.__ctor_{}", cls, info_sigs.join("_"));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // 回退：使用 AST 中的参数类型
         if ctor.params.is_empty() {
             format!("{}.__ctor", cls)
         } else {

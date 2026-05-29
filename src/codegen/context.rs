@@ -855,12 +855,8 @@ impl IRGenerator {
             }
         } else {
             let namespace = self.get_class_namespace(&processed_name);
-            if namespace.is_empty() {
-                processed_name
-            } else {
-                // 使用 Itanium ABI 格式
-                self.mangle_namespace(&namespace, &processed_name)
-            }
+            // 使用 Itanium ABI 格式
+            self.mangle_namespace(&namespace, &processed_name)
         }
     }
 
@@ -868,6 +864,48 @@ impl IRGenerator {
     /// 格式: _ZN<len>ns1<len>ns2<len>classNameE.methodName 或 _ZN<len>ns1<len>ns2<len>classNameE.__methodName_paramTypes
     pub fn generate_method_name(&self, class_name: &str, method: &crate::ast::MethodDecl) -> String {
         let cls = self.get_qualified_class_name(class_name);
+        
+        // 只对泛型类尝试从类型注册表获取方法信息
+        // 因为类型注册表中的 MethodInfo 已经将泛型参数替换为 GenericParam 类型
+        if class_name.contains('<') {
+            if let Some(ref registry) = self.type_registry {
+                // 提取基础类名（去除泛型参数）
+                let base_class_name = if let Some(pos) = class_name.find('<') {
+                    &class_name[..pos]
+                } else {
+                    class_name
+                };
+                
+                if let Some(class_info) = registry.get_class(base_class_name) {
+                    if !class_info.type_params.is_empty() {
+                        if let Some(methods) = class_info.methods.get(&method.name) {
+                            // 找到参数数量匹配的方法
+                            for method_info in methods {
+                                if method_info.params.len() == method.params.len() {
+                                    // 使用 MethodInfo 中的参数类型（已替换泛型参数）
+                                    if method_info.params.is_empty() {
+                                        return format!("{}.{}", cls, method.name);
+                                    } else {
+                                        let param_types: Vec<String> = method_info.params.iter()
+                                            .map(|p| {
+                                                if p.is_varargs {
+                                                    self.varargs_type_to_signature(&p.param_type)
+                                                } else {
+                                                    self.type_to_signature(&p.param_type)
+                                                }
+                                            })
+                                            .collect();
+                                        return format!("{}.__{}_{}", cls, method.name, param_types.join("_"));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // 回退：使用 AST 中的参数类型
         if method.params.is_empty() {
             format!("{}.{}", cls, method.name)
         } else {

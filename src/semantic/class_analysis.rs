@@ -162,8 +162,10 @@ impl SemanticAnalyzer {
                         class_info.fields.insert(field.name.clone(), field_info);
                     }
                     ClassMember::Constructor(ctor) => {
+                        // 将泛型参数替换为 GenericParam 类型
+                        let params = self.replace_params_type_params(&ctor.params, &class.type_params);
                         let ctor_info = crate::types::ConstructorInfo {
-                            params: ctor.params.clone(),
+                            params,
                             is_public: ctor.modifiers.contains(&Modifier::Public),
                             is_private: ctor.modifiers.contains(&Modifier::Private),
                             is_protected: ctor.modifiers.contains(&Modifier::Protected),
@@ -205,6 +207,41 @@ impl SemanticAnalyzer {
         Ok(())
     }
 
+    /// 将类型中的泛型参数名替换为 GenericParam 类型
+    /// 例如：Object("T") -> GenericParam("T")
+    fn replace_type_params(&self, ty: &Type, type_params: &[String]) -> Type {
+        match ty {
+            Type::Object(name) => {
+                if type_params.contains(name) {
+                    Type::GenericParam(name.clone())
+                } else {
+                    ty.clone()
+                }
+            }
+            Type::Array(elem) => {
+                Type::Array(Box::new(self.replace_type_params(elem, type_params)))
+            }
+            Type::Generic(name, args) => {
+                let new_args = args.iter()
+                    .map(|arg| self.replace_type_params(arg, type_params))
+                    .collect();
+                Type::Generic(name.clone(), new_args)
+            }
+            _ => ty.clone()
+        }
+    }
+
+    /// 将参数列表中的泛型参数名替换为 GenericParam 类型
+    fn replace_params_type_params(&self, params: &[ParameterInfo], type_params: &[String]) -> Vec<ParameterInfo> {
+        params.iter()
+            .map(|p| ParameterInfo {
+                name: p.name.clone(),
+                param_type: self.replace_type_params(&p.param_type, type_params),
+                is_varargs: p.is_varargs,
+            })
+            .collect()
+    }
+
     /// 分析方法定义
     pub fn analyze_methods(&mut self, program: &Program) -> cayResult<()> {
         for class in &program.classes {
@@ -215,11 +252,15 @@ impl SemanticAnalyzer {
                 if let ClassMember::Method(method) = member {
                     let is_test = method.modifiers.contains(&Modifier::Test);
                     
+                    // 将泛型参数替换为 GenericParam 类型
+                    let params = self.replace_params_type_params(&method.params, &class.type_params);
+                    let return_type = self.replace_type_params(&method.return_type, &class.type_params);
+                    
                     let method_info = MethodInfo {
                         name: method.name.clone(),
                         class_name: class.name.clone(),
-                        params: method.params.clone(),
-                        return_type: method.return_type.clone(),
+                        params,
+                        return_type,
                         is_public: method.modifiers.contains(&Modifier::Public),
                         is_private: method.modifiers.contains(&Modifier::Private),
                         is_protected: method.modifiers.contains(&Modifier::Protected),

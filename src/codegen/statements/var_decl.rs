@@ -317,6 +317,73 @@ impl IRGenerator {
                             temp, value_type, val, llvm_var_type));
                         self.emit_line(&format!("  store {} {}, {}* %{}, align {}", var_type, temp, var_type, llvm_name, align));
                     }
+                    // i8* 解箱转换（用于泛型类型返回值）
+                    // 对于泛型类如 Box<T>.get() 返回 i8*，需要解箱为具体值类型
+                    else if value_type == "i8*" {
+                        // i8* -> i1 (bool)：指针转整数，截断到 i1
+                        if var_type == "i1" {
+                            let int_val = self.new_temp();
+                            self.emit_line(&format!("  {} = ptrtoint i8* {} to i64", int_val, val));
+                            let trunc_i8 = self.new_temp();
+                            self.emit_line(&format!("  {} = trunc i64 {} to i8", trunc_i8, int_val));
+                            self.emit_line(&format!("  {} = trunc i8 {} to i1", temp, trunc_i8));
+                            self.emit_line(&format!("  store i1 {}, i1* %{}, align {}", temp, llvm_name, align));
+                        }
+                        // i8* -> i8 (char)：指针转整数，截断到 i8
+                        else if var_type == "i8" {
+                            let int_val = self.new_temp();
+                            self.emit_line(&format!("  {} = ptrtoint i8* {} to i64", int_val, val));
+                            self.emit_line(&format!("  {} = trunc i64 {} to i8", temp, int_val));
+                            self.emit_line(&format!("  store i8 {}, i8* %{}, align {}", temp, llvm_name, align));
+                        }
+                        // i8* -> i16：指针转整数，截断到 i16
+                        else if var_type == "i16" {
+                            let int_val = self.new_temp();
+                            self.emit_line(&format!("  {} = ptrtoint i8* {} to i64", int_val, val));
+                            self.emit_line(&format!("  {} = trunc i64 {} to i16", temp, int_val));
+                            self.emit_line(&format!("  store i16 {}, i16* %{}, align {}", temp, llvm_name, align));
+                        }
+                        // i8* -> i32：指针转整数，截断到 i32
+                        else if var_type == "i32" {
+                            let int_val = self.new_temp();
+                            self.emit_line(&format!("  {} = ptrtoint i8* {} to i64", int_val, val));
+                            self.emit_line(&format!("  {} = trunc i64 {} to i32", temp, int_val));
+                            self.emit_line(&format!("  store i32 {}, i32* %{}, align {}", temp, llvm_name, align));
+                        }
+                        // i8* -> i64：指针转整数
+                        else if var_type == "i64" {
+                            self.emit_line(&format!("  {} = ptrtoint i8* {} to i64", temp, val));
+                            self.emit_line(&format!("  store i64 {}, i64* %{}, align {}", temp, llvm_name, align));
+                        }
+                        // i8* -> float：指针转整数，bitcast 到 float
+                        else if var_type == "float" {
+                            let int_val = self.new_temp();
+                            self.emit_line(&format!("  {} = ptrtoint i8* {} to i64", int_val, val));
+                            let double_val = self.new_temp();
+                            self.emit_line(&format!("  {} = bitcast i64 {} to double", double_val, int_val));
+                            self.emit_line(&format!("  {} = fptrunc double {} to float", temp, double_val));
+                            self.emit_line(&format!("  store float {}, float* %{}, align {}", temp, llvm_name, align));
+                        }
+                        // i8* -> double：指针转整数，bitcast 到 double
+                        else if var_type == "double" {
+                            let int_val = self.new_temp();
+                            self.emit_line(&format!("  {} = ptrtoint i8* {} to i64", int_val, val));
+                            self.emit_line(&format!("  {} = bitcast i64 {} to double", temp, int_val));
+                            self.emit_line(&format!("  store double {}, double* %{}, align {}", temp, llvm_name, align));
+                        }
+                        // i8* -> 其他指针类型：bitcast
+                        else if var_type.ends_with("*") {
+                            self.emit_line(&format!("  {} = bitcast i8* {} to {}", temp, val, var_type));
+                            self.emit_line(&format!("  store {} {}, {}* %{}, align {}", var_type, temp, var_type, llvm_name, align));
+                        }
+                        else {
+                            // 类型不兼容，报错
+                            return Err(crate::error::codegen_error_at(var.loc.clone(),
+                                format!("Cannot unbox i8* to {} in variable initialization '{}'", 
+                                    var_type, var.name)
+                            ));
+                        }
+                    }
                     else {
                         // 类型不兼容，报错
                         return Err(crate::error::codegen_error_at(var.loc.clone(),
