@@ -881,6 +881,8 @@ impl Parser {
         self.consume(&crate::lexer::Token::LBrace, "期望 '{' 开始 namespace 块\n提示: 块级 namespace 格式为 'namespace 路径 { ... }'")?;
 
         let mut classes = Vec::new();
+        let mut structs = Vec::new();
+        let mut enums = Vec::new();
         let mut interfaces = Vec::new();
         let mut top_level_functions = Vec::new();
         let mut extern_declarations = Vec::new();
@@ -894,6 +896,18 @@ impl Parser {
                 || (self.check(&crate::lexer::Token::Public) && self.check_next(&crate::lexer::Token::Interface))
             {
                 interfaces.push(self.parse_interface()?);
+            } else if self.check(&crate::lexer::Token::Struct)
+                || (self.check(&crate::lexer::Token::Public) && self.check_next(&crate::lexer::Token::Struct))
+                || (self.check(&crate::lexer::Token::Private) && self.check_next(&crate::lexer::Token::Struct))
+                || (self.check(&crate::lexer::Token::Protected) && self.check_next(&crate::lexer::Token::Struct))
+            {
+                structs.push(self.parse_struct()?);
+            } else if self.check(&crate::lexer::Token::Enum)
+                || (self.check(&crate::lexer::Token::Public) && self.check_next(&crate::lexer::Token::Enum))
+                || (self.check(&crate::lexer::Token::Private) && self.check_next(&crate::lexer::Token::Enum))
+                || (self.check(&crate::lexer::Token::Protected) && self.check_next(&crate::lexer::Token::Enum))
+            {
+                enums.push(self.parse_enum()?);
             } else if self.check(&crate::lexer::Token::Class)
                 || self.check(&crate::lexer::Token::Private)
                 || self.check(&crate::lexer::Token::Protected)
@@ -915,7 +929,7 @@ impl Parser {
             } else {
                 let token_name = utils::get_token_name(utils::current_token(self));
                 return Err(self.error(&format!(
-                    "namespace 块内出现意外的令牌: {}\n提示: namespace 块内只能包含类、接口、函数、extern 和嵌套 namespace 声明",
+                    "namespace 块内出现意外的令牌: {}\n提示: namespace 块内只能包含类、接口、函数、extern、enum、struct 和嵌套 namespace 声明",
                     token_name
                 )));
             }
@@ -927,8 +941,8 @@ impl Parser {
         Ok(crate::ast::NamespaceDecl {
             path,
             classes,
-            structs: Vec::new(),
-            enums: Vec::new(),
+            structs,
+            enums,
             interfaces,
             top_level_functions,
             extern_declarations,

@@ -127,9 +127,9 @@ impl IRGenerator {
             }
             
             // 检查是否是 enum variant 访问: EnumName.VariantName
-            // 使用基础类名查找 enum
+            // 使用基础类名查找 enum（支持命名空间前缀）
             if let Some(ref registry) = self.type_registry {
-                if let Some(enum_info) = registry.get_enum(&base_class_name) {
+                if let Some(enum_info) = registry.get_enum_by_name(&base_class_name) {
                     if let Some(idx) = enum_info.variants.iter().position(|v| v.name == member.member) {
                         // 构造 struct { i32 discriminant, i64 payload } 值
                         let struct_val = self.new_temp();
@@ -137,6 +137,13 @@ impl IRGenerator {
                         let struct_val2 = self.new_temp();
                         self.emit_line(&format!("  {} = insertvalue {{ i32, i64 }} {}, i64 0, 1", struct_val2, struct_val));
                         return Ok(format!("{{ i32, i64 }} {}", struct_val2));
+                    } else {
+                        // 枚举存在但没有这个 variant，返回错误
+                        let available: Vec<_> = enum_info.variants.iter().map(|v| v.name.clone()).collect();
+                        return Err(crate::error::codegen_error_at(
+                            member.loc.clone(),
+                            format!("枚举 '{}' 中没有 variant '{}'。可选: {:?}", base_class_name, member.member, available)
+                        ));
                     }
                 }
             }

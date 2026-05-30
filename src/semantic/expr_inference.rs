@@ -489,8 +489,8 @@ impl SemanticAnalyzer {
                 }
 
                 if let Some(class_info) = self.type_registry.get_class(&class_name_str) {
-                    // 使用参数类型查找匹配的静态方法
-                    if let Some(method_info) = class_info.find_method(&member.member, &arg_types) {
+                    // 使用参数类型查找匹配的静态方法（考虑命名空间前缀）
+                    if let Some(method_info) = self.find_method_with_namespace(&class_info, &member.member, &arg_types) {
                         if method_info.is_static {
                             let return_type = method_info.return_type.clone();
                             let params = method_info.params.clone();

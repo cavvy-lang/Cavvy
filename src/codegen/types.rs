@@ -35,7 +35,7 @@ impl IRGenerator {
             Type::Object(name) => {
                 // 检查是否是 enum 类型 - enum 存储为 struct { i32 discriminant, i64 payload }
                 if let Some(ref registry) = self.type_registry {
-                    if registry.get_enum(name).is_some() {
+                    if registry.get_enum_by_name(name).is_some() {
                         "{ i32, i64 }".to_string()
                     } else {
                         "i8*".to_string()

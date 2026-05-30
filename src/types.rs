@@ -981,6 +981,44 @@ impl TypeRegistry {
             .and_then(|c| c.find_method(method_name, arg_types))
     }
 
+    /// 检查两个类型是否兼容（考虑命名空间前缀）
+    /// 例如 Object("JsonValue") 和 Object("json::JsonValue") 被认为是兼容的
+    pub fn types_compatible_with_namespace(&self, param_type: &Type, arg_type: &Type) -> bool {
+        if param_type == arg_type {
+            return true;
+        }
+        // 处理 Object 类型的命名空间前缀
+        if let (Type::Object(param_name), Type::Object(arg_name)) = (param_type, arg_type) {
+            // 尝试通过类注册表解析两个类名
+            let param_class = self.get_class(param_name);
+            let arg_class = self.get_class(arg_name);
+            
+            match (param_class, arg_class) {
+                (Some(p), Some(a)) => {
+                    // 两个类都找到了，检查它们是否是同一个类
+                    return p.name == a.name;
+                }
+                (Some(p), None) => {
+                    // 只有参数类型找到了，检查实参类型是否是它的简单名形式
+                    let p_simple = p.name.rfind("::").map(|pos| &p.name[pos + 2..]).unwrap_or(&p.name);
+                    return p_simple == arg_name.as_str();
+                }
+                (None, Some(a)) => {
+                    // 只有实参类型找到了，检查形参类型是否是它的简单名形式
+                    let a_simple = a.name.rfind("::").map(|pos| &a.name[pos + 2..]).unwrap_or(&a.name);
+                    return a_simple == param_name.as_str();
+                }
+                (None, None) => {
+                    // 两个都没找到，比较简单类名
+                    let param_simple = param_name.rfind("::").map(|pos| &param_name[pos + 2..]).unwrap_or(param_name);
+                    let arg_simple = arg_name.rfind("::").map(|pos| &arg_name[pos + 2..]).unwrap_or(arg_name);
+                    return param_simple == arg_simple;
+                }
+            }
+        }
+        false
+    }
+
     /// 根据简单名查找命名空间限定名（如 "HttpHeaders" → "http::HttpHeaders"）
     /// 优先匹配当前命名空间
     pub fn find_qualified_class(&self, simple_name: &str) -> Option<String> {
@@ -1002,6 +1040,42 @@ impl TypeRegistry {
 
     pub fn class_exists(&self, name: &str) -> bool {
         self.get_class(name).is_some()
+    }
+
+    /// 根据简单名查找枚举的命名空间限定名（如 "JsonType" → "json::JsonType"）
+    /// 优先匹配当前命名空间
+    pub fn find_qualified_enum(&self, simple_name: &str) -> Option<String> {
+        // 如果已经是限定名，直接返回
+        if simple_name.contains("::") {
+            return self.enums.get(simple_name).map(|_| simple_name.to_string());
+        }
+        // 如果有当前命名空间，优先检查
+        if !self.current_namespace.is_empty() {
+            let preferred = format!("{}::{}", self.current_namespace.join("::"), simple_name);
+            if self.enums.contains_key(&preferred) {
+                return Some(preferred);
+            }
+        }
+        // 回退：遍历查找
+        for qname in self.enums.keys() {
+            if qname.ends_with(&format!("::{}", simple_name)) {
+                return Some(qname.clone());
+            }
+        }
+        None
+    }
+
+    /// 获取枚举信息，支持简单名和限定名查找
+    pub fn get_enum_by_name(&self, name: &str) -> Option<&EnumInfo> {
+        // 首先尝试直接查找
+        if let Some(info) = self.enums.get(name) {
+            return Some(info);
+        }
+        // 尝试查找限定名
+        if let Some(qualified_name) = self.find_qualified_enum(name) {
+            return self.enums.get(&qualified_name);
+        }
+        None
     }
 }
 

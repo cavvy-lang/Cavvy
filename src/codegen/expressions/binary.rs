@@ -343,6 +343,14 @@ impl IRGenerator {
             // 混合类型：整数和浮点数
             self.emit_line(&format!("  {} = fcmp oeq {} {}, {}", temp, promoted_type, promoted_left, promoted_right));
             return Ok(format!("i1 {}", temp));
+        } else if left_type == "{ i32, i64 }" && right_type == "{ i32, i64 }" {
+            // 枚举类型比较：比较 discriminant (i32 部分)
+            let left_disc = self.new_temp();
+            let right_disc = self.new_temp();
+            self.emit_line(&format!("  {} = extractvalue {{ i32, i64 }} {}, 0", left_disc, left_val));
+            self.emit_line(&format!("  {} = extractvalue {{ i32, i64 }} {}, 0", right_disc, right_val));
+            self.emit_line(&format!("  {} = icmp eq i32 {}, {}", temp, left_disc, right_disc));
+            return Ok(format!("i1 {}", temp));
         } else {
             return Err(codegen_error_at(loc.clone(), format!("Unsupported equality comparison types: {} and {}", left_type, right_type)));
         }
@@ -373,6 +381,14 @@ impl IRGenerator {
         } else if let Some((promoted_type, promoted_left, promoted_right)) = self.promote_mixed_operands(left_type, left_val, right_type, right_val) {
             // 混合类型：整数和浮点数
             self.emit_line(&format!("  {} = fcmp one {} {}, {}", temp, promoted_type, promoted_left, promoted_right));
+            return Ok(format!("i1 {}", temp));
+        } else if left_type == "{ i32, i64 }" && right_type == "{ i32, i64 }" {
+            // 枚举类型比较：比较 discriminant (i32 部分)
+            let left_disc = self.new_temp();
+            let right_disc = self.new_temp();
+            self.emit_line(&format!("  {} = extractvalue {{ i32, i64 }} {}, 0", left_disc, left_val));
+            self.emit_line(&format!("  {} = extractvalue {{ i32, i64 }} {}, 0", right_disc, right_val));
+            self.emit_line(&format!("  {} = icmp ne i32 {}, {}", temp, left_disc, right_disc));
             return Ok(format!("i1 {}", temp));
         } else {
             return Err(codegen_error_at(loc.clone(), format!("Unsupported inequality comparison types: {} and {}", left_type, right_type)));

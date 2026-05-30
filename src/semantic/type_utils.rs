@@ -199,6 +199,11 @@ impl SemanticAnalyzer {
                 if from_base == to_base {
                     return true;
                 }
+                // 检查两个类名是否指向同一个类（处理命名空间前缀）
+                // 例如 "JsonValue" 和 "json::JsonValue"
+                if self.is_same_class(from_base, to_base) {
+                    return true;
+                }
                 // 否则检查继承关系：from_name 是否是 to_name 的子类
                 self.is_subtype_of(from_name, to_name)
             }
@@ -385,6 +390,132 @@ impl SemanticAnalyzer {
                 return (subtype == "String" || subtype == "Function") && supertype == "Object";
             }
         }
+    }
+
+    /// 检查两个类名是否指向同一个类
+    ///
+    /// 处理命名空间前缀的情况，例如 "JsonValue" 和 "json::JsonValue"
+    /// 如果两个类名都能解析到同一个类定义，则返回 true
+    ///
+    /// # Arguments
+    /// * `name1` - 第一个类名（可能带命名空间前缀）
+    /// * `name2` - 第二个类名（可能带命名空间前缀）
+    ///
+    /// # Returns
+    /// 如果两个类名指向同一个类则返回 true
+    fn is_same_class(&self, name1: &str, name2: &str) -> bool {
+        // 如果完全相同，直接返回 true
+        if name1 == name2 {
+            return true;
+        }
+
+        // 提取简单类名（去掉命名空间前缀）
+        let simple1 = name1.rfind("::").map(|pos| &name1[pos + 2..]).unwrap_or(name1);
+        let simple2 = name2.rfind("::").map(|pos| &name2[pos + 2..]).unwrap_or(name2);
+
+        // 如果简单类名不同，直接返回 false
+        if simple1 != simple2 {
+            return false;
+        }
+
+        // 尝试直接查找两个类名（不依赖 current_namespace）
+        let class1 = self.type_registry.classes.get(name1);
+        let class2 = self.type_registry.classes.get(name2);
+
+        match (class1, class2) {
+            (Some(c1), Some(c2)) => {
+                // 两个类都找到了，检查它们是否是同一个类（通过名称比较）
+                c1.name == c2.name
+            }
+            (Some(c1), None) => {
+                // 只有 name1 找到了，检查 name2 是否是 name1 的简单名形式
+                // 例如 name1="json::JsonValue", name2="JsonValue"
+                c1.name.rfind("::").map(|pos| &c1.name[pos + 2..]).unwrap_or(&c1.name) == simple2
+            }
+            (None, Some(c2)) => {
+                // 只有 name2 找到了，检查 name1 是否是 name2 的简单名形式
+                c2.name.rfind("::").map(|pos| &c2.name[pos + 2..]).unwrap_or(&c2.name) == simple1
+            }
+            (None, None) => {
+                // 两个都没直接找到，说明这两个类名可能都不存在
+                // 这种情况下不能假设它们是同一个类
+                false
+            }
+        }
+    }
+
+    /// 查找方法（考虑命名空间前缀）
+    ///
+    /// 这个方法与 ClassInfo::find_method 类似，但在比较参数类型时会考虑命名空间前缀。
+    /// 例如，Object("JsonValue") 和 Object("json::JsonValue") 被认为是兼容的。
+    ///
+    /// # Arguments
+    /// * `class_info` - 类信息
+    /// * `method_name` - 方法名
+    /// * `arg_types` - 实参类型列表
+    ///
+    /// # Returns
+    /// 如果找到匹配的方法，返回方法信息
+    pub fn find_method_with_namespace<'a>(
+        &self,
+        class_info: &'a crate::types::ClassInfo,
+        method_name: &str,
+        arg_types: &[Type],
+    ) -> Option<&'a crate::types::MethodInfo> {
+        use crate::types::ParameterInfo;
+
+        let methods = class_info.methods.get(method_name)?;
+
+        // 第一遍：寻找精确匹配
+        for m in methods.iter() {
+            if self.match_method_params_exact_with_namespace(&m.params, arg_types) {
+                return Some(m);
+            }
+        }
+
+        // 第二遍：寻找兼容匹配（允许隐式转换）
+        methods.iter().find(|m| {
+            self.match_method_params_with_namespace(&m.params, arg_types)
+        })
+    }
+
+    /// 精确匹配方法参数（考虑命名空间前缀）
+    fn match_method_params_exact_with_namespace(
+        &self,
+        params: &[crate::types::ParameterInfo],
+        arg_types: &[Type],
+    ) -> bool {
+        if params.len() != arg_types.len() {
+            return false;
+        }
+        params.iter().zip(arg_types.iter()).all(|(p, a)| {
+            self.types_compatible_with_namespace(&p.param_type, a)
+        })
+    }
+
+    /// 兼容匹配方法参数（考虑命名空间前缀）
+    fn match_method_params_with_namespace(
+        &self,
+        params: &[crate::types::ParameterInfo],
+        arg_types: &[Type],
+    ) -> bool {
+        if params.len() != arg_types.len() {
+            return false;
+        }
+        params.iter().zip(arg_types.iter()).all(|(p, a)| {
+            // 首先尝试使用 types_compatible_with_namespace
+            if self.types_compatible_with_namespace(&p.param_type, a) {
+                return true;
+            }
+            // 然后尝试使用基本的类型兼容性检查
+            self.types_compatible(a, &p.param_type)
+        })
+    }
+
+    /// 检查两个类型是否兼容（考虑命名空间前缀）
+    /// 这是 TypeRegistry::types_compatible_with_namespace 的包装
+    fn types_compatible_with_namespace(&self, param_type: &Type, arg_type: &Type) -> bool {
+        self.type_registry.types_compatible_with_namespace(param_type, arg_type)
     }
 
     /// 整数类型提升

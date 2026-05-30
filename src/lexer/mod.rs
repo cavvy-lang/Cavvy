@@ -858,6 +858,7 @@ fn process_char_escape(s: &str) -> Option<char> {
             Some('n') => Some('\n'),
             Some('t') => Some('\t'),
             Some('r') => Some('\r'),
+            Some('b') => Some('\x08'),
             Some('f') => Some('\x0C'),
             Some('\\') => Some('\\'),
             Some('"') => Some('"'),
