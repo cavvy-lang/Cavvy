@@ -44,7 +44,8 @@ struct CompileOptions {
     fvectorize: bool,             // -fvectorize
     fslp_vectorize: bool,         // -fslp-vectorize
     // 工具链选项
-    use_llc_lld: bool,            // --use-clang (反向控制，false表示使用llc-lld)
+    use_clang: bool,              // --use-clang (强制使用clang)
+    use_llc_lld: bool,            // --use-llc-lld (强制使用llc+lld)
     use_embedded_llc: bool,       // --use-embedded-llc (实验性)
     // 语言特性
     features: Vec<String>,        // -F/--feature=<feature>
@@ -107,6 +108,7 @@ impl Default for CompileOptions {
             funroll_loops: false,
             fvectorize: false,
             fslp_vectorize: false,
+            use_clang: false,
             use_llc_lld: false,
             use_embedded_llc: false,
             features: Vec::new(),
@@ -150,7 +152,8 @@ fn print_usage() {
     println!("  --cflags <flags>      传递额外的编译器标志");
     println!("  --static              静态链接");
     println!("  -fPIC                 生成位置无关代码");
-    println!("  --use-clang           使用 clang 工具链（默认使用 llc+lld）");
+    println!("  --use-clang           强制使用 clang 工具链");
+    println!("  --use-llc-lld         强制使用 llc+lld 工具链（默认）");
     println!("  --use-embedded-llc    实验性: 使用内嵌 llc (llvm-sys) 提高编译速度");
     println!("  -fno-exceptions       禁用异常处理");
     println!("  -fno-rtti             禁用运行时类型信息");
@@ -226,7 +229,10 @@ fn parse_args(args: &[String]) -> Result<(CompileOptions, String, String), Strin
                 options.fslp_vectorize = true;
             }
             "--use-clang" => {
-                options.use_llc_lld = false;
+                options.use_clang = true;
+            }
+            "--use-llc-lld" => {
+                options.use_llc_lld = true;
             }
             "--use-embedded-llc" => {
                 options.use_embedded_llc = true;
@@ -470,8 +476,12 @@ fn main() {
     if options.funroll_loops {
         println!("循环展开: 启用");
     }
-    if options.use_llc_lld {
+    if options.use_clang {
         println!("工具链: clang");
+    } else if options.use_llc_lld {
+        println!("工具链: llc+lld (强制)");
+    } else if options.use_embedded_llc {
+        println!("工具链: 内嵌 llc + lld (实验性)");
     } else {
         println!("工具链: llc+lld (默认)");
     }
@@ -586,6 +596,7 @@ fn main() {
         funroll_loops: options.funroll_loops,
         fvectorize: options.fvectorize,
         fslp_vectorize: options.fslp_vectorize,
+        use_clang: options.use_clang,
         use_llc_lld: options.use_llc_lld,
         use_embedded_llc: options.use_embedded_llc,
     };

@@ -92,7 +92,8 @@ fn print_usage() {
     println!("  --fno-rtti            禁用运行时类型信息");
     println!("");
     println!("Toolchain Options:");
-    println!("  --use-clang           使用 clang 工具链（默认使用 llc+lld）");
+    println!("  --use-clang           强制使用 clang 工具链");
+    println!("  --use-llc-lld         强制使用 llc+lld 工具链（默认）");
     println!("  --use-embedded-llc    实验性: 使用内嵌 llc (llvm-sys) 提高编译速度");
     println!("");
     println!("Other Options:");
@@ -164,7 +165,10 @@ fn parse_args(args: &[String]) -> Result<(Ir2ExeOptions, String, String), String
                 options.mneon = true;
             }
             "--use-clang" => {
-                options.use_llc_lld = false;
+                options.use_clang = true;
+            }
+            "--use-llc-lld" => {
+                options.use_llc_lld = true;
             }
             "--use-embedded-llc" => {
                 options.use_embedded_llc = true;

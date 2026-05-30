@@ -355,10 +355,13 @@ pub fn get_llvm_minimal_paths(exe_dir: &Path, sub_path: &str) -> Vec<PathBuf> {
 
 /// 根据目标平台获取对应的 lld 链接器名称
 pub fn get_lld_linker_name(target: &str) -> &'static str {
-    if target.contains("windows") || target.contains("mingw") {
-        "ld.lld"
-    } else if target.contains("msvc") {
+    if target.contains("msvc") {
+        // MSVC 目标使用 lld-link (COFF 链接器) 配合 MSVC 风格参数
         "lld-link"
+    } else if target.contains("windows") || target.contains("mingw") {
+        // MinGW 目标使用 ld.lld (ELF 链接器) 配合 GNU 风格参数
+        // ld.lld 支持 -flavor gnu 来使用 GNU ld 风格的参数
+        "ld.lld"
     } else if target.contains("darwin") || target.contains("macos") {
         "ld64.lld"
     } else if target.contains("wasm") || target.contains("emscripten") {
@@ -371,7 +374,11 @@ pub fn get_lld_linker_name(target: &str) -> &'static str {
 /// 查找指定平台的 lld 链接器
 pub fn find_lld_for_target(target: &str) -> Result<PathBuf, String> {
     let linker_name = get_lld_linker_name(target);
-    
+    find_lld_linker(linker_name)
+}
+
+/// 查找指定名称的 lld 链接器
+pub fn find_lld_linker(linker_name: &str) -> Result<PathBuf, String> {
     // 1. 首先尝试系统 PATH
     let test_arg = if linker_name == "lld-link" { "/?" } else { "--version" };
     if let Ok(output) = process::Command::new(linker_name).arg(test_arg).output() {
@@ -457,6 +464,9 @@ pub struct Ir2ExeOptions {
     pub funroll_loops: bool,
     pub fvectorize: bool,
     pub fslp_vectorize: bool,
+    /// 强制使用 clang 工具链
+    pub use_clang: bool,
+    /// 强制使用 llc+lld 工具链
     pub use_llc_lld: bool,
     /// 实验性: 使用 llvm-sys 内嵌 llc 以提高编译速度
     pub use_embedded_llc: bool,
@@ -473,7 +483,8 @@ impl Default for Ir2ExeOptions {
             extra_cflags: Vec::new(),
             target: get_default_target(),
             static_link: false,
-            position_independent: false,
+            // Windows 上默认启用 PIC 以避免重定位截断错误
+            position_independent: cfg!(target_os = "windows"),
             lto: false,
             lto_thin: false,
             march: None,
@@ -491,6 +502,7 @@ impl Default for Ir2ExeOptions {
             funroll_loops: false,
             fvectorize: false,
             fslp_vectorize: false,
+            use_clang: false,
             use_llc_lld: false,
             use_embedded_llc: false,
         }
@@ -564,6 +576,10 @@ pub fn compile_ir_to_exe(
     if options.use_embedded_llc {
         // 实验性: 使用内嵌 llc (llvm-sys)
         compile_with_embedded_llc(input_file, output_file, options, effective_source_map)
+    } else if options.use_clang {
+        // 强制使用 clang
+        let clang_path = find_clang()?;
+        compile_with_clang(input_file, output_file, options, effective_source_map, &clang_path)
     } else if options.use_llc_lld {
         // 强制使用 llc + 对应平台的 lld
         let llc_path = find_llc()?;
@@ -882,78 +898,134 @@ fn compile_with_embedded_llc(
     embedded_llc::compile_ir_to_object(&ir_content, Path::new(&obj_file), &llc_opts)
         .map_err(|e| format!("嵌入式 llc 编译失败: {}", e))?;
 
-    // 步骤2: 使用 lld 链接目标文件
-    let lld_path = find_lld_for_target(&options.target)?;
-    let linker_name = get_lld_linker_name(&options.target);
-
-    let mut lld_cmd = process::Command::new(&lld_path);
-
+    // 步骤2: 使用链接器链接目标文件
+    // 注意: 嵌入式 llc 生成的是 COFF 格式的目标文件 (Windows/MinGW 目标)
     let is_windows = options.target.contains("windows") || options.target.contains("mingw");
     let is_darwin = options.target.contains("darwin") || options.target.contains("macos");
     let is_wasm = options.target.contains("wasm");
+    let is_msvc_target = options.target.contains("msvc");
+
+    // 在 Windows 上，使用 ld.lld 以正确处理 COFF 格式的 MinGW 库
+    let (mut lld_cmd, linker_name) = if is_windows {
+        if is_msvc_target {
+            // MSVC 目标使用 lld-link
+            let path = find_lld_linker("lld-link")?;
+            eprintln!("  [I] 使用 LLVM 链接器: lld-link");
+            (process::Command::new(&path), "lld-link")
+        } else {
+            // MinGW 目标使用 ld.lld (GNU 风格)
+            let path = find_lld_linker("ld.lld")?;
+            eprintln!("  [I] 使用 LLVM 链接器: ld.lld");
+            (process::Command::new(&path), "ld.lld")
+        }
+    } else {
+        // 其他目标使用对应平台的 lld
+        let path = find_lld_for_target(&options.target)?;
+        let name = get_lld_linker_name(&options.target);
+        (process::Command::new(&path), name)
+    };
 
     // 根据平台设置链接器参数
     if is_windows {
-        // Windows: 使用 COFF 链接器
-        lld_cmd.arg("-flavor").arg("gnu");
-        lld_cmd.arg("-o").arg(output_file);
-        lld_cmd.arg(&obj_file);
+        if is_msvc_target {
+            // MSVC 目标: 使用纯 MSVC 风格参数 (lld-link)
+            lld_cmd.arg(format!("/OUT:{}", output_file));
+            lld_cmd.arg(&obj_file);
 
-        // 库路径
-        let lib_paths = vec![
-            exe_dir.join("lib/mingw64/x86_64-w64-mingw32/lib"),
-            exe_dir.join("lib/mingw64/lib"),
-            exe_dir.join("lib/mingw64/lib/gcc/x86_64-w64-mingw32/15.2.0"),
-        ];
-
-        for lib_path in &lib_paths {
-            if lib_path.exists() {
-                lld_cmd.arg("-L").arg(lib_path);
+            // Cavvy 运行时库路径
+            let cayrt_path = exe_dir.join("caylibs/bin");
+            if cayrt_path.exists() {
+                lld_cmd.arg(format!("/LIBPATH:{}", cayrt_path.display()));
             }
-        }
 
-        // Cavvy 运行时库路径
-        let cayrt_path = exe_dir.join("caylibs/bin");
-        if cayrt_path.exists() {
-            lld_cmd.arg("-L").arg(&cayrt_path);
-        }
+            // 默认库
+            lld_cmd.arg("cayrt.lib")
+                .arg("kernel32.lib")
+                .arg("user32.lib")
+                .arg("advapi32.lib")
+                .arg("msvcrt.lib");
 
-        // 启动文件
-        let crt2 = exe_dir.join("lib/mingw64/x86_64-w64-mingw32/lib/crt2.o");
-        let crtbegin = exe_dir.join("lib/mingw64/lib/gcc/x86_64-w64-mingw32/15.2.0/crtbegin.o");
-        let crtend = exe_dir.join("lib/mingw64/lib/gcc/x86_64-w64-mingw32/15.2.0/crtend.o");
-
-        if crt2.exists() {
-            lld_cmd.arg(&crt2);
-        }
-        if crtbegin.exists() {
-            lld_cmd.arg(&crtbegin);
-        }
-
-        // Cavvy 运行时库
-        lld_cmd.arg("-lcayrt");
-
-        // 默认库
-        lld_cmd.arg("-lmingw32")
-            .arg("-lmingwex")
-            .arg("-lmsvcrt")
-            .arg("-lkernel32")
-            .arg("-ladvapi32")
-            .arg("-lgcc")
-            .arg("-lgcc_eh");
-
-        // 额外库
-        for lib in &options.extra_libs {
-            lld_cmd.arg(format!("-l{}", lib));
-        }
-
-        // 结束文件
-        if crtend.exists() {
-            lld_cmd.arg(&crtend);
-        }
-
-        if options.static_link {
-            lld_cmd.arg("-static");
+            // 额外库
+            for lib in &options.extra_libs {
+                lld_cmd.arg(format!("{}.lib", lib));
+            }
+        } else {
+            // MinGW 目标: 使用 ld.lld (GNU ld 兼容模式)
+            lld_cmd.arg("-m").arg("i386pep");
+            lld_cmd.arg("-o").arg(output_file);
+            
+            // 输入目标文件
+            lld_cmd.arg(&obj_file);
+            
+            // Cavvy 运行时库路径
+            let cayrt_path = exe_dir.join("caylibs/bin");
+            if cayrt_path.exists() {
+                lld_cmd.arg("-L").arg(&cayrt_path);
+            }
+            
+            // 添加本地 lib 路径 (MinGW 库)
+            let local_lib_paths = vec![
+                exe_dir.join("lib/mingw64/x86_64-w64-mingw32/lib"),
+                exe_dir.join("lib/mingw64/lib"),
+                exe_dir.join("lib/mingw64/lib/gcc/x86_64-w64-mingw32/15.2.0"),
+            ];
+            for lib_path in &local_lib_paths {
+                if lib_path.exists() {
+                    lld_cmd.arg("-L").arg(lib_path);
+                }
+            }
+            
+            // 额外库路径
+            for path in &options.extra_lib_paths {
+                lld_cmd.arg("-L").arg(path);
+            }
+            
+            // 添加启动文件 (crt)
+            let crt_paths = vec![
+                exe_dir.join("lib/mingw64/x86_64-w64-mingw32/lib"),
+                exe_dir.join("lib/mingw64/lib"),
+            ];
+            for crt_path in &crt_paths {
+                if crt_path.exists() {
+                    let crt2 = crt_path.join("crt2.o");
+                    if crt2.exists() {
+                        lld_cmd.arg(&crt2);
+                        break;
+                    }
+                }
+            }
+            
+            // Cavvy 运行时库
+            lld_cmd.arg("-lcayrt");
+            
+            // 默认库
+            lld_cmd.arg("-lmingw32")
+                .arg("-lmingwex")
+                .arg("-lmsvcrt")
+                .arg("-lkernel32")
+                .arg("-ladvapi32")
+                .arg("-lgcc")
+                .arg("-lgcc_eh");
+            
+            // 添加 crtend.o
+            for crt_path in &crt_paths {
+                if crt_path.exists() {
+                    let crtend = crt_path.join("crtend.o");
+                    if crtend.exists() {
+                        lld_cmd.arg(&crtend);
+                        break;
+                    }
+                }
+            }
+            
+            // 额外库
+            for lib in &options.extra_libs {
+                lld_cmd.arg(format!("-l{}", lib));
+            }
+            
+            if options.static_link {
+                lld_cmd.arg("-static");
+            }
         }
     } else if is_darwin {
         // macOS: 使用 ld64 风格参数
@@ -1025,10 +1097,9 @@ fn compile_with_embedded_llc(
             format!("执行 {} 失败: {}", linker_name, e)
         })?;
 
-    // 清理临时目标文件
-    let _ = std::fs::remove_file(&obj_file);
-
     if !lld_output.status.success() {
+        // 保留目标文件以便调试
+        // eprintln!("  [DEBUG] 链接失败，保留目标文件: {}", obj_file);
         let error_msg = String::from_utf8_lossy(&lld_output.stderr);
         return Err(format!("{} 链接失败 (exit code: {}): {}",
             linker_name, lld_output.status.code().unwrap_or(-1), error_msg));
@@ -1115,49 +1186,49 @@ fn compile_with_llc_lld(
     let mut lld_cmd = process::Command::new(lld_exe);
     
     if is_windows {
-        // Windows/MinGW: 使用 GNU ld 风格参数
+        // Windows/MinGW: 使用 ld.lld 的 GNU 风格参数
+        lld_cmd.arg("-flavor").arg("gnu");
         lld_cmd.arg("-m").arg("i386pep");
         lld_cmd.arg("-o").arg(output_file);
-        
+
         // 添加启动文件
-        let crt1 = exe_dir.join("lib/mingw64/x86_64-w64-mingw32/lib/crt1.o");
+        let crt2 = exe_dir.join("lib/mingw64/x86_64-w64-mingw32/lib/crt2.o");
         let crtbegin = exe_dir.join("lib/mingw64/lib/gcc/x86_64-w64-mingw32/15.2.0/crtbegin.o");
         let crtend = exe_dir.join("lib/mingw64/lib/gcc/x86_64-w64-mingw32/15.2.0/crtend.o");
-        
-        if crt1.exists() {
-            lld_cmd.arg(&crt1);
+
+        if crt2.exists() {
+            lld_cmd.arg(&crt2);
         }
         if crtbegin.exists() {
             lld_cmd.arg(&crtbegin);
         }
-        
-        // 库路径
-        let lib_paths = vec![
-            exe_dir.join("lib/mingw64/x86_64-w64-mingw32/lib"),
-            exe_dir.join("lib/mingw64/lib"),
-            exe_dir.join("lib/mingw64/lib/gcc/x86_64-w64-mingw32/15.2.0"),
-        ];
-        
-        for lib_path in &lib_paths {
-            if lib_path.exists() {
-                lld_cmd.arg("-L").arg(lib_path);
-            }
-        }
+
+        // 输入目标文件
+        lld_cmd.arg(&obj_file);
 
         // Cavvy 运行时库路径
         let cayrt_path = exe_dir.join("caylibs/bin");
         if cayrt_path.exists() {
             lld_cmd.arg("-L").arg(&cayrt_path);
         }
-        
+
+        // 本地 MinGW 库路径
+        let lib_paths = vec![
+            exe_dir.join("lib/mingw64/x86_64-w64-mingw32/lib"),
+            exe_dir.join("lib/mingw64/lib"),
+            exe_dir.join("lib/mingw64/lib/gcc/x86_64-w64-mingw32/15.2.0"),
+        ];
+        for lib_path in &lib_paths {
+            if lib_path.exists() {
+                lld_cmd.arg("-L").arg(lib_path);
+            }
+        }
+
         // 额外库路径
         for path in &options.extra_lib_paths {
             lld_cmd.arg("-L").arg(path);
         }
-        
-        // 输入目标文件
-        lld_cmd.arg(&obj_file);
-        
+
         // Cavvy 运行时库
         lld_cmd.arg("-lcayrt");
 
@@ -1168,22 +1239,18 @@ fn compile_with_llc_lld(
             .arg("-lkernel32")
             .arg("-ladvapi32")
             .arg("-lgcc")
-            .arg("-lgcc_eh")
-            .arg("-lmoldname")
-            .arg("-lmingwex")
-            .arg("-lmsvcrt")
-            .arg("-lkernel32");
-        
+            .arg("-lgcc_eh");
+
         // 额外库
         for lib in &options.extra_libs {
             lld_cmd.arg(format!("-l{}", lib));
         }
-        
+
         // 结束文件
         if crtend.exists() {
             lld_cmd.arg(&crtend);
         }
-        
+
         if options.static_link {
             lld_cmd.arg("-static");
         }
@@ -1267,14 +1334,16 @@ fn compile_with_llc_lld(
             format!("执行 {} 失败: {}", linker_name, e)
         })?;
     
-    // 清理临时目标文件
-    let _ = std::fs::remove_file(&obj_file);
-    
     if !lld_output.status.success() {
+        // 保留目标文件以便调试
+        // eprintln!("  [DEBUG] 链接失败，保留目标文件: {}", obj_file);
         let error_msg = String::from_utf8_lossy(&lld_output.stderr);
         return Err(format!("{} 链接失败 (exit code: {}): {}", 
             linker_name, lld_output.status.code().unwrap_or(-1), error_msg));
     }
+    
+    // 清理临时目标文件
+    let _ = std::fs::remove_file(&obj_file);
     
     let exe_size = std::fs::metadata(output_file)
         .map(|m| m.len() as f64 / 1024.0)
