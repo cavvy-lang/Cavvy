@@ -399,9 +399,8 @@ impl IRGenerator {
                             if is_varargs {
                                 // 可变参数方法
                                 if arg_count >= fixed_count {
-                                    // 检查固定参数类型是否匹配
-                                    // 使用原始类名（包含泛型参数）生成函数名
-                                    let method_sig = self.build_function_name_from_method(class_name, method_name, &method.params, has_varargs_array);
+                                    // 使用实际定义方法的类名生成函数名（支持继承和接口）
+                                    let method_sig = self.build_function_name_from_method(&lookup_class_name, method_name, &method.params, has_varargs_array);
                                     let expected_sig = format!("{}.__{}_{}", llvm_current, method_name, arg_types.join("_"));
                                     if method_sig == expected_sig {
                                         return method_sig;
@@ -409,8 +408,8 @@ impl IRGenerator {
                                 }
                             } else if param_count == arg_count {
                                 // 非可变参数方法：检查参数类型是否匹配
-                                // 使用原始类名（包含泛型参数）生成函数名
-                                let method_sig = self.build_function_name_from_method(class_name, method_name, &method.params, has_varargs_array);
+                                // 使用实际定义方法的类名生成函数名（支持继承和接口）
+                                let method_sig = self.build_function_name_from_method(&lookup_class_name, method_name, &method.params, has_varargs_array);
                                 let expected_sig = format!("{}.__{}_{}", llvm_current, method_name, arg_types.join("_"));
                                 if method_sig == expected_sig {
                                     return method_sig;
