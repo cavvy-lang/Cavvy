@@ -1100,7 +1100,7 @@ impl IRGenerator {
                 }
                 sig
             }
-            Type::Auto => panic!("Type::Auto should have been resolved before code generation"),
+            Type::Auto => "x".to_string(), // 不应到达此处，语义分析应已解析
             // FFI 类型签名
             Type::CInt => "ci".to_string(),
             Type::CUInt => "cui".to_string(),

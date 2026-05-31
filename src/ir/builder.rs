@@ -355,7 +355,8 @@ impl IrBuilder {
             self.set_terminator(IrTerminator::Return { value: None })?;
         }
 
-        let func_ir = self.current_function.take().unwrap();
+        let func_ir = self.current_function.take()
+            .expect("IR Builder: current_function 应在 build_top_level_function 中设置");
         self.module.add_function(func_ir);
         Ok(())
     }
@@ -426,7 +427,8 @@ impl IrBuilder {
         }
 
         self.current_function = Some(IrFunction::new(fn_name, return_type, params));
-        self.current_function.as_mut().unwrap().is_static = is_static;
+        self.current_function.as_mut()
+            .expect("IR Builder: current_function 应在 build_method 中设置").is_static = is_static;
         self.scope_manager.reset();
         self.loop_stack.clear();
         self.temp_counter = 0;
@@ -480,7 +482,8 @@ impl IrBuilder {
             self.set_terminator(IrTerminator::Return { value: None })?;
         }
 
-        let func_ir = self.current_function.take().unwrap();
+        let func_ir = self.current_function.take()
+                    .expect("IR Builder: current_function 应在方法构建前设置");
         self.module.add_function(func_ir);
         Ok(())
     }
@@ -625,7 +628,8 @@ impl IrBuilder {
         self.build_block(&ctor.body)?;
         self.set_terminator(IrTerminator::Return { value: None })?;
 
-        let func_ir = self.current_function.take().unwrap();
+        let func_ir = self.current_function.take()
+                    .expect("IR Builder: current_function 应在方法构建前设置");
         self.module.add_function(func_ir);
         Ok(())
     }
@@ -659,7 +663,8 @@ impl IrBuilder {
         self.build_block(&dtor.body)?;
         self.set_terminator(IrTerminator::Return { value: None })?;
 
-        let func_ir = self.current_function.take().unwrap();
+        let func_ir = self.current_function.take()
+                    .expect("IR Builder: current_function 应在方法构建前设置");
         self.module.add_function(func_ir);
         Ok(())
     }
@@ -692,7 +697,8 @@ impl IrBuilder {
 
         self.set_terminator(IrTerminator::Return { value: None })?;
 
-        let func_ir = self.current_function.take().unwrap();
+        let func_ir = self.current_function.take()
+                    .expect("IR Builder: current_function 应在方法构建前设置");
         self.module.add_function(func_ir);
         Ok(())
     }
@@ -709,7 +715,8 @@ impl IrBuilder {
         self.build_block(block)?;
         self.set_terminator(IrTerminator::Return { value: None })?;
 
-        let func_ir = self.current_function.take().unwrap();
+        let func_ir = self.current_function.take()
+                    .expect("IR Builder: current_function 应在方法构建前设置");
         self.module.add_function(func_ir);
         Ok(())
     }
@@ -893,7 +900,8 @@ impl IrBuilder {
         let mut else_returns = false;
         if has_else {
             self.new_block(else_label)?;
-            self.build_statement(if_stmt.else_branch.as_ref().unwrap())?;
+            self.build_statement(if_stmt.else_branch.as_ref()
+                .expect("IR Builder: has_else 为 true 时 else_branch 应为 Some"))?;
             else_returns = self.current_block_is_complete();
             if !else_returns {
                 self.set_terminator(IrTerminator::Branch { target: merge_label.clone() })?;

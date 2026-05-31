@@ -422,5 +422,7 @@ fn print_ast_json(ast: &Program) {
     output.push_str(&format!("  \"top_level_functions\": {}\n", ast.top_level_functions.len()));
     output.push_str("}\n");
     
-    std::io::stdout().write_all(output.as_bytes()).unwrap();
+    if let Err(e) = std::io::stdout().write_all(output.as_bytes()) {
+        eprintln!("写入stdout失败: {}", e);
+    }
 }

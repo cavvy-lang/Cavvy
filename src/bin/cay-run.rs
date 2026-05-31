@@ -310,7 +310,11 @@ fn compile_cay_to_ir(source_path: &str, options: &RunOptions) -> Result<String, 
 
     // 使用临时文件
     let temp_ir_file = generate_unique_filename("cay", "ll");
-    compiler.compile_with_source_map(&preprocess_result.code, source_map, temp_ir_file.to_str().unwrap())?;
+    let temp_ir_str = temp_ir_file.to_str().ok_or_else(|| cayError::Io {
+        file: None,
+        message: "临时文件路径包含无效UTF-8字符".to_string(),
+    })?;
+    compiler.compile_with_source_map(&preprocess_result.code, source_map, temp_ir_str)?;
 
     let ir = fs::read_to_string(&temp_ir_file)
         .map_err(|e| cayError::Io {
@@ -604,23 +608,38 @@ fn main() {
                     println!("使用字节码混淆模式...");
                 }
                 let module = compile_cay_to_bytecode(&input_path, &options)
-                    .map_err(|e| {
+                    .unwrap_or_else(|e| {
                         print_tool_error("字节码编译器", &e, Some("请检查代码语法和语义"));
                         process::exit(1);
-                    }).unwrap();
+                    });
 
                 // 保存字节码到临时文件
                 let temp_bc_file = generate_unique_filename("cay", "caybc");
                 let bytecode = serializer::serialize(&module);
                 fs::write(&temp_bc_file, bytecode)
-                    .map_err(|e| format!("写入字节码文件失败: {}", e)).unwrap();
+                    .unwrap_or_else(|e| {
+                        print_miette_error(
+                            "cavvy::io_error",
+                            &format!("写入字节码文件失败: {}", e),
+                            Some("请检查输出目录权限")
+                        );
+                        process::exit(1);
+                    });
 
                 // 从字节码编译到IR
-                let ir = compile_bytecode_to_ir(temp_bc_file.to_str().unwrap(), &options)
-                    .map_err(|e| {
+                let bc_path = temp_bc_file.to_str().unwrap_or_else(|| {
+                    print_miette_error(
+                        "cavvy::io_error",
+                        "字节码临时文件路径包含无效UTF-8字符",
+                        None
+                    );
+                    process::exit(1);
+                });
+                let ir = compile_bytecode_to_ir(bc_path, &options)
+                    .unwrap_or_else(|e| {
                         print_tool_error("字节码转IR", &e, Some("请检查字节码文件是否正确"));
                         process::exit(1);
-                    }).unwrap();
+                    });
 
                 if !options.keep_temp {
                     let _ = fs::remove_file(&temp_bc_file);
@@ -643,24 +662,24 @@ fn main() {
                 println!("[1/3] 编译字节码到IR...");
             }
             compile_bytecode_to_ir(&input_path, &options)
-                .map_err(|e| {
+                .unwrap_or_else(|e| {
                     print_tool_error("字节码编译器", &e, Some("请检查字节码文件是否正确"));
                     process::exit(1);
-                }).unwrap()
+                })
         }
         FileType::LlvmIr => {
             if options.verbose {
                 println!("[1/3] 读取IR文件...");
             }
             fs::read_to_string(&input_path)
-                .map_err(|e| {
+                .unwrap_or_else(|e| {
                     print_miette_error(
                         "cavvy::io_error",
                         &format!("读取IR文件失败: {}", e),
                         Some("请检查文件路径是否正确")
                     );
                     process::exit(1);
-                }).unwrap()
+                })
         }
     };
 
@@ -670,10 +689,10 @@ fn main() {
 
     // 编译IR到可执行文件
     compile_ir_to_executable(&ir_code, &output_exe, &options)
-        .map_err(|e| {
+        .unwrap_or_else(|e| {
             print_tool_error("ir2exe", &e, Some("请检查 IR 代码是否正确"));
             process::exit(1);
-        }).unwrap();
+        });
 
     if options.verbose {
         println!("[3/3] {}...", if options.no_run { "跳过运行" } else { "运行程序" });
@@ -683,14 +702,14 @@ fn main() {
     // 运行可执行文件
     if !options.no_run {
         let exit_code = run_executable(&output_exe, &options)
-            .map_err(|e| {
+            .unwrap_or_else(|e| {
                 print_miette_error(
                     "cavvy::runtime_error",
                     &format!("运行失败: {}", e),
                     Some("请检查程序是否正确编译")
                 );
                 process::exit(1);
-            }).unwrap();
+            });
 
         if options.verbose {
             println!();

@@ -100,7 +100,7 @@ impl IrFunction {
     /// 添加基本块
     pub fn add_block(&mut self, block: IrBasicBlock) -> &mut IrBasicBlock {
         self.blocks.push(block);
-        self.blocks.last_mut().unwrap()
+        self.blocks.last_mut().expect("push 后 last_mut 应始终成功")
     }
 
     /// 查找基本块

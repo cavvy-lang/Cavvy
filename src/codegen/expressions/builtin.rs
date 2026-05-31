@@ -431,7 +431,7 @@ impl IRGenerator {
                     if next == '%' {
                         // %%
                         result.push(c);
-                        result.push(chars.next().unwrap());
+                        result.push(chars.next().expect("peek 返回 Some 后 next 应也返回 Some"));
                     } else {
                         // C风格 - 保持原样
                         result.push(c);

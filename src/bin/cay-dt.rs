@@ -251,7 +251,9 @@ fn print_tokens_json(tokens: &[TokenWithLocation], diagnostics: &DiagnosticColle
     output.push_str("  ]\n");
     output.push_str("}\n");
     
-    std::io::stdout().write_all(output.as_bytes()).unwrap();
+    if let Err(e) = std::io::stdout().write_all(output.as_bytes()) {
+        eprintln!("写入stdout失败: {}", e);
+    }
 }
 
 fn get_token_value(token: &cavvy::lexer::Token) -> String {

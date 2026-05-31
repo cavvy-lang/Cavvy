@@ -94,7 +94,7 @@ impl IrModule {
     /// 添加函数
     pub fn add_function(&mut self, func: IrFunction) -> &mut IrFunction {
         self.functions.push(func);
-        self.functions.last_mut().unwrap()
+        self.functions.last_mut().expect("push 后 last_mut 应始终成功")
     }
 
     /// 添加外部声明

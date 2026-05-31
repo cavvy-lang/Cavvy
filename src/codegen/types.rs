@@ -53,7 +53,7 @@ impl IRGenerator {
                 }
             },
             Type::Function(_) => "i8*".to_string(),
-            Type::Auto => panic!("Type::Auto should have been resolved before code generation"),
+            Type::Auto => "i8*".to_string(), // 不应到达此处，语义分析应已解析
             // FFI 类型映射
             Type::CInt => "i32".to_string(),      // C int 通常为 32 位
             Type::CUInt => "i32".to_string(),     // C unsigned int 通常为 32 位

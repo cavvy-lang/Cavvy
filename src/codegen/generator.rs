@@ -256,7 +256,7 @@ impl IRGenerator {
         // 生成跨平台 C entry point
         if use_top_level_main {
             // 使用顶层 main 函数
-            let func = top_level_main.unwrap();
+            let func = top_level_main.expect("use_top_level_main 为 true 时 top_level_main 应为 Some");
             let has_args = !func.params.is_empty();
             
             self.output.push_str("; Cross-platform C entry point\n");
@@ -484,7 +484,7 @@ impl IRGenerator {
 
         // 提取简单类名用于 static_field_map key（与 self.current_class 查找一致）
         let simple_class = if class_name.contains("::") {
-            class_name.split("::").last().unwrap().to_string()
+            class_name.split("::").last().expect("split 应始终产生至少一个元素").to_string()
         } else {
             class_name.to_string()
         };
@@ -781,7 +781,7 @@ impl IRGenerator {
         self.current_function = fn_name.clone();
         // 从可能包含 :: 的限定名中提取简单名用于 current_class
         let raw_class_name = if class_name.contains("::") {
-            class_name.split("::").last().unwrap().to_string()
+            class_name.split("::").last().expect("split 应始终产生至少一个元素").to_string()
         } else {
             class_name.to_string()
         };
@@ -920,7 +920,7 @@ impl IRGenerator {
         self.current_function = fn_name.clone();
         // 从可能包含 :: 的限定名中提取简单名用于 current_class
         let raw_class_name = if class_name.contains("::") {
-            class_name.split("::").last().unwrap().to_string()
+            class_name.split("::").last().expect("split 应始终产生至少一个元素").to_string()
         } else {
             class_name.to_string()
         };
@@ -1038,7 +1038,7 @@ impl IRGenerator {
         self.current_function = fn_name.clone();
         // 从可能包含 :: 的限定名中提取简单名用于 current_class
         let raw_class_name = if class_name.contains("::") {
-            class_name.split("::").last().unwrap().to_string()
+            class_name.split("::").last().expect("split 应始终产生至少一个元素").to_string()
         } else {
             class_name.to_string()
         };
@@ -1096,7 +1096,7 @@ impl IRGenerator {
         self.current_function = fn_name.clone();
         // 从可能包含 :: 的限定名中提取简单名用于 current_class
         let raw_class_name = if class_name.contains("::") {
-            class_name.split("::").last().unwrap().to_string()
+            class_name.split("::").last().expect("split 应始终产生至少一个元素").to_string()
         } else {
             class_name.to_string()
         };
@@ -1140,7 +1140,7 @@ impl IRGenerator {
         self.current_function = fn_name.clone();
         // 从可能包含 :: 的限定名中提取简单名用于 current_class
         self.current_class = if class_name.contains("::") {
-            class_name.split("::").last().unwrap().to_string()
+            class_name.split("::").last().expect("split 应始终产生至少一个元素").to_string()
         } else {
             class_name.to_string()
         };

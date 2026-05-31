@@ -668,7 +668,8 @@ impl CavvyLanguageServer {
         }
 
         // 处理 include 的文件（递归提取）
-        let include_pattern = regex::Regex::new(r#"#include\s+["<]([^">]+)[">]"#).unwrap();
+        let include_pattern = regex::Regex::new(r#"#include\s+["<]([^">]+)[">]"#)
+            .expect("正则表达式应始终有效");
         for cap in include_pattern.captures_iter(content) {
             if let Some(include_file) = cap.get(1) {
                 let include_path = include_file.as_str();
@@ -1038,7 +1039,7 @@ fn error_to_diagnostic_with_source_map(
     let related_info = if orig_file != default_file {
         Some(vec![DiagnosticRelatedInformation {
             location: Location {
-                uri: Url::from_file_path(&orig_file).unwrap_or_else(|_| Url::parse("file:///").unwrap()),
+                uri: Url::from_file_path(&orig_file).unwrap_or_else(|_| Url::parse("file:///").expect("file:/// 是有效URL")),
                 range: Range {
                     start: Position::new(orig_line.saturating_sub(1) as u32, orig_column.saturating_sub(1) as u32),
                     end: Position::new(orig_line.saturating_sub(1) as u32, line_len),
