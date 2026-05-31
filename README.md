@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/rust-2024%20edition-orange.svg" alt="Rust">
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey.svg" alt="Platform">
   <img src="https://img.shields.io/badge/build-passing-brightgreen.svg" alt="Build Status">
-  <img src="https://img.shields.io/badge/version-0.4.8-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/version-5.1.0--Beta.2-blue.svg" alt="Version">
 </p>
 
 <p align="center">
@@ -469,7 +469,7 @@ cavvy/
 
 ## 开发状态
 
-### 当前版本: 0.4.8
+### 当前版本: 5.1.0-Beta.2
 
 **已完成功能 (0.4.x):**
 

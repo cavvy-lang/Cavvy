@@ -4,7 +4,7 @@
 
 Cavvy（Cay）是一个静态类型、面向对象的编程语言编译器，使用 Rust（2024 edition）编写。它将 `.cay`/`.eol` 源码通过 LLVM IR → clang 编译为原生机器码。采用 GPL3 许可证。
 
-- **真实版本**（来自 `.verinfo`）：`5.1.0-Alpha.4`。README 中写的 0.4.8 —— 已过时。
+- **真实版本**（来自 `.verinfo`）：`5.1.0-Beta.2`。README 中写的 5.1.0-Beta.2 —— 已同步。
 - **旧名称**：该项目曾用名 "EOL"（Ethernos Object Language）。`.eol` 扩展名和 CI 中的 `eol-*` 产物名称均为历史遗留。规范扩展名是 `.cay`。
 
 ## 构建
@@ -114,3 +114,15 @@ cargo test --release --verbose
 ## 版本管理
 
 版本号位于 `.verinfo`（类 INI 格式）。`build.rs` 解析此文件，将每个版本与 git 提交哈希组合，并设置 `CARGO_*_VERSION` 环境变量用于编译时嵌入。修改 `.verinfo` 后，`cargo build` 将自动重新编译。
+
+## 已知限制 (5.1.0-Beta.2)
+
+1. **接口方法动态分发**：通过接口类型调用方法时，使用声明类型解析方法（第一个实现类），而非运行时类型。例如 `Animal a = new Dog(); a.speak();` 可能调用错误的实现。需要 vtable 支持才能正确实现动态分发。
+
+2. **Lambda 闭包**：Lambda 语法已解析，但闭包捕获环境变量尚未完整实现。
+
+3. **泛型单态化**：语法解析支持 `<T>`，但代码生成尚未实现单态化。
+
+4. **private 访问控制**：编译器不强制执行 private 访问修饰符。
+
+5. **数组初始化语法**：不支持 `new Type[] { 1, 2, 3 }` 语法，需要先声明大小再赋值。

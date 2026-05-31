@@ -11,6 +11,84 @@ fn semantic_error_at_loc(loc: &crate::error::SourceLocation, message: impl Into<
     semantic_error_with_file(loc.file.clone(), loc.line, loc.column, message)
 }
 
+/// 检查成员访问权限
+/// 
+/// # Arguments
+/// * `member_name` - 成员名称
+/// * `is_public` - 成员是否公开
+/// * `is_protected` - 成员是否受保护
+/// * `is_private` - 成员是否私有
+/// * `current_class` - 当前类名
+/// * `target_class` - 目标成员所属类名
+/// * `type_registry` - 类型注册表（用于检查继承关系）
+/// * `loc` - 源代码位置
+/// 
+/// # Returns
+/// 如果访问被拒绝，返回 Err；否则返回 Ok(())
+fn check_member_access(
+    member_name: &str,
+    is_public: bool,
+    is_protected: bool,
+    is_private: bool,
+    current_class: &Option<String>,
+    target_class: &str,
+    type_registry: &crate::types::TypeRegistry,
+    loc: &crate::error::SourceLocation,
+) -> cayResult<()> {
+    // 公开成员总是可以访问
+    if is_public {
+        return Ok(());
+    }
+    
+    // 获取当前类名
+    let current_class_name = match current_class {
+        Some(name) => name,
+        None => {
+            // 没有当前类上下文（如顶层函数），不能访问非公开成员
+            return Err(semantic_error_at_loc(loc, 
+                format!("{} has private access in {}", member_name, target_class)));
+        }
+    };
+    
+    // 同一个类可以访问所有成员
+    if current_class_name == target_class {
+        return Ok(());
+    }
+    
+    // 如果是 protected，检查是否是子类
+    if is_protected {
+        // 检查当前类是否是目标类的子类
+        if is_subclass(current_class_name, target_class, type_registry) {
+            return Ok(());
+        }
+    }
+    
+    // 私有或 protected 但不是子类
+    let access_type = if is_private { "private" } else { "protected" };
+    Err(semantic_error_at_loc(loc, 
+        format!("{} has {} access in {}", member_name, access_type, target_class)))
+}
+
+/// 检查 child_class 是否是 parent_class 的子类（包括直接和间接继承）
+fn is_subclass(child_class: &str, parent_class: &str, type_registry: &crate::types::TypeRegistry) -> bool {
+    let mut current = Some(child_class.to_string());
+    
+    while let Some(class_name) = current {
+        if class_name == parent_class {
+            return true;
+        }
+        
+        // 获取父类
+        if let Some(class_info) = type_registry.get_class(&class_name) {
+            current = class_info.parent.clone();
+        } else {
+            break;
+        }
+    }
+    
+    false
+}
+
 impl SemanticAnalyzer {
     /// 推断表达式类型（带错误收集）
     /// 这个版本会收集错误到 self.errors 而不是直接返回 Err
@@ -605,20 +683,31 @@ impl SemanticAnalyzer {
                 // 使用参数类型查找匹配的方法
                 // 首先尝试直接使用类名查找
                 let method_result = if let Some(method_info) = self.type_registry.find_method(&class_name, &member.member, &arg_types) {
-                    Some((method_info.return_type.clone(), method_info.params.clone()))
+                    Some((method_info.clone(), method_info.return_type.clone(), method_info.params.clone()))
                 } else {
                     // 如果直接查找失败，尝试查找限定类名
                     if let Some(qualified_name) = self.type_registry.find_qualified_class(&class_name) {
                         // eprintln!("[DEBUG] Found qualified class: {} -> {}", class_name, qualified_name);
                         self.type_registry.find_method(&qualified_name, &member.member, &arg_types)
-                            .map(|m| (m.return_type.clone(), m.params.clone()))
+                            .map(|m| (m.clone(), m.return_type.clone(), m.params.clone()))
                     } else {
                         // eprintln!("[DEBUG] Could not find qualified class for: {}", class_name);
                         None
                     }
                 };
                 
-                if let Some((return_type, params)) = method_result {
+                if let Some((method_info, return_type, params)) = method_result {
+                    // 检查方法访问权限
+                    check_member_access(
+                        &member.member,
+                        method_info.is_public,
+                        method_info.is_protected,
+                        method_info.is_private,
+                        &self.current_class,
+                        &class_name,
+                        &self.type_registry,
+                        &member.loc,
+                    )?;
                     // eprintln!("[DEBUG] Found method: {}.{}, params={:?}, return_type={:?}", class_name, member.member, params, return_type);
                     // 检查参数类型兼容性（支持可变参数）
                     if let Err(msg) = self.check_arguments_compatible(&call.args, &params, call.loc.line, call.loc.column) {
@@ -745,22 +834,17 @@ impl SemanticAnalyzer {
                 // 首先检查字段
                 if let Some(field_info) = class_info.fields.get(&member.member) {
                     if field_info.is_static {
-                        // 检查私有字段访问权限
-                        if !field_info.is_public {
-                            if let Some(current_class) = &self.current_class {
-                                if current_class != class_name.as_ref() {
-                                    return Err(semantic_error_at_loc(
-                                        &member.loc,
-                                        format!("{} has private access in {}", member.member, class_name)
-                                    ));
-                                }
-                            } else {
-                                return Err(semantic_error_at_loc(
-                                    &member.loc,
-                                    format!("{} has private access in {}", member.member, class_name)
-                                ));
-                            }
-                        }
+                        // 检查字段访问权限
+                        check_member_access(
+                            &member.member,
+                            field_info.is_public,
+                            field_info.is_protected,
+                            field_info.is_private,
+                            &self.current_class,
+                            class_name.as_ref(),
+                            &self.type_registry,
+                            &member.loc,
+                        )?;
                         return Ok(field_info.field_type.clone());
                     }
                 }
@@ -770,22 +854,17 @@ impl SemanticAnalyzer {
                 if let Some(methods) = class_info.methods.get(&member.member) {
                     // 查找第一个静态方法（假设没有重载的静态方法）
                     if let Some(method_info) = methods.iter().find(|m| m.is_static) {
-                        // 检查私有方法访问权限
-                        if !method_info.is_public {
-                            if let Some(current_class) = &self.current_class {
-                                if current_class != class_name.as_ref() {
-                                    return Err(semantic_error_at_loc(
-                                        &member.loc,
-                                        format!("{} has private access in {}", member.member, class_name)
-                                    ));
-                                }
-                            } else {
-                                return Err(semantic_error_at_loc(
-                                    &member.loc,
-                                    format!("{} has private access in {}", member.member, class_name)
-                                ));
-                            }
-                        }
+                        // 检查方法访问权限
+                        check_member_access(
+                            &member.member,
+                            method_info.is_public,
+                            method_info.is_protected,
+                            method_info.is_private,
+                            &self.current_class,
+                            class_name.as_ref(),
+                            &self.type_registry,
+                            &member.loc,
+                        )?;
                         // 返回函数指针类型
                         let param_types = method_info.params.iter()
                             .filter(|p| !p.is_varargs)
@@ -872,22 +951,17 @@ impl SemanticAnalyzer {
             }
             if let Some(class_info) = self.type_registry.get_class(base_class_name) {
                 if let Some(field_info) = class_info.fields.get(&member.member) {
-                    // 检查私有字段访问权限
-                    if !field_info.is_public {
-                        if let Some(current_class) = &self.current_class {
-                            if current_class != base_class_name {
-                                return Err(semantic_error_at_loc(
-                                    &member.loc,
-                                    format!("{} has private access in {}", member.member, base_class_name)
-                                ));
-                            }
-                        } else {
-                            return Err(semantic_error_at_loc(
-                                &member.loc,
-                                format!("{} has private access in {}", member.member, base_class_name)
-                            ));
-                        }
-                    }
+                    // 检查字段访问权限
+                    check_member_access(
+                        &member.member,
+                        field_info.is_public,
+                        field_info.is_protected,
+                        field_info.is_private,
+                        &self.current_class,
+                        base_class_name,
+                        &self.type_registry,
+                        &member.loc,
+                    )?;
                     return Ok(field_info.field_type.clone());
                 }
             }
