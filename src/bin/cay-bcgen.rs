@@ -155,14 +155,16 @@ fn generate_bytecode_from_ast(
 
         let mut param_type_indices = Vec::new();
         let mut param_name_indices = Vec::new();
+        let mut param_names = Vec::new();
 
         for param in &func.params {
             param_type_indices.push(get_type_index(&param.param_type, &mut module.constant_pool));
             param_name_indices.push(module.constant_pool.add_utf8(&param.name));
+            param_names.push(param.name.clone());
         }
 
         // 生成函数体
-        let body = generate_code_body(&func.body, module)?;
+        let (body, max_locals) = generate_code_body(&func.body, module, &param_names)?;
 
         let modifiers = MethodModifiers {
             is_public: func.modifiers.contains(&Modifier::Public),
@@ -182,7 +184,7 @@ fn generate_bytecode_from_ast(
             param_name_indices,
             modifiers,
             body,
-            max_locals: 10, // TODO: 动态计算
+            max_locals,
             max_stack: 10,
         };
 
@@ -233,15 +235,20 @@ fn generate_bytecode_from_ast(
 
                     let mut param_type_indices = Vec::new();
                     let mut param_name_indices = Vec::new();
+                    let mut param_names = Vec::new();
 
                     for param in &method.params {
                         param_type_indices.push(get_type_index(&param.param_type, &mut module.constant_pool));
                         param_name_indices.push(module.constant_pool.add_utf8(&param.name));
+                        param_names.push(param.name.clone());
                     }
 
                     let body = method.body.as_ref()
-                        .map(|b| generate_code_body(b, module).ok())
-                        .flatten();
+                        .map(|b| generate_code_body(b, module, &param_names).ok())
+                        .flatten()
+                        .map(|(body, max_locals)| {
+                            (body, max_locals)
+                        });
 
                     let method_modifiers = MethodModifiers {
                         is_public: method.modifiers.contains(&Modifier::Public),
@@ -254,14 +261,20 @@ fn generate_bytecode_from_ast(
                         is_override: method.modifiers.contains(&Modifier::Override),
                     };
 
+                    let (body_raw, max_locals) = body.unwrap_or((CodeBody {
+                        instructions: Vec::new(),
+                        exception_table: Vec::new(),
+                        line_number_table: Vec::new(),
+                    }, 0));
+
                     let method_def = MethodDefinition {
                         name_index: method_name_index,
                         return_type_index,
                         param_type_indices,
                         param_name_indices,
                         modifiers: method_modifiers,
-                        body,
-                        max_locals: 10,
+                        body: Some(body_raw),
+                        max_locals,
                         max_stack: 10,
                     };
                     methods.push(method_def);
@@ -286,14 +299,20 @@ fn generate_bytecode_from_ast(
 }
 
 /// 生成代码体
-fn generate_code_body(block: &cavvy::ast::Block, module: &mut BytecodeModule) -> Result<CodeBody, String> {
+fn generate_code_body(block: &cavvy::ast::Block, module: &mut BytecodeModule, params: &[String]) -> Result<(CodeBody, u16), String> {
     use cavvy::bytecode::instructions::*;
 
     let mut instructions = Vec::new();
     let mut ctx = StatementContext::new();
+    let mut tracker = LocalVarTracker::new();
+
+    // 注册参数到局部变量表
+    for param in params {
+        tracker.register_param(param);
+    }
 
     for stmt in &block.statements {
-        generate_statement(stmt, &mut instructions, module, &mut ctx)?;
+        generate_statement(stmt, &mut instructions, module, &mut ctx, &mut tracker)?;
     }
 
     // 添加默认返回
@@ -302,11 +321,12 @@ fn generate_code_body(block: &cavvy::ast::Block, module: &mut BytecodeModule) ->
     // 修复跳转偏移量
     fix_jump_offsets(&mut instructions, &ctx)?;
 
-    Ok(CodeBody {
+    let max_locals = tracker.max_locals();
+    Ok((CodeBody {
         instructions,
         exception_table: Vec::new(),
         line_number_table: Vec::new(),
-    })
+    }, max_locals))
 }
 
 /// 跳转占位符，用于两阶段编译
@@ -329,45 +349,89 @@ impl StatementContext {
     }
 }
 
+/// 局部变量追踪器
+struct LocalVarTracker {
+    /// 变量名 -> 索引
+    vars: std::collections::HashMap<String, u16>,
+    /// 下一个可用的局部变量索引
+    next_index: u16,
+}
+
+impl LocalVarTracker {
+    fn new() -> Self {
+        Self {
+            vars: std::collections::HashMap::new(),
+            next_index: 0,
+        }
+    }
+
+    /// 注册参数（从索引0开始）
+    fn register_param(&mut self, name: &str) {
+        self.vars.insert(name.to_string(), self.next_index);
+        self.next_index += 1;
+    }
+
+    /// 注册新的局部变量，返回分配的索引
+    fn register_var(&mut self, name: &str) -> u16 {
+        let index = self.next_index;
+        self.vars.insert(name.to_string(), index);
+        self.next_index += 1;
+        index
+    }
+
+    /// 查找变量的索引
+    fn lookup(&self, name: &str) -> Option<u16> {
+        self.vars.get(name).copied()
+    }
+
+    /// 获取最大局部变量数
+    fn max_locals(&self) -> u16 {
+        self.next_index
+    }
+}
+
 /// 生成语句
 fn generate_statement(
     stmt: &cavvy::ast::Stmt,
     instructions: &mut Vec<Instruction>,
     module: &mut BytecodeModule,
-    ctx: &mut StatementContext
+    ctx: &mut StatementContext,
+    tracker: &mut LocalVarTracker,
 ) -> Result<(), String> {
     use cavvy::bytecode::instructions::*;
     use cavvy::ast::*;
 
     match stmt {
         Stmt::Expr(expr) => {
-            generate_expression(expr, instructions, module)?;
+            generate_expression(expr, instructions, module, tracker)?;
             // 弹出表达式结果
             instructions.push(Instruction::new(Opcode::Pop));
         }
         Stmt::VarDecl(var_decl) => {
+            // 分配局部变量索引
+            let index = tracker.register_var(&var_decl.name);
             if let Some(ref init) = var_decl.initializer {
-                generate_expression(init, instructions, module)?;
-                // 存储到局部变量, TODO: 动态计算局部变量索引
-                instructions.push(Instruction::istore(0));
+                generate_expression(init, instructions, module, tracker)?;
+                // 存储到局部变量
+                instructions.push(Instruction::istore(index));
             }
         }
         Stmt::Return(Some(expr)) => {
-            generate_expression(expr, instructions, module)?;
+            generate_expression(expr, instructions, module, tracker)?;
             instructions.push(Instruction::new(Opcode::Ireturn));
         }
         Stmt::Return(None) => {
             instructions.push(Instruction::new(Opcode::Return));
         }
         Stmt::If(if_stmt) => {
-            generate_expression(&if_stmt.condition, instructions, module)?;
+            generate_expression(&if_stmt.condition, instructions, module, tracker)?;
 
             // 条件跳转 - 记录占位符位置
             let ifeq_pos = instructions.len();
             instructions.push(Instruction::ifeq(0)); // 占位符，稍后修复
 
             // then 分支
-            generate_statement(&if_stmt.then_branch, instructions, module, ctx)?;
+            generate_statement(&if_stmt.then_branch, instructions, module, ctx, tracker)?;
 
             if let Some(ref else_branch) = if_stmt.else_branch {
                 // 需要跳过 else 分支的跳转
@@ -378,7 +442,7 @@ fn generate_statement(
                 let else_start = instructions.len();
 
                 // else 分支
-                generate_statement(else_branch, instructions, module, ctx)?;
+                generate_statement(else_branch, instructions, module, ctx, tracker)?;
 
                 // 记录占位符用于后续修复
                 ctx.placeholders.push((ifeq_pos, JumpPlaceholder::IfEq {
@@ -399,7 +463,7 @@ fn generate_statement(
         }
         Stmt::Block(block) => {
             for stmt in &block.statements {
-                generate_statement(stmt, instructions, module, ctx)?;
+                generate_statement(stmt, instructions, module, ctx, tracker)?;
             }
         }
         _ => {
@@ -451,7 +515,8 @@ fn fix_jump_offsets(instructions: &mut [Instruction], ctx: &StatementContext) ->
 fn generate_expression(
     expr: &cavvy::ast::Expr,
     instructions: &mut Vec<Instruction>,
-    module: &mut BytecodeModule
+    module: &mut BytecodeModule,
+    tracker: &mut LocalVarTracker,
 ) -> Result<(), String> {
     use cavvy::bytecode::instructions::*;
     use cavvy::ast::*;
@@ -498,13 +563,17 @@ fn generate_expression(
             }
         }
         Expr::Identifier(ident) => {
-            // 加载局部变量 TODO: 动态计算局部变量索引
-            let _name = &ident.name;
-            instructions.push(Instruction::iload(0));
+            // 加载局部变量
+            if let Some(index) = tracker.lookup(&ident.name) {
+                instructions.push(Instruction::iload(index));
+            } else {
+                // 变量未找到，使用默认索引0（兼容旧行为）
+                instructions.push(Instruction::iload(0));
+            }
         }
         Expr::Binary(bin) => {
-            generate_expression(&bin.left, instructions, module)?;
-            generate_expression(&bin.right, instructions, module)?;
+            generate_expression(&bin.left, instructions, module, tracker)?;
+            generate_expression(&bin.right, instructions, module, tracker)?;
 
             match bin.op {
                 BinaryOp::Add => instructions.push(Instruction::new(Opcode::Iadd)),
@@ -518,7 +587,7 @@ fn generate_expression(
         Expr::Call(call) => {
             // 生成参数
             for arg in &call.args {
-                generate_expression(arg, instructions, module)?;
+                generate_expression(arg, instructions, module, tracker)?;
             }
 
             // 调用函数 TODO: 处理函数调用

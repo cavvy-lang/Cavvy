@@ -946,7 +946,7 @@ impl TypeRegistry {
         None
     }
 
-    /// 根据类名和方法名获取方法（获取第一个匹配的方法，用于无参数类型信息的情况，支持继承）
+    /// 根据类名和方法名获取方法（获取第一个匹配的方法，用于无参数类型信息的情况，支持继承和接口）
     pub fn get_method(&self, class_name: &str, method_name: &str) -> Option<&MethodInfo> {
         if let Some(class_info) = self.get_class(class_name) {
             if let Some(method) = class_info.find_method_by_name(method_name) {
@@ -957,10 +957,16 @@ impl TypeRegistry {
                 return self.get_method(parent_name, method_name);
             }
         }
+        // 检查接口方法
+        if let Some(interface_info) = self.get_interface(class_name) {
+            if let Some(method) = interface_info.methods.get(method_name) {
+                return Some(method);
+            }
+        }
         None
     }
 
-    /// 根据类名、方法名和参数类型查找方法（支持重载和继承）
+    /// 根据类名、方法名和参数类型查找方法（支持重载、继承和接口）
     pub fn find_method(&self, class_name: &str, method_name: &str, arg_types: &[Type]) -> Option<&MethodInfo> {
         // 首先在当前类中查找
         if let Some(class_info) = self.get_class(class_name) {
@@ -970,6 +976,12 @@ impl TypeRegistry {
             // 如果在当前类中没找到，递归在父类中查找
             if let Some(ref parent_name) = class_info.parent {
                 return self.find_method(parent_name, method_name, arg_types);
+            }
+        }
+        // 检查接口方法（接口方法没有重载，直接匹配方法名）
+        if let Some(interface_info) = self.get_interface(class_name) {
+            if let Some(method) = interface_info.methods.get(method_name) {
+                return Some(method);
             }
         }
         None
@@ -1040,6 +1052,24 @@ impl TypeRegistry {
 
     pub fn class_exists(&self, name: &str) -> bool {
         self.get_class(name).is_some()
+    }
+
+    /// 查找实现指定接口且拥有指定方法的类
+    /// 用于代码生成阶段：当变量类型是接口时，找到实际实现该方法的类
+    pub fn find_implementing_class_for_method(&self, interface_name: &str, method_name: &str) -> Option<&ClassInfo> {
+        // 首先确认这是一个接口
+        if !self.interfaces.contains_key(interface_name) {
+            return None;
+        }
+        // 查找实现了该接口且拥有该方法的类
+        for (_, class_info) in &self.classes {
+            if class_info.interfaces.iter().any(|i| i == interface_name) {
+                if class_info.methods.contains_key(method_name) {
+                    return Some(class_info);
+                }
+            }
+        }
+        None
     }
 
     /// 根据简单名查找枚举的命名空间限定名（如 "JsonType" → "json::JsonType"）

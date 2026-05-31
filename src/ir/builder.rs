@@ -537,8 +537,89 @@ impl IrBuilder {
         }
 
         // 处理 constructor_call (this()/super())
-        if let Some(ref _call) = ctor.constructor_call {
-            // TODO: 实现构造函数委托调用
+        if let Some(ref call) = ctor.constructor_call {
+            match call {
+                ConstructorCall::This(args) => {
+                    // this() 委托：调用同类的另一个构造函数
+                    let qualified_class = self.get_qualified_class_name(class_name);
+                    let target_ctor_name = if args.is_empty() {
+                        format!("{}.__ctor", qualified_class)
+                    } else {
+                        let param_types: Vec<String> = args.iter()
+                            .filter_map(|arg| self.infer_expr_type(arg).ok())
+                            .map(|ty| self.type_to_signature(&ty))
+                            .collect();
+                        format!("{}.__ctor_{}", qualified_class, param_types.join("_"))
+                    };
+                    
+                    // 构建参数：this + args
+                    let mut call_args = Vec::new();
+                    if let Some(this_val) = self.scope_manager.lookup("this").cloned() {
+                        let this_loaded = self.new_temp(IrType::Pointer(Box::new(IrType::I8)));
+                        self.emit(IrInstruction::Load {
+                            result: this_loaded.clone(),
+                            ptr: this_val,
+                            ty: IrType::Pointer(Box::new(IrType::I8)),
+                        })?;
+                        call_args.push(this_loaded);
+                    }
+                    
+                    for arg in args {
+                        let arg_val = self.build_expression(arg)?;
+                        call_args.push(arg_val);
+                    }
+                    
+                    self.emit(IrInstruction::Call {
+                        result: None,
+                        func_name: target_ctor_name,
+                        args: call_args,
+                        return_ty: IrType::Void,
+                    })?;
+                }
+                ConstructorCall::Super(args) => {
+                    // super() 委托：调用父类构造函数
+                    if let Some(ref registry) = self.type_registry {
+                        if let Some(class_info) = registry.get_class(class_name) {
+                            if let Some(ref parent_name) = class_info.parent {
+                                let qualified_parent = self.get_qualified_class_name(parent_name);
+                                let parent_ctor_name = if args.is_empty() {
+                                    format!("{}.__ctor", qualified_parent)
+                                } else {
+                                    let param_types: Vec<String> = args.iter()
+                                        .filter_map(|arg| self.infer_expr_type(arg).ok())
+                                        .map(|ty| self.type_to_signature(&ty))
+                                        .collect();
+                                    format!("{}.__ctor_{}", qualified_parent, param_types.join("_"))
+                                };
+                                
+                                // 构建参数：this + args
+                                let mut call_args = Vec::new();
+                                if let Some(this_val) = self.scope_manager.lookup("this").cloned() {
+                                    let this_loaded = self.new_temp(IrType::Pointer(Box::new(IrType::I8)));
+                                    self.emit(IrInstruction::Load {
+                                        result: this_loaded.clone(),
+                                        ptr: this_val,
+                                        ty: IrType::Pointer(Box::new(IrType::I8)),
+                                    })?;
+                                    call_args.push(this_loaded);
+                                }
+                                
+                                for arg in args {
+                                    let arg_val = self.build_expression(arg)?;
+                                    call_args.push(arg_val);
+                                }
+                                
+                                self.emit(IrInstruction::Call {
+                                    result: None,
+                                    func_name: parent_ctor_name,
+                                    args: call_args,
+                                    return_ty: IrType::Void,
+                                })?;
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         self.build_block(&ctor.body)?;

@@ -815,6 +815,27 @@ public class TcpServer {
     }
     
     /**
+     * 设置 accept 超时时间（毫秒），超时后 accept() 返回 null
+     * @param timeoutMs 超时毫秒数
+     */
+    public void setAcceptTimeout(int timeoutMs) {
+        if (this.handle == INVALID_SOCKET) {
+            return;
+        }
+
+        #ifdef _WIN32
+        setsockopt(this.handle, SOL_SOCKET, SO_RCVTIMEO, (c_void*)&timeoutMs, 4);
+        #else
+        c_int tv_sec = timeoutMs / 1000;
+        c_int tv_usec = (timeoutMs % 1000) * 1000;
+        c_int timeout_val[2];
+        timeout_val[0] = tv_sec;
+        timeout_val[1] = tv_usec;
+        setsockopt((c_int)this.handle, SOL_SOCKET, SO_RCVTIMEO, (c_void*)timeout_val, 8);
+        #endif
+    }
+    
+    /**
      * 接受连接
      * @return 新的TcpSocket，null表示失败
      */

@@ -1,0 +1,40 @@
+namespace bug_test;
+
+class JsonValue {
+    private double value;
+    private String strValue;
+
+    public JsonValue(double value) {
+        this.value = value;
+        this.strValue = "";
+    }
+
+    public JsonValue setStr(String s) {
+        this.strValue = s;
+        return this;
+    }
+
+    public double asNumber() {
+        return this.value;
+    }
+
+    public JsonValue get(int index) {
+        return this;
+    }
+}
+
+class TestRunner {
+    private static void assertEquals(double expected, double actual, String testName) {
+        // stub
+    }
+
+    private static void assertEquals(String expected, String actual, String testName) {
+        // stub
+    }
+
+    public static void main(String[] args) {
+        JsonValue a2 = new JsonValue(3.14159);
+        double result = a2.get(0).asNumber();
+        TestRunner.assertEquals(result, 3.14159, "chain call");
+    }
+}

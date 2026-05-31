@@ -1,0 +1,45 @@
+#include <Network.cay>
+using std::NetworkUtils;
+using std::TcpServer;
+using std::TcpSocket;
+
+public int main() {
+    println("init");
+    if (!NetworkUtils.init()) {
+        println("init failed");
+        return 1;
+    }
+    println("init done");
+
+    TcpServer server = new TcpServer();
+    if (!server.bindTo(18084)) {
+        println("bind failed");
+        NetworkUtils.cleanup();
+        return 1;
+    }
+    println("bound");
+
+    if (!server.listen(10)) {
+        println("listen failed");
+        server.close();
+        NetworkUtils.cleanup();
+        return 1;
+    }
+    println("listening");
+
+    int count = 0;
+    while (count < 500000) {
+        TcpSocket client = server.accept();
+        if (client != null) {
+            println("got client");
+            client.close();
+        }
+        count = count + 1;
+    }
+
+    println("loop done");
+    server.close();
+    NetworkUtils.cleanup();
+    println("done");
+    return 0;
+}

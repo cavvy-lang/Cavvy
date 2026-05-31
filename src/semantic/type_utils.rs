@@ -364,6 +364,15 @@ impl SemanticAnalyzer {
                 || subtype == "Function";
         }
         
+        // 检查 subtype 是否实现了 supertype 接口
+        if self.type_registry.interface_exists(supertype) {
+            if let Some(class_info) = self.type_registry.get_class(subtype) {
+                if class_info.interfaces.iter().any(|i| i == supertype) {
+                    return true;
+                }
+            }
+        }
+        
         // 迭代遍历继承链
         let mut current = subtype.to_string();
         let mut visited = std::collections::HashSet::new();
@@ -375,6 +384,12 @@ impl SemanticAnalyzer {
             }
             
             if let Some(class_info) = self.type_registry.get_class(&current) {
+                // 检查当前类是否实现了目标接口
+                if self.type_registry.interface_exists(supertype) {
+                    if class_info.interfaces.iter().any(|i| i == supertype) {
+                        return true;
+                    }
+                }
                 match &class_info.parent {
                     Some(parent) => {
                         if parent == supertype {

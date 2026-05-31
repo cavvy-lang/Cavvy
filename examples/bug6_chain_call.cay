@@ -1,0 +1,27 @@
+class BugChainValue {
+    private double value;
+
+    public BugChainValue(double value) {
+        this.value = value;
+    }
+
+    public double asNumber() {
+        return this.value;
+    }
+
+    public BugChainValue get(int index) {
+        return this;
+    }
+}
+
+class BugChainRunner {
+    public static void main(String[] args) {
+        BugChainValue obj = new BugChainValue(42.0);
+        double result = obj.get(0).asNumber();
+        if (result != 42.0) {
+            println("FAIL: chain call result wrong");
+        } else {
+            println("OK: bug6_chain_call");
+        }
+    }
+}

@@ -75,3 +75,34 @@ fn test_bug4_constructor_overload_resolution() {
     // Test 3: String→String exact match
     assert_output_contains(&output, &["t3.strValue = hello"], "bug4_t3");
 }
+
+/// Bug 5: private static overloaded methods with value type parameters (ABI mismatch)
+///
+/// Before fix: when a class has multiple assertEquals overloads (double+double+String
+/// and String+String+String), the compiler picked the wrong overload for param type
+/// resolution. Arguments were incorrectly boxed as i8* pointers (bitcast→inttoptr),
+/// causing the callee to receive garbage values in XMM registers.
+///
+/// After fix: get_method_param_types and get_method_return_type use resolve_best_method
+/// which does signature-based matching to find the correct overload.
+#[test]
+fn test_bug5_overload_abi() {
+    let output = compile_and_run_eol("examples/bug5_overload_abi.cay")
+        .expect("Bug 5: compilation and linking should succeed");
+    assert_output_contains(&output, &["OK: bug5_overload_abi"], "test_bug5_overload_abi");
+}
+
+/// Bug 6: method chain get(0).asNumber() drops this pointer + wrong return type
+///
+/// Before fix: chain call obj.get(0).asNumber() generated IR where asNumber() was
+/// called without the this pointer (result of get(0)), and the return type was
+/// incorrectly inferred as i64 instead of double. This caused SIGSEGV at runtime.
+///
+/// After fix: resolve_best_method correctly matches overloaded methods by signature,
+/// and infer_call_return_type uses find_method with proper arg types for chain calls.
+#[test]
+fn test_bug6_chain_call() {
+    let output = compile_and_run_eol("examples/bug6_chain_call.cay")
+        .expect("Bug 6: compilation and linking should succeed");
+    assert_output_contains(&output, &["OK: bug6_chain_call"], "test_bug6_chain_call");
+}

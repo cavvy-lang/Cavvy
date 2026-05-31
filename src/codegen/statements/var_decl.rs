@@ -73,7 +73,7 @@ impl IRGenerator {
             }
         }
 
-        // 尝试从类型注册表获取
+        // 尝试从类型注册表获取（支持方法重载）
         if let Some(ref registry) = self.type_registry {
             if let Expr::Identifier(name) = call.callee.as_ref() {
                 // 尝试在当前类中查找
@@ -83,17 +83,40 @@ impl IRGenerator {
                     }
                 }
             } else if let Expr::MemberAccess(member) = call.callee.as_ref() {
+                // 推断实参类型
+                let mut arg_types: Vec<Type> = Vec::new();
+                let mut arg_types_resolved = true;
+                for arg in &call.args {
+                    if let Some(t) = self.get_expression_type(arg) {
+                        arg_types.push(t);
+                    } else {
+                        arg_types_resolved = false;
+                        break;
+                    }
+                }
+                let arg_types_slice: Option<&[Type]> = if arg_types_resolved { Some(&arg_types) } else { None };
+
                 // obj.method() 形式
                 if let Expr::Identifier(obj_name) = &*member.object {
                     let obj_name_str = obj_name.as_ref();
                     // 处理 this.method() 调用
                     if obj_name_str == "this" && !self.current_class.is_empty() {
-                        if let Some(method_info) = registry.get_method(&self.current_class, &member.member) {
+                        let found = if let Some(types) = arg_types_slice {
+                            registry.find_method(&self.current_class, &member.member, types)
+                        } else {
+                            None
+                        }.or_else(|| registry.get_method(&self.current_class, &member.member));
+                        if let Some(method_info) = found {
                             return Some(method_info.return_type.clone());
                         }
                         // 简单名找不到，用限定名重试（处理 namespace 内的类）
                         if let Some(qname) = registry.find_qualified_class(&self.current_class) {
-                            if let Some(method_info) = registry.get_method(&qname, &member.member) {
+                            let found_q = if let Some(types) = arg_types_slice {
+                                registry.find_method(&qname, &member.member, types)
+                            } else {
+                                None
+                            }.or_else(|| registry.get_method(&qname, &member.member));
+                            if let Some(method_info) = found_q {
                                 return Some(method_info.return_type.clone());
                             }
                         }
@@ -101,13 +124,23 @@ impl IRGenerator {
                     // 首先检查是否是已知的类名（静态方法调用）
                     if registry.class_exists(obj_name_str) {
                         // 类名.方法名() 形式，如 Vector2.right()
-                        if let Some(method_info) = registry.get_method(obj_name_str, &member.member) {
+                        let found = if let Some(types) = arg_types_slice {
+                            registry.find_method(obj_name_str, &member.member, types)
+                        } else {
+                            None
+                        }.or_else(|| registry.get_method(obj_name_str, &member.member));
+                        if let Some(method_info) = found {
                             return Some(method_info.return_type.clone());
                         }
                     }
                     // 否则尝试从变量映射获取
                     if let Some(class_name) = self.var_class_map.get(obj_name_str) {
-                        if let Some(method_info) = registry.get_method(class_name, &member.member) {
+                        let found = if let Some(types) = arg_types_slice {
+                            registry.find_method(class_name, &member.member, types)
+                        } else {
+                            None
+                        }.or_else(|| registry.get_method(class_name, &member.member));
+                        if let Some(method_info) = found {
                             return Some(method_info.return_type.clone());
                         }
                     }
@@ -135,7 +168,12 @@ impl IRGenerator {
                     // 处理链式调用：obj 不是 Identifier，递归推断其类型
                     if let Some(obj_type) = self.get_expression_type(&member.object) {
                         if let crate::types::Type::Object(class_name) = obj_type {
-                            if let Some(method_info) = registry.get_method(&class_name, &member.member) {
+                            let found = if let Some(types) = arg_types_slice {
+                                registry.find_method(&class_name, &member.member, types)
+                            } else {
+                                None
+                            }.or_else(|| registry.get_method(&class_name, &member.member));
+                            if let Some(method_info) = found {
                                 return Some(method_info.return_type.clone());
                             }
                         } else if let crate::types::Type::String = obj_type {

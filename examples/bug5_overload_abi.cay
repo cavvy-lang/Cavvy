@@ -1,0 +1,30 @@
+class BugOverloadTarget {
+    private double value;
+
+    public BugOverloadTarget(double value) {
+        this.value = value;
+    }
+
+    public double getValue() {
+        return this.value;
+    }
+}
+
+class TestOverloadRunner {
+    private static void assertEquals(double expected, double actual) {
+        if (expected != actual) {
+            println("FAIL: double assertEquals");
+        }
+    }
+
+    private static void assertEquals(String expected, String actual) {
+        if (expected != actual) {
+            println("FAIL: string assertEquals");
+        }
+    }
+
+    public static void main(String[] args) {
+        TestOverloadRunner.assertEquals(3.14159, 3.14159);
+        println("OK: bug5_overload_abi");
+    }
+}

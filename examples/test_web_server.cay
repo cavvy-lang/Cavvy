@@ -126,6 +126,8 @@ public class CavvyWebServerTest {
             return false;
         }
         
+        this.server.setAcceptTimeout(100);
+        
         this.running = true;
         println("[信息] 服务器开始监听...");
         println("[信息] 请在浏览器中访问: http://127.0.0.1:" + this.port);

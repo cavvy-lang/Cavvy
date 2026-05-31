@@ -1,0 +1,15 @@
+namespace bug_test;
+
+class TestOverloadABI {
+    private static void assertEquals(double expected, double actual, String testName) {
+        // stub
+    }
+
+    private static void assertEquals(String expected, String actual, String testName) {
+        // stub
+    }
+
+    public static void main(String[] args) {
+        TestOverloadABI.assertEquals(42.0, 42.0, "test");
+    }
+}
