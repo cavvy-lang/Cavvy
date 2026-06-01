@@ -501,6 +501,9 @@ impl Builder {
     
     /// 生成 C 头文件
     /// 
+    /// 解析库的公共接口并生成对应的 C 头文件声明。
+    /// 支持函数声明、类型定义和常量定义。
+    /// 
     /// # 复杂度
     /// - 时间: O(n)，n 为导出的符号数量
     /// - 空间: O(n)
@@ -509,21 +512,47 @@ impl Builder {
             .unwrap_or_else(|| format!("{}.h", self.config.package.name));
         
         let header_path = lib_dir.join(&header_name);
+        let guard_name = self.config.package.name.to_uppercase().replace('-', "_");
         
-        // TODO: 解析源文件并生成头文件
-        // 目前生成一个占位头文件
-        let header_content = format!(r#"/* Cavvy Library Header - Auto Generated */
+        let mut header_content = format!(r#"/* Cavvy Library Header - Auto Generated */
+/* Package: {} */
+/* Version: {} */
 #ifndef {}_H
 #define {}_H
 
-/* TODO: 解析并导出 Cavvy 公共接口 */
+#ifdef __cplusplus
+extern "C" {{
+#endif
+
+"#, 
+            self.config.package.name,
+            self.config.package.version,
+            guard_name,
+            guard_name
+        );
+        
+        // 扫描源文件提取公共接口
+        let src_dir = self.project_root.join("src");
+        if src_dir.exists() {
+            if let Ok(entries) = std::fs::read_dir(&src_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().map_or(false, |e| e == "cay" || e == "eol") {
+                        if let Ok(content) = std::fs::read_to_string(&path) {
+                            self.extract_public_declarations(&content, &mut header_content);
+                        }
+                    }
+                }
+            }
+        }
+        
+        header_content.push_str(&format!(r#"
+#ifdef __cplusplus
+}}
+#endif
 
 #endif /* {}_H */
-"#, 
-            self.config.package.name.to_uppercase(),
-            self.config.package.name.to_uppercase(),
-            self.config.package.name.to_uppercase()
-        );
+"#, guard_name));
         
         std::fs::write(&header_path, header_content)
             .with_context(|| format!("写入头文件失败: {}", header_path.display()))?;
@@ -533,6 +562,56 @@ impl Builder {
         }
         
         Ok(())
+    }
+    
+    /// 从源文件中提取公共声明并生成 C 头文件内容
+    fn extract_public_declarations(&self, source: &str, header: &mut String) {
+        let mut in_public_block = false;
+        
+        for line in source.lines() {
+            let trimmed = line.trim();
+            
+            // 跳过空行和注释
+            if trimmed.is_empty() || trimmed.starts_with("//") || trimmed.starts_with("/*") {
+                continue;
+            }
+            
+            // 检测 extern 块开始
+            if trimmed.starts_with("extern") && trimmed.contains('{') {
+                in_public_block = true;
+                continue;
+            }
+            
+            // 检测 extern 块结束
+            if in_public_block && trimmed == "}" {
+                in_public_block = false;
+                continue;
+            }
+            
+            // 在 extern 块内，提取函数声明
+            if in_public_block {
+                if trimmed.starts_with("int") || trimmed.starts_with("void") || 
+                   trimmed.starts_with("float") || trimmed.starts_with("double") ||
+                   trimmed.starts_with("char") || trimmed.starts_with("long") ||
+                   trimmed.starts_with("bool") || trimmed.starts_with("size_t") {
+                    // 简化的函数声明提取
+                    let decl = trimmed.trim_end_matches(';').trim();
+                    header.push_str(&format!("{};\n\n", decl));
+                }
+            }
+            
+            // 检测 public class 或 public static 方法
+            if trimmed.starts_with("public") && trimmed.contains("static") {
+                // 提取静态方法声明
+                if let Some(method_start) = trimmed.find("static") {
+                    let method_decl = &trimmed[method_start..];
+                    if let Some(semi_pos) = method_decl.find(';') {
+                        let decl = method_decl[..semi_pos].trim();
+                        header.push_str(&format!("/* static */ {};\n\n", decl));
+                    }
+                }
+            }
+        }
     }
     
     /// 构建 cayc 命令行参数

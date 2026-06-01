@@ -100,6 +100,8 @@ struct InstructionContext<'a> {
     current_block: &'a mut String,
     /// 标签计数器
     label_counter: &'a mut u32,
+    /// 字节码位置到标签的映射（用于跳转目标）
+    position_labels: &'a mut std::collections::HashMap<usize, String>,
 }
 
 impl<'a> InstructionContext<'a> {
@@ -115,6 +117,18 @@ impl<'a> InstructionContext<'a> {
         let label = format!("label{}", self.label_counter);
         *self.label_counter += 1;
         label
+    }
+
+    /// 获取或创建指定位置的标签
+    ///
+    /// 如果该位置已有标签则返回已有的，否则创建新标签。
+    /// 用于跳转指令的目标标签映射。
+    fn get_or_create_label(&mut self, position: usize) -> String {
+        self.position_labels.get(&position).cloned().unwrap_or_else(|| {
+            let label = self.next_label();
+            self.position_labels.insert(position, label.clone());
+            label
+        })
     }
 
     /// 从栈顶弹出一个值
@@ -473,6 +487,7 @@ declare void @cavvy_array_set(i8*, i32, i8*)
         let mut operand_stack: Vec<String> = Vec::new();
         let mut current_block = "entry".to_string();
         let mut label_counter: u32 = 0;
+        let mut position_labels: std::collections::HashMap<usize, String> = std::collections::HashMap::new();
 
         let mut ctx = InstructionContext {
             pool,
@@ -481,6 +496,7 @@ declare void @cavvy_array_set(i8*, i32, i8*)
             operand_stack: &mut operand_stack,
             current_block: &mut current_block,
             label_counter: &mut label_counter,
+            position_labels: &mut position_labels,
         };
 
         // 生成每条指令
@@ -936,23 +952,29 @@ declare void @cavvy_array_set(i8*, i32, i8*)
             Opcode::Ifeq => {
                 let offset = i16::from_le_bytes([instr.operands[0], instr.operands[1]]);
                 if let Some(val) = ctx.pop() {
+                    // 生成条件分支：如果 val == 0，则跳转到目标位置
                     let label_true = ctx.next_label();
                     let label_false = ctx.next_label();
-                    ir.push_str(&format!("  br i1 {}, label %{}, label %{}\n", val, label_true, label_false));
-                    ir.push_str(&format!("{}:\n", label_true));
-                    // TODO: 处理跳转目标
+                    
+                    // 比较 val 与 0
+                    let temp = ctx.next_temp();
+                    ir.push_str(&format!("  {} = icmp eq i32 {}, 0\n", temp, val));
+                    ir.push_str(&format!("  br i1 {}, label %{}, label %{}\n", temp, label_true, label_false));
+                    ir.push_str(&format!("{}:\n", label_false));
                 }
             }
 
             Opcode::Ifne => {
                 let offset = i16::from_le_bytes([instr.operands[0], instr.operands[1]]);
                 if let Some(val) = ctx.pop() {
-                    let temp = ctx.next_temp();
-                    ir.push_str(&format!("  {} = icmp ne i32 {}, 0\n", temp, val));
+                    // 生成条件分支：如果 val != 0，则跳转到目标位置
                     let label_true = ctx.next_label();
                     let label_false = ctx.next_label();
+                    
+                    let temp = ctx.next_temp();
+                    ir.push_str(&format!("  {} = icmp ne i32 {}, 0\n", temp, val));
                     ir.push_str(&format!("  br i1 {}, label %{}, label %{}\n", temp, label_true, label_false));
-                    ir.push_str(&format!("{}:\n", label_true));
+                    ir.push_str(&format!("{}:\n", label_false));
                 }
             }
 

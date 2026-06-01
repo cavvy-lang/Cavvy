@@ -6,6 +6,9 @@ use crate::codegen::context::IRGenerator;
 use crate::ast::*;
 use crate::error::{cayResult, codegen_error_at};
 
+/// readLine 缓冲区大小（字节）
+const READ_LINE_BUFFER_SIZE: i32 = 1024;
+
 /// 格式化字符串占位符类型
 #[derive(Debug, Clone)]
 enum Placeholder {
@@ -845,14 +848,13 @@ impl IRGenerator {
         }
 
         // 分配缓冲区
-        let buffer_size = 1024;
         let buffer_temp = self.new_temp();
-        self.emit_line(&format!("  {} = alloca [{} x i8], align 1", buffer_temp, buffer_size));
+        self.emit_line(&format!("  {} = alloca [{} x i8], align 1", buffer_temp, READ_LINE_BUFFER_SIZE));
 
         // 获取缓冲区指针
         let buffer_ptr = self.new_temp();
         self.emit_line(&format!("  {} = getelementptr [{} x i8], [{} x i8]* {}, i64 0, i64 0",
-            buffer_ptr, buffer_size, buffer_size, buffer_temp));
+            buffer_ptr, READ_LINE_BUFFER_SIZE, READ_LINE_BUFFER_SIZE, buffer_temp));
 
         // 获取 stdin
         let stdin_ptr = self.new_temp();
@@ -866,7 +868,7 @@ impl IRGenerator {
 
         // 调用 fgets
         self.emit_line(&format!("  call i8* @fgets(i8* {}, i32 {}, i8* {})",
-            buffer_ptr, buffer_size, stdin_ptr));
+            buffer_ptr, READ_LINE_BUFFER_SIZE, stdin_ptr));
 
         // 返回缓冲区指针
         Ok(format!("i8* {}", buffer_ptr))

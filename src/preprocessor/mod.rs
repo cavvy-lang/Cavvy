@@ -494,22 +494,41 @@ impl Preprocessor {
         }
     }
 
-    /// 评估条件表达式 （TODO: 实现完整的条件表达式评估）
+    /// 评估条件表达式 - 支持完整的 C 预处理器条件表达式语法
+    ///
+    /// 支持的语法:
+    /// - `defined(MACRO)` 或 `defined MACRO` - 检查宏是否已定义
+    /// - `!expr` - 逻辑非
+    /// - `expr && expr` - 逻辑与
+    /// - `expr || expr` - 逻辑或
+    /// - `expr == expr`, `expr != expr` - 相等比较
+    /// - `expr < expr`, `expr > expr`, `expr <= expr`, `expr >= expr` - 数值比较
+    /// - `+`, `-`, `*`, `/`, `%` - 算术运算
+    /// - `(expr)` - 括号分组
+    /// - 数字常量 (十进制, 0x十六进制, 0八进制)
+    /// - 宏名 - 如果已定义则为其值，否则为0
     fn evaluate_condition(&self, expr: &str) -> bool {
         let trimmed = expr.trim();
+        if trimmed.is_empty() {
+            return false;
+        }
         
-        // 检查是否是已定义的宏
+        // 简单快速路径：检查是否是已定义的宏
         if self.defines.contains_key(trimmed) {
             return true;
         }
         
-        // 尝试解析为数字
-        if let Ok(num) = trimmed.parse::<i64>() {
+        // 简单快速路径：尝试解析为数字
+        if let Ok(num) = parse_preprocessor_number(trimmed) {
             return num != 0;
         }
         
-        // 默认返回 false
-        false
+        // 使用递归下降解析器评估完整表达式
+        let mut parser = ConditionParser::new(trimmed, &self.defines);
+        match parser.parse_expression() {
+            Ok(result) => result != 0,
+            Err(_) => false, // 解析失败默认为 false
+        }
     }
 
     /// 解析 #include 路径
@@ -916,6 +935,366 @@ impl Preprocessor {
 pub fn preprocess(source: &str, file_path: &str, base_dir: &str) -> cayResult<String> {
     let mut pp = Preprocessor::new(base_dir);
     pp.process(source, file_path)
+}
+
+/// 解析预处理器数字常量（支持十进制、十六进制、八进制、二进制）
+fn parse_preprocessor_number(s: &str) -> Result<i64, ()> {
+    let trimmed = s.trim();
+    if trimmed.is_empty() {
+        return Err(());
+    }
+    
+    // 处理负号
+    let (negative, num_str) = if trimmed.starts_with('-') {
+        (true, &trimmed[1..])
+    } else if trimmed.starts_with('+') {
+        (false, &trimmed[1..])
+    } else {
+        (false, trimmed)
+    };
+    
+    let value = if num_str.starts_with("0x") || num_str.starts_with("0X") {
+        // 十六进制
+        i64::from_str_radix(&num_str[2..], 16).map_err(|_| ())?
+    } else if num_str.starts_with("0b") || num_str.starts_with("0B") {
+        // 二进制
+        i64::from_str_radix(&num_str[2..], 2).map_err(|_| ())?
+    } else if num_str.starts_with('0') && num_str.len() > 1 {
+        // 八进制
+        i64::from_str_radix(&num_str[1..], 8).map_err(|_| ())?
+    } else {
+        // 十进制
+        num_str.parse::<i64>().map_err(|_| ())?
+    };
+    
+    Ok(if negative { -value } else { value })
+}
+
+/// 预处理器条件表达式解析器
+///
+/// 支持完整的 C 预处理器条件表达式语法
+struct ConditionParser<'a> {
+    input: &'a str,
+    pos: usize,
+    defines: &'a std::collections::HashMap<String, String>,
+}
+
+impl<'a> ConditionParser<'a> {
+    fn new(input: &'a str, defines: &'a std::collections::HashMap<String, String>) -> Self {
+        Self { input, pos: 0, defines }
+    }
+    
+    /// 跳过空白字符
+    fn skip_whitespace(&mut self) {
+        while self.pos < self.input.len() && self.input.as_bytes()[self.pos].is_ascii_whitespace() {
+            self.pos += 1;
+        }
+    }
+    
+    /// 查看当前字符
+    fn peek(&self) -> Option<char> {
+        self.input[self.pos..].chars().next()
+    }
+    
+    /// 消费指定字符
+    fn consume_char(&mut self, expected: char) -> bool {
+        self.skip_whitespace();
+        if self.peek() == Some(expected) {
+            self.pos += expected.len_utf8();
+            true
+        } else {
+            false
+        }
+    }
+    
+    /// 消费关键字（后面不能跟字母数字）
+    fn consume_keyword(&mut self, keyword: &str) -> bool {
+        self.skip_whitespace();
+        let remaining = &self.input[self.pos..];
+        if remaining.starts_with(keyword) {
+            let after = self.pos + keyword.len();
+            if after >= self.input.len() || !self.input.as_bytes()[after].is_ascii_alphanumeric() && self.input.as_bytes()[after] != b'_' {
+                self.pos = after;
+                return true;
+            }
+        }
+        false
+    }
+    
+    /// 读取标识符
+    fn read_identifier(&mut self) -> Option<String> {
+        self.skip_whitespace();
+        let start = self.pos;
+        while self.pos < self.input.len() {
+            let ch = self.input.as_bytes()[self.pos];
+            if ch.is_ascii_alphanumeric() || ch == b'_' {
+                self.pos += 1;
+            } else {
+                break;
+            }
+        }
+        if start == self.pos {
+            None
+        } else {
+            Some(self.input[start..self.pos].to_string())
+        }
+    }
+    
+    /// 读取数字
+    fn read_number(&mut self) -> Option<i64> {
+        self.skip_whitespace();
+        let start = self.pos;
+        
+        // 处理符号
+        if self.pos < self.input.len() && (self.input.as_bytes()[self.pos] == b'+' || self.input.as_bytes()[self.pos] == b'-') {
+            self.pos += 1;
+        }
+        
+        // 处理前缀
+        if self.pos + 1 < self.input.len() {
+            let prefix = &self.input[self.pos..self.pos + 2];
+            if prefix == "0x" || prefix == "0X" || prefix == "0b" || prefix == "0B" {
+                self.pos += 2;
+            }
+        }
+        
+        // 读取数字部分
+        while self.pos < self.input.len() && self.input.as_bytes()[self.pos].is_ascii_hexdigit() {
+            self.pos += 1;
+        }
+        
+        if start == self.pos {
+            None
+        } else {
+            parse_preprocessor_number(&self.input[start..self.pos]).ok()
+        }
+    }
+    
+    /// 读取操作符
+    fn read_operator(&mut self) -> Option<&str> {
+        self.skip_whitespace();
+        let remaining = &self.input[self.pos..];
+        
+        // 两字符操作符优先
+        for op in &["==", "!=", "<=", ">=", "&&", "||"] {
+            if remaining.starts_with(op) {
+                self.pos += op.len();
+                return Some(op);
+            }
+        }
+        
+        // 单字符操作符
+        if let Some(ch) = remaining.chars().next() {
+            match ch {
+                '!' | '<' | '>' | '+' | '-' | '*' | '/' | '%' | '(' | ')' => {
+                    self.pos += ch.len_utf8();
+                    return Some(&self.input[self.pos - ch.len_utf8()..self.pos]);
+                }
+                _ => {}
+            }
+        }
+        
+        None
+    }
+    
+    /// 解析主表达式（处理 ||）
+    fn parse_expression(&mut self) -> Result<i64, ()> {
+        let mut result = self.parse_and_expr()?;
+        
+        loop {
+            self.skip_whitespace();
+            if self.consume_keyword("||") {
+                let right = self.parse_and_expr()?;
+                result = if result != 0 || right != 0 { 1 } else { 0 };
+            } else {
+                break;
+            }
+        }
+        
+        Ok(result)
+    }
+    
+    /// 解析 AND 表达式（处理 &&）
+    fn parse_and_expr(&mut self) -> Result<i64, ()> {
+        let mut result = self.parse_comparison()?;
+        
+        loop {
+            self.skip_whitespace();
+            if self.consume_keyword("&&") {
+                let right = self.parse_comparison()?;
+                result = if result != 0 && right != 0 { 1 } else { 0 };
+            } else {
+                break;
+            }
+        }
+        
+        Ok(result)
+    }
+    
+    /// 解析比较表达式
+    fn parse_comparison(&mut self) -> Result<i64, ()> {
+        let mut result = self.parse_additive()?;
+        
+        self.skip_whitespace();
+        let remaining = &self.input[self.pos..];
+        
+        for op in &["==", "!=", "<=", ">=", "<", ">"] {
+            if remaining.starts_with(op) {
+                self.pos += op.len();
+                let right = self.parse_additive()?;
+                let cmp = match *op {
+                    "==" => result == right,
+                    "!=" => result != right,
+                    "<=" => result <= right,
+                    ">=" => result >= right,
+                    "<" => result < right,
+                    ">" => result > right,
+                    _ => false,
+                };
+                return Ok(if cmp { 1 } else { 0 });
+            }
+        }
+        
+        Ok(result)
+    }
+    
+    /// 解析加减表达式
+    fn parse_additive(&mut self) -> Result<i64, ()> {
+        let mut result = self.parse_multiplicative()?;
+        
+        loop {
+            self.skip_whitespace();
+            let remaining = &self.input[self.pos..];
+            
+            if remaining.starts_with('+') {
+                self.pos += 1;
+                let right = self.parse_multiplicative()?;
+                result = result.wrapping_add(right);
+            } else if remaining.starts_with('-') {
+                self.pos += 1;
+                let right = self.parse_multiplicative()?;
+                result = result.wrapping_sub(right);
+            } else {
+                break;
+            }
+        }
+        
+        Ok(result)
+    }
+    
+    /// 解析乘除表达式
+    fn parse_multiplicative(&mut self) -> Result<i64, ()> {
+        let mut result = self.parse_unary()?;
+        
+        loop {
+            self.skip_whitespace();
+            let remaining = &self.input[self.pos..];
+            
+            if remaining.starts_with('*') {
+                self.pos += 1;
+                let right = self.parse_unary()?;
+                result = result.wrapping_mul(right);
+            } else if remaining.starts_with('/') {
+                self.pos += 1;
+                let right = self.parse_unary()?;
+                if right == 0 {
+                    return Ok(0); // 除以零返回 0
+                }
+                result = result.wrapping_div(right);
+            } else if remaining.starts_with('%') {
+                self.pos += 1;
+                let right = self.parse_unary()?;
+                if right == 0 {
+                    return Ok(0);
+                }
+                result = result.wrapping_rem(right);
+            } else {
+                break;
+            }
+        }
+        
+        Ok(result)
+    }
+    
+    /// 解析一元表达式
+    fn parse_unary(&mut self) -> Result<i64, ()> {
+        self.skip_whitespace();
+        
+        // 逻辑非
+        if self.consume_keyword("!") {
+            let val = self.parse_primary()?;
+            return Ok(if val == 0 { 1 } else { 0 });
+        }
+        
+        // 按位取反
+        if self.consume_keyword("~") {
+            let val = self.parse_primary()?;
+            return Ok(!val);
+        }
+        
+        // 正号
+        if self.consume_keyword("+") {
+            return self.parse_primary();
+        }
+        
+        // 负号
+        if self.consume_keyword("-") {
+            let val = self.parse_primary()?;
+            return Ok(-val);
+        }
+        
+        self.parse_primary()
+    }
+    
+    /// 解析基本表达式（数字、标识符、括号、defined）
+    fn parse_primary(&mut self) -> Result<i64, ()> {
+        self.skip_whitespace();
+        
+        // 括号分组
+        if self.consume_char('(') {
+            let result = self.parse_expression()?;
+            self.consume_char(')');
+            return Ok(result);
+        }
+        
+        // defined(MACRO) 或 defined MACRO
+        if self.consume_keyword("defined") {
+            self.skip_whitespace();
+            if self.consume_char('(') {
+                // defined(MACRO) 形式
+                if let Some(name) = self.read_identifier() {
+                    self.consume_char(')');
+                    return Ok(if self.defines.contains_key(&name) { 1 } else { 0 });
+                }
+            } else if let Some(name) = self.read_identifier() {
+                // defined MACRO 形式
+                return Ok(if self.defines.contains_key(&name) { 1 } else { 0 });
+            }
+            return Ok(0);
+        }
+        
+        // 数字常量
+        if let Some(num) = self.read_number() {
+            return Ok(num);
+        }
+        
+        // 标识符（宏名）- 查找其值
+        if let Some(name) = self.read_identifier() {
+            if let Some(value_str) = self.defines.get(&name) {
+                // 宏有值，尝试解析
+                if let Ok(num) = parse_preprocessor_number(value_str) {
+                    return Ok(num);
+                }
+                // 如果值不是数字，检查是否为空（仅定义无值）
+                if value_str.trim().is_empty() {
+                    return Ok(1); // 已定义但无值，视为 1
+                }
+            }
+            return Ok(0); // 未定义的宏视为 0
+        }
+        
+        Err(())
+    }
 }
 
 #[cfg(test)]

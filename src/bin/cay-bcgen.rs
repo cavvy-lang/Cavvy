@@ -215,6 +215,24 @@ fn generate_bytecode_from_ast(
         for member in &class.members {
             match member {
                 ClassMember::Field(field) => {
+                    // 处理字段初始化值（仅支持字面量常量）
+                    let initial_value = field.initializer.as_ref().and_then(|init| {
+                        if let Expr::Literal(lit) = init {
+                            match &lit.value {
+                                LiteralValue::Int32(v) => Some(module.constant_pool.add_integer(*v)),
+                                LiteralValue::Int64(v) => Some(module.constant_pool.add_long(*v)),
+                                LiteralValue::Float32(v) => Some(module.constant_pool.add_float(*v)),
+                                LiteralValue::Float64(v) => Some(module.constant_pool.add_double(*v)),
+                                LiteralValue::String(s) => Some(module.constant_pool.add_string(s)),
+                                LiteralValue::Bool(true) => Some(module.constant_pool.add_integer(1)),
+                                LiteralValue::Bool(false) => Some(module.constant_pool.add_integer(0)),
+                                LiteralValue::Char(c) => Some(module.constant_pool.add_integer(*c as i32)),
+                                LiteralValue::Null => None,
+                            }
+                        } else {
+                            None // 非字面量初始化器在字节码中暂不支持
+                        }
+                    });
                     let field_def = FieldDefinition {
                         name_index: module.constant_pool.add_utf8(&field.name),
                         type_index: get_type_index(&field.field_type, &mut module.constant_pool),
@@ -225,7 +243,7 @@ fn generate_bytecode_from_ast(
                             is_static: field.modifiers.contains(&Modifier::Static),
                             is_final: field.modifiers.contains(&Modifier::Final),
                         },
-                        initial_value: None, // TODO: 处理字段初始化值
+                        initial_value,
                     };
                     fields.push(field_def);
                 }
@@ -466,8 +484,96 @@ fn generate_statement(
                 generate_statement(stmt, instructions, module, ctx, tracker)?;
             }
         }
+        Stmt::While(while_stmt) => {
+            // while 循环: while (cond) { body }
+            let loop_start = instructions.len();
+            // 生成条件表达式
+            generate_expression(&while_stmt.condition, instructions, module, tracker)?;
+            // 条件为假时跳出循环
+            let ifeq_pos = instructions.len();
+            instructions.push(Instruction::ifeq(0)); // 占位符
+            // 生成循环体
+            generate_statement(&while_stmt.body, instructions, module, ctx, tracker)?;
+            // 无条件跳回循环开始
+            let goto_pos = instructions.len();
+            let loop_offset = (loop_start as i16) - (goto_pos as i16) - 1;
+            instructions.push(Instruction::goto(loop_offset));
+            // 修复条件跳转偏移量
+            let after_loop = instructions.len();
+            let cond_offset = (after_loop as i16) - (ifeq_pos as i16) - 1;
+            instructions[ifeq_pos] = Instruction::ifeq(cond_offset);
+        }
+        Stmt::DoWhile(do_while_stmt) => {
+            // do-while 循环: do { body } while (cond);
+            let loop_start = instructions.len();
+            // 生成循环体
+            generate_statement(&do_while_stmt.body, instructions, module, ctx, tracker)?;
+            // 生成条件表达式
+            generate_expression(&do_while_stmt.condition, instructions, module, tracker)?;
+            // 条件为真时跳回循环开始
+            let ifne_pos = instructions.len();
+            // 使用 Ifne 操作码：不等于0时跳转
+            let loop_offset = (loop_start as i16) - (ifne_pos as i16) - 1;
+            instructions.push(Instruction::with_operands(Opcode::Ifne, loop_offset.to_le_bytes().to_vec()));
+        }
+        Stmt::Break(_label, _loc) => {
+            // break 语句 - 简化实现：生成 return 指令
+            instructions.push(Instruction::new(Opcode::Return));
+        }
+        Stmt::Continue(_label, _loc) => {
+            // continue 语句 - 简化实现
+        }
+        Stmt::Switch(switch_stmt) => {
+            // switch 语句 - 简化实现：生成条件分支链
+            generate_expression(&switch_stmt.expr, instructions, module, tracker)?;
+            // 简化处理：将 switch 转换为 if-else 链
+            for case in &switch_stmt.cases {
+                // 复制 switch 值
+                instructions.push(Instruction::new(Opcode::Dup));
+                // 生成 case 值（仅处理整数常量）
+                match &case.value {
+                    CaseValue::Integer(v) => {
+                        if *v >= -128 && *v <= 127 {
+                            instructions.push(Instruction::iconst(*v as i8));
+                        } else {
+                            let index = module.constant_pool.add_integer(*v as i32);
+                            instructions.push(Instruction::ldc(index));
+                        }
+                    }
+                    CaseValue::EnumVariant { .. } => {
+                        // enum variant 暂不支持在字节码中处理
+                        continue;
+                    }
+                }
+                // 比较 - 使用 if_icmpne 判断不相等则跳过
+                let ifne_pos = instructions.len();
+                instructions.push(Instruction::with_operands(Opcode::IfIcmpne, 0i16.to_le_bytes().to_vec()));
+                // 生成 case 体
+                for stmt in &case.body {
+                    generate_statement(stmt, instructions, module, ctx, tracker)?;
+                }
+                // 修复跳转
+                let after_case = instructions.len();
+                let offset = (after_case as i16) - (ifne_pos as i16) - 1;
+                instructions[ifne_pos] = Instruction::with_operands(Opcode::IfIcmpne, offset.to_le_bytes().to_vec());
+            }
+            // 处理 default 分支
+            if let Some(ref default_body) = switch_stmt.default {
+                for stmt in default_body {
+                    generate_statement(stmt, instructions, module, ctx, tracker)?;
+                }
+            }
+            // 弹出 switch 值
+            instructions.push(Instruction::new(Opcode::Pop));
+        }
+        Stmt::Scope(scope_stmt) => {
+            // scope 语句 - 生成块内容
+            for stmt in &scope_stmt.body.statements {
+                generate_statement(stmt, instructions, module, ctx, tracker)?;
+            }
+        }
         _ => {
-            // 其他语句类型 TODO: 处理其他语句类型
+            // 其他语句类型（InlineIr 等）暂不支持
         }
     }
 
@@ -590,14 +696,97 @@ fn generate_expression(
                 generate_expression(arg, instructions, module, tracker)?;
             }
 
-            // 调用函数 TODO: 处理函数调用
-            if let Expr::Identifier(ident) = call.callee.as_ref() {
-                let index = module.constant_pool.add_utf8(&ident.name);
-                instructions.push(Instruction::invokestatic(index));
+            // 处理函数调用
+            match call.callee.as_ref() {
+                Expr::Identifier(ident) => {
+                    let index = module.constant_pool.add_utf8(&ident.name);
+                    instructions.push(Instruction::invokestatic(index));
+                }
+                Expr::MemberAccess(member) => {
+                    // 处理 object.method() 调用
+                    // 生成 object 引用
+                    generate_expression(&member.object, instructions, module, tracker)?;
+                    let index = module.constant_pool.add_utf8(&member.member);
+                    instructions.push(Instruction::with_operands(Opcode::Invokevirtual, index.to_le_bytes().to_vec()));
+                }
+                _ => {
+                    // 其他调用形式暂不支持
+                }
             }
         }
+        Expr::Unary(unary) => {
+            generate_expression(&unary.operand, instructions, module, tracker)?;
+            match unary.op {
+                UnaryOp::Neg => {
+                    instructions.push(Instruction::new(Opcode::Ineg));
+                }
+                UnaryOp::Not => {
+                    instructions.push(Instruction::new(Opcode::Iconst1));
+                    instructions.push(Instruction::new(Opcode::Ixor));
+                }
+                UnaryOp::PreInc => {
+                    instructions.push(Instruction::new(Opcode::Iconst1));
+                    instructions.push(Instruction::new(Opcode::Iadd));
+                }
+                UnaryOp::PreDec => {
+                    instructions.push(Instruction::new(Opcode::Iconst1));
+                    instructions.push(Instruction::new(Opcode::Isub));
+                }
+                _ => {}
+            }
+        }
+        Expr::Assignment(assignment) => {
+            // 生成右值
+            generate_expression(&assignment.value, instructions, module, tracker)?;
+            // 处理赋值目标
+            if let Expr::Identifier(ident) = assignment.target.as_ref() {
+                if let Some(index) = tracker.lookup(&ident.name) {
+                    instructions.push(Instruction::istore(index));
+                }
+            }
+        }
+        Expr::MemberAccess(member) => {
+            // 成员访问 - 简化实现：加载对象后加载字段
+            generate_expression(&member.object, instructions, module, tracker)?;
+            let index = module.constant_pool.add_utf8(&member.member);
+            instructions.push(Instruction::with_operands(Opcode::Getfield, index.to_le_bytes().to_vec()));
+        }
+        Expr::ArrayAccess(array_access) => {
+            // 数组访问 - 生成数组和索引
+            generate_expression(&array_access.array, instructions, module, tracker)?;
+            generate_expression(&array_access.index, instructions, module, tracker)?;
+            instructions.push(Instruction::new(Opcode::Iaload));
+        }
+        Expr::New(new_expr) => {
+            // new 表达式 - 简化实现
+            let type_index = module.constant_pool.add_utf8(&new_expr.class_name);
+            instructions.push(Instruction::with_operands(Opcode::New, type_index.to_le_bytes().to_vec()));
+            instructions.push(Instruction::new(Opcode::Dup));
+            // 生成构造函数参数
+            for arg in &new_expr.args {
+                generate_expression(arg, instructions, module, tracker)?;
+            }
+            instructions.push(Instruction::with_operands(Opcode::Invokespecial, type_index.to_le_bytes().to_vec()));
+        }
+        Expr::Ternary(ternary) => {
+            // 三元表达式: condition ? true_branch : false_branch
+            generate_expression(&ternary.condition, instructions, module, tracker)?;
+            let ifeq_pos = instructions.len();
+            instructions.push(Instruction::ifeq(0)); // 占位符
+            generate_expression(&ternary.true_branch, instructions, module, tracker)?;
+            let goto_pos = instructions.len();
+            instructions.push(Instruction::goto(0)); // 占位符
+            let false_start = instructions.len();
+            generate_expression(&ternary.false_branch, instructions, module, tracker)?;
+            let after_false = instructions.len();
+            // 修复跳转
+            let true_offset = (false_start as i16) - (ifeq_pos as i16) - 1;
+            instructions[ifeq_pos] = Instruction::ifeq(true_offset);
+            let false_offset = (after_false as i16) - (goto_pos as i16) - 1;
+            instructions[goto_pos] = Instruction::goto(false_offset);
+        }
         _ => {
-            // 其他表达式类型 TODO: 处理其他表达式类型
+            // 其他表达式类型暂不支持
         }
     }
 

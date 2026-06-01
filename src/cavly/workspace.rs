@@ -135,14 +135,115 @@ impl WorkspaceResolver {
             return self.resolve_local_lib(&full_path, detailed.optional);
         }
         
-        // TODO: 处理 Git 依赖
-        if detailed.git.is_some() {
-            // 克隆/更新仓库并解析
+        // 处理 Git 依赖
+        if let Some(ref git_url) = detailed.git {
+            return self.resolve_git_dependency(name, git_url, detailed);
         }
         
-        // TODO: 处理版本依赖（从 registry）
+        // 处理版本依赖（从 registry）
+        if let Some(ref version) = detailed.version {
+            return self.resolve_registry_dependency(name, version, detailed.optional);
+        }
         
         Ok(None)
+    }
+    
+    /// 解析 Git 依赖
+    ///
+    /// 从 Git 仓库克隆/更新依赖并解析
+    fn resolve_git_dependency(
+        &mut self,
+        name: &str,
+        git_url: &str,
+        detailed: &DetailedDependency,
+    ) -> Result<Option<ResolvedDependency>> {
+        // 确定目标目录
+        let cache_dir = self.project_root.join(".cavvy").join("cache").join("git");
+        std::fs::create_dir_all(&cache_dir)
+            .with_context(|| format!("创建 Git 缓存目录失败: {}", cache_dir.display()))?;
+        
+        // 生成唯一的目录名
+        let dir_name = format!("{}_{}", name, git_url.replace("://", "_").replace("/", "_"));
+        let repo_dir = cache_dir.join(&dir_name);
+        
+        // 如果目录不存在，克隆仓库
+        if !repo_dir.exists() {
+            // 尝试使用 git 命令克隆
+            let branch = detailed.branch.as_deref().unwrap_or("main");
+            let status = std::process::Command::new("git")
+                .args(&["clone", "--depth", "1", "--branch", branch, git_url, &repo_dir.to_string_lossy()])
+                .status();
+            
+            match status {
+                Ok(s) if s.success() => {
+                    // 克隆成功
+                }
+                Ok(s) => {
+                    if detailed.optional {
+                        return Ok(None);
+                    }
+                    bail!("Git 克隆失败（退出码: {}）: {}", s, git_url);
+                }
+                Err(e) => {
+                    if detailed.optional {
+                        return Ok(None);
+                    }
+                    bail!("无法执行 git 命令: {}", e);
+                }
+            }
+        }
+        
+        // 尝试解析克隆的仓库
+        self.resolve_local_lib(&repo_dir, detailed.optional)
+    }
+    
+    /// 解析注册表依赖
+    ///
+    /// 从本地或远程注册表查找并解析依赖
+    fn resolve_registry_dependency(
+        &mut self,
+        name: &str,
+        version: &str,
+        optional: bool,
+    ) -> Result<Option<ResolvedDependency>> {
+        // 搜索本地注册表路径
+        let registry_paths = vec![
+            self.project_root.join(".cavvy").join("registry"),
+            std::env::var("HOME")
+                .map(|h| std::path::PathBuf::from(h).join(".cavvy").join("registry"))
+                .unwrap_or_default(),
+        ];
+        
+        for registry_path in &registry_paths {
+            if !registry_path.exists() {
+                continue;
+            }
+            
+            // 搜索注册表中的包
+            let package_dir = registry_path.join(name);
+            if !package_dir.exists() {
+                continue;
+            }
+            
+            // 查找匹配版本的目录
+            if let Ok(entries) = std::fs::read_dir(&package_dir) {
+                for entry in entries.flatten() {
+                    let entry_path = entry.path();
+                    if entry_path.is_dir() {
+                        let version_dir = entry_path.file_name().unwrap_or_default().to_string_lossy();
+                        if version == "latest" || version_dir.starts_with(version) {
+                            return self.resolve_local_lib(&entry_path, optional);
+                        }
+                    }
+                }
+            }
+        }
+        
+        if optional {
+            return Ok(None);
+        }
+        
+        bail!("在注册表中找不到包 {} 版本 {}", name, version);
     }
     
     /// 解析本地库项目

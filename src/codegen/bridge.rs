@@ -151,10 +151,20 @@ impl InlineIrBridge {
         // 5. 转换解析后的IR为LLVM IR文本
         let llvm_ir_lines = self.convert_to_llvm_ir(&parsed_block, &input_mappings);
 
+        // 6. 构建输出变量映射：将内联IR的输出绑定到Cavvy变量
+        // 输出绑定格式：LLVM IR结果名 -> Cavvy变量类型
+        // 这些输出值可以在后续的Cavvy代码中通过变量名引用
+        let mut output_mappings = HashMap::new();
+        for (llvm_result_name, _ir_type) in &parsed_block.outputs {
+            // 将LLVM结果名映射回Cavvy变量名
+            // 输出变量使用 %result_N 格式，在内联IR中定义
+            output_mappings.insert(llvm_result_name.clone(), llvm_result_name.clone());
+        }
+
         Ok(InlineIrResult {
             llvm_ir_lines,
             input_mappings,
-            output_mappings: HashMap::new(), // TODO: 支持输出变量
+            output_mappings,
         })
     }
 

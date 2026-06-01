@@ -1,3 +1,6 @@
+/// Windows 控制台 UTF-8 代码页
+const UTF8_CODEPAGE: i32 = 65001;
+
 /// 平台配置
 #[derive(Debug, Clone)]
 pub struct PlatformConfig {
@@ -69,7 +72,7 @@ impl PlatformConfig {
         match self.target_os.as_str() {
             "windows" => {
                 if self.is_feature_enabled("console_utf8") {
-                    code.push_str("  call void @SetConsoleOutputCP(i32 65001)\n");
+                    code.push_str(&format!("  call void @SetConsoleOutputCP(i32 {})\n", UTF8_CODEPAGE));
                 }
                 if self.is_defined("WINDOWS_SPECIFIC") {
                     code.push_str("  call void @WindowsSpecificInit()\n");
@@ -111,7 +114,7 @@ impl PlatformCodeGenerator {
             "windows" => {
                 if self.config.is_feature_enabled("console_utf8") {
                     code.push_str("  ; Windows UTF-8 console setup\n");
-                    code.push_str("  call void @SetConsoleOutputCP(i32 65001)\n");
+                    code.push_str(&format!("  call void @SetConsoleOutputCP(i32 {})\n", UTF8_CODEPAGE));
                 }
                 
                 if self.config.is_defined("WINDOWS_SPECIFIC") {

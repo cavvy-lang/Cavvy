@@ -685,29 +685,6 @@ impl Program {
         let mut type_aliases = self.type_aliases.clone();
         let file_namespace = self.namespace_path.clone();
 
-        // 调试信息
-        // eprintln!("[DEBUG] flatten_namespaces:");
-        // eprintln!("  - self.classes count: {}", self.classes.len());
-        // for class in &self.classes {
-        //     eprintln!("    - self.classes: {}, namespace_path: {:?}", class.name, class.namespace_path);
-        // }
-        // eprintln!("  - self.namespace_decls count: {}", self.namespace_decls.len());
-        // for (i, ns) in self.namespace_decls.iter().enumerate() {
-        //     eprintln!("  - namespace_decls[{}].path: {:?}", i, ns.path);
-        //     eprintln!("  - namespace_decls[{}].classes count: {}", i, ns.classes.len());
-        //     for class in &ns.classes {
-        //         eprintln!("    - class: {}, namespace_path: {:?}", class.name, class.namespace_path);
-        //     }
-        //     eprintln!("  - namespace_decls[{}].nested_namespaces count: {}", i, ns.nested_namespaces.len());
-        //     for (j, nested) in ns.nested_namespaces.iter().enumerate() {
-        //         eprintln!("    - nested[{}].path: {:?}", j, nested.path);
-        //         eprintln!("    - nested[{}].classes count: {}", j, nested.classes.len());
-        //         for class in &nested.classes {
-        //             eprintln!("      - class: {}, namespace_path: {:?}", class.name, class.namespace_path);
-        //         }
-        //     }
-        // }
-
         // 递归扁平化块级 namespace
         fn flatten_ns(
             ns: &NamespaceDecl,
@@ -724,16 +701,12 @@ impl Program {
             let mut full_path = parent_path.to_vec();
             full_path.extend(ns.path.clone());
 
-            // eprintln!("[DEBUG] flatten_ns depth={} ns.path={:?} parent_path={:?} full_path={:?}", 
-            //     depth, ns.path, parent_path, full_path);
-
             for mut class in ns.classes.clone() {
                 // 如果类已经有 namespace_path（来自 #include 的文件），则只使用现有的 namespace_path
                 // 否则使用 full_path
                 if class.namespace_path.is_empty() {
                     class.namespace_path = full_path.clone();
                 }
-                // eprintln!("[DEBUG]   Adding class: {} with namespace_path: {:?}", class.name, class.namespace_path);
                 classes.push(class);
             }
             for mut s in ns.structs.clone() {
@@ -780,14 +753,11 @@ impl Program {
                 } else {
                     full_path.clone()
                 };
-                // eprintln!("[DEBUG]   Processing nested namespace at depth {}: nested.path={:?}, ns.path={:?}, using parent_path={:?}", 
-                //     depth, nested.path, ns.path, nested_parent_path);
                 flatten_ns(nested, &nested_parent_path, classes, structs, enums, interfaces, top_level_functions, extern_declarations, type_aliases, depth + 1);
             }
         }
 
         for (i, ns) in self.namespace_decls.iter().enumerate() {
-            // eprintln!("[DEBUG] Processing namespace_decls[{}]", i);
             flatten_ns(ns, &[], &mut classes, &mut structs, &mut enums, &mut interfaces, &mut top_level_functions, &mut extern_declarations, &mut type_aliases, 0);
         }
 

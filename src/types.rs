@@ -385,7 +385,7 @@ impl Type {
             Type::Object(_) => 8, // 引用类型
             Type::Array(_) => 8, // 指针大小
             Type::Function(_) => 8, // 函数指针
-            Type::Auto => panic!("Cannot get size of auto type - type inference not completed"),
+            Type::Auto => unreachable!("Cannot get size of auto type - type inference not completed"),
             // 泛型类型 — 大小取决于具体实例化，运行时由单态化版本决定
             Type::GenericParam(_) => 8,  // 泛型参数默认指针大小
             Type::Generic(_, _) => 8,    // 泛型对象默认指针大小（引用语义）

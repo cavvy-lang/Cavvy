@@ -3,6 +3,9 @@ use crate::ast::*;
 use crate::types::Type;
 use crate::error::cayResult;
 
+/// Windows 控制台 UTF-8 代码页
+const UTF8_CODEPAGE: i32 = 65001;
+
 /// 平台抽象层 - 处理不同操作系统的差异
 #[derive(Debug, Clone)]
 pub struct PlatformAbstraction {
@@ -45,7 +48,7 @@ impl PlatformAbstraction {
         match self.target_os.as_str() {
             "windows" => {
                 if self.features.contains(&"console_utf8".to_string()) {
-                    return "  call void @SetConsoleOutputCP(i32 65001)\n".to_string();
+                    return format!("  call void @SetConsoleOutputCP(i32 {})\n", UTF8_CODEPAGE);
                 }
             }
             "linux" | "macos" => {
@@ -342,7 +345,7 @@ impl IRGenerator {
             self.output.push_str("entry:\n");
             // 只在 Windows 目标平台上设置控制台代码页
             if self.is_windows_target() {
-                self.output.push_str("  call void @SetConsoleOutputCP(i32 65001)\n");
+                self.output.push_str(&format!("  call void @SetConsoleOutputCP(i32 {})\n", UTF8_CODEPAGE));
             }
             self.generate_static_array_initialization();
             let main_fn_name = self.generate_method_name(&class_name, &main_method);
