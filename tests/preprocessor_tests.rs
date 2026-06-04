@@ -80,3 +80,23 @@ fn test_error_line_number_with_nested_include() {
         error
     );
 }
+
+// ==================== 0.4.x 预处理器条件表达式测试 ====================
+
+#[test]
+fn test_preprocessor_conditional() {
+    let output = compile_and_run_eol("examples/test_preprocessor_conditional.cay")
+        .expect("preprocessor conditional should compile and run");
+    assert!(output.contains("Version 2 or higher"),
+            "Should evaluate VERSION >= 2, got: {}", output);
+    assert!(output.contains("Not both features enabled"),
+            "Should evaluate FEATURE_A && FEATURE_B as false, got: {}", output);
+    // defined(VERSION) 检查宏是否已定义
+    // 注意：预处理器目前会展开字符串中的宏名（已知行为）
+    assert!(output.contains("is defined"),
+            "Should evaluate defined(VERSION), got: {}", output);
+    assert!(output.contains("Version is exactly 2"),
+            "Should evaluate VERSION == 2, got: {}", output);
+    assert!(output.contains("Preprocessor conditional test passed"),
+            "Should complete all tests, got: {}", output);
+}

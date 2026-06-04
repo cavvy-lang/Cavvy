@@ -1,0 +1,6 @@
+
+public class Test {
+    public static void main() {
+        boolean result = "hello" + 42;
+    }
+}

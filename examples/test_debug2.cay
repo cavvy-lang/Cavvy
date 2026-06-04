@@ -1,11 +1,1 @@
-#include <Optional.cay>
-
-using std::Optional;
-
-public class DebugTest2 {
-    public static void main() {
-        Optional<int> opt = Optional.of(42);
-        int val = opt.orElse(0);
-        println("val = " + String.valueOf(val));
-    }
-}
+public class Parent { protected int value; public Parent() { this.value = 10; } } public class Test { public static void main() { Parent p = new Parent(); println(String.valueOf(p.value)); } }

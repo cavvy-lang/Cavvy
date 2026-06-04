@@ -1,0 +1,15 @@
+
+interface Greetable {
+    void greet();
+}
+
+class Person implements Greetable {
+    public Person() {
+    }
+}
+
+public class Test {
+    public static void main() {
+        Person p = new Person();
+    }
+}

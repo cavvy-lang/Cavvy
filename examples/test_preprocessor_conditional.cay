@@ -1,0 +1,30 @@
+// 测试预处理器条件表达式
+// 验证 #if 中的表达式求值
+
+#define VERSION 2
+#define FEATURE_A 1
+#define FEATURE_B 0
+
+public class TestPreprocessor {
+    public static void main() {
+#if VERSION >= 2
+        println("Version 2 or higher");
+#endif
+
+#if FEATURE_A && FEATURE_B
+        println("Both features enabled");
+#else
+        println("Not both features enabled");
+#endif
+
+#if defined(VERSION)
+        println("VERSION is defined");
+#endif
+
+#if VERSION == 2
+        println("Version is exactly 2");
+#endif
+
+        println("Preprocessor conditional test passed");
+    }
+}

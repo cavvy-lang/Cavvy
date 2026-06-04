@@ -1,11 +1,1 @@
-#include <Optional.cay>
-
-using std::Optional;
-
-public class DebugTest3 {
-    public static void main() {
-        // 测试静态方法调用
-        Optional<int> opt = Optional.of(42);
-        println("opt.isPresent() = " + String.valueOf(opt.isPresent()));
-    }
-}
+public class Parent { protected int value = 10; } public class Test { public static void main() { Parent p = new Parent(); int x = p.value; println("test"); } }

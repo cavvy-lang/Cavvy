@@ -229,6 +229,7 @@ pub struct IRGenerator {
     // 测试模式
     pub test_mode: bool,                      // 是否生成测试入口
     pub test_methods: Vec<(String, String)>,  // (类名, 方法名) 列表
+    pub field_initializers: HashMap<String, Vec<crate::ast::FieldDecl>>,  // 类名 -> 有初始化器的字段列表
 }
 
 /// DWARF 子程序元数据
@@ -296,6 +297,7 @@ impl IRGenerator {
             debug_subprograms: Vec::new(),
             test_mode: false,
             test_methods: Vec::new(),
+            field_initializers: HashMap::new(),
         }
     }
 
@@ -1217,9 +1219,11 @@ impl IRGenerator {
     /// 对象内存布局: [type_id: i32][padding: i32][父类字段...][子类字段...]
     /// 返回对象总大小（字节）
     pub fn compute_class_layout(&mut self, class_name: &str, fields: &[crate::ast::FieldDecl], parent_name: Option<&str>) -> usize {
-        // 对象头大小：type_id (4 bytes) + padding (4 bytes) = 8 bytes
-        let header_size = 8usize;
-        let mut current_offset = header_size;
+        // 对象头大小：type_id (4 bytes) + padding (4 bytes) + vtable_ptr (8 bytes) = 16 bytes
+        // vtable 指针偏移量
+        const VTABLE_OFFSET: usize = 8;
+        const HEADER_SIZE: usize = 16;
+        let mut current_offset = HEADER_SIZE;
         let mut field_map = HashMap::new();
 
         // 如果有父类，先复制父类的字段布局

@@ -1,9 +1,21 @@
-/**
- * StringBuilder - 可变字符串构建器
- * 
- * 提供高效的字符串拼接操作
- * 版本: 0.5.1.0
- */
+//|    ____            ____ _____ ____  
+//|   / ___|__ _ _   _/ ___|_   _|  _ \ 
+//|  | |   / _` | | | \___ \ | | | | | |
+//|  | |__| (_| | |_| |___) || | | |_| |
+//|   \____\__,_|\__, |____/ |_| |____/ 
+//|              |___/                  
+//|  
+//|  Cavvy Programming Language
+//|  Stranded Library
+//|
+//|  caylibs/StringBuilder.cay
+//|  
+//|  Srandard Class Library(SCL)
+//|  @name StringBuilder
+//|  @version 1.1.0
+//|
+//|  For Cavvy Version 5.1.0
+//|  
 
 #ifndef CAY_STRINGBUILDER_H
 #define CAY_STRINGBUILDER_H

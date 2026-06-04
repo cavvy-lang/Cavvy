@@ -199,11 +199,11 @@ public class Dog extends Animal {
     }
 }
 "#;
-    std::fs::write("examples/test_access_protected_method.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_access_protected_method.cay")
+    std::fs::write("examples/test_access_protected_method_subclass.cay", code).unwrap();
+    let output = compile_and_run_eol("examples/test_access_protected_method_subclass.cay")
         .expect("编译运行失败");
     assert_eq!(normalize(&output), "speaking");
-    let _ = std::fs::remove_file("examples/test_access_protected_method.cay");
+    let _ = std::fs::remove_file("examples/test_access_protected_method_subclass.cay");
 }
 
 // === 静态成员访问控制 ===
@@ -259,4 +259,157 @@ public class Singleton {
         .expect("编译运行失败");
     assert_eq!(normalize(&output), "ok");
     let _ = std::fs::remove_file("examples/test_access_private_ctor.cay");
+}
+
+// === 多层继承中的 protected 访问 ===
+
+#[test]
+fn test_protected_multilevel_inheritance() {
+    let code = r#"
+public class Grandparent {
+    protected int value = 10;
+}
+
+public class Parent extends Grandparent {
+    public int getValue() {
+        return this.value;
+    }
+}
+
+public class Child extends Parent {
+    public int getChildValue() {
+        return this.value;
+    }
+    
+    public static void main() {
+        Child c = new Child();
+        println(String.valueOf(c.getChildValue()));
+        println(String.valueOf(c.getValue()));
+    }
+}
+"#;
+    std::fs::write("examples/test_access_protected_multi.cay", code).unwrap();
+    let output = compile_and_run_eol("examples/test_access_protected_multi.cay")
+        .expect("编译运行失败");
+    assert_eq!(normalize(&output), "10\n10");
+    let _ = std::fs::remove_file("examples/test_access_protected_multi.cay");
+}
+
+// === 接口方法默认 public ===
+
+#[test]
+fn test_interface_method_public() {
+    let code = r#"
+public interface Drawable {
+    void draw();
+}
+
+public class Circle implements Drawable {
+    public void draw() {
+        println("Drawing a circle");
+    }
+    
+    public static void main() {
+        Circle c = new Circle();
+        c.draw();
+    }
+}
+"#;
+    std::fs::write("examples/test_access_interface.cay", code).unwrap();
+    let output = compile_and_run_eol("examples/test_access_interface.cay")
+        .expect("编译运行失败");
+    assert_eq!(normalize(&output), "Drawing a circle");
+    let _ = std::fs::remove_file("examples/test_access_interface.cay");
+}
+
+// === 构造函数链中的 private 访问 ===
+
+#[test]
+fn test_private_constructor_chain() {
+    let code = r#"
+public class Base {
+    private int secret;
+    
+    protected Base(int s) {
+        this.secret = s;
+    }
+    
+    public int getSecret() {
+        return this.secret;
+    }
+}
+
+public class Derived extends Base {
+    public Derived(int s) {
+        super(s);
+    }
+    
+    public static void main() {
+        Derived d = new Derived(42);
+        println(String.valueOf(d.getSecret()));
+    }
+}
+"#;
+    std::fs::write("examples/test_access_ctor_chain.cay", code).unwrap();
+    let output = compile_and_run_eol("examples/test_access_ctor_chain.cay")
+        .expect("编译运行失败");
+    assert_eq!(normalize(&output), "42");
+    let _ = std::fs::remove_file("examples/test_access_ctor_chain.cay");
+}
+
+// === 静态方法中的访问控制 ===
+
+#[test]
+fn test_static_method_access() {
+    let code = r#"
+public class Config {
+    private static int maxRetries = 3;
+    
+    public static int getMaxRetries() {
+        return Config.maxRetries;
+    }
+}
+
+public class Test {
+    public static void main() {
+        println(String.valueOf(Config.getMaxRetries()));
+    }
+}
+"#;
+    std::fs::write("examples/test_access_static_method.cay", code).unwrap();
+    let output = compile_and_run_eol("examples/test_access_static_method.cay")
+        .expect("编译运行失败");
+    assert_eq!(normalize(&output), "3");
+    let _ = std::fs::remove_file("examples/test_access_static_method.cay");
+}
+
+// === 子类 protected 方法访问父类 protected 成员 ===
+
+#[test]
+fn test_protected_method_access_parent_member() {
+    let code = r#"
+public class Parent {
+    protected int data = 100;
+    
+    protected void processData() {
+        println(String.valueOf(this.data * 2));
+    }
+}
+
+public class Child extends Parent {
+    public void doWork() {
+        this.processData();
+    }
+    
+    public static void main() {
+        Child c = new Child();
+        c.doWork();
+    }
+}
+"#;
+    std::fs::write("examples/test_access_protected_method.cay", code).unwrap();
+    let output = compile_and_run_eol("examples/test_access_protected_method.cay")
+        .expect("编译运行失败");
+    assert_eq!(normalize(&output), "200");
+    let _ = std::fs::remove_file("examples/test_access_protected_method.cay");
 }

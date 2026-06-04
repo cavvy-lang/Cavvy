@@ -1,0 +1,9 @@
+
+public class Test {
+    private int secret = 42;
+    
+    public static void main() {
+        Test t = new Test();
+        println(t.secret);
+    }
+}

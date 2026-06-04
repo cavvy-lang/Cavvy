@@ -1,0 +1,71 @@
+// 测试 vtable 动态分派
+// 验证通过基类类型调用方法时，正确调用子类的重写方法
+
+public class Animal {
+    public String name;
+    
+    public Animal(String name) {
+        this.name = name;
+    }
+    
+    public void speak() {
+        println("Animal speaks");
+    }
+    
+    public void eat() {
+        println("Animal eats");
+    }
+}
+
+public class Dog extends Animal {
+    public Dog(String name) {
+        super(name);
+    }
+    
+    @Override
+    public void speak() {
+        println(this.name + " says: Woof!");
+    }
+    
+    public void bark() {
+        println(this.name + " barks loudly!");
+    }
+}
+
+public class Cat extends Animal {
+    public Cat(String name) {
+        super(name);
+    }
+    
+    @Override
+    public void speak() {
+        println(this.name + " says: Meow!");
+    }
+    
+    @Override
+    public void eat() {
+        println(this.name + " eats fish");
+    }
+}
+
+public class TestVtable {
+    public static void main() {
+        // 测试 1: 通过基类类型调用重写方法
+        Animal a1 = new Dog("Rex");
+        a1.speak();  // 应该调用 Dog.speak()
+        
+        Animal a2 = new Cat("Kitty");
+        a2.speak();  // 应该调用 Cat.speak()
+        
+        // 测试 2: 通过基类类型调用继承方法
+        a1.eat();  // 应该调用 Animal.eat()（Dog 没有重写）
+        a2.eat();  // 应该调用 Cat.eat()（Cat 重写了）
+        
+        // 测试 3: 具体类型调用（直接调用）
+        Dog d = new Dog("Buddy");
+        d.speak();  // 直接调用 Dog.speak()
+        d.bark();   // 调用 Dog.bark()
+        
+        println("vtable test passed");
+    }
+}

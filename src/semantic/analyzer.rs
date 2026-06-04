@@ -135,6 +135,9 @@ impl SemanticAnalyzer {
         // 第三遍：检查继承关系（包括 @Override 验证）
         self.check_inheritance(&program)?;
 
+        // 计算所有类的 vtable 槽位分配
+        self.compute_vtable_layouts();
+
         // 第四遍：类型检查
         self.type_check_program(&program)?;
 
@@ -174,9 +177,11 @@ impl SemanticAnalyzer {
                 is_protected: false,
                 is_static: true,
                 is_native: true,
+                is_abstract: false,
                 is_override: false,
                 is_final: false,
                 is_test: false,
+                vtable_slot: None,
             };
 
             class_info.add_method(method);

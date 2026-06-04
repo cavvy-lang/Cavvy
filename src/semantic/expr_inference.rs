@@ -244,16 +244,9 @@ impl SemanticAnalyzer {
         
         match bin.op {
             BinaryOp::Add => {
-                // 字符串连接：两个操作数都必须是字符串
-                if left_type == Type::String && right_type == Type::String {
-                    Ok(Type::String)
-                }
-                // 字符串 + char：允许，结果为字符串
-                else if left_type == Type::String && right_type == Type::Char {
-                    Ok(Type::String)
-                }
-                // char + 字符串：允许，结果为字符串
-                else if left_type == Type::Char && right_type == Type::String {
+                // 字符串连接：字符串 + 任意类型，结果为字符串
+                // codegen 会自动将非字符串操作数转换为字符串表示
+                if left_type == Type::String || right_type == Type::String {
                     Ok(Type::String)
                 }
                 // 数值加法：两个操作数都必须是基本数值类型
@@ -402,7 +395,13 @@ impl SemanticAnalyzer {
         if let Expr::Identifier(name) = call.callee.as_ref() {
             // 内置输入函数的类型推断
             match name.as_str() {
-                "print" | "println" => return Ok(Type::Void),
+                "print" | "println" => {
+                    // 推断所有参数类型以触发类型检查（包括访问控制）
+                    for arg in &call.args {
+                        self.infer_expr_type_collect_errors(arg);
+                    }
+                    return Ok(Type::Void);
+                }
                 "readInt" => return Ok(Type::Int32),
                 "readLong" => return Ok(Type::Int64),
                 "readFloat" => return Ok(Type::Float32),
@@ -949,20 +948,29 @@ impl SemanticAnalyzer {
                     return Ok(field_info.field_type.clone());
                 }
             }
-            if let Some(class_info) = self.type_registry.get_class(base_class_name) {
-                if let Some(field_info) = class_info.fields.get(&member.member) {
-                    // 检查字段访问权限
-                    check_member_access(
-                        &member.member,
-                        field_info.is_public,
-                        field_info.is_protected,
-                        field_info.is_private,
-                        &self.current_class,
-                        base_class_name,
-                        &self.type_registry,
-                        &member.loc,
-                    )?;
-                    return Ok(field_info.field_type.clone());
+            // 沿继承链查找字段：先查当前类，再逐级查父类
+            {
+                let mut current_opt = Some(base_class_name.to_string());
+                while let Some(cls_name) = current_opt {
+                    if let Some(ci) = self.type_registry.get_class(&cls_name) {
+                        if let Some(field_info) = ci.fields.get(&member.member) {
+                            // 在定义该字段的类上检查访问权限
+                            check_member_access(
+                                &member.member,
+                                field_info.is_public,
+                                field_info.is_protected,
+                                field_info.is_private,
+                                &self.current_class,
+                                &cls_name,
+                                &self.type_registry,
+                                &member.loc,
+                            )?;
+                            return Ok(field_info.field_type.clone());
+                        }
+                        current_opt = ci.parent.clone();
+                    } else {
+                        break;
+                    }
                 }
             }
             // 检查是否是 enum variant 访问

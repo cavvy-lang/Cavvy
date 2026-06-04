@@ -703,9 +703,25 @@ impl IRGenerator {
             format!("{}::{}", class.namespace_path.join("::"), full_class_name)
         };
 
+        // 生成 vtable 全局常量
+        self.generate_vtable_global(&qname)?;
+
         // 检查是否有显式构造函数
         let has_explicit_ctor = class.members.iter().any(|m| matches!(m, ClassMember::Constructor(_)));
         
+        // 收集有初始化器的字段
+        let mut fields_with_init = Vec::new();
+        for member in &class.members {
+            if let ClassMember::Field(field) = member {
+                if field.initializer.is_some() && !field.modifiers.contains(&Modifier::Static) {
+                    fields_with_init.push(field.clone());
+                }
+            }
+        }
+        if !fields_with_init.is_empty() {
+            self.field_initializers.insert(qname.clone(), fields_with_init);
+        }
+
         for member in &class.members {
             match member {
                 ClassMember::Method(method) => {
@@ -772,6 +788,114 @@ impl IRGenerator {
         }
 
         Ok(())
+    }
+
+    /// 生成 vtable 全局常量
+    /// 
+    /// 为每个类生成一个 vtable 数组，包含所有虚方法的函数指针。
+    /// vtable 结构：[slot_0, slot_1, ..., slot_N]
+    /// 每个 slot 是一个 i8* 类型的函数指针。
+    fn generate_vtable_global(&mut self, class_name: &str) -> cayResult<()> {
+        // 从 TypeRegistry 获取 vtable 布局
+        let vtable_layout = if let Some(ref registry) = self.type_registry {
+            if let Some(class_info) = registry.get_class(class_name) {
+                class_info.vtable_layout.clone()
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let layout = match vtable_layout {
+            Some(l) => l,
+            None => {
+                // 没有 vtable 布局（如 final 类或无虚方法的类），生成空 vtable
+                // 仍然需要生成以保持一致性
+                return Ok(());
+            }
+        };
+
+        if layout.size == 0 {
+            return Ok(());
+        }
+
+        let llvm_class = self.get_qualified_class_name(class_name);
+        let vtable_name = format!("{}.vtable", llvm_class);
+
+        // 收集 vtable 条目
+        let mut entries = Vec::new();
+        
+        // 按槽位编号排序（确保与 vtable 布局一致）
+        let mut sorted_slots: Vec<_> = layout.slots.iter().collect();
+        sorted_slots.sort_by_key(|&(_, &slot)| slot);
+        
+        for (method_name, _slot) in &sorted_slots {
+            // 查找方法的 LLVM 函数名
+            // 需要在继承链中查找方法定义
+            let fn_name_opt = self.find_method_in_hierarchy(class_name, method_name);
+            if let Some((fn_name, ret_type, params)) = fn_name_opt {
+                let ret_llvm = self.type_to_llvm(&ret_type);
+                let mut fn_param_types = vec!["i8*".to_string()];
+                for param in &params {
+                    fn_param_types.push(self.type_to_llvm(&param));
+                }
+                let fn_ptr_type = format!("{} ({})", ret_llvm, fn_param_types.join(", "));
+                entries.push(format!("i8* bitcast ({}* @{} to i8*)", fn_ptr_type, fn_name));
+            }
+        }
+
+        if entries.is_empty() {
+            return Ok(());
+        }
+
+        // 生成 vtable 全局常量
+        // 类型：[N x i8*]
+        let vtable_type = format!("[{} x i8*]", entries.len());
+        self.emit_line(&format!("@{} = global {} [{}]", 
+            vtable_name, vtable_type, entries.join(", ")));
+
+        Ok(())
+    }
+
+    /// 在继承链中查找方法定义
+    /// 返回 (函数名, 返回类型, 参数类型列表)
+    /// 跳过抽象方法（无实现），因为抽象方法没有对应的 LLVM 函数定义
+    fn find_method_in_hierarchy(&self, class_name: &str, method_name: &str) -> Option<(String, crate::types::Type, Vec<crate::types::Type>)> {
+        if let Some(ref registry) = self.type_registry {
+            let mut current = class_name.to_string();
+            loop {
+                if let Some(class_info) = registry.get_class(&current) {
+                    if let Some(methods) = class_info.methods.get(method_name) {
+                        // 找到方法定义，跳过抽象方法（无实现）
+                        if let Some(method) = methods.iter().find(|m| !m.is_static && !m.is_native && !m.is_abstract) {
+                            let llvm_class = self.get_qualified_class_name(&current);
+                            let fn_name = if method.params.is_empty() {
+                                format!("{}.{}", llvm_class, method_name)
+                            } else {
+                                let param_types: Vec<String> = method.params.iter()
+                                    .map(|p| self.type_to_signature(&p.param_type))
+                                    .collect();
+                                format!("{}.__{}_{}", llvm_class, method_name, param_types.join("_"))
+                            };
+                            let param_types: Vec<crate::types::Type> = method.params.iter()
+                                .map(|p| p.param_type.clone())
+                                .collect();
+                            return Some((fn_name, method.return_type.clone(), param_types));
+                        }
+                    }
+                    // 在父类中继续查找
+                    if let Some(ref parent) = class_info.parent {
+                        current = parent.clone();
+                    } else {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+        }
+        None
     }
 
     fn generate_method(&mut self, class_name: &str, method: &MethodDecl) -> cayResult<()> {
@@ -1020,6 +1144,9 @@ impl IRGenerator {
             }
         }
 
+        // 生成字段初始化器代码（super/this 调用之后，构造函数体之前）
+        self.generate_field_initializers(class_name)?;
+
         self.generate_block(&ctor.body)?;
 
         self.emit_line("  ret void");
@@ -1081,6 +1208,9 @@ impl IRGenerator {
             }
         }
 
+        // 生成字段初始化器代码
+        self.generate_field_initializers(class_name)?;
+
         self.emit_line("  ret void");
         
         // 退出函数作用域
@@ -1091,6 +1221,72 @@ impl IRGenerator {
         self.emit_line("");
 
         Ok(())
+    }
+
+    /// 生成当前类字段的初始化器代码（super/this 调用之后、构造函数体之前）
+    /// 只处理当前类声明的字段，不处理父类字段（父类由自己的构造函数初始化）
+    fn generate_field_initializers(&mut self, class_name: &str) -> cayResult<()> {
+        let fields = match self.field_initializers.get(class_name) {
+            Some(f) => f.clone(),
+            None => return Ok(()),
+        };
+
+        for field in &fields {
+            if let Some(ref initializer) = field.initializer {
+                // 生成初始化器表达式的值（格式如 "i32 42" 或 "%t1"）
+                let init_val = self.generate_expression(initializer)?;
+                // 从 "i32 42" 中提取值部分 "42"，或保留 "%t1" 不变
+                let val_str = if init_val.contains(' ') {
+                    init_val.split_whitespace().last().unwrap_or(&init_val).to_string()
+                } else {
+                    init_val
+                };
+
+                // 存储到 this.field
+                let this_info = self.scope_manager.lookup_var("this")
+                    .map(|v| v.llvm_name.clone())
+                    .unwrap_or_else(|| "this".to_string());
+                // this 是 alloca，需要先 load 出实际指针
+                // this_info 来自 scope_manager（无 %），new_temp 返回带 % 的名称
+                let this_loaded = self.new_temp();
+                self.emit_line(&format!("  {} = load i8*, i8** %{}", this_loaded, this_info));
+                let field_offset = self.get_field_offset(class_name, &field.name)?;
+                let field_llvm_type = self.type_to_llvm(&field.field_type);
+
+                // 计算字段地址：this_loaded + offset
+                // this_loaded 来自 new_temp()，已经包含 % 前缀
+                let ptr_temp = self.new_temp();
+                self.emit_line(&format!(
+                    "  {} = getelementptr i8, i8* {}, i64 {}",
+                    ptr_temp, this_loaded, field_offset
+                ));
+                // bitcast 到字段类型指针
+                let cast_temp = self.new_temp();
+                self.emit_line(&format!(
+                    "  {} = bitcast i8* {} to {}*",
+                    cast_temp, ptr_temp, field_llvm_type
+                ));
+                // 存储值
+                self.emit_line(&format!(
+                    "  store {} {}, {}* {}",
+                    field_llvm_type, val_str, field_llvm_type, cast_temp
+                ));
+            }
+        }
+
+        Ok(())
+    }
+
+    /// 获取字段在对象中的偏移量（字节）
+    fn get_field_offset(&self, class_name: &str, field_name: &str) -> cayResult<i64> {
+        if let Some(layout) = self.class_layouts.get(class_name) {
+            if let Some(field) = layout.fields.get(field_name) {
+                return Ok(field.offset as i64);
+            }
+        }
+        // 布局查找失败时返回 0（不应发生）
+        eprintln!("[WARNING] Cannot find field '{}' in class '{}' layout, using offset 0", field_name, class_name);
+        Ok(0)
     }
 
     fn generate_destructor(&mut self, class_name: &str, dtor: &crate::ast::DestructorDecl) -> cayResult<()> {

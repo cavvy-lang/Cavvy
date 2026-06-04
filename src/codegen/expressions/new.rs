@@ -72,6 +72,29 @@ impl IRGenerator {
         self.emit_line(&format!("  {} = bitcast i8* {} to i32*", type_id_ptr, calloc_temp));
         self.emit_line(&format!("  store i32 {}, i32* {}", type_id_value, type_id_ptr));
 
+        // 存储 vtable 指针到 offset 8（type_id 之后）
+        // vtable 指针指向类的 vtable 全局常量
+        let llvm_class = self.get_qualified_class_name(&registry_name);
+        let vtable_name = format!("{}.vtable", llvm_class);
+        let vtable_ptr_temp = self.new_temp();
+        // 计算 offset 8 的位置（i8* + 8）
+        self.emit_line(&format!("  {} = getelementptr i8, i8* {}, i64 8", vtable_ptr_temp, calloc_temp));
+        // 将 vtable 指针存储到该位置
+        let vtable_global_temp = self.new_temp();
+        // 获取 vtable 大小
+        let vtable_size = self.type_registry.as_ref()
+            .and_then(|r| r.get_class(&registry_name))
+            .and_then(|c| c.vtable_layout.as_ref())
+            .map(|v| v.size)
+            .unwrap_or(0);
+        if vtable_size > 0 {
+            self.emit_line(&format!("  {} = bitcast [{} x i8*]* @{} to i8*", vtable_global_temp, vtable_size, vtable_name));
+            self.emit_line(&format!("  store i8* {}, i8* {}", vtable_global_temp, vtable_ptr_temp));
+        } else {
+            // 无 vtable 时存储 null
+            self.emit_line(&format!("  store i8* null, i8* {}", vtable_ptr_temp));
+        }
+
         // 调用构造函数（无论是否有参数）
         // 先推断参数类型（作为回退），优先使用类型注册表中的真实构造函数参数类型
         let fallback_types: Vec<String> = new_expr.args.iter()

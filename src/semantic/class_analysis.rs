@@ -105,9 +105,11 @@ impl SemanticAnalyzer {
                     is_protected: false,
                     is_static: false,
                     is_native: false,
+                    is_abstract: false, // 接口方法在Cavvy中视为非抽象（有默认实现机制）
                     is_override: false,
                     is_final: false,  // 接口方法不是final
                     is_test: false,   // 接口方法不能是 @Test
+                    vtable_slot: None,
                 };
                 interface_info.add_method(method_info);
             }
@@ -137,6 +139,7 @@ impl SemanticAnalyzer {
                 interfaces: class.interfaces.clone(),
                 is_abstract,
                 is_final,
+                vtable_layout: None,
             };
 
             // 收集字段信息
@@ -266,9 +269,11 @@ impl SemanticAnalyzer {
                         is_protected: method.modifiers.contains(&Modifier::Protected),
                         is_static: method.modifiers.contains(&Modifier::Static),
                         is_native: method.modifiers.contains(&Modifier::Native),
+                        is_abstract: method.modifiers.contains(&Modifier::Abstract),
                         is_override: method.modifiers.contains(&Modifier::Override),
                         is_final: method.modifiers.contains(&Modifier::Final),
                         is_test,
+                        vtable_slot: None,
                     };
                     
                     // 验证 @Test 方法签名
@@ -577,9 +582,11 @@ impl SemanticAnalyzer {
                     is_protected: method.modifiers.iter().any(|m| matches!(m, Modifier::Protected)),
                     is_static: method.modifiers.iter().any(|m| matches!(m, Modifier::Static)),
                     is_native: method.modifiers.iter().any(|m| matches!(m, Modifier::Native)),
+                    is_abstract: false,
                     is_override: false,
                     is_final: method.modifiers.iter().any(|m| matches!(m, Modifier::Final)),
                     is_test: false,
+                    vtable_slot: None,
                 };
                 struct_info.methods
                     .entry(method.name.clone())
@@ -645,9 +652,11 @@ impl SemanticAnalyzer {
                             is_protected: method.modifiers.contains(&Modifier::Protected),
                             is_static: method.modifiers.contains(&Modifier::Static),
                             is_native: false,
+                            is_abstract: false,
                             is_override: false,
                             is_final: false,
                             is_test: false,
+                            vtable_slot: None,
                         };
 
                         // 获取源映射后的位置
@@ -698,5 +707,108 @@ impl SemanticAnalyzer {
             }
         }
         Ok(())
+    }
+
+    /// 计算所有类的 vtable 槽位分配
+    /// 
+    /// 算法：
+    /// 1. 从根类开始，父类方法先分配槽位
+    /// 2. 子类继承父类的槽位布局
+    /// 3. 子类新增方法追加到末尾
+    /// 4. 重写方法复用父类的槽位
+    pub fn compute_vtable_layouts(&mut self) {
+        // 收集所有类名，按继承深度排序（父类在前）
+        let class_names: Vec<String> = self.type_registry.classes.keys().cloned().collect();
+        
+        // 计算每个类的继承深度
+        let mut depth_map = std::collections::HashMap::new();
+        for name in &class_names {
+            let depth = self.compute_class_depth(name);
+            depth_map.insert(name.clone(), depth);
+        }
+        
+        // 按深度排序（深度小的先处理，即父类先处理）
+        let mut sorted_classes = class_names;
+        sorted_classes.sort_by_key(|name| depth_map.get(name).unwrap_or(&0));
+        
+        // 为每个类计算 vtable 布局
+        for class_name in &sorted_classes {
+            let layout = self.compute_single_class_vtable(class_name);
+            if let Some(class_info) = self.type_registry.classes.get_mut(class_name) {
+                class_info.vtable_layout = Some(layout);
+            }
+        }
+    }
+    
+    /// 计算类的继承深度
+    fn compute_class_depth(&self, class_name: &str) -> usize {
+        let mut depth = 0;
+        let mut current = class_name.to_string();
+        
+        while let Some(class_info) = self.type_registry.get_class(&current) {
+            if let Some(ref parent) = class_info.parent {
+                depth += 1;
+                current = parent.clone();
+            } else {
+                break;
+            }
+        }
+        
+        depth
+    }
+    
+    /// 计算单个类的 vtable 布局
+    fn compute_single_class_vtable(&self, class_name: &str) -> crate::types::VTableLayout {
+        let mut slots = std::collections::HashMap::new();
+        let mut next_slot = 0;
+        
+        // 如果有父类，先复制父类的 vtable 布局
+        if let Some(class_info) = self.type_registry.get_class(class_name) {
+            if let Some(ref parent_name) = class_info.parent {
+                if let Some(parent_info) = self.type_registry.get_class(parent_name) {
+                    if let Some(ref parent_vtable) = parent_info.vtable_layout {
+                        // 复制父类的所有槽位
+                        for (method_name, slot) in &parent_vtable.slots {
+                            slots.insert(method_name.clone(), *slot);
+                        }
+                        next_slot = parent_vtable.size;
+                    }
+                }
+            }
+        }
+        
+        // 收集当前类的虚方法（非 static、非 native、非 private）
+        // 虚方法：实例方法 + 非 final + 非 native
+        if let Some(class_info) = self.type_registry.get_class(class_name) {
+            // 收集所有实例方法名（去重，因为同名方法可能有多个重载）
+            let mut instance_methods: Vec<String> = Vec::new();
+            for (method_name, methods) in &class_info.methods {
+                // 只要有任何一个重载版本是实例方法，就认为是虚方法
+                let has_instance = methods.iter().any(|m| {
+                    !m.is_static && !m.is_native && !m.is_private
+                });
+                if has_instance && !instance_methods.contains(method_name) {
+                    instance_methods.push(method_name.clone());
+                }
+            }
+            // 排序确保 vtable 槽位分配一致
+            instance_methods.sort();
+            
+            // 为每个虚方法分配槽位
+            for method_name in &instance_methods {
+                if !slots.contains_key(method_name) {
+                    // 新方法，分配新槽位
+                    slots.insert(method_name.clone(), next_slot);
+                    next_slot += 1;
+                }
+                // 如果已经存在（从父类继承），保持原槽位（重写）
+            }
+        }
+        
+        crate::types::VTableLayout {
+            class_name: class_name.to_string(),
+            slots,
+            size: next_slot,
+        }
     }
 }

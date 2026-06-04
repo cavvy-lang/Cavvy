@@ -165,3 +165,28 @@ fn test_this_access() {
     assert!(output.contains("Get value: 42"),
             "Should output get value, got: {}", output);
 }
+
+// ==================== vtable 动态分派测试 ====================
+
+#[test]
+fn test_vtable_dynamic_dispatch() {
+    let output = compile_and_run_eol("examples/test_vtable_dynamic_dispatch.cay")
+        .expect("vtable dynamic dispatch should compile and run");
+    // 验证通过基类类型调用时正确分派到子类方法
+    assert!(output.contains("Rex says: Woof!"),
+            "Dog.speak() should be called through base type, got: {}", output);
+    assert!(output.contains("Kitty says: Meow!"),
+            "Cat.speak() should be called through base type, got: {}", output);
+    // 验证继承方法的调用
+    assert!(output.contains("Animal eats"),
+            "Animal.eat() should be called for Dog, got: {}", output);
+    assert!(output.contains("Kitty eats fish"),
+            "Cat.eat() should be called through base type, got: {}", output);
+    // 验证具体类型的直接调用
+    assert!(output.contains("Buddy says: Woof!"),
+            "Direct Dog.speak() should work, got: {}", output);
+    assert!(output.contains("Buddy barks loudly!"),
+            "Dog.bark() should work, got: {}", output);
+    assert!(output.contains("vtable test passed"),
+            "Should complete all tests, got: {}", output);
+}

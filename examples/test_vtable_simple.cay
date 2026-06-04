@@ -1,0 +1,21 @@
+// 简化 vtable 测试 - 只测试一个方法
+public class Animal {
+    public void speak() {
+        println("Animal speaks");
+    }
+}
+
+public class Dog extends Animal {
+    @Override
+    public void speak() {
+        println("Dog speaks");
+    }
+}
+
+public class TestSimple {
+    public static void main() {
+        Animal a = new Dog();
+        a.speak();
+        println("done");
+    }
+}

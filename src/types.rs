@@ -60,6 +60,7 @@ pub struct ClassInfo {
     pub interfaces: Vec<String>,  // 实现的接口列表
     pub is_abstract: bool,  // 是否是抽象类
     pub is_final: bool,  // 是否是final类（禁止继承）
+    pub vtable_layout: Option<VTableLayout>,  // vtable 布局信息
 }
 
 /// 构造函数信息
@@ -328,9 +329,22 @@ pub struct MethodInfo {
     pub is_protected: bool,
     pub is_static: bool,
     pub is_native: bool,
+    pub is_abstract: bool,  // 是否是抽象方法（无实现）
     pub is_override: bool,  // 标记是否是重写方法
     pub is_final: bool,  // 是否是final方法（禁止重写）
     pub is_test: bool,   // 是否被 @Test 注解标记
+    pub vtable_slot: Option<usize>,  // 在 vtable 中的槽位编号（仅虚方法有值）
+}
+
+/// VTable 布局信息
+#[derive(Debug, Clone)]
+pub struct VTableLayout {
+    /// 类名
+    pub class_name: String,
+    /// vtable 中的方法槽位列表（方法名 → 槽位编号）
+    pub slots: HashMap<String, usize>,
+    /// vtable 总大小（槽位数量）
+    pub size: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -556,6 +570,7 @@ impl TypeRegistry {
             interfaces: Vec::new(),
             is_abstract: false,
             is_final: true,  // String 是 final 类，不能被继承
+            vtable_layout: None,
         };
 
         // 添加 String.valueOf() 方法（各种重载版本）
@@ -574,9 +589,11 @@ impl TypeRegistry {
             is_private: false,
             is_protected: false,
             is_native: false,
+            is_abstract: false,
             is_final: true,
             is_override: false,
             is_test: false,
+            vtable_slot: None,
         });
 
         // valueOf(long)
@@ -594,9 +611,11 @@ impl TypeRegistry {
             is_private: false,
             is_protected: false,
             is_native: false,
+            is_abstract: false,
             is_final: true,
             is_override: false,
             is_test: false,
+            vtable_slot: None,
         });
 
         // valueOf(float)
@@ -614,9 +633,11 @@ impl TypeRegistry {
             is_private: false,
             is_protected: false,
             is_native: false,
+            is_abstract: false,
             is_final: true,
             is_override: false,
             is_test: false,
+            vtable_slot: None,
         });
 
         // valueOf(double)
@@ -634,9 +655,11 @@ impl TypeRegistry {
             is_private: false,
             is_protected: false,
             is_native: false,
+            is_abstract: false,
             is_final: true,
             is_override: false,
             is_test: false,
+            vtable_slot: None,
         });
 
         // valueOf(boolean)
@@ -654,9 +677,11 @@ impl TypeRegistry {
             is_private: false,
             is_protected: false,
             is_native: false,
+            is_abstract: false,
             is_final: true,
             is_override: false,
             is_test: false,
+            vtable_slot: None,
         });
 
         // valueOf(char)
@@ -674,9 +699,11 @@ impl TypeRegistry {
             is_private: false,
             is_protected: false,
             is_native: false,
+            is_abstract: false,
             is_final: true,
             is_override: false,
             is_test: false,
+            vtable_slot: None,
         });
 
         // valueOf(String) - 返回自身
@@ -694,9 +721,11 @@ impl TypeRegistry {
             is_private: false,
             is_protected: false,
             is_native: false,
+            is_abstract: false,
             is_final: true,
             is_override: false,
             is_test: false,
+            vtable_slot: None,
         });
 
         // 注册 String 类
@@ -717,6 +746,7 @@ impl TypeRegistry {
             interfaces: Vec::new(),
             is_abstract: false,
             is_final: true,  // Integer 是 final 类，不能被继承
+            vtable_layout: None,
         };
 
         // 添加 Integer.parseInt(String) 方法
@@ -734,9 +764,11 @@ impl TypeRegistry {
             is_private: false,
             is_protected: false,
             is_native: false,
+            is_abstract: false,
             is_final: true,
             is_override: false,
             is_test: false,
+            vtable_slot: None,
         });
 
         // 注册 Integer 类

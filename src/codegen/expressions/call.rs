@@ -336,16 +336,94 @@ impl IRGenerator {
         let ret_type = self.get_method_return_type(&class_name, &method_name, &processed_args, has_varargs_array);
         let llvm_ret_type = self.type_to_llvm(&ret_type);
         
-        if llvm_ret_type == "void" {
-            // void 方法调用不需要命名结果
-            self.emit_line(&format!("  call void @{}({})",
-                fn_name, final_args.join(", ")));
-            Ok("void %dummy".to_string())
+        // 预先计算 this 指针值（用于 vtable 分派和直接调用都可能需要）
+        let resolved_this_val = if let Some(obj) = &obj_expr {
+            if let Expr::Identifier(name) = obj.as_ref() {
+                if name.as_ref() == "super" {
+                    if let Some(this_llvm_name) = self.scope_manager.get_llvm_name("this") {
+                        let this_temp = self.new_temp();
+                        self.emit_line(&format!("  {} = load i8*, i8** %{}, align 8",
+                            this_temp, this_llvm_name));
+                        Some(this_temp)
+                    } else {
+                        None
+                    }
+                } else {
+                    let obj_result = self.generate_expression(obj)?;
+                    let (_, obj_val) = self.parse_typed_value(&obj_result);
+                    Some(obj_val)
+                }
+            } else {
+                let obj_result = self.generate_expression(obj)?;
+                let (_, obj_val) = self.parse_typed_value(&obj_result);
+                Some(obj_val)
+            }
+        } else if let Some(this_llvm_name) = self.scope_manager.get_llvm_name("this") {
+            let this_temp = self.new_temp();
+            self.emit_line(&format!("  {} = load i8*, i8** %{}, align 8",
+                this_temp, this_llvm_name));
+            Some(this_temp)
         } else {
-            let temp = self.new_temp();
-            self.emit_line(&format!("  {} = call {} @{}({})",
-                temp, llvm_ret_type, fn_name, final_args.join(", ")));
-            Ok(format!("{} {}", llvm_ret_type, temp))
+            None
+        };
+
+        // 检查是否需要 vtable 间接调用
+        // 条件：是实例方法，有可用的 this 指针，且类有 vtable 布局
+        let needs_vtable_dispatch = is_instance_method 
+            && resolved_this_val.is_some() 
+            && self.class_has_vtable(&class_name);
+        
+        if needs_vtable_dispatch {
+            let this_val = resolved_this_val.unwrap();
+            
+            // 计算 vtable 指针位置（this + 8）
+            let vtable_ptr_temp = self.new_temp();
+            self.emit_line(&format!("  {} = getelementptr i8, i8* {}, i64 8", vtable_ptr_temp, this_val));
+            
+            // 加载 vtable 指针
+            let vtable_temp = self.new_temp();
+            self.emit_line(&format!("  {} = load i8*, i8* {}", vtable_temp, vtable_ptr_temp));
+            
+            // 获取方法在 vtable 中的槽位
+            let slot = self.get_vtable_slot(&class_name, &method_name);
+            
+            // 将 vtable 指针转换为 i8** 数组（每个元素是 i8*）
+            let vtable_array_temp = self.new_temp();
+            self.emit_line(&format!("  {} = bitcast i8* {} to i8**", vtable_array_temp, vtable_temp));
+            
+            // 从 vtable 加载函数指针（slot * 8 偏移）
+            let slot_offset_temp = self.new_temp();
+            self.emit_line(&format!("  {} = getelementptr i8*, i8** {}, i64 {}", 
+                slot_offset_temp, vtable_array_temp, slot));
+            let fn_ptr_temp = self.new_temp();
+            self.emit_line(&format!("  {} = load i8*, i8** {}", fn_ptr_temp, slot_offset_temp));
+            
+            // 将 i8* 转换为正确的函数指针类型
+            let fn_type = self.build_function_type_string(&ret_type, &processed_args, &class_name, &method_name);
+            let fn_ptr_cast_temp = self.new_temp();
+            self.emit_line(&format!("  {} = bitcast i8* {} to {}", fn_ptr_cast_temp, fn_ptr_temp, fn_type));
+            
+            // 间接调用
+            if llvm_ret_type == "void" {
+                self.emit_line(&format!("  call void {}({})", fn_ptr_cast_temp, final_args.join(", ")));
+                Ok("void %dummy".to_string())
+            } else {
+                let temp = self.new_temp();
+                self.emit_line(&format!("  {} = call {} {}({})", temp, llvm_ret_type, fn_ptr_cast_temp, final_args.join(", ")));
+                Ok(format!("{} {}", llvm_ret_type, temp))
+            }
+        } else {
+            // 直接调用
+            if llvm_ret_type == "void" {
+                self.emit_line(&format!("  call void @{}({})",
+                    fn_name, final_args.join(", ")));
+                Ok("void %dummy".to_string())
+            } else {
+                let temp = self.new_temp();
+                self.emit_line(&format!("  {} = call {} @{}({})",
+                    temp, llvm_ret_type, fn_name, final_args.join(", ")));
+                Ok(format!("{} {}", llvm_ret_type, temp))
+            }
         }
     }
 
@@ -1797,5 +1875,63 @@ impl IRGenerator {
                 temp, llvm_ret_type, loaded_func_ptr, arg_values.join(", ")));
             Ok(format!("{} {}", llvm_ret_type, temp))
         }
+    }
+
+    /// 检查类是否有 vtable（用于动态分派）
+    fn class_has_vtable(&self, class_name: &str) -> bool {
+        if let Some(ref registry) = self.type_registry {
+            if let Some(class_info) = registry.get_class(class_name) {
+                // final 类没有 vtable（不能被继承，不需要动态分派）
+                if class_info.is_final {
+                    return false;
+                }
+                // 检查是否有 vtable 布局
+                return class_info.vtable_layout.is_some();
+            }
+        }
+        false
+    }
+
+    /// 获取方法在 vtable 中的槽位编号
+    fn get_vtable_slot(&self, class_name: &str, method_name: &str) -> usize {
+        if let Some(ref registry) = self.type_registry {
+            if let Some(class_info) = registry.get_class(class_name) {
+                if let Some(ref vtable) = class_info.vtable_layout {
+                    return vtable.slots.get(method_name).copied().unwrap_or(0);
+                }
+            }
+        }
+        0
+    }
+
+    /// 构建函数指针类型字符串（用于 vtable 间接调用）
+    fn build_function_type_string(&self, ret_type: &crate::types::Type, args: &[String], class_name: &str, method_name: &str) -> String {
+        let llvm_ret = self.type_to_llvm(ret_type);
+        
+        // 构建参数类型列表（第一个参数是 i8* this）
+        let mut param_types = vec!["i8*".to_string()];
+        
+        // 从 TypeRegistry 获取方法参数类型
+        if let Some(ref registry) = self.type_registry {
+            if let Some(class_info) = registry.get_class(class_name) {
+                if let Some(methods) = class_info.methods.get(method_name) {
+                    if let Some(method) = methods.first() {
+                        for param in &method.params {
+                            param_types.push(self.type_to_llvm(&param.param_type));
+                        }
+                    }
+                }
+            }
+        }
+        
+        // 如果没有从 TypeRegistry 获取到，使用参数推断
+        if param_types.len() == 1 {
+            for arg in args {
+                let (ty, _) = self.parse_typed_value(arg);
+                param_types.push(ty);
+            }
+        }
+        
+        format!("{} ({})*", llvm_ret, param_types.join(", "))
     }
 }
