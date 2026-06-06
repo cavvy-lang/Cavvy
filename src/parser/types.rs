@@ -6,6 +6,26 @@ use super::Parser;
 
 /// 解析类型（支持多维数组和指针，以及类型别名）
 pub fn parse_type(parser: &mut Parser) -> cayResult<Type> {
+    let (ty, extra_generic_closers) = parse_type_inner(parser)?;
+    if extra_generic_closers > 0 {
+        return Err(parser.error("泛型类型实参列表中多余的 '>'\n提示: 请检查泛型类型的尖括号是否匹配"));
+    }
+
+    Ok(ty)
+}
+
+/// 解析泛型类型实参 <Type1, Type2, ...>（用于类型使用）
+/// 支持嵌套泛型结尾被词法器合并为 >> / >>> 的情况。
+pub fn parse_generic_type_args(parser: &mut Parser) -> cayResult<Vec<Type>> {
+    let (args, extra_generic_closers) = parse_generic_type_args_inner(parser)?;
+    if extra_generic_closers > 0 {
+        return Err(parser.error("泛型类型实参列表中多余的 '>'\n提示: 请检查泛型类型的尖括号是否匹配"));
+    }
+
+    Ok(args)
+}
+
+fn parse_type_inner(parser: &mut Parser) -> cayResult<(Type, usize)> {
     let base_type = match parser.current_token() {
         crate::lexer::Token::Int => { parser.advance(); Type::Int32 }
         crate::lexer::Token::Long => { parser.advance(); Type::Int64 }
@@ -53,7 +73,10 @@ pub fn parse_type(parser: &mut Parser) -> cayResult<Type> {
                     let type_name = Type::Object(name.clone());
                     if parser.check(&crate::lexer::Token::Lt) {
                         // 解析泛型类型参数: Optional<int, String>
-                        let type_args = crate::parser::classes::parse_generic_type_args(parser)?;
+                        let (type_args, extra_generic_closers) = parse_generic_type_args_inner(parser)?;
+                        if extra_generic_closers > 0 {
+                            return Ok((Type::Generic(name, type_args), extra_generic_closers));
+                        }
                         Type::Generic(name, type_args)
                     } else {
                         type_name
@@ -172,7 +195,53 @@ pub fn parse_type(parser: &mut Parser) -> cayResult<Type> {
         result_type = Type::Array(Box::new(result_type));
     }
 
-    Ok(result_type)
+    Ok((result_type, 0))
+}
+
+fn parse_generic_type_args_inner(parser: &mut Parser) -> cayResult<(Vec<Type>, usize)> {
+    let mut args = Vec::new();
+
+    parser.consume(&crate::lexer::Token::Lt, "期望 '<' 开始泛型类型实参\n提示: 泛型类型实参应以 '<' 开始，例如: Optional<int>")?;
+
+    loop {
+        let (arg_type, extra_generic_closers) = parse_type_inner(parser)?;
+        args.push(arg_type);
+
+        if extra_generic_closers > 0 {
+            return Ok((args, extra_generic_closers - 1));
+        }
+
+        if parser.match_token(&crate::lexer::Token::Comma) {
+            continue;
+        }
+
+        let extra_generic_closers = consume_generic_type_close(parser)?;
+        return Ok((args, extra_generic_closers));
+    }
+}
+
+fn consume_generic_type_close(parser: &mut Parser) -> cayResult<usize> {
+    match parser.current_token() {
+        crate::lexer::Token::Gt => {
+            parser.advance();
+            Ok(0)
+        }
+        crate::lexer::Token::Shr => {
+            parser.advance();
+            Ok(1)
+        }
+        crate::lexer::Token::UnsignedShr => {
+            parser.advance();
+            Ok(2)
+        }
+        _ => {
+            parser.consume(
+                &crate::lexer::Token::Gt,
+                "期望 '>' 结束泛型类型实参\n提示: 泛型类型实参应以 '>' 结束，例如: Optional<int>",
+            )?;
+            Ok(0)
+        }
+    }
 }
 
 /// 检查当前token是否是类型token

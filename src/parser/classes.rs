@@ -919,19 +919,5 @@ pub fn parse_generic_type_params(parser: &mut Parser) -> cayResult<Vec<String>> 
 /// 解析泛型类型实参 <Type1, Type2, ...>（用于类型使用）
 /// 例如：Optional<int, String>
 pub fn parse_generic_type_args(parser: &mut Parser) -> cayResult<Vec<Type>> {
-    let mut args = Vec::new();
-    
-    parser.consume(&Token::Lt, "期望 '<' 开始泛型类型实参\n提示: 泛型类型实参应以 '<' 开始，例如: Optional<int>")?;
-    
-    loop {
-        args.push(super::types::parse_type(parser)?);
-        
-        if !parser.match_token(&Token::Comma) {
-            break;
-        }
-    }
-    
-    parser.consume(&Token::Gt, "期望 '>' 结束泛型类型实参\n提示: 泛型类型实参应以 '>' 结束，例如: Optional<int>")?;
-    
-    Ok(args)
+    super::types::parse_generic_type_args(parser)
 }

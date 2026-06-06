@@ -340,6 +340,25 @@ mod tests {
     }
 
     #[test]
+    fn test_nested_generic_type_parser_keeps_shift_expression() {
+        let source = r#"public class pair<T> {
+}
+
+public class vector<T> {
+}
+
+public class Test {
+    public void run() {
+        vector<pair<int>> arr = vector();
+        int shifted = 8 >> 1;
+    }
+}"#;
+        let tokens = lexer::lex(source).unwrap();
+        let ast = parser::parse(tokens).unwrap();
+        println!("AST: {:?}", ast);
+    }
+
+    #[test]
     fn test_preprocessor_define() {
         let source = r#"
 #define DEBUG 1

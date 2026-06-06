@@ -6,7 +6,6 @@
 use crate::ast::*;
 use crate::error::cayResult;
 use super::super::Parser;
-use super::super::types::parse_type;
 use super::primary::parse_primary;
 use super::assignment::parse_expression;
 
@@ -22,41 +21,9 @@ pub fn parse_postfix(parser: &mut Parser) -> cayResult<Expr> {
         if parser.check(&crate::lexer::Token::Lt) {
             // 向前看，检查是否是泛型参数列表
             let checkpoint = parser.pos;
-            parser.advance(); // 消费 '<'
+            let type_args = crate::parser::classes::parse_generic_type_args(parser);
             
-            // 尝试解析类型参数列表
-            let mut type_args = Vec::new();
-            let mut is_generic = true;
-            
-            loop {
-                // 检查是否到达结束
-                if parser.check(&crate::lexer::Token::Gt) {
-                    parser.advance(); // 消费 '>'
-                    break;
-                }
-                
-                // 尝试解析类型
-                match parse_type(parser) {
-                    Ok(ty) => {
-                        type_args.push(ty);
-                        // 检查是否有逗号
-                        if parser.check(&crate::lexer::Token::Comma) {
-                            parser.advance(); // 消费 ','
-                        } else if !parser.check(&crate::lexer::Token::Gt) {
-                            // 既不是逗号也不是 >，说明不是泛型参数
-                            is_generic = false;
-                            break;
-                        }
-                    }
-                    Err(_) => {
-                        // 解析类型失败，回退
-                        is_generic = false;
-                        break;
-                    }
-                }
-            }
-            
-            if is_generic && !type_args.is_empty() {
+            if let Ok(type_args) = type_args {
                 // 成功解析泛型参数，检查后面是否有 '.'
                 if parser.check(&crate::lexer::Token::Dot) {
                     // 这是泛型静态方法调用: Type<T>.method()
