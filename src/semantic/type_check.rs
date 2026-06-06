@@ -39,11 +39,17 @@ impl SemanticAnalyzer {
                         
                         // 添加参数到符号表
                         for param in &method.params {
+                            // 对泛型类的参数类型进行参数替换
+                            let param_type = if class.type_params.is_empty() {
+                                param.param_type.clone()
+                            } else {
+                                self.replace_type_params(&param.param_type, &class.type_params)
+                            };
                             self.symbol_table.declare(
                                 param.name.clone(),
                                 SemanticSymbolInfo {
                                     name: param.name.clone(),
-                                    symbol_type: param.param_type.clone(),
+                                    symbol_type: param_type,
                                     is_final: false,
                                     is_initialized: true,
                                 }
@@ -52,7 +58,13 @@ impl SemanticAnalyzer {
                         
                         // 类型检查方法体
                         if let Some(body) = &method.body {
-                            self.type_check_statement(&Stmt::Block(body.clone()), Some(&method.return_type))?;
+                            // 对泛型类的返回类型进行参数替换
+                            let return_type = if class.type_params.is_empty() {
+                                method.return_type.clone()
+                            } else {
+                                self.replace_type_params(&method.return_type, &class.type_params)
+                            };
+                            self.type_check_statement(&Stmt::Block(body.clone()), Some(&return_type))?;
                         }
                         
                         self.symbol_table.exit_scope();
@@ -197,14 +209,19 @@ impl SemanticAnalyzer {
                     return Ok(());
                 }
 
-                let mut var_type = var.var_type.clone();
+                // 对泛型类的变量类型进行参数替换
+                let mut var_type = if self.current_class_type_params.is_empty() {
+                    var.var_type.clone()
+                } else {
+                    self.replace_type_params(&var.var_type, &self.current_class_type_params)
+                };
                 let mut init_type_opt: Option<Type> = None;
-                
+
                 // 处理 auto 类型推断或类型检查（只分析初始化器一次）
                 if let Some(init) = &var.initializer {
                     let init_type = self.infer_expr_type_collect_errors(init);
                     init_type_opt = Some(init_type.clone());
-                    
+
                     if var_type == Type::Auto {
                         // auto 类型推断：使用初始化器的类型
                         var_type = init_type;

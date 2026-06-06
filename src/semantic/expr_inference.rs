@@ -679,8 +679,16 @@ impl SemanticAnalyzer {
 
             // 处理类实例方法调用 - 支持方法重载
             // 获取类名（支持 Type::Object 和 Type::Generic）
+            // 对于泛型类型如 "Wrapper<int>"，需要解析出基础类名 "Wrapper"
             let class_name_opt = match &obj_type {
-                Type::Object(class_name) => Some(class_name.clone()),
+                Type::Object(class_name) => {
+                    // 解析泛型类名: "Wrapper<int>" -> "Wrapper"
+                    if let Some(pos) = class_name.find('<') {
+                        Some(class_name[..pos].to_string())
+                    } else {
+                        Some(class_name.clone())
+                    }
+                }
                 Type::Generic(class_name, _) => Some(class_name.clone()),
                 _ => None,
             };
@@ -726,11 +734,9 @@ impl SemanticAnalyzer {
                 } else {
                     // 如果直接查找失败，尝试查找限定类名
                     if let Some(qualified_name) = self.type_registry.find_qualified_class(&class_name) {
-                        // eprintln!("[DEBUG] Found qualified class: {} -> {}", class_name, qualified_name);
                         self.type_registry.find_method(&qualified_name, &member.member, &arg_types)
                             .map(|m| (m.clone(), m.return_type.clone(), m.params.clone()))
                     } else {
-                        // eprintln!("[DEBUG] Could not find qualified class for: {}", class_name);
                         None
                     }
                 };
@@ -966,22 +972,37 @@ impl SemanticAnalyzer {
 
         // 类/struct 成员访问
         // 处理 Type::Object 和 Type::Generic
-        let base_class_name_opt = match &obj_type {
+        // 提取基础类名和类型参数
+        let (base_class_name_opt, type_args_opt) = match &obj_type {
             Type::Object(class_name) => {
-                // 解析泛型类名: "Optional<T>" -> "Optional"
+                // 解析泛型类名: "Optional<T>" -> ("Optional", Some([T]))
+                // 支持多类型参数: "Pair<int, String>" -> ("Pair", Some([int, String]))
                 if let Some(pos) = class_name.find('<') {
-                    Some(&class_name[..pos])
+                    let base = &class_name[..pos];
+                    let args_str = &class_name[pos + 1..class_name.len() - 1];
+                    // 解析多个类型参数，用逗号分隔
+                    let type_args: Vec<Type> = args_str
+                        .split(',')
+                        .map(|s| s.trim())
+                        .filter(|s| !s.is_empty())
+                        .map(|s| self.parse_type_string(s))
+                        .collect();
+                    if type_args.is_empty() {
+                        (Some(base), None)
+                    } else {
+                        (Some(base), Some(type_args))
+                    }
                 } else {
-                    Some(class_name.as_str())
+                    (Some(class_name.as_str()), None)
                 }
             }
-            Type::Generic(class_name, _) => {
-                // Type::Generic 直接返回类名
-                Some(class_name.as_str())
+            Type::Generic(class_name, args) => {
+                // Type::Generic 直接返回类名和类型参数
+                (Some(class_name.as_str()), Some(args.clone()))
             }
-            _ => None
+            _ => (None, None)
         };
-        
+
         if let Some(base_class_name) = base_class_name_opt {
             // 先查 struct
             if let Some(struct_info) = self.type_registry.get_struct(base_class_name) {
@@ -1006,6 +1027,17 @@ impl SemanticAnalyzer {
                                 &self.type_registry,
                                 &member.loc,
                             )?;
+                            // 如果类有泛型参数，需要进行类型替换
+                            if !ci.type_params.is_empty() {
+                                if let Some(ref type_args) = type_args_opt {
+                                    let substituted_type = self.substitute_type_params(
+                                        &field_info.field_type,
+                                        &ci.type_params,
+                                        type_args
+                                    );
+                                    return Ok(substituted_type);
+                                }
+                            }
                             return Ok(field_info.field_type.clone());
                         }
                         current_opt = ci.parent.clone();
@@ -1034,21 +1066,28 @@ impl SemanticAnalyzer {
 
     /// 推断 new 表达式类型
     fn infer_new_type(&mut self, new_expr: &NewExpr) -> cayResult<Type> {
-        // 解析泛型类名: "Optional<T>" -> ("Optional", Some("T"))
-        let (base_class_name, type_param) = if let Some(pos) = new_expr.class_name.find('<') {
+        // 解析泛型类名: "Optional<T>" -> ("Optional", Some(["T"]))
+        // 支持多类型参数: "Pair<K, V>" -> ("Pair", Some(["K", "V"]))
+        let (base_class_name, type_params) = if let Some(pos) = new_expr.class_name.find('<') {
             let base = &new_expr.class_name[..pos];
             let param_start = pos + 1;
             let param_end = new_expr.class_name.len().saturating_sub(1);
-            let param = if param_end > param_start {
-                Some(&new_expr.class_name[param_start..param_end])
+            let params_str = if param_end > param_start {
+                &new_expr.class_name[param_start..param_end]
             } else {
-                None
+                ""
             };
-            (base.to_string(), param)
+            // 解析多个类型参数，用逗号分隔
+            let params: Vec<String> = params_str
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            (base.to_string(), if params.is_empty() { None } else { Some(params) })
         } else {
             (new_expr.class_name.clone(), None)
         };
-        
+
         // 检查基础类是否存在
         if let Some(class_info) = self.type_registry.get_class(&base_class_name) {
             // 检查是否是抽象类
@@ -1058,21 +1097,23 @@ impl SemanticAnalyzer {
                     format!("Cannot instantiate abstract class '{}'", base_class_name)
                 ));
             }
-            
+
             // 如果类有泛型参数，验证类型参数是否合法
             if !class_info.type_params.is_empty() {
-                if let Some(param) = type_param {
-                    // 检查类型参数是否是当前类的泛型参数或者是已知类型
-                    let is_valid_param = class_info.type_params.contains(&param.to_string())
-                        || self.type_registry.class_exists(param)
-                        || self.type_registry.get_struct(param).is_some()
-                        || matches!(param, "int" | "long" | "float" | "double" | "boolean" | "char" | "String");
-                    
-                    if !is_valid_param {
-                        return Err(semantic_error_at_loc(
-                            &new_expr.loc,
-                            format!("Unknown type parameter '{}' for class '{}'", param, base_class_name)
-                        ));
+                if let Some(ref params) = type_params {
+                    // 检查每个类型参数是否合法
+                    for param in params {
+                        let is_valid_param = class_info.type_params.contains(param)
+                            || self.type_registry.class_exists(param)
+                            || self.type_registry.get_struct(param).is_some()
+                            || matches!(param.as_str(), "int" | "long" | "float" | "double" | "boolean" | "char" | "String");
+
+                        if !is_valid_param {
+                            return Err(semantic_error_at_loc(
+                                &new_expr.loc,
+                                format!("Unknown type parameter '{}' for class '{}'", param, base_class_name)
+                            ));
+                        }
                     }
                 }
                 // 返回泛型类型
@@ -1707,6 +1748,30 @@ impl SemanticAnalyzer {
                 Type::Pointer(Box::new(self.substitute_type_params(inner, type_params, type_args)))
             }
             _ => ty.clone(),
+        }
+    }
+
+    /// 将类型字符串解析为 Type
+    /// 用于解析泛型类型参数，如 "int", "String", "long" 等
+    fn parse_type_string(&self, type_str: &str) -> Type {
+        match type_str.trim() {
+            "int" => Type::Int32,
+            "long" => Type::Int64,
+            "float" => Type::Float32,
+            "double" => Type::Float64,
+            "boolean" | "bool" => Type::Bool,
+            "char" => Type::Char,
+            "String" => Type::String,
+            "void" => Type::Void,
+            // 检查是否是已注册的类或结构体
+            name => {
+                if self.type_registry.class_exists(name) || self.type_registry.get_struct(name).is_some() {
+                    Type::Object(name.to_string())
+                } else {
+                    // 未知类型，返回 Object 作为占位符
+                    Type::Object(name.to_string())
+                }
+            }
         }
     }
 }

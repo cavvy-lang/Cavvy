@@ -1,0 +1,181 @@
+/**
+ * 泛型综合测试
+ * 测试各种泛型场景，确保类型系统正确处理泛型类型
+ */
+
+#include <c/stdio.cay>
+
+// ============================================
+// 测试1: 单类型参数泛型类
+// ============================================
+public class Box<T> {
+    private T value;
+    private boolean hasValue;
+    
+    public Box() {
+        this.hasValue = false;
+    }
+    
+    public Box(T value) {
+        this.value = value;
+        this.hasValue = true;
+    }
+    
+    public T get() {
+        return this.value;
+    }
+    
+    public void set(T value) {
+        this.value = value;
+        this.hasValue = true;
+    }
+    
+    public boolean isPresent() {
+        return this.hasValue;
+    }
+}
+
+// ============================================
+// 测试2: 双类型参数泛型类
+// ============================================
+public class Pair<K, V> {
+    public K key;
+    public V value;
+    
+    public Pair(K key, V value) {
+        this.key = key;
+        this.value = value;
+    }
+    
+    public K getKey() {
+        return this.key;
+    }
+    
+    public V getValue() {
+        return this.value;
+    }
+    
+    public void setKey(K key) {
+        this.key = key;
+    }
+    
+    public void setValue(V value) {
+        this.value = value;
+    }
+}
+
+// ============================================
+// 测试3: 泛型类作为字段类型
+// ============================================
+public class Container<T> {
+    public Box<T> box;
+    
+    public Container() {
+        this.box = new Box<T>();
+    }
+    
+    public void setBox(Box<T> box) {
+        this.box = box;
+    }
+    
+    public Box<T> getBox() {
+        return this.box;
+    }
+}
+
+// ============================================
+// 测试4: 泛型方法（在泛型类中）
+// ============================================
+public class Wrapper<T> {
+    private T data;
+    
+    public Wrapper(T data) {
+        this.data = data;
+    }
+    
+    public T getData() {
+        return this.data;
+    }
+    
+    public void setData(T data) {
+        this.data = data;
+    }
+    
+    // 泛型方法：交换数据
+    public void swap(Wrapper<T> other) {
+        T temp = this.data;
+        this.data = other.data;
+        other.data = temp;
+    }
+}
+
+// ============================================
+// 测试5: 使用不同基本类型实例化泛型
+// ============================================
+public class GenericsTest {
+    public static int main() {
+        printf("=== 泛型综合测试 ===\n");
+        
+        // 测试1: Box<int>
+        printf("\n[Test 1] Box<int>\n");
+        Box<int> intBox = new Box<int>(42);
+        if (intBox.isPresent()) {
+            printf("  Box<int>(42).get() = %d\n", intBox.get());
+        }
+        intBox.set(100);
+        printf("  After set(100): get() = %d\n", intBox.get());
+        
+        // 测试2: Box<String>
+        printf("\n[Test 2] Box<String>\n");
+        Box<String> strBox = new Box<String>("Hello");
+        if (strBox.isPresent()) {
+            printf("  Box<String>(\"Hello\").get() = %s\n", strBox.get());
+        }
+        strBox.set("World");
+        printf("  After set(\"World\"): get() = %s\n", strBox.get());
+        
+        // 测试3: Pair<int, String>
+        printf("\n[Test 3] Pair<int, String>\n");
+        Pair<int, String> pair = new Pair<int, String>(1, "One");
+        printf("  Pair(1, \"One\").key = %d\n", pair.key);
+        printf("  Pair(1, \"One\").value = %s\n", pair.value);
+        pair.setKey(2);
+        pair.setValue("Two");
+        printf("  After setKey(2): key = %d\n", pair.key);
+        printf("  After setValue(\"Two\"): value = %s\n", pair.value);
+        
+        // 测试4: Pair<String, int>
+        printf("\n[Test 4] Pair<String, int>\n");
+        Pair<String, int> reversePair = new Pair<String, int>("Key", 999);
+        printf("  Pair(\"Key\", 999).key = %s\n", reversePair.key);
+        printf("  Pair(\"Key\", 999).value = %d\n", reversePair.value);
+        
+        // 测试5: Container<int>
+        printf("\n[Test 5] Container<int>\n");
+        Container<int> container = new Container<int>();
+        container.box.set(123);
+        printf("  Container.box.get() = %d\n", container.box.get());
+        
+        // 测试6: Wrapper<int> swap
+        printf("\n[Test 6] Wrapper<int> swap\n");
+        Wrapper<int> w1 = new Wrapper<int>(10);
+        Wrapper<int> w2 = new Wrapper<int>(20);
+        printf("  Before swap: w1 = %d, w2 = %d\n", w1.getData(), w2.getData());
+        w1.swap(w2);
+        printf("  After swap: w1 = %d, w2 = %d\n", w1.getData(), w2.getData());
+        
+        // 测试7: Box<double>
+        printf("\n[Test 7] Box<double>\n");
+        // 注意：由于printf不支持double，我们只测试编译和基本操作
+        Box<double> doubleBox = new Box<double>(3.14);
+        printf("  Box<double> created and set successfully\n");
+        
+        // 测试8: Box<boolean>
+        printf("\n[Test 8] Box<boolean>\n");
+        Box<boolean> boolBox = new Box<boolean>(true);
+        printf("  Box<boolean> created successfully\n");
+        
+        printf("\n=== 所有泛型测试通过 ===\n");
+        return 0;
+    }
+}

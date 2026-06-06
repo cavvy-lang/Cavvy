@@ -152,9 +152,11 @@ impl SemanticAnalyzer {
                         let is_const_expr = is_static && is_final && field.initializer.as_ref().map_or(false, |e| {
                             matches!(e, crate::ast::Expr::Literal(_))
                         });
+                        // 将泛型参数替换为 GenericParam 类型
+                        let field_type = self.replace_type_params(&field.field_type, &class.type_params);
                         let field_info = FieldInfo {
                             name: field.name.clone(),
-                            field_type: field.field_type.clone(),
+                            field_type,
                             is_public: field.modifiers.contains(&Modifier::Public),
                             is_private: field.modifiers.contains(&Modifier::Private),
                             is_protected: field.modifiers.contains(&Modifier::Protected),
@@ -212,7 +214,7 @@ impl SemanticAnalyzer {
 
     /// 将类型中的泛型参数名替换为 GenericParam 类型
     /// 例如：Object("T") -> GenericParam("T")
-    fn replace_type_params(&self, ty: &Type, type_params: &[String]) -> Type {
+    pub fn replace_type_params(&self, ty: &Type, type_params: &[String]) -> Type {
         match ty {
             Type::Object(name) => {
                 if type_params.contains(name) {

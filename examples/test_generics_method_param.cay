@@ -1,0 +1,42 @@
+/**
+ * 泛型方法参数测试
+ */
+
+#include <c/stdio.cay>
+
+public class Wrapper<T> {
+    private T data;
+    
+    public Wrapper(T data) {
+        this.data = data;
+    }
+    
+    public T getData() {
+        return this.data;
+    }
+    
+    public void setData(T data) {
+        this.data = data;
+    }
+    
+    // 泛型方法参数：接受相同类型的另一个Wrapper
+    public void copyFrom(Wrapper<T> other) {
+        this.data = other.data;
+    }
+}
+
+public class GenericsMethodParamTest {
+    public static int main() {
+        printf("=== 泛型方法参数测试 ===\n");
+        
+        Wrapper<int> w1 = new Wrapper<int>(10);
+        Wrapper<int> w2 = new Wrapper<int>(20);
+        
+        printf("Before copyFrom: w1 = %d, w2 = %d\n", w1.getData(), w2.getData());
+        w1.copyFrom(w2);
+        printf("After copyFrom: w1 = %d, w2 = %d\n", w1.getData(), w2.getData());
+        
+        printf("=== 测试通过 ===\n");
+        return 0;
+    }
+}

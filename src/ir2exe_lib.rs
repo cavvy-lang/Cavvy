@@ -1302,13 +1302,33 @@ fn compile_with_llc_lld(
         lld_cmd.arg("-o").arg(output_file);
         lld_cmd.arg(&obj_file);
         
+        // 添加标准库搜索路径 - ld.lld 不会自动搜索系统库路径
+        // 时间复杂度: O(1) - 固定数量的路径
+        let default_lib_paths = vec![
+            "/usr/lib",
+            "/usr/lib64",
+            "/usr/local/lib",
+            "/lib",
+            "/lib64",
+            "/lib/x86_64-linux-gnu",
+            "/usr/lib/x86_64-linux-gnu",
+        ];
+        for lib_path in &default_lib_paths {
+            if std::path::Path::new(lib_path).exists() {
+                lld_cmd.arg("-L").arg(lib_path);
+            }
+        }
+        
         // 额外库路径
         for path in &options.extra_lib_paths {
             lld_cmd.arg("-L").arg(path);
         }
         
-        // 默认库
+        // 添加启动文件和默认库
+        // 注意: ld.lld 需要显式链接这些库，不像 GNU ld 那样自动处理
         lld_cmd.arg("-lc");
+        lld_cmd.arg("-ldl");
+        lld_cmd.arg("-lpthread");
         
         // 额外库
         for lib in &options.extra_libs {

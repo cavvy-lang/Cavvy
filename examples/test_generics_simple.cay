@@ -1,0 +1,44 @@
+/**
+ * 简化泛型测试 - 验证基本泛型功能
+ */
+
+#include <c/stdio.cay>
+
+public class Box<T> {
+    private T value;
+    
+    public Box(T value) {
+        this.value = value;
+    }
+    
+    public T get() {
+        return this.value;
+    }
+    
+    public void set(T value) {
+        this.value = value;
+    }
+}
+
+public class GenericsSimpleTest {
+    public static int main() {
+        printf("=== 简化泛型测试 ===\n");
+        
+        // 测试 Box<int>
+        printf("\n[Test 1] Box<int>\n");
+        Box<int> intBox = new Box<int>(42);
+        printf("  Box<int>(42).get() = %d\n", intBox.get());
+        intBox.set(100);
+        printf("  After set(100): get() = %d\n", intBox.get());
+        
+        // 测试 Box<String>
+        printf("\n[Test 2] Box<String>\n");
+        Box<String> strBox = new Box<String>("Hello");
+        printf("  Box<String>(\"Hello\").get() = %s\n", strBox.get());
+        strBox.set("World");
+        printf("  After set(\"World\"): get() = %s\n", strBox.get());
+        
+        printf("\n=== 所有测试通过 ===\n");
+        return 0;
+    }
+}

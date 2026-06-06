@@ -113,7 +113,40 @@ impl StructInfo {
         if matches!(param_type, Type::GenericParam(_)) {
             return true;
         }
-        param_type == arg_type
+        
+        // 处理泛型类型匹配：Generic("Wrapper", [GenericParam("T")]) 应该匹配 Generic("Wrapper", [Int32])
+        match (param_type, arg_type) {
+            (Type::Generic(param_name, param_args), Type::Generic(arg_name, arg_args)) => {
+                if param_name != arg_name || param_args.len() != arg_args.len() {
+                    return false;
+                }
+                // 逐个比较类型参数
+                param_args.iter().zip(arg_args.iter()).all(|(p, a)| {
+                    Self::types_match_exact(p, a)
+                })
+            }
+            (Type::Generic(param_name, param_args), Type::Object(arg_name)) => {
+                // 解析对象类型名中的泛型参数: "Wrapper<int>" -> ("Wrapper", ["int"])
+                if let Some(pos) = arg_name.find('<') {
+                    let base_name = &arg_name[..pos];
+                    if param_name != base_name {
+                        return false;
+                    }
+                    // 解析类型参数
+                    let args_str = &arg_name[pos + 1..arg_name.len() - 1];
+                    let arg_type_names: Vec<&str> = args_str.split(',').map(|s| s.trim()).collect();
+                    if param_args.len() != arg_type_names.len() {
+                        return false;
+                    }
+                    // 对于参数中的GenericParam，可以匹配任何类型
+                    true
+                } else {
+                    // 没有泛型参数的对象类型，基础类型必须匹配
+                    param_name == arg_name && param_args.is_empty()
+                }
+            }
+            _ => param_type == arg_type,
+        }
     }
 
     /// 精确匹配方法参数（不考虑隐式转换，支持非末尾可变参数）
@@ -304,7 +337,40 @@ impl ClassInfo {
         if matches!(param_type, Type::GenericParam(_)) {
             return true;
         }
-        param_type == arg_type
+        
+        // 处理泛型类型匹配：Generic("Wrapper", [GenericParam("T")]) 应该匹配 Object("Wrapper<int>")
+        match (param_type, arg_type) {
+            (Type::Generic(param_name, param_args), Type::Generic(arg_name, arg_args)) => {
+                if param_name != arg_name || param_args.len() != arg_args.len() {
+                    return false;
+                }
+                // 逐个比较类型参数
+                param_args.iter().zip(arg_args.iter()).all(|(p, a)| {
+                    Self::types_match_exact(p, a)
+                })
+            }
+            (Type::Generic(param_name, param_args), Type::Object(arg_name)) => {
+                // 解析对象类型名中的泛型参数: "Wrapper<int>" -> ("Wrapper", ["int"])
+                if let Some(pos) = arg_name.find('<') {
+                    let base_name = &arg_name[..pos];
+                    if param_name != base_name {
+                        return false;
+                    }
+                    // 参数数量必须匹配
+                    let args_str = &arg_name[pos + 1..arg_name.len() - 1];
+                    let arg_type_names: Vec<&str> = args_str.split(',').map(|s| s.trim()).collect();
+                    if param_args.len() != arg_type_names.len() {
+                        return false;
+                    }
+                    // 对于参数中的GenericParam，可以匹配任何类型
+                    true
+                } else {
+                    // 没有泛型参数的对象类型，基础类型必须匹配
+                    param_name == arg_name && param_args.is_empty()
+                }
+            }
+            _ => param_type == arg_type,
+        }
     }
 
     /// 精确匹配方法参数（不考虑隐式转换，支持非末尾可变参数）
@@ -1167,9 +1233,18 @@ impl TypeRegistry {
     }
 
     /// 根据类名、方法名和参数类型查找方法（支持重载、继承和接口）
+    /// 支持泛型类名，如 "Wrapper<int>" 会被解析为 "Wrapper"
     pub fn find_method(&self, class_name: &str, method_name: &str, arg_types: &[Type]) -> Option<&MethodInfo> {
+        // 解析泛型类名: "Wrapper<int>" -> "Wrapper"
+        // 支持多类型参数: "Pair<int, String>" -> "Pair"
+        let base_class_name = if let Some(pos) = class_name.find('<') {
+            &class_name[..pos]
+        } else {
+            class_name
+        };
+        
         // 首先在当前类中查找
-        if let Some(class_info) = self.get_class(class_name) {
+        if let Some(class_info) = self.get_class(base_class_name) {
             if let Some(method) = class_info.find_method(method_name, arg_types) {
                 return Some(method);
             }
@@ -1179,13 +1254,13 @@ impl TypeRegistry {
             }
         }
         // 检查接口方法（接口方法没有重载，直接匹配方法名）
-        if let Some(interface_info) = self.get_interface(class_name) {
+        if let Some(interface_info) = self.get_interface(base_class_name) {
             if let Some(method) = interface_info.methods.get(method_name) {
                 return Some(method);
             }
         }
         // 检查 struct 方法
-        if let Some(struct_info) = self.get_struct(class_name) {
+        if let Some(struct_info) = self.get_struct(base_class_name) {
             if let Some(method) = struct_info.find_method(method_name, arg_types) {
                 return Some(method);
             }

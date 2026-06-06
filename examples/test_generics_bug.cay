@@ -1,0 +1,20 @@
+/**
+ * 泛型字段类型替换 Bug 修复测试
+ * 测试问题: pair<int> 的字段 first/second 类型应该是 int 而不是 T
+ */
+
+public class pair<T> {
+    public T first;
+    public T second;
+}
+
+#include <c/stdio.cay>
+
+public int main() {
+    pair<int> p = new pair<int>();
+    p.first = 1;
+    p.second = 2;
+
+    printf("%d %d", p.first, p.second);
+    return 0;
+}

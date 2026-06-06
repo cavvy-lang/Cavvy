@@ -1,0 +1,20 @@
+/**
+ * 泛型基础测试 - 对应原666.cay
+ * 测试泛型类字段赋值
+ */
+
+public class pair<T> {
+    public T first;
+    public T second;
+}
+
+#include <c/stdio.cay>
+
+public int main() {
+    pair<int> p = new pair<int>();
+    p.first = 1;
+    p.second = 2;
+
+    printf("%d %d", p.first, p.second);
+    return 0;
+}
