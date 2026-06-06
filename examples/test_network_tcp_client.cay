@@ -36,7 +36,7 @@ public int main() {
     String serverIp = "127.0.0.1";
     int serverPort = 8888;
     
-    println("正在连接到服务器: " + serverIp + ":" + serverPort);
+    println("正在连接到服务器: " + String.valueOf(serverIp)+ ":" + serverPort);
     
     if (!socket.connectTo(serverIp, serverPort)) {
         println("连接失败 (服务器可能未启动)");
@@ -53,13 +53,13 @@ public int main() {
     
     /* 发送数据 */
     String message = "Hello, Server!";
-    println("发送消息: " + message);
+    println("发送消息: " + String.valueOf(message));
     
     int sent = socket.send(message);
     if (sent < 0) {
         println("发送失败");
     } else {
-        println("发送成功，字节数: " + sent);
+        println("发送成功，字节数: " + String.valueOf(sent));
     }
     
     /* 接收响应 */
@@ -67,7 +67,7 @@ public int main() {
     String response = socket.receiveString(1024);
     
     if (response.length() > 0) {
-        println("收到响应: " + response);
+        println("收到响应: " + String.valueOf(response));
     } else {
         println("未收到响应或连接已关闭");
     }

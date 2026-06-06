@@ -4,42 +4,42 @@ public class TestIncDec {
         int a = 5;
         int b = 10;
         
-        println("初始值: a = " + a + ", b = " + b);
+        println("初始值: a = " + String.valueOf(a)+ ", b = " + b);
         
         // 测试前缀自增
         int c = ++a;
-        println("++a 后: a = " + a + ", c = " + c);
+        println("++a 后: a = " + String.valueOf(a)+ ", c = " + c);
         
         // 测试后缀自增
         int d = b++;
-        println("b++ 后: b = " + b + ", d = " + d);
+        println("b++ 后: b = " + String.valueOf(b)+ ", d = " + d);
         
         // 测试前缀自减
         int e = --a;
-        println("--a 后: a = " + a + ", e = " + e);
+        println("--a 后: a = " + String.valueOf(a)+ ", e = " + e);
         
         // 测试后缀自减
         int f = b--;
-        println("b-- 后: b = " + b + ", f = " + f);
+        println("b-- 后: b = " + String.valueOf(b)+ ", f = " + f);
         
         // 测试复合赋值运算符
         int x = 100;
-        println("\n初始值: x = " + x);
+        println("\n初始值: x = " + String.valueOf(x));
         
         x += 10;
-        println("x += 10: x = " + x);
+        println("x += 10: x = " + String.valueOf(x));
         
         x -= 20;
-        println("x -= 20: x = " + x);
+        println("x -= 20: x = " + String.valueOf(x));
         
         x *= 2;
-        println("x *= 2: x = " + x);
+        println("x *= 2: x = " + String.valueOf(x));
         
         x /= 3;
-        println("x /= 3: x = " + x);
+        println("x /= 3: x = " + String.valueOf(x));
         
         x %= 5;
-        println("x %= 5: x = " + x);
+        println("x %= 5: x = " + String.valueOf(x));
         
         // 测试在循环中使用自增
         println("\n循环中使用自增:");

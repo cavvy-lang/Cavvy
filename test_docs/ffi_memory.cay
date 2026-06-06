@@ -18,7 +18,7 @@ public int main() {
 
     // 读取数据 (只需要1个参数: 指针)
     int val = __cay_read_int(buffer);
-    println("buffer[0] = " + val);
+    println("buffer[0] = " + String.valueOf(val));
 
     // 释放内存
     free(buffer);

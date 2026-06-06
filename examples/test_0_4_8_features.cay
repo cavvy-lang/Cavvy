@@ -43,7 +43,7 @@ class TestFFI {
         double d = (double)cd;
 
         println("FFI feature test passed");
-        println("c_int value: " + i);
+        println("c_int value: " + String.valueOf(i));
         println("c_long value: " + (int)l);
 
         return 0;

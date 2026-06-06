@@ -227,6 +227,7 @@ impl SemanticAnalyzer {
                 params: func.params.iter().map(|p| p.param_type.clone()).collect(),
                 return_type: Box::new(func.return_type.clone()),
                 is_static: true,
+                is_closure: false,
             }));
             let symbol_info = SemanticSymbolInfo {
                 name: func.name.clone(),

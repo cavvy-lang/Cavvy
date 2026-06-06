@@ -47,20 +47,20 @@ public int main() {
     
     // for 循环
     for (int j = 0; j < 3; j++) {
-        println("j = " + j);
+        println("j = " + String.valueOf(j));
     }
     
     // while 循环
     int count = 0;
     while (count < 3) {
-        println("count = " + count);
+        println("count = " + String.valueOf(count));
         count++;
     }
     
     // do-while
     int num = 0;
     do {
-        println("num = " + num);
+        println("num = " + String.valueOf(num));
         num++;
     } while (num < 3);
     
@@ -68,7 +68,7 @@ public int main() {
     for (int k = 0; k < 10; k++) {
         if (k == 2) continue;
         if (k == 5) break;
-        println("k = " + k);
+        println("k = " + String.valueOf(k));
     }
     
     // return - 调用 TestClass 的静态方法
@@ -135,11 +135,11 @@ public int main() {
     
     // 字段访问
     tc.field = 10;
-    println("Field = " + tc.field);
+    println("Field = " + String.valueOf(tc.field));
     
     // 数组访问
     int[] arr4 = {10, 20, 30};
-    println("arr4[0] = " + arr4[0]);
+    println("arr4[0] = " + String.valueOf(arr4[0]));
     
     // 赋值
     int myVar = 10;

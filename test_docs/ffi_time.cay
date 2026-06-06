@@ -6,7 +6,7 @@ extern long clock();
 public int main() {
     // 获取当前时间
     long now = time(0);
-    println("Current time: " + now);
+    println("Current time: " + String.valueOf(now));
 
     // 测量代码执行时间
     long start = clock();
@@ -18,7 +18,7 @@ public int main() {
 
     long end = clock();
     long elapsed = (end - start) / CLOCKS_PER_SEC;
-    println("Elapsed: " + elapsed + " seconds");
+    println("Elapsed: " + String.valueOf(elapsed) + " seconds");
 
     println("Time test passed");
     return 0;

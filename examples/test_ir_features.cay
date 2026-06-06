@@ -322,16 +322,16 @@ public class IRTest extends BaseMath implements Calculator {
         int count = IRTest.getInstanceCount();
         
         println("All IR feature tests completed successfully!");
-        println("ifElse: " + ifResult);
-        println("while: " + whileResult);
-        println("for factorial: " + forResult);
-        println("doWhile: " + doWhileResult);
-        println("breakContinue: " + bcResult);
-        println("switch: " + switchResult);
-        println("ternary: " + ternaryResult);
-        println("arraySum: " + arraySum);
-        println("arrayProd: " + arrayProd);
-        println("matrixSum: " + matrixSum);
-        println("instanceCount: " + count);
+        println("ifElse: " + String.valueOf(ifResult));
+        println("while: " + String.valueOf(whileResult));
+        println("for factorial: " + String.valueOf(forResult));
+        println("doWhile: " + String.valueOf(doWhileResult));
+        println("breakContinue: " + String.valueOf(bcResult));
+        println("switch: " + String.valueOf(switchResult));
+        println("ternary: " + String.valueOf(ternaryResult));
+        println("arraySum: " + String.valueOf(arraySum));
+        println("arrayProd: " + String.valueOf(arrayProd));
+        println("matrixSum: " + String.valueOf(matrixSum));
+        println("instanceCount: " + String.valueOf(count));
     }
 }

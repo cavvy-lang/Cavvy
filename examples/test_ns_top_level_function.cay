@@ -9,7 +9,7 @@ public class Calculator {
 
 public class Main {
     public static void main() {
-        println("Top-level func: " + Calculator.compute());
+        println("Top-level func: " + String.valueOf(Calculator.compute()));
         println("Hello from main");
     }
 }

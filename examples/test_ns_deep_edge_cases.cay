@@ -49,7 +49,7 @@ public class Main {
         println("=== Deep Edge Test ===");
         println(A1.val());
         println(B1.val());
-        println("B2 echo: " + B2.echo("works"));
+        println("B2 echo: " + String.valueOf(B2.echo("works")));
         println(C1.val());
         println(D1.val());
         println(E1.val());

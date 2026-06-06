@@ -31,9 +31,9 @@ public int main() {
     int netPort = NetworkUtils.htons(hostPort);
     int hostPortBack = NetworkUtils.ntohs(netPort);
     
-    println("主机字节序端口: " + hostPort);
-    println("网络字节序端口: " + netPort);
-    println("转换回主机字节序: " + hostPortBack);
+    println("主机字节序端口: " + String.valueOf(hostPort));
+    println("网络字节序端口: " + String.valueOf(netPort));
+    println("转换回主机字节序: " + String.valueOf(hostPortBack));
     
     if (hostPort == hostPortBack) {
         println("字节序转换测试通过!");
@@ -45,15 +45,15 @@ public int main() {
     println("\n--- Socket地址测试 ---");
     
     SocketAddr addr1 = new SocketAddr().fromIpPort("192.168.1.1", 8080);
-    println("创建的地址 - 端口(网络字节序): " + addr1.port);
-    println("创建的地址 - 地址族: " + addr1.family);
+    println("创建的地址 - 端口(网络字节序): " + String.valueOf(addr1.port()));
+    println("创建的地址 - 地址族: " + String.valueOf(addr1.family()));
     
     SocketAddr addr2 = new SocketAddr().any(9090);
-    println("任意地址 - 端口(网络字节序): " + addr2.port);
-    println("任意地址 - IP地址: " + addr2.addr);
+    println("任意地址 - 端口(网络字节序): " + String.valueOf(addr2.port()));
+    println("任意地址 - IP地址: " + String.valueOf(addr2.addr()));
     
     SocketAddr addr3 = new SocketAddr().localhost(3000);
-    println("本地地址 - 端口(网络字节序): " + addr3.port);
+    println("本地地址 - 端口(网络字节序): " + String.valueOf(addr3.port()));
     
     /* 测试便捷函数 */
     println("\n--- 便捷函数测试 ---");
@@ -95,7 +95,7 @@ public int main() {
     println("\n--- TCP服务器测试 ---");
     TcpServer server = new TcpServer();
     if (server.bindTo(0)) {  /* 绑定到任意可用端口 */
-        println("TCP服务器绑定成功，端口: " + server.getPort());
+        println("TCP服务器绑定成功，端口: " + String.valueOf(server.getPort()));
         
         if (server.listen(5)) {
             println("TCP服务器开始监听");

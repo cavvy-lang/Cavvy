@@ -26,8 +26,8 @@ public class InstanceFieldTest {
         InstanceFieldTest obj = new InstanceFieldTest();
         obj.init(42, 123456789L, "Hello");
         
-        println("Int: " + obj.getInt());
-        println("Long: " + obj.getLong());
+        println("Int: " + String.valueOf(obj.getInt()));
+        println("Long: " + String.valueOf(obj.getLong()));
         println("String: " + obj.getString());
     }
 }

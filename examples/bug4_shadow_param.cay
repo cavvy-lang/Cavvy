@@ -15,6 +15,6 @@ public class Bug4Main {
     public static void main() {
         Bug4Target t = new Bug4Target(42);
         long v = t.getValue();
-        println("value = " + v);
+        println("value = " + String.valueOf(v));
     }
 }

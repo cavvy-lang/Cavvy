@@ -32,7 +32,7 @@ public int main() {
     /* 直接调用bind */
     int bindResult = bind((int)sock, (long)(&addr), 16);
     if (bindResult != 0) {
-        println("绑定失败，结果: " + bindResult);
+        println("绑定失败，结果: " + String.valueOf(bindResult));
         closesocket(sock);
         NetworkUtils.cleanup();
         return 1;

@@ -186,6 +186,17 @@ impl IRGenerator {
                                     .unwrap_or_else(|| obj_name_str.to_string());
                                 (result, false)
                             };
+                            
+                            // 如果不是类名（是变量），检查是否是函数指针字段调用
+                            if !is_class {
+                                if let Some(field_type) = self.get_field_type(&class_name, &member.member) {
+                                    if matches!(field_type, crate::types::Type::Function(_)) {
+                                        // 是函数指针字段调用，生成函数指针调用代码
+                                        return self.generate_member_func_ptr_call(member, &call.args, &field_type, &call.loc);
+                                    }
+                                }
+                            }
+                            
                             // 如果是类名.方法名() 形式，标记为静态方法调用
                             (class_name, member.member.clone(), Some(member.object.clone()), is_class)
                         }
@@ -368,10 +379,13 @@ impl IRGenerator {
         };
 
         // 检查是否需要 vtable 间接调用
-        // 条件：是实例方法，有可用的 this 指针，且类有 vtable 布局
+        // 条件：是实例方法，有可用的 this 指针，类有 vtable 布局，且方法不是 private
+        // private 方法不需要动态分派，直接调用即可
+        let is_private = self.is_private_method(&class_name, &method_name);
         let needs_vtable_dispatch = is_instance_method 
             && resolved_this_val.is_some() 
-            && self.class_has_vtable(&class_name);
+            && self.class_has_vtable(&class_name)
+            && !is_private;
         
         if needs_vtable_dispatch {
             let this_val = resolved_this_val.unwrap();
@@ -385,7 +399,9 @@ impl IRGenerator {
             self.emit_line(&format!("  {} = load i8*, i8* {}", vtable_temp, vtable_ptr_temp));
             
             // 获取方法在 vtable 中的槽位
-            let slot = self.get_vtable_slot(&class_name, &method_name);
+            // 需要参数类型来构建方法签名（支持重载方法）
+            let param_types = self.get_method_param_types(&class_name, &method_name, &processed_args, has_varargs_array);
+            let slot = self.get_vtable_slot(&class_name, &method_name, &param_types);
             
             // 将 vtable 指针转换为 i8** 数组（每个元素是 i8*）
             let vtable_array_temp = self.new_temp();
@@ -801,6 +817,37 @@ impl IRGenerator {
             }
         }
         // 默认返回false
+        false
+    }
+
+    /// 检查方法是否是 private 方法
+    fn is_private_method(&self, class_name: &str, method_name: &str) -> bool {
+        if let Some(ref registry) = self.type_registry {
+            let mut current_class_name = class_name.to_string();
+            loop {
+                if let Some(class_info) = registry.get_class(&current_class_name) {
+                    if let Some(methods) = class_info.methods.get(method_name) {
+                        // 检查是否有任何方法是 private
+                        for method in methods {
+                            if method.is_private {
+                                return true;
+                            }
+                        }
+                        // 在当前类找到方法但不是 private，返回 false
+                        return false;
+                    }
+                    // 在当前类没找到，查找父类
+                    if let Some(ref parent_name) = class_info.parent {
+                        current_class_name = parent_name.clone();
+                    } else {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+        }
+        // 默认返回 false（不是 private）
         false
     }
 
@@ -1750,13 +1797,46 @@ impl IRGenerator {
         // 获取函数指针变量
         let llvm_name = self.scope_manager.get_llvm_name(var_name)
             .ok_or_else(|| codegen_error_at(loc.clone(), format!("Undefined function pointer variable: {}", var_name)))?;
-        
-        // 加载函数指针
-        let func_ptr_temp = self.new_temp();
-        let func_ptr_type = self.type_to_llvm(func_type);
-        self.emit_line(&format!("  {} = load {}, {}* %{}, align 8",
-            func_ptr_temp, func_ptr_type, func_ptr_type, llvm_name));
-        
+
+        // 检查是否是闭包（有捕获变量）- 使用类型中的 is_closure 标志
+        let is_closure = if let Type::Function(func) = func_type {
+            func.is_closure
+        } else {
+            false
+        };
+
+        let func_ptr_temp;
+        if is_closure {
+            // 闭包调用：从结构体中解包函数指针和环境指针
+            // 结构体: { i8* func_ptr, i8* env_ptr }
+            let struct_ptr_temp = self.new_temp();
+            self.emit_line(&format!("  {} = load i8*, i8** %{}, align 8", struct_ptr_temp, llvm_name));
+
+            // 加载函数指针（偏移0）
+            let func_ptr_slot = self.new_temp();
+            self.emit_line(&format!("  {} = bitcast i8* {} to i8**", func_ptr_slot, struct_ptr_temp));
+            func_ptr_temp = self.new_temp();
+            self.emit_line(&format!("  {} = load i8*, i8** {}, align 8", func_ptr_temp, func_ptr_slot));
+
+            // 加载环境指针（偏移8）
+            let env_ptr_slot_temp = self.new_temp();
+            self.emit_line(&format!("  {} = getelementptr i8, i8* {}, i64 8", env_ptr_slot_temp, struct_ptr_temp));
+            let env_ptr_slot_cast = self.new_temp();
+            self.emit_line(&format!("  {} = bitcast i8* {} to i8**", env_ptr_slot_cast, env_ptr_slot_temp));
+            let env_ptr_temp = self.new_temp();
+            self.emit_line(&format!("  {} = load i8*, i8** {}, align 8", env_ptr_temp, env_ptr_slot_cast));
+
+            // 将环境指针作为最后一个参数
+            arg_values.push(format!("i8* {}", env_ptr_temp));
+        } else {
+            // 普通函数指针调用
+            let fp_temp = self.new_temp();
+            let func_ptr_type = self.type_to_llvm(func_type);
+            self.emit_line(&format!("  {} = load {}, {}* %{}, align 8",
+                fp_temp, func_ptr_type, func_ptr_type, llvm_name));
+            func_ptr_temp = fp_temp;
+        }
+
         // 生成调用
         let llvm_ret_type = self.type_to_llvm(&ret_type);
         if llvm_ret_type == "void" {
@@ -1789,8 +1869,8 @@ impl IRGenerator {
         use crate::ast::Expr;
 
         // 获取函数类型信息
-        let (param_types, ret_type) = if let Type::Function(func) = func_type {
-            (func.params.clone(), *func.return_type.clone())
+        let (param_types, ret_type, is_static) = if let Type::Function(func) = func_type {
+            (func.params.clone(), *func.return_type.clone(), func.is_static)
         } else {
             return Err(codegen_error_at(loc.clone(), format!("Field '{}' is not a function pointer", member.member)));
         };
@@ -1854,25 +1934,94 @@ impl IRGenerator {
             field_ptr_i8, obj_val, field_offset));
 
         // 加载函数指针
-        let func_ptr_type = self.type_to_llvm(func_type);
-        let func_ptr_temp = self.new_temp();
-        self.emit_line(&format!("  {} = bitcast i8* {} to {}*",
-            func_ptr_temp, field_ptr_i8, func_ptr_type));
+        // 注意：函数指针字段存储的是闭包结构体指针（i8*），而不是直接的函数指针
+        // 闭包结构体布局：[函数指针: i8*][环境指针: i8*]
+        // 所以我们需要从闭包结构体中加载函数指针
+        
+        let closure_ptr_slot = self.new_temp();
+        self.emit_line(&format!("  {} = bitcast i8* {} to i8**",
+            closure_ptr_slot, field_ptr_i8));
 
+        let closure_ptr_i8 = self.new_temp();
+        self.emit_line(&format!("  {} = load i8*, i8** {}, align 8",
+            closure_ptr_i8, closure_ptr_slot));
+
+        // 从闭包结构体中加载函数指针（偏移 0）
+        let func_ptr_slot = self.new_temp();
+        self.emit_line(&format!("  {} = bitcast i8* {} to i8**",
+            func_ptr_slot, closure_ptr_i8));
+
+        let loaded_func_ptr_i8 = self.new_temp();
+        self.emit_line(&format!("  {} = load i8*, i8** {}, align 8",
+            loaded_func_ptr_i8, func_ptr_slot));
+
+        // 将函数指针转换为正确的类型（包含this指针）
         let loaded_func_ptr = self.new_temp();
-        self.emit_line(&format!("  {} = load {}, {}* {}, align 8",
-            loaded_func_ptr, func_ptr_type, func_ptr_type, func_ptr_temp));
+        // 构建包含this的函数类型: ret_type (i8*, param_types...)
+        let llvm_ret_type = self.type_to_llvm(&ret_type);
+        let param_llvm_types: Vec<String> = param_types.iter().map(|t| self.type_to_llvm(t)).collect();
+        let func_type_with_this = if llvm_ret_type == "void" {
+            if param_llvm_types.is_empty() {
+                "void (i8*)*".to_string()
+            } else {
+                format!("void (i8*, {})*", param_llvm_types.join(", "))
+            }
+        } else {
+            if param_llvm_types.is_empty() {
+                format!("{} (i8*)*", llvm_ret_type)
+            } else {
+                format!("{} (i8*, {})*", llvm_ret_type, param_llvm_types.join(", "))
+            }
+        };
+        // 根据是否是静态方法决定是否传递this指针
+        let (func_type_str, final_args) = if is_static {
+            // 静态方法：不传递this指针
+            let func_type_str = if llvm_ret_type == "void" {
+                if param_llvm_types.is_empty() {
+                    "void ()*".to_string()
+                } else {
+                    format!("void ({})*", param_llvm_types.join(", "))
+                }
+            } else {
+                if param_llvm_types.is_empty() {
+                    format!("{} ()*", llvm_ret_type)
+                } else {
+                    format!("{} ({})*", llvm_ret_type, param_llvm_types.join(", "))
+                }
+            };
+            (func_type_str, arg_values)
+        } else {
+            // 实例方法：传递this指针作为第一个参数
+            let func_type_str = if llvm_ret_type == "void" {
+                if param_llvm_types.is_empty() {
+                    "void (i8*)*".to_string()
+                } else {
+                    format!("void (i8*, {})*", param_llvm_types.join(", "))
+                }
+            } else {
+                if param_llvm_types.is_empty() {
+                    format!("{} (i8*)*", llvm_ret_type)
+                } else {
+                    format!("{} (i8*, {})*", llvm_ret_type, param_llvm_types.join(", "))
+                }
+            };
+            let mut args = vec![format!("i8* {}", obj_val)];
+            args.extend(arg_values);
+            (func_type_str, args)
+        };
+        
+        self.emit_line(&format!("  {} = bitcast i8* {} to {}",
+            loaded_func_ptr, loaded_func_ptr_i8, func_type_str));
 
         // 生成调用
-        let llvm_ret_type = self.type_to_llvm(&ret_type);
         if llvm_ret_type == "void" {
             self.emit_line(&format!("  call void {}({})",
-                loaded_func_ptr, arg_values.join(", ")));
+                loaded_func_ptr, final_args.join(", ")));
             Ok("void %dummy".to_string())
         } else {
             let temp = self.new_temp();
             self.emit_line(&format!("  {} = call {} {}({})",
-                temp, llvm_ret_type, loaded_func_ptr, arg_values.join(", ")));
+                temp, llvm_ret_type, loaded_func_ptr, final_args.join(", ")));
             Ok(format!("{} {}", llvm_ret_type, temp))
         }
     }
@@ -1893,11 +2042,22 @@ impl IRGenerator {
     }
 
     /// 获取方法在 vtable 中的槽位编号
-    fn get_vtable_slot(&self, class_name: &str, method_name: &str) -> usize {
+    /// 使用方法签名（方法名+参数类型）作为键，支持重载方法
+    fn get_vtable_slot(&self, class_name: &str, method_name: &str, arg_types: &[crate::types::Type]) -> usize {
+        // 构建方法签名：方法名(参数类型1,参数类型2,...)
+        let param_type_strs: Vec<String> = arg_types.iter()
+            .map(|t| format!("{:?}", t))
+            .collect();
+        let method_sig = if param_type_strs.is_empty() {
+            method_name.to_string()
+        } else {
+            format!("{}({})", method_name, param_type_strs.join(","))
+        };
+
         if let Some(ref registry) = self.type_registry {
             if let Some(class_info) = registry.get_class(class_name) {
                 if let Some(ref vtable) = class_info.vtable_layout {
-                    return vtable.slots.get(method_name).copied().unwrap_or(0);
+                    return vtable.slots.get(&method_sig).copied().unwrap_or(0);
                 }
             }
         }

@@ -29,17 +29,17 @@ public class DebugTest8 {
         File readFile = new File();
         if (readFile.open(path, FileMode.read())) {
             println("   文件打开成功");
-            println("   isOpen: " + readFile.isOpened());
+            println("   isOpen: " + String.valueOf(readFile.isOpened)());
             println("   handle null: " + (readFile.handle == null));
             
             long size = readFile.size();
-            println("   size(): " + size);
+            println("   size(): " + String.valueOf(size));
             
             // 直接调用实例方法
             String content = readFile.readAllText();
             if (content != null) {
                 println("   readAllText() 成功");
-                println("   内容: '" + content + "'");
+                println("   内容: '" + String.valueOf(content)+ "'");
             } else {
                 println("   readAllText() 返回 null");
             }

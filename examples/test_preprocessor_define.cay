@@ -12,8 +12,8 @@ public class TestPreprocessorDefine {
         int debug = DEBUG;
         int max = MAX_SIZE;
         
-        println("Debug mode: " + debug);
-        println("Max size: " + max);
+        println("Debug mode: " + String.valueOf(debug));
+        println("Max size: " + String.valueOf(max));
         
         // 验证宏替换
         if (debug == 1) {

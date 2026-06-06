@@ -52,7 +52,7 @@ class TestStringConcatAdvanced {
         string sumStr;
         if (sum == 30) { sumStr = "30"; }
         else { sumStr = "unknown"; }
-        string s8 = "Sum of " + "10" + " and " + "20" + " is " + sumStr;
+        string s8 = "Sum of " + "10" + " and " + "20" + " is " + String.valueOf(sumStr);
         println("Test 8: Sum expression concatenated");
         
         // Test concatenation with array length (convert to string manually)
@@ -61,12 +61,12 @@ class TestStringConcatAdvanced {
         string lenStr;
         if (len == 5) { lenStr = "5"; }
         else { lenStr = "unknown"; }
-        string s9 = "Array has " + lenStr + " elements";
+        string s9 = "Array has " + String.valueOf(lenStr) + " elements";
         println("Test 9: Array length concatenated");
         
         // Test empty string concatenation
         string empty = "";
-        string s10 = empty + "Hello" + empty;
+        string s10 = empty + "Hello" + String.valueOf(empty);
         println("Test 10: Hello (expected)");
         
         // Test string with spaces

@@ -3,17 +3,17 @@ class Main {
         // 测试 Integer.parseInt()
         String numStr = "12345";
         int num = Integer.parseInt(numStr);
-        println("Parsed: " + num);
+        println("Parsed: " + String.valueOf(num));
 
         // 测试负数
         String negStr = "-9876";
         int neg = Integer.parseInt(negStr);
-        println("Negative: " + neg);
+        println("Negative: " + String.valueOf(neg));
 
         // 测试零
         String zeroStr = "0";
         int zero = Integer.parseInt(zeroStr);
-        println("Zero: " + zero);
+        println("Zero: " + String.valueOf(zero));
 
         return 0;
     }

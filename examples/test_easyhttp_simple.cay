@@ -15,12 +15,12 @@ public class EasyHTTPDemo {
         /* 测试HttpHeaders */
         HttpHeaders headers = new HttpHeaders();
         headers.set("Content-Type", "application/json");
-        println("Content-Type: " + headers.get("Content-Type"));
+        println("Content-Type: " + String.valueOf(headers.get)("Content-Type"));
 
         /* 测试HttpParams */
         HttpParams params = new HttpParams();
         params.add("key", "value");
-        println("Query string: " + params.toString());
+        println("Query string: " + String.valueOf(params.toString)());
 
         println("=== 测试完成 ===");
     }

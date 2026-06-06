@@ -9,18 +9,18 @@ extern int memcmp(long ptr1, long ptr2, int n);
 public int main() {
     // malloc - 由运行时提供
     long ptr1 = malloc(100);
-    println("malloc(100) = " + ptr1);
+    println("malloc(100) = " + String.valueOf(ptr1));
     
     // calloc - 由运行时提供，直接使用（不声明 extern）
     // 注意：calloc 在运行时已声明，但 Cavvy 需要知道其签名
     // 使用 malloc + memset 替代
     long ptr2 = malloc(80);
     memset(ptr2, 0, 80);
-    println("calloc simulation (malloc + memset) = " + ptr2);
+    println("calloc simulation (malloc + memset) = " + String.valueOf(ptr2));
     
     // realloc
     long ptr3 = realloc(ptr1, 200);
-    println("realloc(ptr1, 200) = " + ptr3);
+    println("realloc(ptr1, 200) = " + String.valueOf(ptr3));
     
     // memset
     memset(ptr2, 0, 80);

@@ -26,19 +26,19 @@ public class DebugTest5 {
         // 测试1: 使用 File.writeAllText
         println("测试1: File.writeAllText");
         bool result1 = File.writeAllText("test_lib.txt", "Content from library");
-        println("结果: " + result1);
+        println("结果: " + String.valueOf(result1));
         if (result1) {
             String content = File.readAllText("test_lib.txt");
-            println("读取: '" + content + "'");
+            println("读取: '" + String.valueOf(content)+ "'");
         }
         
         // 测试2: 使用我的实现
         println("\n测试2: myWriteAllText");
         bool result2 = myWriteAllText("test_my.txt", "Content from my implementation");
-        println("结果: " + result2);
+        println("结果: " + String.valueOf(result2));
         if (result2) {
             String content = File.readAllText("test_my.txt");
-            println("读取: '" + content + "'");
+            println("读取: '" + String.valueOf(content)+ "'");
         }
         
         // 清理

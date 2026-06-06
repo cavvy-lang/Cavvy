@@ -1,7 +1,7 @@
 public int main(String[] args) {
-    println("Arguments count: " + args.length);
+    println("Arguments count: " + String.valueOf(args.length));
     for (int i = 0; i < args.length; i++) {
-        println("Arg " + i + ": " + args[i]);
+        println("Arg " + String.valueOf(i)+ ": " + args[i]);
     }
     return 0;
 }

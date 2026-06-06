@@ -30,10 +30,10 @@ public class TestFileLines {
         println("\n[测试2] 读取所有行");
         String[] readLines = File.readAllLines(testFile);
         if (readLines != null) {
-            println("读取到 " + readLines.length + " 行:");
+            println("读取到 " + String.valueOf(readLines.length)+ " 行:");
             int i = 0;
             while (i < readLines.length) {
-                println("  行 " + i + ": " + readLines[i]);
+                println("  行 " + String.valueOf(i)+ ": " + readLines[i]);
                 i = i + 1;
             }
         } else {
@@ -47,7 +47,7 @@ public class TestFileLines {
         while (!reader.isEof()) {
             String line = reader.readLine();
             if (line != null) {
-                println("  读取行 " + lineNum + ": " + line);
+                println("  读取行 " + String.valueOf(lineNum)+ ": " + line);
                 lineNum = lineNum + 1;
             }
         }

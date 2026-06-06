@@ -15,7 +15,7 @@ public class BaseClass {
     
     // 普通方法 - 子类可以重写
     public void printValue() {
-        println("Base value: " + value);
+        println("Base value: " + String.valueOf(value));
     }
 }
 
@@ -24,13 +24,13 @@ public class DerivedClass extends BaseClass {
     // 重写普通方法
     @Override
     public void printValue() {
-        println("Derived value: " + getValue());
+        println("Derived value: " + String.valueOf(getValue)());
     }
     
     public static void main(String[] args) {
         DerivedClass obj = new DerivedClass();
         obj.setValue(100);
         obj.printValue();
-        println("Final method returns: " + obj.getValue());
+        println("Final method returns: " + String.valueOf(obj.getValue)());
     }
 }

@@ -52,6 +52,33 @@ impl IRGenerator {
                 // new 表达式返回对象类型
                 Some(Type::Object(new_expr.class_name.clone()))
             }
+            Expr::Lambda(lambda) => {
+                // Lambda 表达式推断为函数指针类型
+                let param_types: Vec<Type> = lambda.params.iter()
+                    .map(|p| p.param_type.clone().unwrap_or(Type::Int32))
+                    .collect();
+                let return_type = match &lambda.body {
+                    LambdaBody::Expr(expr) => self.infer_type_from_expr(expr).unwrap_or(Type::Int32),
+                    LambdaBody::Block(block) => {
+                        // 查找块中的 return 语句
+                        let mut ret_type = Type::Void;
+                        for stmt in &block.statements {
+                            if let Stmt::Return(Some(ret_expr)) = stmt {
+                                ret_type = self.infer_type_from_expr(ret_expr).unwrap_or(Type::Int32);
+                                break;
+                            }
+                        }
+                        ret_type
+                    }
+                };
+                // Lambda 总是使用闭包格式（打包结构体），所以 is_closure 总是 true
+                Some(Type::Function(Box::new(crate::types::FunctionType {
+                    params: param_types,
+                    return_type: Box::new(return_type),
+                    is_static: true,
+                    is_closure: true,
+                })))
+            }
             _ => None, // 无法推断，返回 None
         }
     }
@@ -281,6 +308,19 @@ impl IRGenerator {
                 let value = self.generate_array_init_with_type(array_init, &actual_type)?;
                 self.emit_line(&format!("  store {}, {}* %{}",
                     value, var_type, llvm_name));
+            } else if let Expr::Lambda(lambda_expr) = init {
+                // Lambda 表达式特殊处理：传递变量名以支持闭包捕获
+                let value = self.generate_lambda(lambda_expr, Some(&var.name))?;
+                let (value_type, val) = self.parse_typed_value(&value);
+                if value_type != var_type {
+                    let temp = self.new_temp();
+                    self.emit_line(&format!("  {} = bitcast {} {} to {}",
+                        temp, value_type, val, var_type));
+                    self.emit_line(&format!("  store {} {}, {}* %{}, align {}", var_type, temp, var_type, llvm_name, align));
+                } else {
+                    self.emit_line(&format!("  store {}, {}* %{}",
+                        value, var_type, llvm_name));
+                }
             } else {
                 let value = self.generate_expression(init)?;
                 let (value_type, val) = self.parse_typed_value(&value);

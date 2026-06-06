@@ -34,6 +34,6 @@ public class Bug4Test {
         SourceLocation loc = new SourceLocation(1, 1);
         Token t = new Token(3, 42, loc);
         long v = t.getIntValue();
-        println("intValue = " + v);
+        println("intValue = " + String.valueOf(v));
     }
 }

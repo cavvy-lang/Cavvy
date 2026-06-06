@@ -143,7 +143,7 @@ public class Test {
 
 #[test]
 fn test_error_private_access() {
-    // 当前版本不强制 private 访问控制，测试编译成功即可
+    // private 访问控制已实现，从不同类访问 private 字段应编译失败
     let code = r#"
 class Foo {
     private int secret;
@@ -161,13 +161,14 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_err_access1.cay", code).unwrap();
-    // 当前版本不强制 private，编译应成功
     let result = std::process::Command::new("./target/release/cayc.exe")
         .args(&["examples/test_err_access1.cay", "examples/test_err_access1.exe"])
         .output()
         .expect("Failed to execute cayc");
-    // 当前版本不强制 private，编译应成功
-    assert!(result.status.success(), "当前版本不强制 private 访问控制，编译应成功");
+    assert!(!result.status.success(), "从不同类访问 private 字段应编译失败");
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(stderr.contains("private") || stderr.contains("access"),
+        "应报告 private 访问错误: {}", stderr);
     let _ = std::fs::remove_file("examples/test_err_access1.cay");
     let _ = std::fs::remove_file("examples/test_err_access1.exe");
 }

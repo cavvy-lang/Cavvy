@@ -6,7 +6,7 @@ public class MethodChaining {
     
     public static void main() {
         int result = add(5, 3);
-        println("add(5, 3) = " + result);
+        println("add(5, 3) = " + String.valueOf(result));
         println("All method chaining tests completed!");
     }
 }

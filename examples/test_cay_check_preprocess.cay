@@ -19,7 +19,7 @@ public class TestCayCheckPreprocess {
         
         // 测试宏替换
         int version_code = 100;
-        println("Version code: " + version_code);
+        println("Version code: " + String.valueOf(version_code));
         
         println("All tests passed!");
     }

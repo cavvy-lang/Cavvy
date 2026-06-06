@@ -1,6 +1,6 @@
 public class TestMethodReturnString {
     public static String greet(String name) {
-        return "Hello, " + name + "!";
+        return "Hello, " + String.valueOf(name)+ "!";
     }
 
     public static void main() {

@@ -9,7 +9,7 @@ public class TestLabeledBreakContinue {
                 if (i == 1 && j == 1) {
                     break outer1;  // 跳出外层循环
                 }
-                println("i=" + i + ", j=" + j);
+                println("i=" + String.valueOf(i)+ ", j=" + j);
             }
         }
         println("After outer1");
@@ -21,7 +21,7 @@ public class TestLabeledBreakContinue {
                 if (j == 1) {
                     continue outer2;  // 跳到外层循环的下一次迭代
                 }
-                println("i=" + i + ", j=" + j);
+                println("i=" + String.valueOf(i)+ ", j=" + j);
             }
         }
         println("After outer2");
@@ -32,7 +32,7 @@ public class TestLabeledBreakContinue {
             if (i == 3) {
                 break;  // 只跳出内层循环
             }
-            println("i=" + i);
+            println("i=" + String.valueOf(i));
         }
         println("After test 3");
         
@@ -49,7 +49,7 @@ public class TestLabeledBreakContinue {
             }
             x = x + 1;
         }
-        println("x=" + x);
+        println("x=" + String.valueOf(x));
         println("After outer3");
         
         println("\nAll tests passed!");

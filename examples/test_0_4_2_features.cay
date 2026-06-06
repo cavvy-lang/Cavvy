@@ -40,7 +40,7 @@ public class Person {
     // 析构函数
     ~Person() {
         instanceCount = instanceCount - 1;
-        println("Destructor called for " + name);
+        println("Destructor called for " + String.valueOf(name));
     }
 
     public static int getInstanceCount() {
@@ -84,34 +84,34 @@ public class Test042Features {
         // 测试默认构造函数
         println("--- Test 1: Default Constructor ---");
         Person p1 = new Person();
-        println("Person 1: " + p1.getName() + ", age " + p1.getAge());
+        println("Person 1: " + String.valueOf(p1.getName)() + ", age " + String.valueOf(p1.getAge)());
         println("");
 
         // 测试带参数构造函数
         println("--- Test 2: Parameterized Constructor ---");
         Person p2 = new Person(25, "Alice");
-        println("Person 2: " + p2.getName() + ", age " + p2.getAge());
+        println("Person 2: " + String.valueOf(p2.getName)() + ", age " + String.valueOf(p2.getAge)());
         println("");
 
         // 测试构造函数链
         println("--- Test 3: Constructor Chaining ---");
         Person p3 = new Person(30);
-        println("Person 3: " + p3.getName() + ", age " + p3.getAge());
+        println("Person 3: " + String.valueOf(p3.getName)() + ", age " + String.valueOf(p3.getAge)());
         println("");
 
         // 测试继承和 super() 调用
         println("--- Test 4: Inheritance with super() ---");
         Employee e1 = new Employee();
-        println("Employee 1: " + e1.getName() + ", age " + e1.getAge() + ", ID " + e1.getEmployeeId());
+        println("Employee 1: " + String.valueOf(e1.getName)() + ", age " + String.valueOf(e1.getAge)() + ", ID " + String.valueOf(e1.getEmployeeId)());
         println("");
 
         Employee e2 = new Employee(1001, 35, "Bob");
-        println("Employee 2: " + e2.getName() + ", age " + e2.getAge() + ", ID " + e2.getEmployeeId());
+        println("Employee 2: " + String.valueOf(e2.getName)() + ", age " + String.valueOf(e2.getAge)() + ", ID " + String.valueOf(e2.getEmployeeId)());
         println("");
 
         // 测试实例计数
         println("--- Test 5: Instance Count ---");
-        println("Total instances created: " + Person.getInstanceCount());
+        println("Total instances created: " + String.valueOf(Person.getInstanceCount)());
 
         println("");
         println("=== All 0.4.2.x Tests Completed ===");

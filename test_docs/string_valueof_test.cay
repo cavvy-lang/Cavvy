@@ -15,12 +15,12 @@ class Main {
         String sb = String.valueOf(b);
         String sc = String.valueOf(c);
 
-        println("int: " + si);
-        println("long: " + sl);
-        println("float: " + sf);
-        println("double: " + sd);
-        println("boolean: " + sb);
-        println("char: " + sc);
+        println("int: " + String.valueOf(si));
+        println("long: " + String.valueOf(sl));
+        println("float: " + String.valueOf(sf));
+        println("double: " + String.valueOf(sd));
+        println("boolean: " + String.valueOf(sb));
+        println("char: " + String.valueOf(sc));
 
         return 0;
     }

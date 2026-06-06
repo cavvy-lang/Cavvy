@@ -14,7 +14,7 @@ public class Person {
     }
 
     public void introduce() {
-        println("I'm " + name + ", " + age + " years old.");
+        println("I'm " + String.valueOf(name)+ ", " + String.valueOf(age) + " years old.");
     }
 
     public String getName() {
@@ -41,7 +41,7 @@ public abstract class Shape {
     public abstract double getArea();
 
     public void printColor() {
-        println("Color: " + color);
+        println("Color: " + String.valueOf(color));
     }
 }
 
@@ -79,13 +79,13 @@ public int main() {
     p1.introduce();
     p2.introduce();
 
-    println("Total persons: " + Person.getCount());
+    println("Total persons: " + String.valueOf(Person.getCount()));
 
     Circle circle = new Circle("Red", 5.0);
     Rectangle rect = new Rectangle("Blue", 4.0, 6.0);
 
-    println("Circle area: " + circle.getArea());
-    println("Rectangle area: " + rect.getArea());
+    println("Circle area: " + String.valueOf(circle.getArea()));
+    println("Rectangle area: " + String.valueOf(rect.getArea()));
 
     println("OOP test passed");
     return 0;

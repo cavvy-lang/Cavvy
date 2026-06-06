@@ -283,7 +283,7 @@ interface Flyable {
 }
 
 class Animal {
-    String name;
+    public String name;
     
     public Animal(String name) {
         this.name = name;
@@ -334,7 +334,7 @@ interface Marker {
 }
 
 class Marked implements Marker {
-    String value;
+    public String value;
     
     public Marked(String v) {
         this.value = v;

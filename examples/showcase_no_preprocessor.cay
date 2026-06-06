@@ -177,23 +177,23 @@ public class StringDemo {
         println("\n=== String Operations ===");
         
         String str = "Hello, Cavvy World!";
-        println("Original: " + str);
+        println("Original: " + String.valueOf(str));
         
         print("Length: ");
         println(str.length());
         
         String sub1 = str.substring(7);
-        println("substring(7): " + sub1);
+        println("substring(7): " + String.valueOf(sub1));
         
         String sub2 = str.substring(0, 5);
-        println("substring(0, 5): " + sub2);
+        println("substring(0, 5): " + String.valueOf(sub2));
         
         int idx = str.indexOf("Cavvy");
         print("indexOf 'Cavvy': ");
         println(idx);
         
         String replaced = str.replace("World", "Language");
-        println("replace: " + replaced);
+        println("replace: " + String.valueOf(replaced));
         
         char c = str.charAt(7);
         print("charAt(7): ");

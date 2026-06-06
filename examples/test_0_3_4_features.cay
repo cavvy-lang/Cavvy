@@ -192,7 +192,7 @@ public class Test034Features {
         // String + overloading
         String greeting = "Hello";
         String target = "World";
-        String combined = add(greeting, ", " + target + "!");
+        String combined = add(greeting, ", " + String.valueOf(target)+ "!");
         print("String concat result: ");
         println(combined);
 

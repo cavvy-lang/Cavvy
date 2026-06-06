@@ -42,7 +42,7 @@ public class DebugTest9 {
         println("\n2. 使用 myReadAllText");
         String content1 = myReadAllText(path);
         if (content1 != null) {
-            println("   内容: '" + content1 + "'");
+            println("   内容: '" + String.valueOf(content1)+ "'");
         } else {
             println("   返回 null");
         }
@@ -51,7 +51,7 @@ public class DebugTest9 {
         println("\n3. 使用 File.readAllText");
         String content2 = File.readAllText(path);
         if (content2 != null) {
-            println("   内容: '" + content2 + "'");
+            println("   内容: '" + String.valueOf(content2)+ "'");
         } else {
             println("   返回 null");
         }

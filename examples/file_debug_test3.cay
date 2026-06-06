@@ -19,24 +19,24 @@ public class DebugTest3 {
         println("1. 创建File对象");
         
         FileMode mode = FileMode.write();
-        println("2. 获取FileMode: '" + mode.getMode() + "'");
+        println("2. 获取FileMode: '" + String.valueOf(mode.getMode)() + "'");
         
         String path = "test_manual.txt";
-        println("3. 路径: '" + path + "'");
+        println("3. 路径: '" + String.valueOf(path)+ "'");
         
         bool opened = file.open(path, mode);
-        println("4. 打开结果: " + opened);
-        println("   isOpen: " + file.isOpened());
+        println("4. 打开结果: " + String.valueOf(opened));
+        println("   isOpen: " + String.valueOf(file.isOpened)());
         
         if (opened) {
             String content = "Test content";
-            println("5. 内容: '" + content + "'");
-            println("   内容长度: " + content.length());
+            println("5. 内容: '" + String.valueOf(content)+ "'");
+            println("   内容长度: " + String.valueOf(content.length)());
             println("   内容是否为null: " + (content == null));
             
             println("6. 调用 writeAllText...");
             bool written = file.writeAllText(content);
-            println("   写入结果: " + written);
+            println("   写入结果: " + String.valueOf(written));
             
             println("7. 关闭文件...");
             file.close();
@@ -46,7 +46,7 @@ public class DebugTest3 {
         // 检查文件是否存在
         println("\n检查文件是否存在:");
         bool exists = File.exists("test_manual.txt");
-        println("test_manual.txt 存在: " + exists);
+        println("test_manual.txt 存在: " + String.valueOf(exists));
         
         // 尝试读取
         if (exists) {
@@ -54,7 +54,7 @@ public class DebugTest3 {
             File readFile = new File();
             if (readFile.open("test_manual.txt", FileMode.read())) {
                 String content = readFile.readAllText();
-                println("读取内容: '" + content + "'");
+                println("读取内容: '" + String.valueOf(content)+ "'");
                 readFile.close();
             }
         }

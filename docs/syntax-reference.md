@@ -529,7 +529,7 @@ public void helper() {
     // ...
 }
 
-// 使用类静态方法模拟顶层函数（当前版本暂不支持真正的顶层函数）
+// 使用类静态方法模拟顶层函数（也早就支持了，这文档有问题，不过默认会报错，有关详细信息——自己编译一个顶层函数试试）
 class Utils {
     public static void helper() {
         println("Helper called");
@@ -547,13 +547,13 @@ public int main() {
     return 0;
 }
 
-// 带参数的 main（当前版本暂不支持）
-// public int main(String[] args) {
-//     for (int i = 0; i < args.length; i++) {
-//         println(args[i]);
-//     }
-//     return 0;
-// }
+带参数的 main（早就支持了，这文档有问题）
+public int main(String[] args) {
+    for (int i = 0; i < args.length; i++) {
+        println(args[i]);
+    }
+    return 0;
+}
 ```
 
 ### 外部函数声明

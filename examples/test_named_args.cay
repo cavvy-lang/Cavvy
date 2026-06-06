@@ -47,11 +47,11 @@ public class NamedArgsTest {
 
         // 测试1: 可变参数 + 命名参数（命名参数跳过可变参数）
         string fmt1 = NamedArgs.format("apple", "banana", "cherry", separator=", ");
-        println("format('apple','banana','cherry', separator=', ') = " + fmt1);
+        println("format('apple','banana','cherry', separator=', ') = " + String.valueOf(fmt1));
 
         // 测试2: 全位置参数（命名参数语法也兼容无命名的情况）
         string fmt2 = NamedArgs.format("x", "y", separator="-");
-        println("format('x','y', separator='-') = " + fmt2);
+        println("format('x','y', separator='-') = " + String.valueOf(fmt2));
 
         // 测试3: 普通函数使用命名参数（反序传参）
         int sum1 = NamedArgs.add(a=10, b=20);
@@ -63,7 +63,7 @@ public class NamedArgsTest {
 
         // 测试5: 混合参数
         string rep1 = NamedArgs.repeat("num:", 1, 2, 3, suffix="!");
-        println("repeat('num:', 1, 2, 3, suffix='!') = " + rep1);
+        println("repeat('num:', 1, 2, 3, suffix='!') = " + String.valueOf(rep1));
 
         println("=== 命名参数测试通过 ===");
     }

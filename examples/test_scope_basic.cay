@@ -14,23 +14,23 @@ public class TestScopeBasic {
         
         // 外部变量
         int x = 20;
-        println("外部: x = " + x);
+        println("外部: x = " + String.valueOf(x));
         
         // scope 块
         scope {
             // scope 内部的变量
             int x = 10;
-            println("scope 内部: x = " + x);
+            println("scope 内部: x = " + String.valueOf(x));
             
             // 嵌套 scope
             scope {
                 int y = 30;
-                println("嵌套 scope: y = " + y);
+                println("嵌套 scope: y = " + String.valueOf(y));
             }
         }
         
         // 回到外部，x 应该是 20
-        println("回到外部: x = " + x);
+        println("回到外部: x = " + String.valueOf(x));
         
         println("All scope tests completed!");
         return 0;

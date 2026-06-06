@@ -24,7 +24,7 @@ public class Main {
         items[2] = new Item("C");
         int i = 0;
         while (i < 3) {
-            println("Item[" + i + "]: " + items[i].getId());
+            println("Item[" + String.valueOf(i)+ "]: " + items[i].getId());
             i = i + 1;
         }
     }

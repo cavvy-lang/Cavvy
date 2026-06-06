@@ -40,7 +40,7 @@ public class Test {
     std::fs::write("examples/test_err_diag2.cay", code).unwrap();
     let error = compile_eol_expect_error("examples/test_err_diag2.cay")
         .expect("应该编译失败");
-    assert!(error.contains("Cannot add") || error.contains("type") || error.contains("String"),
+    assert!(error.contains("Cannot add") || error.contains("type") || error.contains("string"),
         "应报告类型错误: {}", error);
     let _ = std::fs::remove_file("examples/test_err_diag2.cay");
 }
@@ -269,12 +269,14 @@ public class Test {
 #[test]
 fn test_error_private_access() {
     let code = r#"
-public class Test {
+public class MyClass {
     private int secret = 42;
-    
+}
+
+public class Test {
     public static void main() {
-        Test t = new Test();
-        println(t.secret);
+        MyClass obj = new MyClass();
+        println(obj.secret);
     }
 }
 "#;

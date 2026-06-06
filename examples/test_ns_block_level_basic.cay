@@ -17,6 +17,6 @@ public class Main {
     public static void main() {
 
         println(Worker.work());
-        println("Counter: " + Worker.count());
+        println("Counter: " + String.valueOf(Worker.count()));
     }
 }

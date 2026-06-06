@@ -521,8 +521,8 @@ impl Parser {
 
     /// 解析顶层函数的主体部分
     fn parse_top_level_function_body(&mut self, loc: crate::error::SourceLocation, modifiers: Vec<crate::ast::Modifier>) -> cayResult<crate::ast::TopLevelFunction> {
-        // 解析返回类型
-        let return_type = self.parse_type()?;
+        // 解析返回类型（支持函数指针类型）
+        let return_type = self.parse_type_or_fn_ptr()?;
 
         // 解析函数名
         let name = self.consume_identifier("期望函数名\n提示: 返回类型后应跟函数名，例如: int add(int a, int b) { ... }")?;
@@ -628,8 +628,8 @@ impl Parser {
     fn parse_extern_function(&mut self) -> cayResult<crate::ast::ExternFunction> {
         let loc = self.current_loc();
 
-        // 解析返回类型
-        let return_type = self.parse_type()?;
+        // 解析返回类型（支持函数指针类型）
+        let return_type = self.parse_type_or_fn_ptr()?;
 
         // 解析函数名（外部C函数名）
         let name = self.consume_identifier("Expected function name in extern declaration")?;
@@ -677,8 +677,8 @@ impl Parser {
                     break;
                 }
 
-                // 解析参数类型
-                let param_type = self.parse_type()?;
+                // 解析参数类型（支持函数指针类型）
+                let param_type = self.parse_type_or_fn_ptr()?;
 
                 // 检查是否是可变参数类型（type...）
                 let is_varargs = self.check(&Token::DotDotDot);
@@ -786,12 +786,15 @@ impl Parser {
     }
 
     /// 解析类型或函数指针类型
-    fn parse_type_or_fn_ptr(&mut self) -> cayResult<crate::types::Type> {
+    pub fn parse_type_or_fn_ptr(&mut self) -> cayResult<crate::types::Type> {
+        //eprintln!("[DEBUG] parse_type_or_fn_ptr called, current token: {:?}", self.current_token());
         // 检查是否是函数指针类型: fn(...) -> ReturnType
         if self.check(&crate::lexer::Token::Fn) {
+            //eprintln!("[DEBUG] Detected Fn token, parsing function pointer type");
             self.parse_fn_ptr_type()
         } else {
             // 普通类型
+            //eprintln!("[DEBUG] Not Fn token, parsing regular type");
             self.parse_type()
         }
     }
@@ -850,10 +853,12 @@ impl Parser {
         let return_type = self.parse_type()?;
 
         // 创建函数类型
+        // Cavvy 的所有函数指针都使用闭包格式（打包结构体），所以 is_closure 总是 true
         Ok(crate::types::Type::Function(Box::new(crate::types::FunctionType {
             params: param_types,
             return_type: Box::new(return_type),
             is_static: true,
+            is_closure: true,
         })))
     }
 

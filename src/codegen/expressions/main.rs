@@ -58,7 +58,7 @@ impl IRGenerator {
             Expr::MethodRef(method_ref) => self.generate_method_ref(method_ref),
             
             // Lambda 表达式
-            Expr::Lambda(lambda) => self.generate_lambda(lambda),
+            Expr::Lambda(lambda) => self.generate_lambda(lambda, None),
             
             // 三元运算符
             Expr::Ternary(ternary) => self.generate_ternary_expression(ternary),

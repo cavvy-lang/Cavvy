@@ -236,7 +236,7 @@ public class StringDemo {
         println("=== String Operations ===");
         
         String str = "Hello, Cavvy World!";
-        println("Original: " + str);
+        println("Original: " + String.valueOf(str));
         
         // length()
         print("Length: ");
@@ -244,10 +244,10 @@ public class StringDemo {
         
         // substring
         String sub1 = str.substring(7);
-        println("substring(7): " + sub1);
+        println("substring(7): " + String.valueOf(sub1));
         
         String sub2 = str.substring(0, 5);
-        println("substring(0, 5): " + sub2);
+        println("substring(0, 5): " + String.valueOf(sub2));
         
         // indexOf
         int idx = str.indexOf("Cavvy");
@@ -256,7 +256,7 @@ public class StringDemo {
         
         // replace
         String replaced = str.replace("World", "Language");
-        println("replace: " + replaced);
+        println("replace: " + String.valueOf(replaced));
         
         // charAt
         char c = str.charAt(7);

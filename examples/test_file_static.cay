@@ -8,7 +8,7 @@ public class TestFileStatic {
         
         // 测试文件存在性检查
         bool exists = File.exists("test.txt");
-        println("文件存在: " + exists);
+        println("文件存在: " + String.valueOf(exists));
         
         println("测试完成!");
     }

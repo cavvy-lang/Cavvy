@@ -13,7 +13,7 @@ namespace core {
         }
 
         public String log(String msg) {
-            return this.prefix + ": " + msg;
+            return this.prefix + ": " + String.valueOf(msg);
         }
     }
 
@@ -84,7 +84,7 @@ public class Main {
         println(svc.process());
 
         Result r = new Result("success");
-        println("Result: " + r.getStatus());
+        println("Result: " + String.valueOf(r.getStatus()));
 
         println("All systems: OK");
     }

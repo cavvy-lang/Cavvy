@@ -275,6 +275,7 @@ impl IRGenerator {
                                             params: param_types,
                                             return_type: Box::new(method.return_type.clone()),
                                             is_static: true,
+                                            is_closure: false,
                                         })));
                                     }
                                 }

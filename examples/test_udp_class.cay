@@ -21,20 +21,20 @@ public int main() {
     UdpSocket socket = new UdpSocket();
     
     println("UdpSocket创建完成");
-    println("Socket是否有效: " + socket.isValid());
+    println("Socket是否有效: " + String.valueOf(socket.isValid)());
     
     /* 绑定到本地端口 */
     int localPort = 12346;
-    println("尝试绑定到端口: " + localPort);
+    println("尝试绑定到端口: " + String.valueOf(localPort));
     
     if (!socket.bindTo(localPort)) {
-        println("绑定端口失败: " + localPort);
+        println("绑定端口失败: " + String.valueOf(localPort));
         socket.close();
         NetworkUtils.cleanup();
         return 1;
     }
     
-    println("绑定成功到端口: " + localPort);
+    println("绑定成功到端口: " + String.valueOf(localPort));
     
     /* 关闭 */
     socket.close();

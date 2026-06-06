@@ -25,7 +25,7 @@ public int main() {
     // 写入 null terminator
     __cay_write_int(buffer + i, 0);
     String content = __cay_ptr_to_string(buffer);
-    println("File content: " + content);
+    println("File content: " + String.valueOf(content));
     free(buffer);
     fclose(file);
 

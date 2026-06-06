@@ -22,7 +22,7 @@ public class TestFileAll {
 
         // 测试1: 文件写入和读取
         total = total + 1;
-        println("\n[测试 " + total + "] 文件写入和读取");
+        println("\n[测试 " + String.valueOf(total)+ "] 文件写入和读取");
         if (testWriteRead()) {
             passed = passed + 1;
             println("  ✓ 通过");
@@ -32,7 +32,7 @@ public class TestFileAll {
 
         // 测试2: 文件追加
         total = total + 1;
-        println("\n[测试 " + total + "] 文件追加");
+        println("\n[测试 " + String.valueOf(total)+ "] 文件追加");
         if (testAppend()) {
             passed = passed + 1;
             println("  ✓ 通过");
@@ -42,7 +42,7 @@ public class TestFileAll {
 
         // 测试3: 文件复制
         total = total + 1;
-        println("\n[测试 " + total + "] 文件复制");
+        println("\n[测试 " + String.valueOf(total)+ "] 文件复制");
         if (testCopy()) {
             passed = passed + 1;
             println("  ✓ 通过");
@@ -52,7 +52,7 @@ public class TestFileAll {
 
         // 测试4: 文件移动/重命名
         total = total + 1;
-        println("\n[测试 " + total + "] 文件移动/重命名");
+        println("\n[测试 " + String.valueOf(total)+ "] 文件移动/重命名");
         if (testMove()) {
             passed = passed + 1;
             println("  ✓ 通过");
@@ -62,7 +62,7 @@ public class TestFileAll {
 
         // 测试5: 行操作
         total = total + 1;
-        println("\n[测试 " + total + "] 行操作");
+        println("\n[测试 " + String.valueOf(total)+ "] 行操作");
         if (testLines()) {
             passed = passed + 1;
             println("  ✓ 通过");
@@ -72,7 +72,7 @@ public class TestFileAll {
 
         // 测试6: 文件定位
         total = total + 1;
-        println("\n[测试 " + total + "] 文件定位");
+        println("\n[测试 " + String.valueOf(total)+ "] 文件定位");
         if (testSeek()) {
             passed = passed + 1;
             println("  ✓ 通过");
@@ -82,7 +82,7 @@ public class TestFileAll {
 
         // 测试7: 文件工具函数
         total = total + 1;
-        println("\n[测试 " + total + "] 文件工具函数");
+        println("\n[测试 " + String.valueOf(total)+ "] 文件工具函数");
         if (testUtils()) {
             passed = passed + 1;
             println("  ✓ 通过");
@@ -92,7 +92,7 @@ public class TestFileAll {
 
         // 测试8: FileReader 和 FileWriter
         total = total + 1;
-        println("\n[测试 " + total + "] FileReader 和 FileWriter");
+        println("\n[测试 " + String.valueOf(total)+ "] FileReader 和 FileWriter");
         if (testReaderWriter()) {
             passed = passed + 1;
             println("  ✓ 通过");
@@ -102,7 +102,7 @@ public class TestFileAll {
 
         // 测试9: 错误处理
         total = total + 1;
-        println("\n[测试 " + total + "] 错误处理");
+        println("\n[测试 " + String.valueOf(total)+ "] 错误处理");
         if (testErrorHandling()) {
             passed = passed + 1;
             println("  ✓ 通过");
@@ -112,7 +112,7 @@ public class TestFileAll {
 
         // 测试10: 各种打开模式
         total = total + 1;
-        println("\n[测试 " + total + "] 各种打开模式");
+        println("\n[测试 " + String.valueOf(total)+ "] 各种打开模式");
         if (testModes()) {
             passed = passed + 1;
             println("  ✓ 通过");
@@ -122,7 +122,7 @@ public class TestFileAll {
 
         // 总结
         println("\n========================================");
-        println("    测试结果: " + passed + "/" + total + " 通过");
+        println("    测试结果: " + String.valueOf(passed)+ "/" + total + " 通过");
         println("========================================");
     }
 
@@ -147,7 +147,7 @@ public class TestFileAll {
         String content2 = "Second line";
 
         File.writeAllText(file, content1);
-        File.appendAllText(file, "\n" + content2);
+        File.appendAllText(file, "\n" + String.valueOf(content2));
 
         String readContent = File.readAllText(file);
         File.delete(file);

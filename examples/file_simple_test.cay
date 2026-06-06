@@ -14,7 +14,7 @@ public class SimpleTest {
         // 测试1: 文件存在性
         println("测试1: 文件存在性");
         bool exists = File.exists("examples/file_simple_test.cay");
-        println("当前文件存在: " + exists);
+        println("当前文件存在: " + String.valueOf(exists));
         
         // 测试2: 写入和读取
         println("\n测试2: 写入和读取");
@@ -22,22 +22,22 @@ public class SimpleTest {
         String content = "Hello, Cavvy!";
         
         bool written = File.writeAllText(testPath, content);
-        println("写入成功: " + written);
+        println("写入成功: " + String.valueOf(written));
         
         String read = File.readAllText(testPath);
-        println("读取内容: " + read);
-        println("内容匹配: " + read.equals(content));
+        println("读取内容: " + String.valueOf(read));
+        println("内容匹配: " + String.valueOf(read.equals)(content));
         
         // 测试3: 文件大小
         println("\n测试3: 文件大小");
         long size = File.getSize(testPath);
-        println("文件大小: " + size);
+        println("文件大小: " + String.valueOf(size));
         
         // 测试4: 删除
         println("\n测试4: 删除文件");
         bool deleted = File.delete(testPath);
-        println("删除成功: " + deleted);
-        println("文件仍存在: " + File.exists(testPath));
+        println("删除成功: " + String.valueOf(deleted));
+        println("文件仍存在: " + String.valueOf(File.exists)(testPath));
         
         println("\n=== 测试完成 ===");
         return 0;

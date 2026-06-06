@@ -9,12 +9,12 @@ extern double fabs(double x);
 public int main() {
     double x = 3.14159;
 
-    println("sin(" + x + ") = " + sin(x));
-    println("sqrt(2) = " + sqrt(2.0));
-    println("pow(2, 10) = " + pow(2.0, 10.0));
-    println("ceil(3.14) = " + ceil(3.14));
-    println("floor(3.14) = " + floor(3.14));
-    println("fabs(-5.5) = " + fabs(-5.5));
+    println("sin(" + String.valueOf(x) + ") = " + String.valueOf(sin(x)));
+    println("sqrt(2) = " + String.valueOf(sqrt(2.0)));
+    println("pow(2, 10) = " + String.valueOf(pow(2.0, 10.0)));
+    println("ceil(3.14) = " + String.valueOf(ceil(3.14)));
+    println("floor(3.14) = " + String.valueOf(floor(3.14)));
+    println("fabs(-5.5) = " + String.valueOf(fabs(-5.5)));
 
     println("Math test passed");
     return 0;

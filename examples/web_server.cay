@@ -159,11 +159,11 @@ public class CavvyWebServer {
         
         /* 绑定端口 */
         if (!this.server.bindTo(this.port)) {
-            println("[错误] 绑定端口失败: " + this.port);
+            println("[错误] 绑定端口失败: " + String.valueOf(this.port));
             NetworkUtils.cleanup();
             return false;
         }
-        println("[信息] 服务器绑定到端口: " + this.port);
+        println("[信息] 服务器绑定到端口: " + String.valueOf(this.port));
         
         /* 开始监听 */
         if (!this.server.listen(10)) {
@@ -175,7 +175,7 @@ public class CavvyWebServer {
         
         this.running = true;
         println("[信息] 服务器开始监听...");
-        println("[信息] 请在浏览器中访问: http://127.0.0.1:" + this.port);
+        println("[信息] 请在浏览器中访问: http://127.0.0.1:" + String.valueOf(this.port));
         println("[信息] 按 Ctrl+C 停止服务器\n");
         
         return true;
@@ -205,7 +205,7 @@ public class CavvyWebServer {
                 }
             }
             
-            println("[请求] " + firstLine);
+            println("[请求] " + String.valueOf(firstLine));
             
             /* 生成响应 */
             HttpResponse response = new HttpResponse();
@@ -214,7 +214,7 @@ public class CavvyWebServer {
             
             /* 发送响应 */
             client.send(responseStr);
-            println("[响应] 200 OK (" + responseStr.length() + " bytes)");
+            println("[响应] 200 OK (" + String.valueOf(responseStr.length)() + " bytes)");
         }
         
         /* 关闭客户端连接 */
@@ -272,17 +272,17 @@ public int main() {
         webServer = new CavvyWebServer(port);
         
         if (webServer.start()) {
-            println("[信息] 服务器成功启动在端口: " + port);
+            println("[信息] 服务器成功启动在端口: " + String.valueOf(port));
             break;
         }
         
-        println("[警告] 端口 " + port + " 被占用，尝试下一个端口...");
+        println("[警告] 端口 " + String.valueOf(port)+ " 被占用，尝试下一个端口...");
         webServer.stop();
         port = port + 1;
     }
     
     if (port > maxPort) {
-        println("[错误] 无法找到可用端口 (" + startPort + "-" + maxPort + ")");
+        println("[错误] 无法找到可用端口 (" + String.valueOf(startPort)+ "-" + maxPort + ")");
         return 1;
     }
     

@@ -230,6 +230,9 @@ pub struct IRGenerator {
     pub test_mode: bool,                      // 是否生成测试入口
     pub test_methods: Vec<(String, String)>,  // (类名, 方法名) 列表
     pub field_initializers: HashMap<String, Vec<crate::ast::FieldDecl>>,  // 类名 -> 有初始化器的字段列表
+    pub lambda_captures: HashMap<String, Vec<(String, crate::types::Type)>>,  // lambda函数名 -> 捕获变量列表 [(变量名, 类型)]
+    pub lambda_envs: HashMap<String, String>,  // lambda变量名 -> 环境指针临时变量名
+    pub lambda_counter: usize,  // Lambda函数名计数器，确保唯一性
 }
 
 /// DWARF 子程序元数据
@@ -298,6 +301,9 @@ impl IRGenerator {
             test_mode: false,
             test_methods: Vec::new(),
             field_initializers: HashMap::new(),
+            lambda_captures: HashMap::new(),
+            lambda_envs: HashMap::new(),
+            lambda_counter: 0,
         }
     }
 
@@ -372,6 +378,7 @@ impl IRGenerator {
                 params: func.params.iter().map(|p| p.param_type.clone()).collect(),
                 return_type: Box::new(func.return_type.clone()),
                 is_static: true,
+                is_closure: false,
             }))
         } else {
             // 默认返回 int () 类型
@@ -379,6 +386,7 @@ impl IRGenerator {
                 params: vec![],
                 return_type: Box::new(crate::types::Type::Int32),
                 is_static: true,
+                is_closure: false,
             }))
         }
     }
@@ -587,6 +595,20 @@ impl IRGenerator {
             "i64" | "double" => 8,
             t if t.ends_with("*") => 8,  // 所有指针都是 8 字节（64位系统）
             _ => 8, // 默认 8 字节
+        }
+    }
+
+    /// 获取 LLVM 类型的大小（字节）
+    pub fn get_type_size(&self, llvm_type: &str) -> i64 {
+        match llvm_type {
+            "i1" => 1,
+            "i8" => 1,
+            "i32" => 4,
+            "i64" => 8,
+            "float" => 4,
+            "double" => 8,
+            t if t.ends_with("*") => 8,  // 所有指针都是 8 字节（64位系统）
+            _ => 8,
         }
     }
 

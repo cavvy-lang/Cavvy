@@ -8,11 +8,11 @@ public int main() {
 
     // 使用数学函数
     double result = sqrt(2.0);
-    println("sqrt(2.0) = " + result);
+    println("sqrt(2.0) = " + String.valueOf(result));
 
     // 获取系统时间
     long now = time(0);
-    println("Current time: " + now);
+    println("Current time: " + String.valueOf(now));
 
     return 0;
 }

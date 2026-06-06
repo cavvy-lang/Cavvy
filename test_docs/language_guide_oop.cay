@@ -17,7 +17,7 @@ public class Person {
     
     // 方法
     public void greet() {
-        println("Hello, I'm " + name);
+        println("Hello, I'm " + String.valueOf(name));
     }
     
     // Getter
@@ -51,7 +51,7 @@ public class Student : Person {
     
     @Override
     public void greet() {
-        println("Hello, I'm " + getName() + " from " + school);
+        println("Hello, I'm " + getName() + " from " + String.valueOf(school));
     }
 }
 
@@ -65,12 +65,12 @@ public int main() {
     p2.greet();
     
     // 使用Getter/Setter
-    println(p1.getName() + " is " + p1.getAge() + " years old");
+    println(p1.getName() + " is " + String.valueOf(p1.getAge()) + " years old");
     p1.setAge(26);
-    println(p1.getName() + " is now " + p1.getAge() + " years old");
+    println(p1.getName() + " is now " + String.valueOf(p1.getAge()) + " years old");
     
     // 静态字段
-    println("Total persons: " + Person.getCount());
+    println("Total persons: " + String.valueOf(Person.getCount()));
     
     // 继承
     Student s = new Student("Charlie", 20, "MIT");

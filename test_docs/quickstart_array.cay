@@ -14,11 +14,11 @@ public int main() {
     matrix[2][2] = 3;
 
     // 数组长度
-    println("Array length: " + values.length);
+    println("Array length: " + String.valueOf(values.length));
 
     // 遍历数组
     for (int i = 0; i < values.length; i++) {
-        println("values[" + i + "] = " + values[i]);
+        println("values[" + String.valueOf(i)+ "] = " + values[i]);
     }
 
     return 0;

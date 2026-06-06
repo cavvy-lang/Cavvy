@@ -32,7 +32,7 @@ public class TestFileModes {
         if (file2.open(testFile, FileMode.read())) {
             println("文件以只读模式打开成功");
             String content = file2.readAllText();
-            println("读取内容: " + content);
+            println("读取内容: " + String.valueOf(content));
             file2.close();
         } else {
             println("文件打开失败");
@@ -62,7 +62,7 @@ public class TestFileModes {
 
             // 先读取
             String content = file4.readAllText();
-            println("当前内容: " + content);
+            println("当前内容: " + String.valueOf(content));
 
             // 回到开头
             file4.rewind();
@@ -73,7 +73,7 @@ public class TestFileModes {
 
             // 验证
             String newContent = File.readAllText(testFile);
-            println("覆盖后的内容: " + newContent);
+            println("覆盖后的内容: " + String.valueOf(newContent));
         } else {
             println("文件打开失败");
         }
@@ -89,7 +89,7 @@ public class TestFileModes {
             // 回到开头读取
             file5.seek(0, SeekOrigin.begin());
             String content = file5.readAllText();
-            println("读取内容: " + content);
+            println("读取内容: " + String.valueOf(content));
             file5.close();
         } else {
             println("文件打开失败");

@@ -66,7 +66,7 @@ public class TestInlineIrMemory {
     public static void main() {
         // 测试栈分配
         int stackVal = testStackAlloc();
-        println("Stack alloc test: " + stackVal + " (expected 42)");
+        println("Stack alloc test: " + String.valueOf(stackVal)+ " (expected 42)");
         
         // 测试数组访问
         int[] arr = new int[5];
@@ -81,13 +81,13 @@ public class TestInlineIrMemory {
         int elem4 = testArrayAccess(arr, 4);
         
         println("Array access tests:");
-        println("arr[0] = " + elem0 + " (expected 10)");
-        println("arr[2] = " + elem2 + " (expected 30)");
-        println("arr[4] = " + elem4 + " (expected 50)");
+        println("arr[0] = " + String.valueOf(elem0)+ " (expected 10)");
+        println("arr[2] = " + String.valueOf(elem2)+ " (expected 30)");
+        println("arr[4] = " + String.valueOf(elem4)+ " (expected 50)");
         
         // 测试多存储
         int multiVal = testMultiStore();
-        println("\nMulti store test: " + multiVal + " (expected 30)");
+        println("\nMulti store test: " + String.valueOf(multiVal)+ " (expected 30)");
         
         // 验证
         if (stackVal == 42 && elem0 == 10 && elem2 == 30 && elem4 == 50 && multiVal == 30) {

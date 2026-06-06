@@ -18,12 +18,12 @@ public class DebugTest2 {
         
         println("打开文件...");
         bool opened = file.open("test_write2.txt", FileMode.write());
-        println("打开结果: " + opened);
+        println("打开结果: " + String.valueOf(opened));
         
         if (opened) {
             println("调用 writeAllText...");
             bool written = file.writeAllText("Hello from writeAllText!");
-            println("writeAllText 结果: " + written);
+            println("writeAllText 结果: " + String.valueOf(written));
             file.close();
             println("文件已关闭");
             
@@ -32,7 +32,7 @@ public class DebugTest2 {
             File readFile = new File();
             if (readFile.open("test_write2.txt", FileMode.read())) {
                 String content = readFile.readAllText();
-                println("读取内容: '" + content + "'");
+                println("读取内容: '" + String.valueOf(content)+ "'");
                 readFile.close();
             }
         }
@@ -40,12 +40,12 @@ public class DebugTest2 {
         // 测试静态方法 writeAllText
         println("\n测试: 静态方法 writeAllText");
         bool staticWritten = File.writeAllText("test_static.txt", "Hello from static!");
-        println("静态 writeAllText 结果: " + staticWritten);
+        println("静态 writeAllText 结果: " + String.valueOf(staticWritten));
         
         if (staticWritten) {
             println("静态写入成功，读取验证:");
             String content = File.readAllText("test_static.txt");
-            println("读取内容: '" + content + "'");
+            println("读取内容: '" + String.valueOf(content)+ "'");
         }
         
         // 清理

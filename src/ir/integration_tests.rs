@@ -426,7 +426,7 @@ public int main() {
     int a = 10;
     int b = 20;
     int c = a + b;
-    println("Sum: " + c);
+    println("Sum: " + String.valueOf(c));
     return 0;
 }
 "#;

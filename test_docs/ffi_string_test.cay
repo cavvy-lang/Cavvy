@@ -9,7 +9,7 @@ public int main() {
     // strlen - 由运行时提供，但 Cavvy 需要知道其签名
     // 使用 String.length() 替代
     int len = message.length();
-    println("Length: " + len);
+    println("Length: " + String.valueOf(len));
     
     // strcmp - 由运行时提供，但 Cavvy 需要知道其签名
     // 使用 String.equals() 替代，但避免 boolean 转字符串的问题

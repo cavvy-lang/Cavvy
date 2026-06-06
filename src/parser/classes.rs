@@ -106,7 +106,7 @@ fn parse_interface_method(parser: &mut Parser) -> cayResult<MethodDecl> {
         parser.advance();
         Type::Void
     } else {
-        parse_type(parser)?
+        parser.parse_type_or_fn_ptr()?
     };
 
     let name = parser.consume_identifier("期望方法名\n提示: 在返回类型后应跟方法名，例如: int calculate() { ... }")?;
@@ -133,19 +133,21 @@ pub fn parse_class_member(parser: &mut Parser) -> cayResult<ClassMember> {
     // 向前看判断成员类型
     let checkpoint = parser.pos;
     let modifiers = parse_modifiers(parser)?;
-    
+
+    //eprintln!("[DEBUG] parse_class_member after modifiers, current token: {:?}", parser.current_token());
+
     // 检查是否是静态初始化块 static { ... }
     if modifiers.contains(&Modifier::Static) && parser.check(&Token::LBrace) {
         parser.pos = checkpoint;
         return Ok(ClassMember::StaticInitializer(parse_static_initializer(parser)?));
     }
-    
+
     // 检查是否是初始化块 { ... }
     if parser.check(&Token::LBrace) {
         parser.pos = checkpoint;
         return Ok(ClassMember::InstanceInitializer(parse_instance_initializer(parser)?));
     }
-    
+
     // 检查是否是析构函数 ~ClassName() { ... }
     if parser.check(&Token::Tilde) {
         parser.pos = checkpoint;
@@ -209,6 +211,12 @@ pub fn parse_class_member(parser: &mut Parser) -> cayResult<ClassMember> {
         }
     }
     
+    // 检查是否是函数指针类型开头的方法: fn(...) -> ReturnType name(...)
+    if parser.check(&Token::Fn) {
+        parser.pos = checkpoint;
+        return Ok(ClassMember::Method(parse_method(parser)?));
+    }
+
     // 如果是类型关键字，可能是字段或方法
     if is_type_token(parser) {
         // 读取类型
@@ -353,7 +361,7 @@ pub fn parse_method(parser: &mut Parser) -> cayResult<MethodDecl> {
         parser.advance();
         Type::Void
     } else {
-        parse_type(parser)?
+        parser.parse_type_or_fn_ptr()?
     };
     
     let name = parser.consume_identifier("期望方法名\n提示: 返回类型后应跟方法名，例如: int calculate() { ... }")?;
@@ -628,6 +636,7 @@ pub fn parse_modifiers(parser: &mut Parser) -> cayResult<Vec<Modifier>> {
 
 /// 解析参数列表（支持可变参数）
 pub fn parse_parameters(parser: &mut Parser) -> cayResult<Vec<ParameterInfo>> {
+    //eprintln!("[DEBUG] parse_parameters called");
     let mut params = Vec::new();
 
     if !parser.check(&Token::RParen) {
@@ -645,7 +654,9 @@ pub fn parse_parameters(parser: &mut Parser) -> cayResult<Vec<ParameterInfo>> {
             }
 
             // 检查是否是可变参数类型（type...）
-            let param_type = parse_type(parser)?;
+            //eprintln!("[DEBUG] About to call parse_type_or_fn_ptr");
+            let param_type = parser.parse_type_or_fn_ptr()?;
+            //eprintln!("[DEBUG] parse_type_or_fn_ptr returned: {:?}", param_type);
 
             // 检查是否有 ... 标记
             let is_varargs = parser.match_token(&Token::DotDotDot);
@@ -799,12 +810,8 @@ fn parse_method_after_modifiers(parser: &mut Parser, modifiers: &[Modifier]) -> 
     let return_type = if parser.check(&Token::Void) {
         parser.advance();
         Type::Void
-    } else if let Token::Identifier(ref id) = parser.current_token().clone() {
-        // 向前看确认不是构造函数调用参数解析
-        // 这里简单处理：先解析为 return_type，如果在类型解析中遇到 Identifier 就尝试作为类型
-        super::types::parse_type(parser)?
     } else {
-        super::types::parse_type(parser)?
+        parser.parse_type_or_fn_ptr()?
     };
 
     let name = parser.consume_identifier("期望方法名\n提示: 在返回类型后应跟方法名，例如: int calculate() { ... }")?;

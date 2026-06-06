@@ -51,8 +51,8 @@ fn test_lambda_expression_body() {
     let code = r#"
 public class Test {
     public static void main() {
-        var double = (int x) -> x * 2;
-        println(double(5));
+        var doubler = (int x) -> x * 2;
+        println(doubler(5));
     }
 }
 "#;
@@ -69,7 +69,7 @@ public class Test {
 fn test_lambda_as_parameter() {
     let code = r#"
 public class Test {
-    public static void apply(int x, int f(int n)) {
+    public static void apply(int x, fn(int) -> int f) {
         println(f(x));
     }
     
@@ -91,7 +91,7 @@ public class Test {
 fn test_lambda_return_value() {
     let code = r#"
 public class Test {
-    public static int make_adder(int x) {
+    public static fn(int) -> int make_adder(int x) {
         return (int y) -> x + y;
     }
     

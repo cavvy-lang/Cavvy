@@ -6,7 +6,7 @@ namespace calc {
         }
 
         public static String format(String s) {
-            return "String: " + s;
+            return "String: " + String.valueOf(s);
         }
 
         public static String format(double d) {

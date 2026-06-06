@@ -8,6 +8,7 @@ public class Factorial {
     }
     
     public static void main() {
-        print(factorial(5));
+        Factorial f = new Factorial();
+        print(f.factorial(5));
     }
 }

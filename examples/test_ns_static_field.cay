@@ -11,7 +11,7 @@ using config::Constants;
 public class Main {
     public static void main() {
 
-        println("PI: " + Constants.PI);
-        println("MAX: " + Constants.MAX);
+        println("PI: " + String.valueOf(Constants.PI));
+        println("MAX: " + String.valueOf(Constants.MAX));
     }
 }

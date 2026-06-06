@@ -8,20 +8,20 @@ public class TestArrayIndexExpression {
         
         // 测试数组索引中使用减法表达式
         stack[sp-1] = 100;
-        println("stack[sp-1] = " + stack[sp-1]);
+        println("stack[sp-1] = " + String.valueOf(stack)[sp-1]);
         
         // 测试数组索引中使用加法表达式  
         stack[sp+1] = 200;
-        println("stack[sp+1] = " + stack[sp+1]);
+        println("stack[sp+1] = " + String.valueOf(stack)[sp+1]);
         
         // 测试复杂表达式
         stack[sp-1+2] = 300;
-        println("stack[sp-1+2] = " + stack[sp-1+2]);
+        println("stack[sp-1+2] = " + String.valueOf(stack)[sp-1+2]);
         
         // 测试前置递增在数组索引中
         int idx = 2;
         stack[++idx] = 400;
-        println("After ++idx, stack[3] = " + stack[3]);
+        println("After ++idx, stack[3] = " + String.valueOf(stack)[3]);
         
         // 验证所有值
         boolean allPassed = 

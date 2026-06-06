@@ -46,6 +46,7 @@ pub struct FunctionType {
     pub params: Vec<Type>,
     pub return_type: Box<Type>,
     pub is_static: bool,
+    pub is_closure: bool,  // 是否是闭包（有捕获变量）
 }
 
 #[derive(Debug, Clone)]
@@ -85,6 +86,173 @@ pub struct StructInfo {
     pub fields: HashMap<String, FieldInfo>,
     pub methods: HashMap<String, Vec<MethodInfo>>,  // 支持方法重载
     pub is_public: bool,
+}
+
+impl StructInfo {
+    /// 根据方法名和参数类型查找方法（支持可变参数）
+    /// 时间复杂度: O(n)，n 为同名方法数量
+    pub fn find_method(&self, name: &str, arg_types: &[Type]) -> Option<&MethodInfo> {
+        let methods = self.methods.get(name)?;
+        
+        // 第一遍：寻找精确匹配
+        for m in methods.iter() {
+            if Self::match_method_params_exact(&m.params, arg_types) {
+                return Some(m);
+            }
+        }
+        
+        // 第二遍：寻找兼容匹配（允许隐式转换）
+        methods.iter().find(|m| {
+            Self::match_method_params(&m.params, arg_types)
+        })
+    }
+    
+    /// 检查类型是否精确匹配（支持泛型参数）
+    fn types_match_exact(param_type: &Type, arg_type: &Type) -> bool {
+        // 泛型参数类型可以匹配任何类型
+        if matches!(param_type, Type::GenericParam(_)) {
+            return true;
+        }
+        param_type == arg_type
+    }
+
+    /// 精确匹配方法参数（不考虑隐式转换，支持非末尾可变参数）
+    fn match_method_params_exact(params: &[ParameterInfo], arg_types: &[Type]) -> bool {
+        if params.is_empty() {
+            return arg_types.is_empty();
+        }
+
+        // 找到可变参数的位置（如果有）
+        let varargs_idx = params.iter().position(|p| p.is_varargs);
+        
+        if let Some(vi) = varargs_idx {
+            let fixed_before = vi;                    // 可变参数之前的固定参数
+            let fixed_after = params.len() - vi - 1;  // 可变参数之后的固定参数
+            let min_args = fixed_before + fixed_after;
+            if arg_types.len() < min_args {
+                return false;
+            }
+
+            // 检查可变参数之前的固定参数（精确匹配，支持泛型参数）
+            for i in 0..fixed_before {
+                if !Self::types_match_exact(&params[i].param_type, &arg_types[i]) {
+                    return false;
+                }
+            }
+
+            // 检查可变参数（精确匹配元素类型，支持泛型参数）
+            let vararg_elem_type = match &params[vi].param_type {
+                Type::Array(elem) => elem.as_ref(),
+                _ => &params[vi].param_type,
+            };
+            let varargs_len = arg_types.len() - min_args;
+            let varargs_end = fixed_before + varargs_len;
+
+            // 如果恰好一个数组参数且类型匹配，直接接受
+            if varargs_len == 1 && Self::types_match_exact(&params[vi].param_type, &arg_types[fixed_before]) {
+                // 直接传递数组给可变参数
+            } else {
+                for i in fixed_before..varargs_end {
+                    if !Self::types_match_exact(vararg_elem_type, &arg_types[i]) {
+                        return false;
+                    }
+                }
+            }
+
+            // 检查可变参数之后的固定参数（精确匹配，支持泛型参数）
+            for i in 0..fixed_after {
+                if !Self::types_match_exact(&params[vi + 1 + i].param_type, &arg_types[varargs_end + i]) {
+                    return false;
+                }
+            }
+            true
+        } else {
+            // 非可变参数：参数数量必须完全匹配
+            if params.len() != arg_types.len() {
+                return false;
+            }
+            params.iter().zip(arg_types.iter()).all(|(p, a)| Self::types_match_exact(&p.param_type, a))
+        }
+    }
+
+    /// 匹配方法参数（支持可变参数，支持非末尾可变参数）
+    fn match_method_params(params: &[ParameterInfo], arg_types: &[Type]) -> bool {
+        if params.is_empty() {
+            return arg_types.is_empty();
+        }
+
+        // 找到可变参数的位置（如果有）
+        let varargs_idx = params.iter().position(|p| p.is_varargs);
+        
+        if let Some(vi) = varargs_idx {
+            let fixed_before = vi;
+            let fixed_after = params.len() - vi - 1;
+            let min_args = fixed_before + fixed_after;
+            
+            if arg_types.len() < min_args {
+                return false;
+            }
+
+            // 检查可变参数之前的固定参数
+            for i in 0..fixed_before {
+                if !Self::types_compatible(&params[i].param_type, &arg_types[i]) {
+                    return false;
+                }
+            }
+
+            // 检查可变参数
+            let vararg_elem_type = match &params[vi].param_type {
+                Type::Array(elem) => elem.as_ref(),
+                _ => &params[vi].param_type,
+            };
+            let varargs_len = arg_types.len() - min_args;
+            let varargs_end = fixed_before + varargs_len;
+
+            if varargs_len == 1 && Self::types_compatible(&params[vi].param_type, &arg_types[fixed_before]) {
+                // 直接传递数组给可变参数
+            } else {
+                for i in fixed_before..varargs_end {
+                    if !Self::types_compatible(vararg_elem_type, &arg_types[i]) {
+                        return false;
+                    }
+                }
+            }
+
+            // 检查可变参数之后的固定参数
+            for i in 0..fixed_after {
+                if !Self::types_compatible(&params[vi + 1 + i].param_type, &arg_types[varargs_end + i]) {
+                    return false;
+                }
+            }
+            true
+        } else {
+            if params.len() != arg_types.len() {
+                return false;
+            }
+            params.iter().zip(arg_types.iter()).all(|(p, a)| Self::types_compatible(&p.param_type, a))
+        }
+    }
+
+    /// 检查类型兼容性（支持基本类型隐式转换）
+    fn types_compatible(param_type: &Type, arg_type: &Type) -> bool {
+        if param_type == arg_type {
+            return true;
+        }
+        // 泛型参数类型匹配
+        if matches!(param_type, Type::GenericParam(_)) {
+            return true;
+        }
+        // 基本类型隐式转换
+        match (param_type, arg_type) {
+            (Type::Int64, Type::Int32) => true,
+            (Type::Float32, Type::Int32) => true,
+            (Type::Float64, Type::Int32) => true,
+            (Type::Float64, Type::Int64) => true,
+            (Type::Float64, Type::Float32) => true,
+            (Type::Float32, Type::Float64) => true,
+            _ => false,
+        }
+    }
 }
 
 /// enum 信息 - tagged union / ADT
@@ -1013,6 +1181,12 @@ impl TypeRegistry {
         // 检查接口方法（接口方法没有重载，直接匹配方法名）
         if let Some(interface_info) = self.get_interface(class_name) {
             if let Some(method) = interface_info.methods.get(method_name) {
+                return Some(method);
+            }
+        }
+        // 检查 struct 方法
+        if let Some(struct_info) = self.get_struct(class_name) {
+            if let Some(method) = struct_info.find_method(method_name, arg_types) {
                 return Some(method);
             }
         }

@@ -6,7 +6,7 @@ public class MathUtils {
     }
     
     public static void greet(String name) {
-        println("Hello, " + name);
+        println("Hello, " + String.valueOf(name));
     }
     
     public static int max(int a, int b, int c) {
@@ -62,19 +62,19 @@ public class Calculator {
 public int main() {
     // 测试静态方法
     MathUtils.greet("Cavvy");
-    println("10 + 20 = " + MathUtils.add(10, 20));
-    println("max(5, 10, 3) = " + MathUtils.max(5, 10, 3));
-    println("factorial(5) = " + MathUtils.factorial(5));
-    println("fibonacci(10) = " + MathUtils.fibonacci(10));
+    println("10 + 20 = " + String.valueOf(MathUtils.add(10, 20)));
+    println("max(5, 10, 3) = " + String.valueOf(MathUtils.max(5, 10, 3)));
+    println("factorial(5) = " + String.valueOf(MathUtils.factorial(5)));
+    println("fibonacci(10) = " + String.valueOf(MathUtils.fibonacci(10)));
     
     // 测试方法重载
     Calculator calc = new Calculator();
-    println("add() = " + calc.add());
-    println("add(5) = " + calc.add(5));
-    println("add(5, 3) = " + calc.add(5, 3));
-    println("add(5.5, 3.3) = " + calc.add(5.5, 3.3));
-    println("sum(1, 2) = " + calc.sum(1, 2));
-    println("sum(1, 2, 3) = " + calc.sum(1, 2, 3));
+    println("add() = " + String.valueOf(calc.add()));
+    println("add(5) = " + String.valueOf(calc.add(5)));
+    println("add(5, 3) = " + String.valueOf(calc.add(5, 3)));
+    println("add(5.5, 3.3) = " + String.valueOf(calc.add(5.5, 3.3)));
+    println("sum(1, 2) = " + String.valueOf(calc.sum(1, 2)));
+    println("sum(1, 2, 3) = " + String.valueOf(calc.sum(1, 2, 3)));
     
     return 0;
 }

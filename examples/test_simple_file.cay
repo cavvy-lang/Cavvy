@@ -8,21 +8,21 @@ public class TestSimpleFile {
         
         // 测试文件存在性检查
         bool exists = File.exists("test.txt");
-        println("文件存在: " + exists);
+        println("文件存在: " + String.valueOf(exists));
         
         // 测试写入文件
         bool written = File.writeAllText("test.txt", "Hello, World!");
-        println("写入成功: " + written);
+        println("写入成功: " + String.valueOf(written));
         
         // 测试读取文件
         String content = File.readAllText("test.txt");
         if (content != null) {
-            println("文件内容: " + content);
+            println("文件内容: " + String.valueOf(content));
         }
         
         // 测试删除文件
         bool deleted = File.delete("test.txt");
-        println("删除成功: " + deleted);
+        println("删除成功: " + String.valueOf(deleted));
         
         println("测试完成!");
     }

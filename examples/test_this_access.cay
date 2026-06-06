@@ -9,9 +9,9 @@ public class ThisAccessTest {
     
     public void printValue() {
         // 隐式访问实例字段
-        println("Value (implicit): " + value);
+        println("Value (implicit): " + String.valueOf(value));
         // 显式使用 this 访问
-        println("Value (explicit): " + this.value);
+        println("Value (explicit): " + String.valueOf(this.value));
     }
     
     public int getValue() {
@@ -24,6 +24,6 @@ public class ThisAccessTest {
         obj.printValue();
         
         // 测试 getValue
-        println("Get value: " + obj.getValue());
+        println("Get value: " + String.valueOf(obj.getValue()));
     }
 }

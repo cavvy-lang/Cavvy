@@ -123,17 +123,17 @@ impl IRGenerator {
     fn generate_address_of(&mut self, unary: &UnaryExpr) -> cayResult<String> {
         // 获取操作数的左值信息（类型和指针）
         let (llvm_type, llvm_ptr) = self.get_lvalue_info(&unary.operand)?;
-        
-        // Cavvy 对象有 8 字节的对象头（type_id: i32 + padding: i32）
-        // 当获取对象地址用于 FFI 调用时，需要跳过对象头
+
+        // Cavvy 对象有 16 字节的对象头（type_id: i32 + padding: i32 + vtable_ptr: i64）
+        // 当获取对象地址用于 FFI 调用时，需要跳过对象头，指向字段数据
         if llvm_type == "i8*" {
             // llvm_ptr 是 i8** (alloca of object pointer)
-            // 加载对象指针，然后跳过8字节头部
+            // 加载对象指针，然后跳过16字节头部
             let obj_ptr = self.new_temp();
             self.emit_line(&format!("  {} = load {}, {}* {}, align {}",
                 obj_ptr, llvm_type, llvm_type, llvm_ptr, self.get_type_align(&llvm_type)));
             let data_ptr = self.new_temp();
-            self.emit_line(&format!("  {} = getelementptr i8, i8* {}, i64 8",
+            self.emit_line(&format!("  {} = getelementptr i8, i8* {}, i64 16",
                 data_ptr, obj_ptr));
             Ok(format!("i8* {}", data_ptr))
         } else {

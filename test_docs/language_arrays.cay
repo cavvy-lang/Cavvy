@@ -8,13 +8,13 @@ public int main() {
     int len = values.length;
 
     for (int i = 0; i < values.length; i++) {
-        println("values[" + i + "] = " + values[i]);
+        println("values[" + String.valueOf(i)+ "] = " + values[i]);
     }
 
     // for-each 循环使用普通 for 循环替代
     for (int i = 0; i < values.length; i++) {
         int v = values[i];
-        println("for-each: " + v);
+        println("for-each: " + String.valueOf(v));
     }
 
     // 多维数组

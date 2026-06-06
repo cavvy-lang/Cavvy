@@ -375,7 +375,67 @@ impl SemanticAnalyzer {
             self.check_final_method_override(class)?;
         }
 
+        // 第五遍：检查接口方法实现
+        for class in &program.classes {
+            self.check_interface_implementations(class)?;
+        }
+
         Ok(())
+    }
+
+    /// 检查类是否实现了其声明的所有接口方法
+    fn check_interface_implementations(&self, class: &crate::ast::ClassDecl) -> cayResult<()> {
+        for interface_name in &class.interfaces {
+            let interface_info = match self.type_registry.get_interface(interface_name) {
+                Some(info) => info,
+                None => {
+                    return Err(semantic_error_with_file(
+                        class.loc.file.clone(),
+                        class.loc.line,
+                        class.loc.column,
+                        format!("Class '{}' implements undefined interface '{}'", class.name, interface_name)
+                    ));
+                }
+            };
+
+            for (method_name, interface_method) in &interface_info.methods {
+                // 检查当前类或其祖先中是否存在匹配的方法实现
+                if !self.method_exists_in_class_or_ancestors(&class.name, method_name, &interface_method.params, &interface_method.return_type) {
+                    return Err(semantic_error_with_file(
+                        class.loc.file.clone(),
+                        class.loc.line,
+                        class.loc.column,
+                        format!("Class '{}' must implement interface method '{}.{}'", class.name, interface_name, method_name)
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// 检查类或其祖先中是否存在匹配的方法（用于接口实现检查）
+    fn method_exists_in_class_or_ancestors(&self, class_name: &str, method_name: &str, params: &[ParameterInfo], return_type: &Type) -> bool {
+        if let Some(class_info) = self.type_registry.get_class(class_name) {
+            // 在当前类中查找方法
+            if let Some(methods) = class_info.methods.get(method_name) {
+                for method in methods {
+                    if method.params.len() == params.len() {
+                        let class_param_types: Vec<Type> = method.params.iter().map(|p| p.param_type.clone()).collect();
+                        let expected_param_types: Vec<Type> = params.iter().map(|p| p.param_type.clone()).collect();
+                        if self.types_match(&class_param_types, &expected_param_types) && method.return_type == *return_type {
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            // 递归检查父类
+            if let Some(ref parent_name) = class_info.parent {
+                return self.method_exists_in_class_or_ancestors(parent_name, method_name, params, return_type);
+            }
+        }
+
+        false
     }
 
     /// 递归检查循环继承
@@ -761,50 +821,65 @@ impl SemanticAnalyzer {
     fn compute_single_class_vtable(&self, class_name: &str) -> crate::types::VTableLayout {
         let mut slots = std::collections::HashMap::new();
         let mut next_slot = 0;
-        
+
+        // 辅助函数：构建方法签名（方法名+参数类型）
+        fn build_method_signature(method_name: &str, method: &crate::types::MethodInfo) -> String {
+            let param_types: Vec<String> = method.params.iter()
+                .map(|p| format!("{:?}", p.param_type))
+                .collect();
+            if param_types.is_empty() {
+                method_name.to_string()
+            } else {
+                format!("{}({})", method_name, param_types.join(","))
+            }
+        }
+
         // 如果有父类，先复制父类的 vtable 布局
         if let Some(class_info) = self.type_registry.get_class(class_name) {
             if let Some(ref parent_name) = class_info.parent {
                 if let Some(parent_info) = self.type_registry.get_class(parent_name) {
                     if let Some(ref parent_vtable) = parent_info.vtable_layout {
                         // 复制父类的所有槽位
-                        for (method_name, slot) in &parent_vtable.slots {
-                            slots.insert(method_name.clone(), *slot);
+                        for (method_sig, slot) in &parent_vtable.slots {
+                            slots.insert(method_sig.clone(), *slot);
                         }
                         next_slot = parent_vtable.size;
                     }
                 }
             }
         }
-        
+
         // 收集当前类的虚方法（非 static、非 native、非 private）
         // 虚方法：实例方法 + 非 final + 非 native
+        // 为每个重载方法分配独立的槽位，使用方法签名（名字+参数类型）作为键
         if let Some(class_info) = self.type_registry.get_class(class_name) {
-            // 收集所有实例方法名（去重，因为同名方法可能有多个重载）
-            let mut instance_methods: Vec<String> = Vec::new();
+            // 收集所有虚方法签名
+            let mut instance_method_sigs: Vec<String> = Vec::new();
             for (method_name, methods) in &class_info.methods {
-                // 只要有任何一个重载版本是实例方法，就认为是虚方法
-                let has_instance = methods.iter().any(|m| {
-                    !m.is_static && !m.is_native && !m.is_private
-                });
-                if has_instance && !instance_methods.contains(method_name) {
-                    instance_methods.push(method_name.clone());
+                for method in methods {
+                    // 只收集非 static、非 native、非 private 的实例方法
+                    if !method.is_static && !method.is_native && !method.is_private {
+                        let sig = build_method_signature(method_name, method);
+                        if !instance_method_sigs.contains(&sig) {
+                            instance_method_sigs.push(sig);
+                        }
+                    }
                 }
             }
             // 排序确保 vtable 槽位分配一致
-            instance_methods.sort();
-            
-            // 为每个虚方法分配槽位
-            for method_name in &instance_methods {
-                if !slots.contains_key(method_name) {
+            instance_method_sigs.sort();
+
+            // 为每个虚方法签名分配槽位
+            for method_sig in &instance_method_sigs {
+                if !slots.contains_key(method_sig) {
                     // 新方法，分配新槽位
-                    slots.insert(method_name.clone(), next_slot);
+                    slots.insert(method_sig.clone(), next_slot);
                     next_slot += 1;
                 }
                 // 如果已经存在（从父类继承），保持原槽位（重写）
             }
         }
-        
+
         crate::types::VTableLayout {
             class_name: class_name.to_string(),
             slots,

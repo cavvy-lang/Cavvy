@@ -76,31 +76,31 @@ public class TestInlineIrTypecast {
     public static void main() {
         // 测试符号扩展
         long sextVal = testSext(-100);
-        println("Sext(-100) = " + sextVal + " (expected -100)");
+        println("Sext(-100) = " + String.valueOf(sextVal)+ " (expected -100)");
         
         // 测试零扩展
         long zextVal = testZext(100);
-        println("Zext(100) = " + zextVal + " (expected 100)");
+        println("Zext(100) = " + String.valueOf(zextVal)+ " (expected 100)");
         
         // 测试截断
         int truncVal = testTrunc(5000000000L);
-        println("Trunc(5000000000) = " + truncVal);
+        println("Trunc(5000000000) = " + String.valueOf(truncVal));
         
         // 测试整数转浮点
         float sitofpVal = testSitofp(42);
-        println("Sitofp(42) = " + sitofpVal + " (expected 42.0)");
+        println("Sitofp(42) = " + String.valueOf(sitofpVal)+ " (expected 42.0)");
         
         // 测试浮点转整数
         int fptosiVal = testFptosi(3.7f);
-        println("Fptosi(3.7) = " + fptosiVal + " (expected 3)");
+        println("Fptosi(3.7) = " + String.valueOf(fptosiVal)+ " (expected 3)");
         
         // 测试浮点扩展
         double fpextVal = testFpext(3.14f);
-        println("Fpext(3.14) = " + fpextVal);
+        println("Fpext(3.14) = " + String.valueOf(fpextVal));
         
         // 测试浮点截断
         float fptruncVal = testFptrunc(3.14159265359);
-        println("Fptrunc(3.14159...) = " + fptruncVal);
+        println("Fptrunc(3.14159...) = " + String.valueOf(fptruncVal));
         
         println("\nTypecast tests completed!");
     }

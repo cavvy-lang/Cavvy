@@ -11,20 +11,20 @@ public int main() {
 
     // for 循环
     for (int i = 0; i < 5; i++) {
-        println("Iteration: " + i);
+        println("Iteration: " + String.valueOf(i));
     }
 
     // while 循环
     int count = 0;
     while (count < 3) {
-        println("Count: " + count);
+        println("Count: " + String.valueOf(count));
         count++;
     }
 
     // do-while 循环
     int num = 0;
     do {
-        println("Number: " + num);
+        println("Number: " + String.valueOf(num));
         num++;
     } while (num < 3);
 

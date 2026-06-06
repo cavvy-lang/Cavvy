@@ -20,7 +20,7 @@ namespace builder {
         }
 
         public String describe() {
-            return this.name + " " + this.version;
+            return this.name + " " + String.valueOf(this.version);
         }
     }
 }
@@ -31,10 +31,10 @@ public class Main {
     public static void main() {
 
         Config c1 = new Config();
-        println("Default: " + c1.describe());
+        println("Default: " + String.valueOf(c1.describe()));
         Config c2 = new Config("CavvyBuilder");
-        println("WithName: " + c2.describe());
+        println("WithName: " + String.valueOf(c2.describe()));
         Config c3 = new Config("CavvyBuilder", "v2.0");
-        println("WithAll: " + c3.describe());
+        println("WithAll: " + String.valueOf(c3.describe()));
     }
 }

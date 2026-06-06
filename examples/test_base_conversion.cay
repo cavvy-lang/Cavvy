@@ -8,9 +8,9 @@ public class TestBaseConversion {
         while (n > 0) {
             int bit = n & 1;
             if (bit == 1) {
-                result = "1" + result;
+                result = "1" + String.valueOf(result);
             } else {
-                result = "0" + result;
+                result = "0" + String.valueOf(result);
             }
             n = n >>> 1;
         }

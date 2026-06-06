@@ -31,23 +31,23 @@ public class NestedMemberTest {
         // 测试链式成员访问赋值: outer.inner.value = 200
         outer.inner.value = 200;
         println("After outer.inner.value = 200:");
-        println("outer.inner.value = " + outer.inner.value);
+        println("outer.inner.value = " + String.valueOf(outer.inner.value));
 
         // 测试链式成员访问赋值: outer.inner.name = "updated"
         outer.inner.name = "updated";
         println("After outer.inner.name = 'updated':");
-        println("outer.inner.name = " + outer.inner.name);
+        println("outer.inner.name = " + String.valueOf(outer.inner.name));
 
         // 测试单层成员访问赋值: outer.directField = 100
         outer.directField = 100;
         println("After outer.directField = 100:");
-        println("outer.directField = " + outer.directField);
+        println("outer.directField = " + String.valueOf(outer.directField));
 
         // 测试多层嵌套
         OuterClass outer2 = new OuterClass();
         outer2.init();
         outer2.inner.value = 999;
-        println("outer2.inner.value = " + outer2.inner.value);
+        println("outer2.inner.value = " + String.valueOf(outer2.inner.value));
 
         println("All nested member assignment tests passed!");
     }

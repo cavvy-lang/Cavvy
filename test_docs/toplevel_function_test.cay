@@ -4,14 +4,14 @@ int add(int a, int b) {
 }
 
 String greet(String name) {
-    return "Hello, " + name;
+    return "Hello, " + String.valueOf(name);
 }
 
 class Main {
     public static int main(String[] args) {
         // 调用顶层函数
         int result = add(3, 5);
-        println("3 + 5 = " + result);
+        println("3 + 5 = " + String.valueOf(result));
 
         String message = greet("Cavvy");
         println(message);

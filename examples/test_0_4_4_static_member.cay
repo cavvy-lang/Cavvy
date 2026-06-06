@@ -30,8 +30,8 @@ public class StaticTest {
     
     public static void main(String[] args) {
         // 测试静态字段访问
-        println("Initial counter: " + getCounter());
-        println("Max count: " + getMaxCount());
+        println("Initial counter: " + String.valueOf(getCounter()));
+        println("Max count: " + String.valueOf(getMaxCount()));
         
         // 创建多个实例
         StaticTest obj1 = new StaticTest();
@@ -43,11 +43,11 @@ public class StaticTest {
         obj3.init();
         
         // 验证静态计数器
-        println("After 3 instances, counter: " + getCounter());
+        println("After 3 instances, counter: " + String.valueOf(getCounter()));
         
         // 验证实例ID
-        println("Obj1 ID: " + obj1.getId());
-        println("Obj2 ID: " + obj2.getId());
-        println("Obj3 ID: " + obj3.getId());
+        println("Obj1 ID: " + String.valueOf(obj1.getId()));
+        println("Obj2 ID: " + String.valueOf(obj2.getId()));
+        println("Obj3 ID: " + String.valueOf(obj3.getId()));
     }
 }

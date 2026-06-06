@@ -28,12 +28,12 @@ public int main() {
     
     /* 绑定到端口 */
     if (!server.bindTo(port)) {
-        println("绑定端口失败: " + port);
+        println("绑定端口失败: " + String.valueOf(port));
         NetworkUtils.cleanup();
         return 1;
     }
     
-    println("服务器绑定到端口: " + port);
+    println("服务器绑定到端口: " + String.valueOf(port));
     
     /* 开始监听 */
     if (!server.listen(5)) {
@@ -63,10 +63,10 @@ public int main() {
     String message = client.receiveString(1024);
     
     if (message.length() > 0) {
-        println("收到消息: " + message);
+        println("收到消息: " + String.valueOf(message));
         
         /* 发送响应 */
-        String response = "Hello, Client! Received: " + message;
+        String response = "Hello, Client! Received: " + String.valueOf(message);
         client.send(response);
         println("已发送响应");
     } else {

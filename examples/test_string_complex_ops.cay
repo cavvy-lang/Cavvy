@@ -46,7 +46,7 @@ public class TestStringComplexOps {
         println("\nTest 6: Concatenation");
         String part1 = "Hello";
         String part2 = "World";
-        String combined = part1 + ", " + part2 + "!";
+        String combined = part1 + ", " + String.valueOf(part2)+ "!";
         print("Combined: ");
         println(combined);
         

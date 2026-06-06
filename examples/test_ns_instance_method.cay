@@ -23,7 +23,7 @@ public class Main {
     public static void main() {
 
         Person p = new Person("Cavvy");
-        println("Instance: " + p.getName());
-        println("Length: " + p.nameLength());
+        println("Instance: " + String.valueOf(p.getName()));
+        println("Length: " + String.valueOf(p.nameLength()));
     }
 }

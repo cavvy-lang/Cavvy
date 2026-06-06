@@ -23,8 +23,8 @@ public class Main {
 
         int a = Alpha.val();
         int b = Beta.val();
-        println("Alpha: " + a);
-        println("Beta: " + b);
-        println("Combined: " + (a + b));
+        println("Alpha: " + String.valueOf(a));
+        println("Beta: " + String.valueOf(b));
+        println("Combined: " + String.valueOf(a + b));
     }
 }

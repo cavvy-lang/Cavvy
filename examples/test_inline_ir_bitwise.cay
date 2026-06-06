@@ -73,12 +73,12 @@ public class TestInlineIrBitwise {
         int lshrResult = testLshr(16, 2);
         
         println("Bitwise operations:");
-        println("1100 & 1010 = " + andResult + " (expected 8)");
-        println("1100 | 1010 = " + orResult + " (expected 14)");
-        println("1100 ^ 1010 = " + xorResult + " (expected 6)");
-        println("1 << 4 = " + shlResult + " (expected 16)");
-        println("-16 >> 2 = " + ashrResult + " (expected -4)");
-        println("16 >>> 2 = " + lshrResult + " (expected 4)");
+        println("1100 & 1010 = " + String.valueOf(andResult)+ " (expected 8)");
+        println("1100 | 1010 = " + String.valueOf(orResult)+ " (expected 14)");
+        println("1100 ^ 1010 = " + String.valueOf(xorResult)+ " (expected 6)");
+        println("1 << 4 = " + String.valueOf(shlResult)+ " (expected 16)");
+        println("-16 >> 2 = " + String.valueOf(ashrResult)+ " (expected -4)");
+        println("16 >>> 2 = " + String.valueOf(lshrResult)+ " (expected 4)");
         
         // 验证
         if (andResult == 8 && orResult == 14 && xorResult == 6 &&

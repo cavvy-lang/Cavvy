@@ -5,7 +5,7 @@ class Functions {
     }
 
     public static void greet(String name) {
-        println("Hello, " + name);
+        println("Hello, " + String.valueOf(name));
     }
 
     public static int max(int a, int b, int c) {
@@ -23,12 +23,12 @@ class Functions {
 }
 
 public int main() {
-    println("add(1, 2) = " + Functions.add(1, 2));
+    println("add(1, 2) = " + String.valueOf(Functions.add(1, 2)));
     Functions.greet("Cavvy");
-    println("max(1, 2, 3) = " + Functions.max(1, 2, 3));
+    println("max(1, 2, 3) = " + String.valueOf(Functions.max(1, 2, 3)));
     // 可变参数暂不支持，使用固定参数替代
-    println("sum(1, 2, 3) = " + (1 + 2 + 3));
-    println("factorial(5) = " + Functions.factorial(5));
+    println("sum(1, 2, 3) = " + String.valueOf(1 + 2 + 3));
+    println("factorial(5) = " + String.valueOf(Functions.factorial(5)));
 
     return 0;
 }

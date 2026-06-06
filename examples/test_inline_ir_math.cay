@@ -80,38 +80,38 @@ public class TestInlineIrMath {
         // 测试平方
         int sq5 = testSquare(5);
         int sq10 = testSquare(10);
-        println("Square(5) = " + sq5 + " (expected 25)");
-        println("Square(10) = " + sq10 + " (expected 100)");
+        println("Square(5) = " + String.valueOf(sq5)+ " (expected 25)");
+        println("Square(10) = " + String.valueOf(sq10)+ " (expected 100)");
         
         // 测试立方
         int cube3 = testCube(3);
         int cube4 = testCube(4);
-        println("Cube(3) = " + cube3 + " (expected 27)");
-        println("Cube(4) = " + cube4 + " (expected 64)");
+        println("Cube(3) = " + String.valueOf(cube3)+ " (expected 27)");
+        println("Cube(4) = " + String.valueOf(cube4)+ " (expected 64)");
         
         // 测试2的幂
         int pow2_0 = testPowerOfTwo(0);
         int pow2_4 = testPowerOfTwo(4);
         int pow2_8 = testPowerOfTwo(8);
-        println("2^0 = " + pow2_0 + " (expected 1)");
-        println("2^4 = " + pow2_4 + " (expected 16)");
-        println("2^8 = " + pow2_8 + " (expected 256)");
+        println("2^0 = " + String.valueOf(pow2_0)+ " (expected 1)");
+        println("2^4 = " + String.valueOf(pow2_4)+ " (expected 16)");
+        println("2^8 = " + String.valueOf(pow2_8)+ " (expected 256)");
         
         // 测试判断2的幂
         println("\nIsPowerOfTwo tests:");
-        println("IsPowerOfTwo(1): " + testIsPowerOfTwo(1) + " (expected true)");
-        println("IsPowerOfTwo(2): " + testIsPowerOfTwo(2) + " (expected true)");
-        println("IsPowerOfTwo(4): " + testIsPowerOfTwo(4) + " (expected true)");
-        println("IsPowerOfTwo(3): " + testIsPowerOfTwo(3) + " (expected false)");
-        println("IsPowerOfTwo(0): " + testIsPowerOfTwo(0) + " (expected false)");
+        println("IsPowerOfTwo(1): " + String.valueOf(testIsPowerOfTwo(1)) + " (expected true)");
+        println("IsPowerOfTwo(2): " + String.valueOf(testIsPowerOfTwo(2)) + " (expected true)");
+        println("IsPowerOfTwo(4): " + String.valueOf(testIsPowerOfTwo(4)) + " (expected true)");
+        println("IsPowerOfTwo(3): " + String.valueOf(testIsPowerOfTwo(3)) + " (expected false)");
+        println("IsPowerOfTwo(0): " + String.valueOf(testIsPowerOfTwo(0)) + " (expected false)");
         
         // 测试高低位
         int highLow = 0x12345678;
         int low16 = testLow16(highLow);
         int high16 = testHigh16(highLow);
         println("\nHigh/Low 16 bits of 0x12345678:");
-        println("Low 16 bits = 0x" + low16 + " (expected 0x5678 = 22136)");
-        println("High 16 bits = 0x" + high16 + " (expected 0x1234 = 4660)");
+        println("Low 16 bits = 0x" + String.valueOf(low16)+ " (expected 0x5678 = 22136)");
+        println("High 16 bits = 0x" + String.valueOf(high16)+ " (expected 0x1234 = 4660)");
         
         // 验证
         if (sq5 == 25 && sq10 == 100 && cube3 == 27 && cube4 == 64 &&

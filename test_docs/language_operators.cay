@@ -2,11 +2,11 @@ public int main() {
     // 算术运算符
     int a = 10;
     int b = 3;
-    println("a + b = " + (a + b));
-    println("a - b = " + (a - b));
-    println("a * b = " + (a * b));
-    println("a / b = " + (a / b));
-    println("a % b = " + (a % b));
+    println("a + b = " + String.valueOf(a + b));
+    println("a - b = " + String.valueOf(a - b));
+    println("a * b = " + String.valueOf(a * b));
+    println("a / b = " + String.valueOf(a / b));
+    println("a % b = " + String.valueOf(a % b));
 
     // 赋值运算符
     int x = 5;

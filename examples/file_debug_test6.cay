@@ -19,15 +19,15 @@ public class DebugTest6 {
         println("1. 写入文件");
         File writeFile = new File();
         bool opened = writeFile.open(path, FileMode.write());
-        println("   打开: " + opened);
+        println("   打开: " + String.valueOf(opened));
         
         if (opened) {
-            println("   文件大小(写入前): " + writeFile.size());
+            println("   文件大小(写入前): " + String.valueOf(writeFile.size)());
             
             bool written = writeFile.writeString(testContent);
-            println("   写入: " + written);
+            println("   写入: " + String.valueOf(written));
             
-            println("   文件大小(写入后，关闭前): " + writeFile.size());
+            println("   文件大小(写入后，关闭前): " + String.valueOf(writeFile.size)());
             
             writeFile.close();
             println("   已关闭");
@@ -36,11 +36,11 @@ public class DebugTest6 {
         // 检查文件是否存在和大小
         println("\n2. 检查文件信息");
         bool exists = File.exists(path);
-        println("   文件存在: " + exists);
+        println("   文件存在: " + String.valueOf(exists));
         
         if (exists) {
             long size = File.getSize(path);
-            println("   文件大小: " + size);
+            println("   文件大小: " + String.valueOf(size));
         }
         
         // 尝试读取
@@ -48,7 +48,7 @@ public class DebugTest6 {
         File readFile = new File();
         if (readFile.open(path, FileMode.read())) {
             println("   打开成功");
-            println("   文件大小: " + readFile.size());
+            println("   文件大小: " + String.valueOf(readFile.size)());
             
             // 使用 readChar 逐字符读取
             println("   逐字符读取:");
@@ -59,8 +59,8 @@ public class DebugTest6 {
                 content = content + (char)c;
                 count = count + 1;
             }
-            println("   内容: '" + content + "'");
-            println("   字符数: " + count);
+            println("   内容: '" + String.valueOf(content)+ "'");
+            println("   字符数: " + String.valueOf(count));
             
             readFile.close();
         } else {
@@ -71,8 +71,8 @@ public class DebugTest6 {
         println("\n4. 使用 readAllText");
         String allContent = File.readAllText(path);
         if (allContent != null) {
-            println("   内容: '" + allContent + "'");
-            println("   长度: " + allContent.length());
+            println("   内容: '" + String.valueOf(allContent)+ "'");
+            println("   长度: " + String.valueOf(allContent.length)());
         } else {
             println("   返回 null");
         }

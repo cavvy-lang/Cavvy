@@ -1,0 +1,8 @@
+public class Test {
+    public static void main() {
+        for (int i = 0; i < 3; i++) {
+            var lambda = (int x) -> x + i;
+            println(lambda(100));
+        }
+    }
+}

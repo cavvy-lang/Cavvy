@@ -15,7 +15,7 @@ public class DebugTest {
         // 测试1: 检查 FileMode
         println("测试1: FileMode");
         FileMode mode = FileMode.write();
-        println("模式字符串: '" + mode.getMode() + "'");
+        println("模式字符串: '" + String.valueOf(mode.getMode)() + "'");
         
         // 测试2: 直接打开文件
         println("\n测试2: 直接打开文件");
@@ -23,23 +23,23 @@ public class DebugTest {
         println("创建File对象");
         
         bool opened = file.open("test_debug.txt", FileMode.write());
-        println("打开结果: " + opened);
-        println("是否打开: " + file.isOpened());
+        println("打开结果: " + String.valueOf(opened));
+        println("是否打开: " + String.valueOf(file.isOpened)());
         
         if (opened) {
             println("文件打开成功，尝试写入");
             bool written = file.writeString("Test content");
-            println("写入结果: " + written);
+            println("写入结果: " + String.valueOf(written));
             file.close();
             println("文件已关闭");
         } else {
-            println("文件打开失败，错误码: " + file.getLastError());
+            println("文件打开失败，错误码: " + String.valueOf(file.getLastError)());
         }
         
         // 测试3: 检查文件是否存在
         println("\n测试3: 检查文件存在性");
         bool exists = File.exists("test_debug.txt");
-        println("test_debug.txt 存在: " + exists);
+        println("test_debug.txt 存在: " + String.valueOf(exists));
         
         // 测试4: 读取测试
         println("\n测试4: 读取测试");
@@ -47,7 +47,7 @@ public class DebugTest {
         if (readFile.open("test_debug.txt", FileMode.read())) {
             println("文件打开成功用于读取");
             String content = readFile.readAllText();
-            println("读取内容: '" + content + "'");
+            println("读取内容: '" + String.valueOf(content)+ "'");
             readFile.close();
         } else {
             println("文件打开失败用于读取");

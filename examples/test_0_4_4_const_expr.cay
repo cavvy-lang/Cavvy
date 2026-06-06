@@ -28,6 +28,6 @@ public class ConstExprTest {
         println("");
         
         // 打印矩阵维度
-        println("Matrix dimensions: " + WIDTH + "x" + HEIGHT);
+        println("Matrix dimensions: " + String.valueOf(WIDTH)+ "x" + HEIGHT);
     }
 }

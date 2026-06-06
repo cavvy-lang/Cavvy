@@ -4,12 +4,12 @@
 public class Main {
     public static int main(String[] args) {
         println("Testing cay-run with arguments!");
-        println("Number of arguments: " + args.length);
+        println("Number of arguments: " + String.valueOf(args.length));
         
         if (args.length > 0) {
             println("Arguments received:");
             for (int i = 0; i < args.length; i = i + 1) {
-                println("  [" + i + "] = " + args[i]);
+                println("  [" + String.valueOf(i)+ "] = " + args[i]);
             }
         } else {
             println("No arguments provided.");

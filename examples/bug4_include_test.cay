@@ -5,6 +5,6 @@ public class Bug4Includer {
     public static void main() {
         TokenHelper t = new TokenHelper(1, 42);
         long v = t.getIntValue();
-        println("intValue = " + v);
+        println("intValue = " + String.valueOf(v));
     }
 }

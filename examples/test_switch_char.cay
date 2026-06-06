@@ -22,7 +22,7 @@ public class Test {
             default:
                 result1 = "unknown";
         }
-        println("Test1: " + result1);
+        println("Test1: " + String.valueOf(result1));
 
         // 测试2: 字符与整数混合使用
         char c = 'A';
@@ -40,7 +40,7 @@ public class Test {
             default:
                 code = 0;
         }
-        println("Test2 code: " + code);
+        println("Test2 code: " + String.valueOf(code));
 
         // 测试3: 转义字符作为 case
         char esc = '\n';
@@ -58,7 +58,7 @@ public class Test {
             default:
                 escName = "other";
         }
-        println("Test3: " + escName);
+        println("Test3: " + String.valueOf(escName));
 
         // 测试4: fallthrough 行为
         char f = 'X';
@@ -74,7 +74,7 @@ public class Test {
             default:
                 fall = "other";
         }
-        println("Test4 fallthrough: " + fall);
+        println("Test4 fallthrough: " + String.valueOf(fall));
 
         println("All switch char tests passed!");
     }

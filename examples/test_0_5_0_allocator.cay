@@ -26,7 +26,7 @@ public class TestAllocator {
             println("ERROR: GlobalAlloc 分配失败");
             return 1;
         }
-        println("GlobalAlloc 分配成功，地址: " + ptr);
+        println("GlobalAlloc 分配成功，地址: " + String.valueOf(ptr));
         
         // 释放内存
         alloc.deallocate(ptr);
@@ -54,16 +54,16 @@ public class TestAllocator {
         }
         
         println("Arena 分配成功:");
-        println("  ptr1 (100字节): " + ptr1);
-        println("  ptr2 (200字节): " + ptr2);
-        println("  ptr3 (300字节): " + ptr3);
-        println("  已使用: " + arena.used() + " 字节");
-        println("  剩余: " + arena.remaining() + " 字节");
+        println("  ptr1 (100字节): " + String.valueOf(ptr1));
+        println("  ptr2 (200字节): " + String.valueOf(ptr2));
+        println("  ptr3 (300字节): " + String.valueOf(ptr3));
+        println("  已使用: " + String.valueOf(arena.used)() + " 字节");
+        println("  剩余: " + String.valueOf(arena.remaining)() + " 字节");
         
         // 批量重置
         arena.reset();
         println("Arena 重置成功");
-        println("  重置后已使用: " + arena.used() + " 字节");
+        println("  重置后已使用: " + String.valueOf(arena.used)() + " 字节");
         
         // 重新分配
         long ptr4 = arena.allocate(500);
@@ -71,7 +71,7 @@ public class TestAllocator {
             println("ERROR: Arena 重置后分配失败");
             return 1;
         }
-        println("重置后分配成功: " + ptr4);
+        println("重置后分配成功: " + String.valueOf(ptr4));
         
         // 释放 Arena 底层缓冲区
         arena.dispose();
@@ -97,8 +97,8 @@ public class TestAllocator {
             return 1;
         }
         
-        println("GlobalAlloc 通过接口分配: " + p1);
-        println("Arena 通过接口分配: " + p2);
+        println("GlobalAlloc 通过接口分配: " + String.valueOf(p1));
+        println("Arena 通过接口分配: " + String.valueOf(p2));
         
         // 清理
         alloc1.deallocate(p1);
@@ -118,7 +118,7 @@ public class TestAllocator {
         // 测试 16 字节对齐
         long ptr16 = alloc.allocateAligned(64, 16);
         if (ptr16 != 0 && (ptr16 % 16) == 0) {
-            println("16字节对齐分配成功: " + ptr16 + " (对齐检查通过)");
+            println("16字节对齐分配成功: " + String.valueOf(ptr16)+ " (对齐检查通过)");
         } else {
             println("ERROR: 16字节对齐分配失败");
             return 1;
@@ -127,7 +127,7 @@ public class TestAllocator {
         // 测试 64 字节对齐
         long ptr64 = alloc.allocateAligned(128, 64);
         if (ptr64 != 0 && (ptr64 % 64) == 0) {
-            println("64字节对齐分配成功: " + ptr64 + " (对齐检查通过)");
+            println("64字节对齐分配成功: " + String.valueOf(ptr64)+ " (对齐检查通过)");
         } else {
             println("ERROR: 64字节对齐分配失败");
             return 1;
@@ -157,7 +157,7 @@ public class TestAllocator {
         // 分配正好填满的内存
         long ptr2 = smallArena.allocate(256);
         if (ptr2 != 0) {
-            println("正好填满分配成功: " + ptr2);
+            println("正好填满分配成功: " + String.valueOf(ptr2));
         } else {
             println("INFO: 由于对齐可能略小于256");
         }

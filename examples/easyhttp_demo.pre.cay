@@ -310,7 +310,7 @@ public class StringBuilder {
         }
         
         if (negative) {
-            result = "-" + result;
+            result = "-" + String.valueOf(result);
         }
         
         return this.append(result);
@@ -2139,7 +2139,7 @@ public class HttpParams {
         }
 
         if (negative) {
-            result = "-" + result;
+            result = "-" + String.valueOf(result);
         }
 
         return result;
@@ -2170,7 +2170,7 @@ public class HttpParams {
         }
 
         if (negative) {
-            result = "-" + result;
+            result = "-" + String.valueOf(result);
         }
 
         return result;
@@ -2601,7 +2601,7 @@ public class HttpRequest {
      * @return this，支持链式调用
      */
     public HttpRequest setBearerToken(String token) {
-        this.headers.set("Authorization", "Bearer " + token);
+        this.headers.set("Authorization", "Bearer " + String.valueOf(token));
         return this;
     }
 
@@ -2717,7 +2717,7 @@ public class HttpRequest {
         /* 解析URL */
         ParsedUrl parsed = this.parseUrl(this.url);
         if (parsed.host.isEmpty()) {
-            response.setError("Invalid URL: " + this.url);
+            response.setError("Invalid URL: " + String.valueOf(this.url));
             NetworkUtils.cleanup();
             return response;
         }
@@ -3160,7 +3160,7 @@ public class EasyHTTP {
 
         /* 复制参数 */
         if (!params.isEmpty()) {
-            request.setUrl(url + "?" + params.build());
+            request.setUrl(url + "?" + String.valueOf(params.build)());
         }
 
         return request.send();
@@ -3321,7 +3321,7 @@ public class EasyHTTPDemo {
 
         /* 获取头部 */
         String contentType = headers.get("Content-Type");
-        println("Content-Type: " + contentType);
+        println("Content-Type: " + String.valueOf(contentType));
 
         /* 检查头部 */
         if (headers.contains("Authorization")) {
@@ -3330,7 +3330,7 @@ public class EasyHTTPDemo {
 
         /* 更新头部 */
         headers.set("Content-Type", "text/html");
-        println("Updated Content-Type: " + headers.get("Content-Type"));
+        println("Updated Content-Type: " + String.valueOf(headers.get)("Content-Type"));
 
         /* 移除头部 */
         headers.remove("X-Custom-Header");
@@ -3338,7 +3338,7 @@ public class EasyHTTPDemo {
         println(headers.size());
 
         /* 构建头部字符串 */
-        println("Built headers:\n" + headers.build());
+        println("Built headers:\n" + String.valueOf(headers.build)());
         println("");
     }
 
@@ -3358,7 +3358,7 @@ public class EasyHTTPDemo {
 
         /* 构建查询字符串 */
         String query = params.build();
-        println("Query string: " + query);
+        println("Query string: " + String.valueOf(query));
         println("");
     }
 
@@ -3374,7 +3374,7 @@ public class EasyHTTPDemo {
         params.add("math", "1+1=2");
 
         String query = params.build();
-        println("Encoded query: " + query);
+        println("Encoded query: " + String.valueOf(query));
         println("");
     }
 
@@ -3389,13 +3389,13 @@ public class EasyHTTPDemo {
         params.add("q", "cavvy");
         params.add("page", 1);
 
-        println("Params built: " + params.build());
+        println("Params built: " + String.valueOf(params.build)());
 
         /* 创建请求头 */
         HttpHeaders headers = EasyHTTP.headers();
         headers.set("Accept", "application/json");
 
-        println("Headers built:\n" + headers.build());
+        println("Headers built:\n" + String.valueOf(headers.build)());
         println("");
     }
 
@@ -3457,14 +3457,14 @@ public class EasyHTTPDemo {
         response.getHeaders().set("Server", "nginx");
 
         /* 检查响应 */
-        println("Status Code: " + response.getStatusCode());
-        println("Status Text: " + response.getStatusText());
-        println("Is Success: " + response.isSuccess());
-        println("Is JSON: " + response.isJson());
+        println("Status Code: " + String.valueOf(response.getStatusCode)());
+        println("Status Text: " + String.valueOf(response.getStatusText)());
+        println("Is Success: " + String.valueOf(response.isSuccess)());
+        println("Is JSON: " + String.valueOf(response.isJson)());
         print("Response Time: ");
         print(response.getResponseTime());
         println("ms");
-        println("Body: " + response.getBody());
+        println("Body: " + String.valueOf(response.getBody)());
 
         /* 测试错误响应 */
         HttpResponse errorResponse = new HttpResponse();
@@ -3472,8 +3472,8 @@ public class EasyHTTPDemo {
         errorResponse.setStatusText("Not Found");
 
         println("\nError Response:");
-        println("Status Code: " + errorResponse.getStatusCode());
-        println("Is Success: " + errorResponse.isSuccess());
+        println("Status Code: " + String.valueOf(errorResponse.getStatusCode)());
+        println("Is Success: " + String.valueOf(errorResponse.isSuccess)());
         println("");
     }
 

@@ -7,17 +7,17 @@ extern void sleep(int seconds);
 public int main() {
     // time
     long t = time(0);
-    println("Current time: " + t);
+    println("Current time: " + String.valueOf(t));
     
     // clock
     int start = clock();
-    println("Clock start: " + start);
+    println("Clock start: " + String.valueOf(start));
     
     // sleep
     sleep(1);
     
     int end = clock();
-    println("Clock end: " + end);
+    println("Clock end: " + String.valueOf(end));
     
     return 0;
 }

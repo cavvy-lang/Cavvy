@@ -26,7 +26,7 @@ public class TestHttp {
     public void test() {
         HttpResponse response = new HttpResponse();
         this.parseStatusLine("test", response);
-        println("Status code: " + response.getStatusCode());
+        println("Status code: " + String.valueOf(response.getStatusCode)());
     }
 }
 

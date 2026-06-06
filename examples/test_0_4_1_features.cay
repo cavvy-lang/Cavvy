@@ -113,18 +113,18 @@ public class Test041Features {
 
         Rectangle.draw();
         Rectangle rect = new Rectangle();
-        println("Rectangle area: " + rect.getArea());
+        println("Rectangle area: " + String.valueOf(rect.getArea)());
 
         Circle.draw();
         Circle circle = new Circle();
-        println("Circle area: " + circle.getArea());
+        println("Circle area: " + String.valueOf(circle.getArea)());
 
         // 测试移动
         println("");
         println("--- Testing move ---");
-        println("Before move: x = " + Rectangle.x);
+        println("Before move: x = " + String.valueOf(Rectangle.x));
         rect.move(10, 20);
-        println("After move: x = " + Rectangle.x);
+        println("After move: x = " + String.valueOf(Rectangle.x));
 
         println("");
         println("=== All 0.4.1.x Tests Completed ===");

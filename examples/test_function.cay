@@ -3,6 +3,7 @@ public class TestFunction {
         return a + b;
     }
     public static void main() {
-        print(test(1, 2));
+        TestFunction tf = new TestFunction();
+        print(tf.test(1, 2));
     }
 }

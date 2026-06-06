@@ -46,7 +46,7 @@ public class TestRecursionAdvanced {
         if (index >= s.length()) {
             return "";
         }
-        return reverseString(s, index + 1) + (char)s.charAt(index);
+        return reverseString(s, index + 1) + String.valueOf((char)s.charAt(index));
     }
     
     // 判断回文（递归）

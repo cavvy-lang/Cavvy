@@ -671,18 +671,6 @@ impl IRGenerator {
         }
     }
 
-    fn get_type_size(&self, llvm_type: &str) -> i64 {
-        match llvm_type {
-            "i1" => 1,
-            "i8" => 1,
-            "i32" => 4,
-            "i64" => 8,
-            "float" => 4,
-            "double" => 8,
-            _ => 8,
-        }
-    }
-
     fn generate_class(&mut self, class: &ClassDecl) -> cayResult<()> {
         // 设置当前命名空间上下文——仅影响 TypeRegistry 的类名查找，不影响其他
         if let Some(ref mut registry) = self.type_registry {
@@ -797,8 +785,17 @@ impl IRGenerator {
     /// 每个 slot 是一个 i8* 类型的函数指针。
     fn generate_vtable_global(&mut self, class_name: &str) -> cayResult<()> {
         // 从 TypeRegistry 获取 vtable 布局
+        // 对于泛型类，需要提取基础类名（不含泛型参数）进行查找
+        let base_class_name = if let Some(pos) = class_name.find('<') {
+            &class_name[..pos]
+        } else {
+            class_name
+        };
+        
         let vtable_layout = if let Some(ref registry) = self.type_registry {
             if let Some(class_info) = registry.get_class(class_name) {
+                class_info.vtable_layout.clone()
+            } else if let Some(class_info) = registry.get_class(base_class_name) {
                 class_info.vtable_layout.clone()
             } else {
                 None
@@ -830,10 +827,10 @@ impl IRGenerator {
         let mut sorted_slots: Vec<_> = layout.slots.iter().collect();
         sorted_slots.sort_by_key(|&(_, &slot)| slot);
         
-        for (method_name, _slot) in &sorted_slots {
+        for (method_sig, _slot) in &sorted_slots {
             // 查找方法的 LLVM 函数名
-            // 需要在继承链中查找方法定义
-            let fn_name_opt = self.find_method_in_hierarchy(class_name, method_name);
+            // 需要在继承链中查找方法定义（使用方法签名支持重载）
+            let fn_name_opt = self.find_method_in_hierarchy(class_name, method_sig);
             if let Some((fn_name, ret_type, params)) = fn_name_opt {
                 let ret_llvm = self.type_to_llvm(&ret_type);
                 let mut fn_param_types = vec!["i8*".to_string()];
@@ -859,29 +856,64 @@ impl IRGenerator {
     }
 
     /// 在继承链中查找方法定义
+    /// 使用方法签名（方法名+参数类型）作为键，支持重载方法
     /// 返回 (函数名, 返回类型, 参数类型列表)
     /// 跳过抽象方法（无实现），因为抽象方法没有对应的 LLVM 函数定义
-    fn find_method_in_hierarchy(&self, class_name: &str, method_name: &str) -> Option<(String, crate::types::Type, Vec<crate::types::Type>)> {
+    fn find_method_in_hierarchy(&self, class_name: &str, method_sig: &str) -> Option<(String, crate::types::Type, Vec<crate::types::Type>)> {
+        // 解析方法签名：方法名(参数类型1,参数类型2,...)
+        let (method_name, param_types_str) = if let Some(pos) = method_sig.find('(') {
+            let name = &method_sig[..pos];
+            let params = &method_sig[pos+1..method_sig.len()-1]; // 去掉结尾的 )
+            (name, if params.is_empty() { Vec::new() } else { params.split(',').map(|s| s.to_string()).collect() })
+        } else {
+            (method_sig, Vec::new())
+        };
+
         if let Some(ref registry) = self.type_registry {
             let mut current = class_name.to_string();
             loop {
-                if let Some(class_info) = registry.get_class(&current) {
+                // 对于泛型类，需要提取基础类名（不含泛型参数）进行查找
+                let base_current = if let Some(pos) = current.find('<') {
+                    &current[..pos]
+                } else {
+                    &current
+                };
+                let class_info_opt = registry.get_class(&current).or_else(|| registry.get_class(base_current));
+                if let Some(class_info) = class_info_opt {
                     if let Some(methods) = class_info.methods.get(method_name) {
-                        // 找到方法定义，跳过抽象方法（无实现）
-                        if let Some(method) = methods.iter().find(|m| !m.is_static && !m.is_native && !m.is_abstract) {
-                            let llvm_class = self.get_qualified_class_name(&current);
-                            let fn_name = if method.params.is_empty() {
-                                format!("{}.{}", llvm_class, method_name)
-                            } else {
-                                let param_types: Vec<String> = method.params.iter()
-                                    .map(|p| self.type_to_signature(&p.param_type))
-                                    .collect();
-                                format!("{}.__{}_{}", llvm_class, method_name, param_types.join("_"))
-                            };
-                            let param_types: Vec<crate::types::Type> = method.params.iter()
-                                .map(|p| p.param_type.clone())
+                        // 找到方法定义，需要匹配参数类型
+                        for method in methods {
+                            // 跳过抽象方法（无实现）
+                            if method.is_static || method.is_native || method.is_abstract {
+                                continue;
+                            }
+
+                            // 构建方法签名进行匹配
+                            let method_param_types: Vec<String> = method.params.iter()
+                                .map(|p| format!("{:?}", p.param_type))
                                 .collect();
-                            return Some((fn_name, method.return_type.clone(), param_types));
+
+                            let matches = if param_types_str.is_empty() {
+                                method_param_types.is_empty()
+                            } else {
+                                method_param_types == param_types_str
+                            };
+
+                            if matches {
+                                let llvm_class = self.get_qualified_class_name(&current);
+                                let fn_name = if method.params.is_empty() {
+                                    format!("{}.{}", llvm_class, method_name)
+                                } else {
+                                    let param_sigs: Vec<String> = method.params.iter()
+                                        .map(|p| self.type_to_signature(&p.param_type))
+                                        .collect();
+                                    format!("{}.__{}_{}", llvm_class, method_name, param_sigs.join("_"))
+                                };
+                                let param_types: Vec<crate::types::Type> = method.params.iter()
+                                    .map(|p| p.param_type.clone())
+                                    .collect();
+                                return Some((fn_name, method.return_type.clone(), param_types));
+                            }
                         }
                     }
                     // 在父类中继续查找

@@ -223,20 +223,41 @@ public class SocketAddr {
         int portNetwork = (this.word0 >> 16) & 0xFFFF;
         return NetworkUtils.ntohs(portNetwork);
     }
-    
+
+    /**
+     * 获取端口号（字段形式，兼容旧代码）
+     */
+    public int port() {
+        return this.getPort();
+    }
+
+    /**
+     * 获取地址族
+     */
+    public int family() {
+        return this.word0 & 0xFFFF;
+    }
+
+    /**
+     * 获取IP地址（网络字节序）
+     */
+    public int addr() {
+        return this.word1;
+    }
+
     /**
      * 获取IP地址字符串
      */
     public String getIp() {
         /* 从word1中提取IP地址 */
         int ipAddr = this.word1;
-        
+
         /* 手动转换为字符串格式 */
         int b0 = (ipAddr >> 0) & 0xFF;
         int b1 = (ipAddr >> 8) & 0xFF;
         int b2 = (ipAddr >> 16) & 0xFF;
         int b3 = (ipAddr >> 24) & 0xFF;
-        
+
         /* 构建IP字符串 */
         String result = "";
         result = result + (String)b3 + "." + (String)b2 + "." + (String)b1 + "." + (String)b0;

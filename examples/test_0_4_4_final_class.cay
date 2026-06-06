@@ -15,6 +15,6 @@ public final class FinalClass {
     public static void main(String[] args) {
         FinalClass obj = new FinalClass();
         obj.setValue(42);
-        println("FinalClass value: " + obj.getValue());
+        println("FinalClass value: " + String.valueOf(obj.getValue)());
     }
 }

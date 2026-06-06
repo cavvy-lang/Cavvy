@@ -24,23 +24,23 @@ public int main() {
     // int -> String：使用 String.valueOf()
     int i3 = 42;
     String s = String.valueOf(i3);
-    println("String value: " + s);
+    println("String value: " + String.valueOf(s));
     
     // String -> int：使用 Integer.parseInt()
     int n = Integer.parseInt("123");
-    println("Parsed int: " + n);
+    println("Parsed int: " + String.valueOf(n));
     
     // ========== 代码块10: 自增自减 ==========
     int a = 5;
     int b = ++a;   // 前置自增：a=6, b=6
     int c = a++;   // 后置自增：c=6, a=7
-    println("a=" + a + ", b=" + b + ", c=" + c);
+    println("a=" + String.valueOf(a) + ", b=" + String.valueOf(b) + ", c=" + String.valueOf(c));
     
     // ========== 代码块11: 三元运算符 ==========
     int a2 = 10;
     int b2 = 20;
     int max = (a2 > b2) ? a2 : b2;  // max = 20
-    println("max = " + max);
+    println("max = " + String.valueOf(max));
     
     // ========== 代码块12: if-else ==========
     int score = 85;
@@ -76,13 +76,13 @@ public int main() {
     // ========== 代码块14: for 循环 ==========
     // 基本 for
     for (int k = 0; k < 5; k++) {
-        println("k = " + k);
+        println("k = " + String.valueOf(k));
     }
     
     // 多变量声明 - 使用 while 循环替代
     int m = 0, n2 = 10;
     while (m < 5) {
-        println("m=" + m + ", n=" + n2);
+        println("m=" + String.valueOf(m)+ ", n=" + n2);
         m++;
         n2--;
     }
@@ -90,14 +90,14 @@ public int main() {
     // ========== 代码块15: while 循环 ==========
     int count = 0;
     while (count < 3) {
-        println("Count: " + count);
+        println("Count: " + String.valueOf(count));
         count++;
     }
     
     // ========== 代码块16: do-while ==========
     int num = 0;
     do {
-        println("Number: " + num);
+        println("Number: " + String.valueOf(num));
         num++;
     } while (num < 3);
     
@@ -105,12 +105,12 @@ public int main() {
     for (int p = 0; p < 10; p++) {
         if (p == 3) continue;
         if (p == 7) break;
-        println("p = " + p);
+        println("p = " + String.valueOf(p));
     }
     
     // ========== 代码块18: return ==========
     int result = MathHelper.addNumbers(5, 3);
-    println("5 + 3 = " + result);
+    println("5 + 3 = " + String.valueOf(result));
     
     return 0;
 }

@@ -5,7 +5,7 @@ public class TestBasicString {
         String s2 = "World";
         println(s1);
         println(s2);
-        println(s1 + ", " + s2 + "!");
+        println(s1 + ", " + String.valueOf(s2)+ "!");
         println("All basic string tests completed!");
     }
 }

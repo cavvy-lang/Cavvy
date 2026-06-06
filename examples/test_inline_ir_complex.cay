@@ -94,23 +94,23 @@ public class TestInlineIrComplex {
     public static void main() {
         // 测试复合表达式 (2+3)*(5-1) = 5*4 = 20
         int complex = testComplexExpr(2, 3, 5, 1);
-        println("(2+3)*(5-1) = " + complex + " (expected 20)");
+        println("(2+3)*(5-1) = " + String.valueOf(complex)+ " (expected 20)");
         
         // 测试多项式: 2*x^2 + 3*x + 4, x=2 => 8+6+4 = 18
         int poly = testPolynomial(2, 3, 4, 2);
-        println("2*2^2 + 3*2 + 4 = " + poly + " (expected 18)");
+        println("2*2^2 + 3*2 + 4 = " + String.valueOf(poly)+ " (expected 18)");
         
         // 测试绝对值
         int absNeg = testAbs(-42);
         int absPos = testAbs(42);
-        println("Abs(-42) = " + absNeg + " (expected 42)");
-        println("Abs(42) = " + absPos + " (expected 42)");
+        println("Abs(-42) = " + String.valueOf(absNeg)+ " (expected 42)");
+        println("Abs(42) = " + String.valueOf(absPos)+ " (expected 42)");
         
         // 测试最大值和最小值
         int maxVal = testMax(10, 5);
         int minVal = testMin(10, 5);
-        println("Max(10, 5) = " + maxVal + " (expected 10)");
-        println("Min(10, 5) = " + minVal + " (expected 5)");
+        println("Max(10, 5) = " + String.valueOf(maxVal)+ " (expected 10)");
+        println("Min(10, 5) = " + String.valueOf(minVal)+ " (expected 5)");
         
         // 验证
         if (complex == 20 && poly == 18 && absNeg == 42 && absPos == 42 &&

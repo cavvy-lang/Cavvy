@@ -244,9 +244,16 @@ impl SemanticAnalyzer {
         
         match bin.op {
             BinaryOp::Add => {
-                // 字符串连接：字符串 + 任意类型，结果为字符串
-                // codegen 会自动将非字符串操作数转换为字符串表示
-                if left_type == Type::String || right_type == Type::String {
+                // 字符串连接：支持 String + String 和 String + char
+                if left_type == Type::String && right_type == Type::String {
+                    Ok(Type::String)
+                }
+                else if left_type == Type::String && right_type == Type::Char {
+                    // String + char = String
+                    Ok(Type::String)
+                }
+                else if left_type == Type::Char && right_type == Type::String {
+                    // char + String = String
                     Ok(Type::String)
                 }
                 // 数值加法：两个操作数都必须是基本数值类型
@@ -506,24 +513,51 @@ impl SemanticAnalyzer {
                 return Ok(return_type);
             }
 
-            // 尝试查找当前类的方法（无对象调用）- 支持方法重载
+            // 尝试查找当前类的方法（无对象调用）- 支持方法重载、命名参数和继承
             if let Some(ref current_class) = self.current_class.clone() {
-                // 先推断所有参数类型
-                let mut arg_types = Vec::new();
-                for arg in &call.args {
-                    arg_types.push(self.infer_expr_type_internal(arg)?);
+                // 收集当前类及其所有父类的候选方法
+                let mut candidate_methods: Vec<(Type, Vec<crate::types::ParameterInfo>, bool)> = Vec::new();
+                let mut class_to_check = Some(current_class.clone());
+
+                while let Some(class_name) = class_to_check {
+                    if let Some(class_info) = self.type_registry.get_class(&class_name) {
+                        // 收集当前类中的匹配方法
+                        if let Some(methods) = class_info.methods.get(name.as_ref()) {
+                            for method in methods.iter() {
+                                candidate_methods.push((
+                                    method.return_type.clone(),
+                                    method.params.clone(),
+                                    method.is_static
+                                ));
+                            }
+                        }
+                        // 继续检查父类
+                        class_to_check = class_info.parent.clone();
+                    } else {
+                        break;
+                    }
                 }
 
-                // 使用参数类型查找匹配的方法
-                if let Some(method_info) = self.type_registry.find_method(current_class, name.as_ref(), &arg_types) {
-                    let return_type = method_info.return_type.clone();
-                    let params = method_info.params.clone();
-                    // 检查参数类型兼容性（支持可变参数）
-                    if let Err(msg) = self.check_arguments_compatible(&call.args, &params, call.loc.line, call.loc.column) {
-                        return Err(semantic_error_at_loc(&call.loc, msg));
+                // 第一步：尝试精确匹配（参数类型完全相同）
+                for (return_type, params, is_static) in &candidate_methods {
+                    // 检查：静态方法中不能调用实例方法
+                    if self.current_method_is_static && !is_static {
+                        continue;
                     }
+                    if self.check_arguments_exact(&call.args, params) {
+                        return Ok(return_type.clone());
+                    }
+                }
 
-                    return Ok(return_type);
+                // 第二步：尝试兼容匹配（允许隐式类型转换）
+                for (return_type, params, is_static) in &candidate_methods {
+                    // 检查：静态方法中不能调用实例方法
+                    if self.current_method_is_static && !is_static {
+                        continue;
+                    }
+                    if let Ok(()) = self.check_arguments_compatible(&call.args, params, call.loc.line, call.loc.column) {
+                        return Ok(return_type.clone());
+                    }
                 }
             }
 
@@ -559,25 +593,32 @@ impl SemanticAnalyzer {
             // 检查是否是类名（静态方法调用）- 支持方法重载
             if let Expr::Identifier(class_name) = &*member.object {
                 let class_name_str = class_name.as_ref().to_string();
-                // 先推断所有参数类型
-                let mut arg_types = Vec::new();
-                for arg in &call.args {
-                    arg_types.push(self.infer_expr_type_internal(arg)?);
+
+                // 先收集所有候选方法的信息，避免借用冲突
+                let candidate_methods: Vec<(Type, Vec<crate::types::ParameterInfo>)> = if let Some(class_info) = self.type_registry.get_class(&class_name_str) {
+                    if let Some(methods) = class_info.methods.get(&member.member) {
+                        methods.iter()
+                            .filter(|m| m.is_static)
+                            .map(|m| (m.return_type.clone(), m.params.clone()))
+                            .collect()
+                    } else {
+                        Vec::new()
+                    }
+                } else {
+                    Vec::new()
+                };
+
+                // 第一步：尝试精确匹配（参数类型完全相同）
+                for (return_type, params) in &candidate_methods {
+                    if self.check_arguments_exact(&call.args, params) {
+                        return Ok(return_type.clone());
+                    }
                 }
 
-                if let Some(class_info) = self.type_registry.get_class(&class_name_str) {
-                    // 使用参数类型查找匹配的静态方法（考虑命名空间前缀）
-                    if let Some(method_info) = self.find_method_with_namespace(&class_info, &member.member, &arg_types) {
-                        if method_info.is_static {
-                            let return_type = method_info.return_type.clone();
-                            let params = method_info.params.clone();
-                            // 检查参数类型兼容性（支持可变参数）
-                            if let Err(msg) = self.check_arguments_compatible(&call.args, &params, call.loc.line, call.loc.column) {
-                                return Err(semantic_error_at_loc(&call.loc, msg));
-                            }
-
-                            return Ok(return_type);
-                        }
+                // 第二步：尝试兼容匹配（允许隐式类型转换）
+                for (return_type, params) in &candidate_methods {
+                    if let Ok(()) = self.check_arguments_compatible(&call.args, params, call.loc.line, call.loc.column) {
+                        return Ok(return_type.clone());
                     }
                 }
             }
@@ -874,6 +915,7 @@ impl SemanticAnalyzer {
                             params: param_types,
                             return_type,
                             is_static: true,
+                            is_closure: false,
                         })));
                     }
                 }
@@ -1455,6 +1497,7 @@ impl SemanticAnalyzer {
                             params: param_types,
                             return_type,
                             is_static: method_info.is_static,
+                            is_closure: false,
                         })));
                     }
                 } else {
@@ -1480,6 +1523,7 @@ impl SemanticAnalyzer {
                                 params: param_types,
                                 return_type,
                                 is_static: false,
+                                is_closure: false,
                             })));
                         }
                     }
@@ -1520,7 +1564,11 @@ impl SemanticAnalyzer {
                 Box::new(expr_type)
             }
             LambdaBody::Block(block) => {
-                // 分析块中的语句，查找 return 语句
+                // 对块中的语句进行完整类型检查（变量声明、return等）
+                for stmt in &block.statements {
+                    self.type_check_statement(stmt, None)?;
+                }
+                // 分析块中的语句，查找 return 语句推断返回类型
                 let mut inferred_return: Option<Type> = None;
                 for stmt in &block.statements {
                     if let Stmt::Return(ret_expr_opt) = stmt {
@@ -1540,10 +1588,12 @@ impl SemanticAnalyzer {
         self.symbol_table.exit_scope();
 
         // 返回完整的函数类型
+        // 注意：Cavvy 的 lambda 总是使用闭包格式（打包结构体），所以 is_closure 总是 true
         Ok(Type::Function(Box::new(crate::types::FunctionType {
             params: param_types,
             return_type,
             is_static: true,
+            is_closure: true,  // Lambda 总是使用闭包格式
         })))
     }
 
@@ -1651,6 +1701,7 @@ impl SemanticAnalyzer {
                     params: new_params,
                     return_type: Box::new(new_return),
                     is_static: func_type.is_static,
+                    is_closure: func_type.is_closure,
                 }))
             }
             Type::Pointer(inner) => {

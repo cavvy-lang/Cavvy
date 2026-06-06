@@ -20,7 +20,7 @@ public int main() {
     final int MAX_SIZE = 100;
     final int MIN_VALUE = 0;
     
-    println("x = " + x);
+    println("x = " + String.valueOf(x));
     
     // ========== 代码块5: 控制流 ==========
     // if-else
@@ -35,20 +35,20 @@ public int main() {
     
     // for 循环
     for (int i = 0; i < 5; i++) {
-        println("Iteration: " + i);
+        println("Iteration: " + String.valueOf(i));
     }
     
     // while 循环
     int count2 = 0;
     while (count2 < 3) {
-        println("Count: " + count2);
+        println("Count: " + String.valueOf(count2));
         count2++;
     }
     
     // do-while 循环
     int num = 0;
     do {
-        println("Number: " + num);
+        println("Number: " + String.valueOf(num));
         num++;
     } while (num < 3);
     
@@ -85,11 +85,11 @@ public int main() {
     matrix[2][2] = 3;
     
     // 数组长度
-    println("Array length: " + values.length);
+    println("Array length: " + String.valueOf(values.length));
     
     // 遍历数组
     for (int i = 0; i < values.length; i++) {
-        println("values[" + i + "] = " + values[i]);
+        println("values[" + String.valueOf(i) + "] = " + String.valueOf(values[i]));
     }
     
     return 0;

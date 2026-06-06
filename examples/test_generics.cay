@@ -99,12 +99,12 @@ public class GenericsTest {
         // 测试 BoxString（Box<String> 特化）
         Box<String> strBox = new Box("Hello");
         if (strBox.isPresent()) {
-            println("BoxString(\"Hello\").get() = " + strBox.get());
+            println("BoxString(\"Hello\").get() = " + String.valueOf(strBox.get()));
         }
         
         // 测试 PairStringInt（Pair<String, int> 特化）
         Pair<String, int> pair = new Pair("age", 25);
-        println("Pair(\"age\", 25).getKey() = " + pair.getKey());
+        println("Pair(\"age\", 25).getKey() = " + String.valueOf(pair.getKey()));
         println("Pair(\"age\", 25).getValue() = " + String.valueOf(pair.getValue()));
         
         // 测试 OptionalInt（来自标准库）

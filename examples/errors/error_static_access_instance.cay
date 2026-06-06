@@ -12,7 +12,7 @@ public class StaticError {
     public static void staticMethod() {
         // 错误: 不能在静态上下文中引用非静态变量 instanceValue
         int x = instanceValue;
-        println("Value: " + x);
+        println("Value: " + String.valueOf(x));
     }
     
     public static void main(String[] args) {

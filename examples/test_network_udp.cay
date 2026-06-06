@@ -27,11 +27,11 @@ public class TestUdpSocket {
         /* 绑定到本地端口 */
         int localPort = 12345;
         if (!socket.bindTo(localPort)) {
-            println("绑定到端口失败: " + (String)localPort);
+            println("绑定到端口失败: " + String.valueOf(localPort));
             NetworkUtils.cleanup();
             return 1;
         }
-        println("成功绑定到端口: " + (String)localPort);
+        println("成功绑定到端口: " + String.valueOf(localPort));
         
         /* 发送测试数据到本地地址（回环测试） */
         String testMessage = "Hello, UDP!";
@@ -43,7 +43,7 @@ public class TestUdpSocket {
             print("成功发送数据: ");
             println(testMessage);
             print("发送字节数: ");
-            println((String)sent);
+            println(String.valueOf(sent));
         } else {
             println("发送数据失败");
         }

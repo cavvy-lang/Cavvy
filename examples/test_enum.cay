@@ -69,7 +69,7 @@ public class EnumTest {
                 break;
             }
             case Result.Err(String msg): {
-                println("Err with message: " + msg);
+                println("Err with message: " + String.valueOf(msg));
                 break;
             }
             default: break;
@@ -81,7 +81,7 @@ public class EnumTest {
                 break;
             }
             case Result.Err(String msg): {
-                println("Err with message: " + msg);
+                println("Err with message: " + String.valueOf(msg));
                 println("Result.Err test PASS");
                 break;
             }
@@ -131,7 +131,7 @@ public class EnumTest {
             case Status.Deleted:  statusStr = "Deleted"; break;
             default: break;
         }
-        println("Status.Active -> " + statusStr);
+        println("Status.Active -> " + String.valueOf(statusStr));
 
         // 测试 multiple enum values
         Status[] statuses = new Status[3];

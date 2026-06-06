@@ -21,7 +21,7 @@ public class TestTypeOnly {
         println("double: " + String.valueOf(d));
         if (b) { println("boolean: true"); }
         println("char: " + String.valueOf((int)c));
-        println("String: " + s);
+        println("String: " + String.valueOf(s));
 
         // 数组声明
         int[] arr1;
@@ -43,7 +43,7 @@ public class TestTypeOnly {
         auto x = 42;
         auto y = "auto string";
         println("auto int: " + String.valueOf(x));
-        println("auto string: " + y);
+        println("auto string: " + String.valueOf(y));
 
         println("=== 类型声明测试完成 ===");
     }

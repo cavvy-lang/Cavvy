@@ -44,7 +44,7 @@ public class TestFileBasic {
         File file = new File();
         if (file.open(testFile, FileMode.read())) {
             println("文件打开成功");
-            println("文件大小: " + file.size() + " 字节");
+            println("文件大小: " + String.valueOf(file.size)() + " 字节");
             println("是否打开: " + (file.isOpened() ? "true" : "false"));
             file.close();
             println("文件关闭成功");

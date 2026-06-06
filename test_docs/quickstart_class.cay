@@ -10,7 +10,7 @@ public class Person {
 
     // 方法
     public void greet() {
-        println("Hello, I'm " + name + ", " + age + " years old.");
+        println("Hello, I'm " + String.valueOf(name)+ ", " + String.valueOf(age) + " years old.");
     }
 
     // Getter

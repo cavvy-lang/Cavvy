@@ -23,7 +23,7 @@ public class TestPreprocessorNested {
             #endif
         #endif
         
-        println("Final value: " + value);
+        println("Final value: " + String.valueOf(value));
         // 预期: value = 101 (1 + 100)
     }
 }

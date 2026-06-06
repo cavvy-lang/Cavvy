@@ -12,7 +12,7 @@ public class TestAllocatorImport {
         // 测试 GlobalAlloc
         GlobalAlloc alloc = GlobalAlloc.getInstance();
         long ptr = alloc.allocate(64);
-        println("分配内存地址: " + ptr);
+        println("分配内存地址: " + String.valueOf(ptr));
         
         if (ptr != 0) {
             println("分配成功!");
@@ -25,10 +25,10 @@ public class TestAllocatorImport {
         println("Arena 创建成功");
         
         long ptr2 = arena.allocate(100);
-        println("Arena 分配: " + ptr2);
+        println("Arena 分配: " + String.valueOf(ptr2));
         
         long used = arena.used();
-        println("Arena 已使用: " + used);
+        println("Arena 已使用: " + String.valueOf(used));
         
         arena.reset();
         println("Arena 重置成功");

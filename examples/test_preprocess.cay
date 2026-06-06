@@ -24,7 +24,7 @@ public class PreprocessTest {
 
         // 测试1: 基本宏替换
         println("--- 基本宏替换 ---");
-        println("Platform: " + PLATFORM);
+        println("Platform: " + String.valueOf(PLATFORM));
 
         int ver = VERSION;
         println("Version: " + String.valueOf(ver));

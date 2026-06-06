@@ -1,0 +1,6 @@
+public class Test {
+    public static void main() {
+        var add = (int a, int b) -> { return a + b; };
+        println(add(3, 4));
+    }
+}

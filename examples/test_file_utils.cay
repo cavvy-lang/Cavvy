@@ -17,50 +17,50 @@ public class TestFileUtils {
         String path2 = "C:\\Users\\Admin\\file.cay";
         String path3 = "simple.txt";
 
-        println("路径: " + path1);
-        println("文件名: " + FileUtils.getFileName(path1));
+        println("路径: " + String.valueOf(path1));
+        println("文件名: " + String.valueOf(FileUtils.getFileName)(path1));
 
-        println("路径: " + path2);
-        println("文件名: " + FileUtils.getFileName(path2));
+        println("路径: " + String.valueOf(path2));
+        println("文件名: " + String.valueOf(FileUtils.getFileName)(path2));
 
-        println("路径: " + path3);
-        println("文件名: " + FileUtils.getFileName(path3));
+        println("路径: " + String.valueOf(path3));
+        println("文件名: " + String.valueOf(FileUtils.getFileName)(path3));
 
         // 测试2: 获取扩展名
         println("\n[测试2] 获取扩展名");
-        println("路径: " + path1);
-        println("扩展名: " + FileUtils.getExtension(path1));
+        println("路径: " + String.valueOf(path1));
+        println("扩展名: " + String.valueOf(FileUtils.getExtension)(path1));
 
-        println("路径: " + path3);
-        println("扩展名: " + FileUtils.getExtension(path3));
+        println("路径: " + String.valueOf(path3));
+        println("扩展名: " + String.valueOf(FileUtils.getExtension)(path3));
 
         // 测试3: 获取目录名
         println("\n[测试3] 获取目录名");
-        println("路径: " + path1);
-        println("目录: " + FileUtils.getDirectoryName(path1));
+        println("路径: " + String.valueOf(path1));
+        println("目录: " + String.valueOf(FileUtils.getDirectoryName)(path1));
 
-        println("路径: " + path2);
-        println("目录: " + FileUtils.getDirectoryName(path2));
+        println("路径: " + String.valueOf(path2));
+        println("目录: " + String.valueOf(FileUtils.getDirectoryName)(path2));
 
         // 测试4: 获取无扩展名文件名
         println("\n[测试4] 获取无扩展名文件名");
-        println("路径: " + path1);
-        println("无扩展名: " + FileUtils.getFileNameWithoutExtension(path1));
+        println("路径: " + String.valueOf(path1));
+        println("无扩展名: " + String.valueOf(FileUtils.getFileNameWithoutExtension)(path1));
 
         // 测试5: 合并路径
         println("\n[测试5] 合并路径");
         String dir = "/home/user";
         String file = "document.txt";
         String combined = FileUtils.combine(dir, file);
-        println("目录: " + dir);
-        println("文件: " + file);
-        println("合并: " + combined);
+        println("目录: " + String.valueOf(dir));
+        println("文件: " + String.valueOf(file));
+        println("合并: " + String.valueOf(combined));
 
         // 测试6: 更改扩展名
         println("\n[测试6] 更改扩展名");
-        println("原路径: " + path1);
-        println("改为 .cay: " + FileUtils.changeExtension(path1, ".cay"));
-        println("改为 bak: " + FileUtils.changeExtension(path1, "bak"));
+        println("原路径: " + String.valueOf(path1));
+        println("改为 .cay: " + String.valueOf(FileUtils.changeExtension)(path1, ".cay"));
+        println("改为 bak: " + String.valueOf(FileUtils.changeExtension)(path1, "bak"));
 
         // 测试7: 复制文件
         println("\n[测试7] 复制文件");
@@ -78,7 +78,7 @@ public class TestFileUtils {
         // 验证复制
         if (File.exists(destFile)) {
             String copiedContent = File.readAllText(destFile);
-            println("复制后的内容: " + copiedContent);
+            println("复制后的内容: " + String.valueOf(copiedContent));
         }
 
         // 测试8: 移动/重命名文件

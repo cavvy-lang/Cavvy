@@ -113,11 +113,11 @@ public class CavvyWebServerTest {
         println("[信息] 网络初始化成功");
         
         if (!this.server.bindTo(this.port)) {
-            println("[错误] 绑定端口失败: " + this.port);
+            println("[错误] 绑定端口失败: " + String.valueOf(this.port));
             NetworkUtils.cleanup();
             return false;
         }
-        println("[信息] 服务器绑定到端口: " + this.port);
+        println("[信息] 服务器绑定到端口: " + String.valueOf(this.port));
         
         if (!this.server.listen(10)) {
             println("[错误] 开始监听失败");
@@ -130,7 +130,7 @@ public class CavvyWebServerTest {
         
         this.running = true;
         println("[信息] 服务器开始监听...");
-        println("[信息] 请在浏览器中访问: http://127.0.0.1:" + this.port);
+        println("[信息] 请在浏览器中访问: http://127.0.0.1:" + String.valueOf(this.port));
         
         return true;
     }
@@ -153,14 +153,14 @@ public class CavvyWebServerTest {
                 }
             }
             
-            println("[请求] " + firstLine);
+            println("[请求] " + String.valueOf(firstLine));
             
             HttpResponse response = new HttpResponse();
             response.setBody(this.generateHomePage());
             String responseStr = response.build();
             
             client.send(responseStr);
-            println("[响应] 200 OK (" + responseStr.length() + " bytes)");
+            println("[响应] 200 OK (" + String.valueOf(responseStr.length()) + " bytes)");
             
             this.requestCount = this.requestCount + 1;
         }
@@ -173,7 +173,7 @@ public class CavvyWebServerTest {
      * 使用简单的循环计数来模拟超时
      */
     public void runWithTimeout(int timeoutMs) {
-        println("[信息] 服务器将在 " + timeoutMs + "ms 后自动停止");
+        println("[信息] 服务器将在 " + String.valueOf(timeoutMs)+ "ms 后自动停止");
         
         /* 使用循环计数模拟时间（粗略估计） */
         int iterationsPerMs = 1000; /* 假设每次循环约1微秒 */
@@ -193,7 +193,7 @@ public class CavvyWebServerTest {
         }
         
         if (iterationCount >= maxIterations) {
-            println("[信息] 服务器运行时间已达 " + timeoutMs + "ms，自动停止");
+            println("[信息] 服务器运行时间已达 " + String.valueOf(timeoutMs)+ "ms，自动停止");
         }
     }
     
@@ -205,7 +205,7 @@ public class CavvyWebServerTest {
         this.server.close();
         NetworkUtils.cleanup();
         println("[信息] 服务器已停止");
-        println("[统计] 共处理请求数: " + this.requestCount);
+        println("[统计] 共处理请求数: " + String.valueOf(this.requestCount));
     }
     
     /**

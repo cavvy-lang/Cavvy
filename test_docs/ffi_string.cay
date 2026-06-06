@@ -7,7 +7,7 @@ public int main() {
     // 字符串操作 - 使用 String 的 length() 方法
     String s1 = "Hello";
     int len = s1.length();
-    println("strlen(\"Hello\") = " + len);
+    println("strlen(\"Hello\") = " + String.valueOf(len));
 
     // 内存操作
     long buf1 = malloc(100);

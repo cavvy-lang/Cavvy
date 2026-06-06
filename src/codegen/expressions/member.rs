@@ -84,17 +84,57 @@ impl IRGenerator {
                                 &method_info.params, 
                                 false
                             );
-                            // 返回函数指针类型
+                            
+                            // 获取参数类型和返回类型
+                            let param_types: Vec<crate::types::Type> = method_info.params.iter()
+                                .filter(|p| !p.is_varargs)
+                                .map(|p| p.param_type.clone())
+                                .collect();
+                            let return_type = method_info.return_type.clone();
+                            
+                            // 将静态方法打包成闭包格式（环境指针为 null）
+                            // 确保 malloc 已声明
+                            if !self.is_extern_emitted("malloc@i8*@i64") {
+                                self.emit_raw("declare i8* @malloc(i64)");
+                                self.mark_extern_emitted("malloc@i8*@i64".to_string());
+                            }
+                            
+                            // 分配结构体内存 { i8* func_ptr, i8* env_ptr }
+                            let struct_ptr = self.new_temp();
+                            self.emit_line(&format!("  {} = call i8* @malloc(i64 16)", struct_ptr));
+                            
+                            // 获取函数指针（bitcast 为 i8*）
+                            let func_ptr_type = format!("{} ({})", 
+                                self.type_to_llvm(&return_type),
+                                param_types.iter()
+                                    .map(|p| self.type_to_llvm(p))
+                                    .collect::<Vec<_>>()
+                                    .join(", "));
+                            let func_ptr_temp = self.new_temp();
+                            self.emit_line(&format!("  {} = bitcast {}* @{} to i8*", 
+                                func_ptr_temp, func_ptr_type, func_name));
+                            
+                            // 存储函数指针到结构体偏移0
+                            let func_ptr_slot = self.new_temp();
+                            self.emit_line(&format!("  {} = bitcast i8* {} to i8**", func_ptr_slot, struct_ptr));
+                            self.emit_line(&format!("  store i8* {}, i8** {}, align 8", func_ptr_temp, func_ptr_slot));
+                            
+                            // 存储环境指针（null）到结构体偏移8
+                            let env_ptr_slot_temp = self.new_temp();
+                            self.emit_line(&format!("  {} = getelementptr i8, i8* {}, i64 8", env_ptr_slot_temp, struct_ptr));
+                            let env_ptr_slot_cast = self.new_temp();
+                            self.emit_line(&format!("  {} = bitcast i8* {} to i8**", env_ptr_slot_cast, env_ptr_slot_temp));
+                            self.emit_line(&format!("  store i8* null, i8** {}, align 8", env_ptr_slot_cast));
+                            
+                            // 返回函数指针类型（is_closure: true）
                             let func_type = crate::types::Type::Function(Box::new(crate::types::FunctionType {
-                                params: method_info.params.iter()
-                                    .filter(|p| !p.is_varargs)
-                                    .map(|p| p.param_type.clone())
-                                    .collect(),
-                                return_type: Box::new(method_info.return_type.clone()),
+                                params: param_types,
+                                return_type: Box::new(return_type),
                                 is_static: true,
+                                is_closure: true,
                             }));
                             let llvm_func_type = self.type_to_llvm(&func_type);
-                            return Ok(format!("{} @{}", llvm_func_type, func_name));
+                            return Ok(format!("{} {}", llvm_func_type, struct_ptr));
                         }
                     }
                 }

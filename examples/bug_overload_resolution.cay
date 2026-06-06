@@ -54,15 +54,15 @@ public class BugOverload {
         
         // Test 1: int literal should match the long constructor (widening int→long)
         Token t1 = new Token(1, 42, loc);
-        println("t1.intValue = " + t1.getIntValue());  // should be 42
+        println("t1.intValue = " + String.valueOf(t1.getIntValue()));  // should be 42
         
         // Test 2: long variable should match the long constructor exactly
         long longVal = 99;
         Token t2 = new Token(2, longVal, loc);
-        println("t2.intValue = " + t2.getIntValue());  // should be 99
+        println("t2.intValue = " + String.valueOf(t2.getIntValue()));  // should be 99
         
         // Test 3: String should match the String constructor
         Token t3 = new Token(3, "hello", loc);
-        println("t3.strValue = " + t3.getStrValue());  // should be hello
+        println("t3.strValue = " + String.valueOf(t3.getStrValue()));  // should be hello
     }
 }

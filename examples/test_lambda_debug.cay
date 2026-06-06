@@ -1,0 +1,6 @@
+public class Test {
+    public static void main() {
+        var doubler = (int x) -> x * 2;
+        println(doubler(5));
+    }
+}

@@ -17,7 +17,7 @@ public class TestFileSeek {
 
         // 创建测试文件
         File.writeAllText(testFile, content);
-        println("创建测试文件，内容: " + content);
+        println("创建测试文件，内容: " + String.valueOf(content));
 
         File file = new File();
         if (!file.open(testFile, FileMode.readWrite())) {
@@ -28,40 +28,40 @@ public class TestFileSeek {
         // 测试1: 获取文件大小
         println("\n[测试1] 获取文件大小");
         long size = file.size();
-        println("文件大小: " + size + " 字节");
+        println("文件大小: " + String.valueOf(size)+ " 字节");
 
         // 测试2: 定位到开头
         println("\n[测试2] 定位到开头");
         file.seek(0, SeekOrigin.begin());
-        println("当前位置: " + file.position());
+        println("当前位置: " + String.valueOf(file.position)());
         int ch = file.readChar();
         println("读取字符: " + (char)ch);
 
         // 测试3: 定位到指定位置
         println("\n[测试3] 定位到位置 10");
         file.seek(10, SeekOrigin.begin());
-        println("当前位置: " + file.position());
+        println("当前位置: " + String.valueOf(file.position)());
         ch = file.readChar();
         println("读取字符: " + (char)ch + " (应该是 K)");
 
         // 测试4: 从当前位置偏移
         println("\n[测试4] 从当前位置向前 3 个字符");
         file.seek(-3, SeekOrigin.current());
-        println("当前位置: " + file.position());
+        println("当前位置: " + String.valueOf(file.position)());
         ch = file.readChar();
         println("读取字符: " + (char)ch + " (应该是 I)");
 
         // 测试5: 从末尾定位
         println("\n[测试5] 从末尾向前 5 个字符");
         file.seek(-5, SeekOrigin.end());
-        println("当前位置: " + file.position());
+        println("当前位置: " + String.valueOf(file.position)());
         ch = file.readChar();
         println("读取字符: " + (char)ch + " (应该是 V)");
 
         // 测试6: rewind
         println("\n[测试6] rewind 重置到开头");
         file.rewind();
-        println("当前位置: " + file.position());
+        println("当前位置: " + String.valueOf(file.position)());
         ch = file.readChar();
         println("读取字符: " + (char)ch + " (应该是 A)");
 
@@ -74,7 +74,7 @@ public class TestFileSeek {
         // 读取验证
         file.rewind();
         String newContent = file.readAllText();
-        println("修改后的内容: " + newContent);
+        println("修改后的内容: " + String.valueOf(newContent));
 
         file.close();
 

@@ -9,7 +9,7 @@ public class StringOpsTest {
         println("\nTest 1: String concatenation");
         string str1 = "Hello";
         string str2 = "World";
-        string combined = str1 + ", " + str2 + "!";
+        string combined = str1 + ", " + String.valueOf(str2)+ "!";
         print("Combined: ");
         println(combined);
         

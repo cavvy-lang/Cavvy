@@ -281,13 +281,11 @@ entry:
     }
 
     /// 生成所有分配器的运行时声明
+    /// 注意: malloc/free/realloc 不在这里声明，因为它们可能通过 extern 导入
+    /// LLVM 允许隐式声明外部函数，或用户可通过 FFI 显式导入
     pub fn generate_runtime_declarations() -> &'static str {
         r#"
 ; 分配器运行时声明
-
-declare i8* @malloc(i64)
-declare void @free(i8*)
-declare i8* @realloc(i8*, i64)
 
 ; GlobalAlloc
 declare %GlobalAlloc* @__cay_global_alloc_get()

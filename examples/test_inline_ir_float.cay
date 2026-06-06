@@ -61,15 +61,15 @@ public class TestInlineIrFloat {
         float fdiv = testFDiv(10.0f, 2.0f);
         
         println("Float operations:");
-        println("3.5 + 2.5 = " + fadd);
-        println("5.0 - 2.5 = " + fsub);
-        println("2.0 * 3.0 = " + fmul);
-        println("10.0 / 2.0 = " + fdiv);
+        println("3.5 + 2.5 = " + String.valueOf(fadd));
+        println("5.0 - 2.5 = " + String.valueOf(fsub));
+        println("2.0 * 3.0 = " + String.valueOf(fmul));
+        println("10.0 / 2.0 = " + String.valueOf(fdiv));
         
         // 测试双精度
         double dadd = testDAdd(1.1, 2.2);
         println("\nDouble operations:");
-        println("1.1 + 2.2 = " + dadd);
+        println("1.1 + 2.2 = " + String.valueOf(dadd));
         
         println("\nFloat inline IR tests completed!");
     }

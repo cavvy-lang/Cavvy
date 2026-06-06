@@ -541,6 +541,60 @@ impl SemanticAnalyzer {
         }
     }
 
+    /// 检查参数是否与参数定义精确匹配（参数类型完全相同，不支持隐式转换）
+    /// 用于方法重载解析时优先选择精确匹配
+    pub fn check_arguments_exact(&mut self, args: &[Expr], params: &[ParameterInfo]) -> bool {
+        // 分离命名参数和位置参数
+        let mut named: std::collections::HashMap<String, &Expr> = std::collections::HashMap::new();
+        let mut positional: Vec<&Expr> = Vec::new();
+        let mut has_named = false;
+
+        for arg in args {
+            if let Expr::NamedArg(n) = arg {
+                named.insert(n.name.clone(), &n.value);
+                has_named = true;
+            } else {
+                positional.push(arg);
+            }
+        }
+
+        // 构建按形参顺序的实参列表
+        let mut ordered_args: Vec<&Expr> = Vec::new();
+        let mut pos_idx = 0;
+
+        for param in params {
+            if let Some(val) = named.get(&param.name) {
+                ordered_args.push(val);
+            } else if pos_idx < positional.len() {
+                ordered_args.push(positional[pos_idx]);
+                pos_idx += 1;
+            } else {
+                return false; // 缺少参数
+            }
+        }
+
+        // 检查是否有未使用的位置参数
+        if pos_idx < positional.len() {
+            return false;
+        }
+
+        // 检查参数数量
+        if ordered_args.len() != params.len() {
+            return false;
+        }
+
+        // 检查每个参数类型是否精确匹配
+        for (arg, param) in ordered_args.iter().zip(params.iter()) {
+            let arg_type = self.infer_expr_type_collect_errors(arg);
+            // 精确匹配：类型必须完全相同
+            if arg_type != param.param_type {
+                return false;
+            }
+        }
+
+        true
+    }
+
     /// 检查参数是否与参数定义兼容（支持可变参数和命名参数 name=value）
     pub fn check_arguments_compatible(&mut self, args: &[Expr], params: &[ParameterInfo], _line: usize, _column: usize) -> Result<(), String> {
         if params.is_empty() {

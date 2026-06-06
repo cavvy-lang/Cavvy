@@ -24,7 +24,7 @@ public class TestPreprocessorIfdef {
         println("This should not appear");
         #endif
         
-        println("Final result: " + result);
+        println("Final result: " + String.valueOf(result));
         
         // 预期输出: result = 11 (1 + 10)
         if (result == 11) {

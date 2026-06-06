@@ -14,10 +14,10 @@ public class DebugTest7 {
         println("测试数组创建:");
         
         long fileSize = 13L;
-        println("fileSize = " + fileSize);
+        println("fileSize = " + String.valueOf(fileSize));
         
         int arraySize = (int)(fileSize + 1);
-        println("arraySize = " + arraySize);
+        println("arraySize = " + String.valueOf(arraySize));
         
         char[] buffer = new char[arraySize]();
         println("数组创建成功");
@@ -31,8 +31,8 @@ public class DebugTest7 {
         buffer[4] = 'o';
         buffer[5] = '\0';
         
-        println("buffer[0] = " + buffer[0]);
-        println("buffer[1] = " + buffer[1]);
+        println("buffer[0] = " + String.valueOf(buffer)[0]);
+        println("buffer[1] = " + String.valueOf(buffer)[1]);
         println("buffer[5] = " + (int)buffer[5]);
         
         // 构建字符串
@@ -43,7 +43,7 @@ public class DebugTest7 {
             content = content + buffer[j];
             j = j + 1;
         }
-        println("content = '" + content + "'");
+        println("content = '" + String.valueOf(content)+ "'");
         
         println("\n=== 测试完成 ===");
         return 0;

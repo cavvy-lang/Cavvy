@@ -10,12 +10,12 @@ public class Main {
         int a = 10;
         int b = 20;
         int sum = a + b;
-        println("Sum of " + a + " and " + b + " is: " + sum);
+        println("Sum of " + String.valueOf(a)+ " and " + b + " is: " + String.valueOf(sum));
         
         // 测试循环
         println("Counting from 1 to 5:");
         for (int i = 1; i <= 5; i = i + 1) {
-            println("  " + i);
+            println("  " + String.valueOf(i));
         }
         
         println("Program completed successfully!");
