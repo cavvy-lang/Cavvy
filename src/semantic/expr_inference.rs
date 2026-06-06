@@ -364,18 +364,17 @@ impl SemanticAnalyzer {
             }
             UnaryOp::BitNot => Ok(operand_type),
             UnaryOp::AddressOf => {
-                // &操作符返回指向操作数的指针，类型为 Int64 (long)
-                Ok(Type::Int64)
+                // &操作符返回指向操作数的指针类型
+                // 使用 Type::Pointer 包装操作数类型
+                Ok(Type::Pointer(Box::new(operand_type)))
             }
             UnaryOp::Deref => {
                 // *操作符解引用指针，返回指针指向的类型
                 // 根据操作数类型推断解引用返回类型
                 match &operand_type {
-                    Type::Int64 => {
-                        // long 类型被视为指针，解引用返回类型需要根据上下文确定
-                        // 由于 Cavvy 使用 Int64 表示指针，我们无法仅从类型知道指向的内容
-                        // 这里返回一个特殊的指针类型标记，让赋值检查来处理
-                        Ok(Type::Int64)
+                    Type::Pointer(elem_type) => {
+                        // 指针类型解引用返回元素类型
+                        Ok((**elem_type).clone())
                     }
                     Type::Array(elem_type) => {
                         // 数组类型解引用返回元素类型

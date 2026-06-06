@@ -1,0 +1,113 @@
+// 基础指针测试：验证 Cavvy 对指针的完整支持
+// 测试目标：
+// 1. 指针类型声明 (int* p)
+// 2. 取地址运算符 (&a)
+// 3. 解引用运算符 (*p)
+// 4. 通过指针赋值 (*p = value)
+// 5. 多级指针 (int** pp)
+
+public class TestPointerBasic {
+    
+    public static void main() {
+        println("=== Basic Pointer Tests ===");
+        
+        // 测试1: 基本指针操作
+        println("\n1. Basic pointer operations:");
+        int a = 10;
+        int* p = &a;
+        print("a = ");
+        println(a);
+        print("*p = ");
+        println(*p);
+        
+        // 测试2: 通过指针修改值
+        println("\n2. Modify through pointer:");
+        *p = 100;
+        println("After *p = 100:");
+        print("a = ");
+        println(a);
+        print("*p = ");
+        println(*p);
+        
+        // 测试3: 多个指针指向同一变量
+        println("\n3. Multiple pointers to same variable:");
+        int* p2 = &a;
+        *p2 = 200;
+        println("After *p2 = 200:");
+        print("a = ");
+        println(a);
+        print("*p = ");
+        println(*p);
+        print("*p2 = ");
+        println(*p2);
+        
+        // 测试4: 指针的指针
+        println("\n4. Pointer to pointer:");
+        int** pp = &p;
+        print("**pp = ");
+        println(**pp);
+        **pp = 300;
+        println("After **pp = 300:");
+        print("a = ");
+        println(a);
+        
+        // 测试5: 不同基本类型的指针
+        println("\n5. Different primitive type pointers:");
+        long l = 1000L;
+        long* pl = &l;
+        print("l = ");
+        println(l);
+        print("*pl = ");
+        println(*pl);
+        *pl = 2000L;
+        println("After *pl = 2000L:");
+        print("l = ");
+        println(l);
+        
+        float f = 3.14f;
+        float* pf = &f;
+        print("f = ");
+        println(f);
+        print("*pf = ");
+        println(*pf);
+        *pf = 6.28f;
+        println("After *pf = 6.28f:");
+        print("f = ");
+        println(f);
+        
+        double d = 2.71828;
+        double* pd = &d;
+        print("d = ");
+        println(d);
+        print("*pd = ");
+        println(*pd);
+        *pd = 3.14159;
+        println("After *pd = 3.14159:");
+        print("d = ");
+        println(d);
+        
+        char c = 'A';
+        char* pc = &c;
+        print("c = ");
+        println(c);
+        print("*pc = ");
+        println(*pc);
+        *pc = 'Z';
+        println("After *pc = 'Z':");
+        print("c = ");
+        println(c);
+        
+        bool b = true;
+        bool* pb = &b;
+        print("b = ");
+        println(b);
+        print("*pb = ");
+        println(*pb);
+        *pb = false;
+        println("After *pb = false:");
+        print("b = ");
+        println(b);
+        
+        println("\n=== All basic pointer tests passed! ===");
+    }
+}

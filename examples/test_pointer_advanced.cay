@@ -1,0 +1,115 @@
+// 高级指针测试：验证更复杂的指针用法
+// 包括：指针算术、指针比较、函数参数中的指针等
+
+public class TestPointerAdvanced {
+    
+    // 通过指针交换两个整数
+    public static void swap(int* a, int* b) {
+        int temp = *a;
+        *a = *b;
+        *b = temp;
+    }
+    
+    // 通过指针修改值
+    public static void increment(int* p) {
+        *p = *p + 1;
+    }
+    
+    // 返回指针的函数（返回参数指针）
+    public static int* max(int* a, int* b) {
+        if (*a > *b) {
+            return a;
+        } else {
+            return b;
+        }
+    }
+    
+    public static void main() {
+        println("=== Advanced Pointer Tests ===");
+        
+        // 测试1: 通过指针交换
+        println("\n1. Swap via pointers:");
+        int x = 10;
+        int y = 20;
+        print("Before swap: x = ");
+        print(x);
+        print(", y = ");
+        println(y);
+        swap(&x, &y);
+        print("After swap: x = ");
+        print(x);
+        print(", y = ");
+        println(y);
+        
+        // 测试2: 通过指针递增
+        println("\n2. Increment via pointer:");
+        int n = 5;
+        print("Before increment: n = ");
+        println(n);
+        increment(&n);
+        print("After increment: n = ");
+        println(n);
+        
+        // 测试3: 返回指针的函数
+        println("\n3. Function returning pointer:");
+        int a = 30;
+        int b = 20;
+        int* max_ptr = max(&a, &b);
+        print("a = ");
+        print(a);
+        print(", b = ");
+        println(b);
+        print("max = ");
+        println(*max_ptr);
+        
+        // 测试4: 多级指针
+        println("\n4. Multi-level pointers:");
+        int value = 42;
+        int* p1 = &value;
+        int** p2 = &p1;
+        int*** p3 = &p2;
+        
+        print("value = ");
+        println(value);
+        print("*p1 = ");
+        println(*p1);
+        print("**p2 = ");
+        println(**p2);
+        print("***p3 = ");
+        println(***p3);
+        
+        // 通过多级指针修改值
+        ***p3 = 100;
+        print("After ***p3 = 100, value = ");
+        println(value);
+        
+        // 测试5: 指针相等比较
+        println("\n5. Pointer comparison:");
+        int m = 50;
+        int* pm1 = &m;
+        int* pm2 = &m;
+        int* pm3 = pm1;
+        
+        // 比较指针值（地址）
+        print("pm1 == pm2: ");
+        println(pm1 == pm2);  // 应该为 true，因为都指向 m
+        print("pm1 == pm3: ");
+        println(pm1 == pm3);  // 应该为 true
+        
+        // 测试6: 指针相等比较（另一种方式）
+        println("\n6. Pointer equality check:");
+        int v1 = 100;
+        int v2 = 100;
+        int* pv1 = &v1;
+        int* pv2 = &v2;
+        int* pv3 = pv1;
+        
+        // 解引用后比较值
+        print("*pv1 == *pv2: ");
+        println(*pv1 == *pv2);  // 应该为 true，因为值相等
+        print("pv1 == pv3: ");
+        println(pv1 == pv3);    // 应该为 true，因为是同一个指针
+        
+        println("\n=== All advanced pointer tests passed! ===");
+    }
+}

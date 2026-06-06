@@ -302,10 +302,17 @@ function_type = "fn", "(", [ parameter_type_list ], ")", [ "->", type ];
 parameter_type_list = type, { ",", type };
 
 (* 引用类型 *)
+(* 支持数组类型 (Type[]) 和指针类型 (Type*) *)
 reference_type = qualified_name, { "[", "]" } 
                | primitive_type, { "[", "]" }
+               | pointer_type
                | "String"
                | "Object";
+
+(* 指针类型 - 支持多级指针如 int**, int*** *)
+(* 指针类型语法: Type* 或 Type** 等 *)
+(* 示例: int* p = &a; int** pp = &p; *)
+pointer_type = (qualified_name | primitive_type), { "*" };
 
 qualified_name = identifier, { ".", identifier };
 
@@ -431,6 +438,10 @@ additive_expression = multiplicative_expression, { ( "+" | "-" ), multiplicative
 
 multiplicative_expression = unary_expression, { ( "*" | "/" | "%" ), unary_expression };
 
+(* 一元表达式 - 包括取地址(&)和解引用(*)运算符 *)
+(* &expr: 取地址运算符，返回指向expr的指针 *)
+(* *expr: 解引用运算符，访问指针指向的值 *)
+(* 示例: int* p = &a; int v = *p; *)
 unary_expression = ( "+" | "-" | "!" | "~" | "++" | "--" | "&" | "*" ), unary_expression
                  | cast_expression
                  | postfix_expression;

@@ -1,0 +1,28 @@
+// 用户示例测试：验证用户提供的代码可以正常工作
+// int a = 10;
+// int* p = &a;
+// *p = 100; // 在这里就报错了
+// print(p);
+
+public class TestPointerUserExample {
+    public static void main() {
+        println("=== User Example Test ===");
+        
+        int a = 10;
+        int* p = &a;
+        *p = 100;
+        
+        print("a = ");
+        println(a);
+        print("*p = ");
+        println(*p);
+        
+        // 打印指针地址（以整数形式）
+        print("p (address) = ");
+        // 将指针转换为 long 来打印地址
+        long addr = (long)p;
+        println(addr);
+        
+        println("\n=== User example test passed! ===");
+    }
+}

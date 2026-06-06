@@ -25,6 +25,10 @@ impl IRGenerator {
             Expr::ArrayAccess(arr_access) => {
                 self.generate_array_assignment(arr_access, &value_type, &val, &value)
             }
+            Expr::Unary(unary) if unary.op == UnaryOp::Deref => {
+                // 解引用赋值: *p = value
+                self.generate_deref_assignment(unary, &value_type, &val, &value)
+            }
             _ => Err(codegen_error_at(assign.loc.clone(), "Invalid assignment target"))
         }
     }
@@ -459,6 +463,79 @@ impl IRGenerator {
         // 默认情况：直接存储
         let align = self.get_type_align(elem_type);
         self.emit_line(&format!("  store {} {}, {}* {}, align {}", elem_type, val, elem_type, elem_ptr, align));
+        Ok(value.to_string())
+    }
+
+    /// 生成解引用赋值代码 (*ptr = value)
+    ///
+    /// # Arguments
+    /// * `unary` - 解引用一元表达式
+    /// * `value_type` - 值的LLVM类型
+    /// * `val` - 值的LLVM表示
+    /// * `value` - 原始值字符串
+    fn generate_deref_assignment(&mut self, unary: &UnaryExpr, value_type: &str, val: &str, value: &str) -> cayResult<String> {
+        // 生成指针表达式的代码
+        let ptr_result = self.generate_expression(&unary.operand)?;
+        let (ptr_type, ptr_val) = self.parse_typed_value(&ptr_result);
+        
+        // 确保操作数是指针类型
+        if !ptr_type.ends_with('*') {
+            return Err(codegen_error_at(unary.loc.clone(), 
+                format!("Cannot dereference non-pointer type: {}", ptr_type)));
+        }
+        
+        // 提取元素类型（去掉末尾的*）
+        let elem_type = &ptr_type[..ptr_type.len()-1];
+        
+        // 如果值类型与元素类型不匹配，需要转换
+        let final_val = if value_type != elem_type {
+            let temp = self.new_temp();
+            
+            // 浮点类型转换
+            if value_type == "double" && elem_type == "float" {
+                self.emit_line(&format!("  {} = fptrunc double {} to float", temp, val));
+            } else if value_type == "float" && elem_type == "double" {
+                self.emit_line(&format!("  {} = fpext float {} to double", temp, val));
+            }
+            // 整数到浮点数转换
+            else if value_type.starts_with("i") && !value_type.ends_with("*")
+                && (elem_type == "float" || elem_type == "double") {
+                self.emit_line(&format!("  {} = sitofp {} {} to {}", temp, value_type, val, elem_type));
+            }
+            // 浮点数到整数转换
+            else if (value_type == "float" || value_type == "double")
+                && elem_type.starts_with("i") && !elem_type.ends_with("*") {
+                self.emit_line(&format!("  {} = fptosi {} {} to {}", temp, value_type, val, elem_type));
+            }
+            // 整数类型转换
+            else if value_type.starts_with("i") && elem_type.starts_with("i")
+                && !value_type.ends_with("*") && !elem_type.ends_with("*") {
+                let from_bits: u32 = value_type.trim_start_matches('i').parse().unwrap_or(64);
+                let to_bits: u32 = elem_type.trim_start_matches('i').parse().unwrap_or(64);
+                if to_bits > from_bits {
+                    self.emit_line(&format!("  {} = sext {} {} to {}", temp, value_type, val, elem_type));
+                } else {
+                    self.emit_line(&format!("  {} = trunc {} {} to {}", temp, value_type, val, elem_type));
+                }
+            }
+            // 指针类型转换
+            else if value_type.ends_with("*") && elem_type.ends_with("*") {
+                self.emit_line(&format!("  {} = bitcast {} {} to {}", temp, value_type, val, elem_type));
+            }
+            else {
+                return Err(codegen_error_at(unary.loc.clone(), 
+                    format!("Cannot convert {} to {} for dereference assignment", value_type, elem_type)));
+            }
+            temp
+        } else {
+            val.to_string()
+        };
+        
+        // 存储值到指针指向的地址
+        let align = self.get_type_align(elem_type);
+        self.emit_line(&format!("  store {} {}, {} {}, align {}", 
+            elem_type, final_val, ptr_type, ptr_val, align));
+        
         Ok(value.to_string())
     }
 }
