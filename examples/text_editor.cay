@@ -633,7 +633,7 @@ public class TextBuffer {
      * 磁盘I/O: 读取整个文件
      */
     public int loadFromFile(String filename) {
-        File file = new File(filename, FileMode.READ);
+        File file = new File(filename, FileMode.read());
 
         if (!file.isOpened()) {
             return ERROR_FILE_NOT_FOUND;
@@ -689,7 +689,7 @@ public class TextBuffer {
      * 磁盘I/O: 写入整个文件
      */
     public int saveToFile(String filename) {
-        File file = new File(filename, FileMode.WRITE);
+        File file = new File(filename, FileMode.write());
 
         if (!file.isOpened()) {
             return ERROR_PERMISSION_DENIED;

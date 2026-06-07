@@ -3,7 +3,7 @@
 //! 处理变量访问、静态字段访问和隐式 this 访问。
 
 use crate::codegen::context::IRGenerator;
-use crate::error::cayResult;
+use crate::error::{SourceLocation, cayResult, codegen_error_at};
 
 impl IRGenerator {
     /// 生成标识符表达式代码
@@ -93,10 +93,19 @@ impl IRGenerator {
             } else {
                 name
             };
-            if registry.class_exists(base_name) || registry.get_enum(base_name).is_some() {
-                // 类名/枚举名不应该单独作为表达式使用
-                // 返回一个占位符，实际使用应该在 MemberAccess 中处理
-                return Ok("i8* null".to_string());
+            let has_value_binding = self.get_variable_type(name).is_some()
+                || self.scope_manager.get_var_type(name).is_some()
+                || self.var_types.contains_key(name)
+                || self.var_class_map.contains_key(name);
+            let known_type_name = registry.class_exists(base_name)
+                || registry.find_qualified_class(base_name).is_some()
+                || registry.get_struct(base_name).is_some()
+                || registry.get_enum_by_name(base_name).is_some();
+            if known_type_name && !has_value_binding {
+                return Err(codegen_error_at(
+                    SourceLocation::default(),
+                    format!("Type '{}' cannot be used as a value", base_name),
+                ));
             }
         }
 

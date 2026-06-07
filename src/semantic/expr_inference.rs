@@ -302,6 +302,82 @@ impl SemanticAnalyzer {
         false
     }
 
+    fn split_type_arguments(&self, args_str: &str) -> Vec<String> {
+        let mut args = Vec::new();
+        let mut depth = 0usize;
+        let mut start = 0usize;
+
+        for (idx, ch) in args_str.char_indices() {
+            match ch {
+                '<' => depth += 1,
+                '>' => depth = depth.saturating_sub(1),
+                ',' if depth == 0 => {
+                    let arg = args_str[start..idx].trim();
+                    if !arg.is_empty() {
+                        args.push(arg.to_string());
+                    }
+                    start = idx + ch.len_utf8();
+                }
+                _ => {}
+            }
+        }
+
+        let arg = args_str[start..].trim();
+        if !arg.is_empty() {
+            args.push(arg.to_string());
+        }
+
+        args
+    }
+
+    fn split_generic_type_name(&self, name: &str) -> (String, Option<Vec<Type>>) {
+        let Some(pos) = name.find('<') else {
+            return (name.to_string(), None);
+        };
+
+        if !name.ends_with('>') {
+            return (name.to_string(), None);
+        }
+
+        let base = name[..pos].trim().to_string();
+        let args_str = &name[pos + 1..name.len() - 1];
+        let type_args: Vec<Type> = self
+            .split_type_arguments(args_str)
+            .into_iter()
+            .map(|arg| self.parse_type_string(&arg))
+            .collect();
+
+        if type_args.is_empty() {
+            (base, None)
+        } else {
+            (base, Some(type_args))
+        }
+    }
+
+    fn specialize_method_info(
+        &self,
+        method_info: &crate::types::MethodInfo,
+        type_params: &[String],
+        type_args: Option<&[Type]>,
+    ) -> crate::types::MethodInfo {
+        let Some(type_args) = type_args else {
+            return method_info.clone();
+        };
+
+        if type_params.is_empty() || type_args.is_empty() {
+            return method_info.clone();
+        }
+
+        let mut specialized = method_info.clone();
+        for param in &mut specialized.params {
+            param.param_type =
+                self.substitute_type_params(&param.param_type, type_params, type_args);
+        }
+        specialized.return_type =
+            self.substitute_type_params(&specialized.return_type, type_params, type_args);
+        specialized
+    }
+
     fn collect_static_method_candidates(
         &self,
         class_name: &str,
@@ -393,21 +469,37 @@ impl SemanticAnalyzer {
         }
     }
 
+    fn unknown_static_member_message(&self, member_name: &str, class_name: &str) -> String {
+        if let Some(suggestion) = self.suggest_method_name(class_name, member_name) {
+            format!(
+                "Unknown static member '{}' for class {}. Did you mean '{}()'?",
+                member_name, class_name, suggestion
+            )
+        } else {
+            format!(
+                "Unknown static member '{}' for class {}",
+                member_name, class_name
+            )
+        }
+    }
+
     fn infer_static_or_enum_member_call(
         &mut self,
         member: &MemberAccessExpr,
         call: &CallExpr,
     ) -> cayResult<Option<Type>> {
-        let class_name = match &*member.object {
+        let raw_class_name = match &*member.object {
             Expr::Identifier(class_name) => class_name.as_ref().to_string(),
             _ => return Ok(None),
         };
 
-        if self.identifier_has_value_binding(&class_name) {
+        if self.identifier_has_value_binding(&raw_class_name) {
             return Ok(None);
         }
 
-        if let Some(enum_info) = self.type_registry.get_enum(&class_name) {
+        let (class_name, type_args) = self.split_generic_type_name(&raw_class_name);
+
+        if let Some(enum_info) = self.type_registry.get_enum_by_name(&class_name).cloned() {
             if let Some(variant) = enum_info.variants.iter().find(|v| v.name == member.member) {
                 let payload_type_opt = variant.payload_type.clone();
                 match &payload_type_opt {
@@ -417,7 +509,7 @@ impl SemanticAnalyzer {
                                 &call.loc,
                                 format!(
                                     "Enum variant '{}.{}' with payload expects 1 argument, but got {}",
-                                    class_name,
+                                    enum_info.name,
                                     member.member,
                                     call.args.len()
                                 ),
@@ -429,7 +521,7 @@ impl SemanticAnalyzer {
                                 &call.loc,
                                 format!(
                                     "Enum variant '{}.{}' payload type mismatch: expected {}, got {}",
-                                    class_name, member.member, expected_payload_type, arg_type
+                                    enum_info.name, member.member, expected_payload_type, arg_type
                                 ),
                             ));
                         }
@@ -440,7 +532,7 @@ impl SemanticAnalyzer {
                                 &call.loc,
                                 format!(
                                     "Enum variant '{}.{}' has no payload, but got {} argument(s)",
-                                    class_name,
+                                    enum_info.name,
                                     member.member,
                                     call.args.len()
                                 ),
@@ -448,14 +540,14 @@ impl SemanticAnalyzer {
                         }
                     }
                 }
-                return Ok(Some(Type::Object(class_name)));
+                return Ok(Some(Type::Object(enum_info.name.clone())));
             }
 
             return Err(semantic_error_at_loc(
                 &call.loc,
                 format!(
                     "Unknown variant '{}' for enum {}",
-                    member.member, class_name
+                    member.member, enum_info.name
                 ),
             ));
         }
@@ -486,6 +578,24 @@ impl SemanticAnalyzer {
 
         let (has_instance_method, candidate_methods) =
             self.collect_static_method_candidates(&resolved_class_name, &member.member);
+        let candidate_methods: Vec<_> = candidate_methods
+            .into_iter()
+            .map(|(owner_class, method_info)| {
+                let owner_type_params = self
+                    .type_registry
+                    .get_class(&owner_class)
+                    .map(|ci| ci.type_params.clone())
+                    .unwrap_or_default();
+                (
+                    owner_class,
+                    self.specialize_method_info(
+                        &method_info,
+                        &owner_type_params,
+                        type_args.as_deref(),
+                    ),
+                )
+            })
+            .collect();
 
         for (owner_class, method_info) in &candidate_methods {
             if self.check_arguments_exact(&call.args, &method_info.params) {
@@ -1281,72 +1391,205 @@ impl SemanticAnalyzer {
     fn infer_member_access_type(&mut self, member: &MemberAccessExpr) -> cayResult<Type> {
         // 检查是否是静态字段或方法访问: ClassName.fieldName 或 ClassName.methodName
         if let Expr::Identifier(class_name) = &*member.object {
-            if let Some(class_info) = self.type_registry.get_class(class_name.as_ref()) {
-                // 首先检查字段
-                if let Some(field_info) = class_info.fields.get(&member.member) {
-                    if field_info.is_static {
-                        // 检查字段访问权限
-                        check_member_access(
-                            &member.member,
-                            field_info.is_public,
-                            field_info.is_protected,
-                            field_info.is_private,
-                            &self.current_class,
-                            class_name.as_ref(),
-                            &self.type_registry,
-                            &member.loc,
-                        )?;
-                        return Ok(field_info.field_type.clone());
-                    }
-                }
+            let raw_class_name = class_name.as_ref();
+            if !self.identifier_has_value_binding(raw_class_name) {
+                let (class_name_str, type_args) = self.split_generic_type_name(raw_class_name);
+                let resolved_class_name =
+                    if let Some(class_info) = self.type_registry.get_class(&class_name_str) {
+                        Some(class_info.name.clone())
+                    } else if let Some(qualified_name) =
+                        self.type_registry.find_qualified_class(&class_name_str)
+                    {
+                        Some(qualified_name)
+                    } else if self.type_registry.get_struct(&class_name_str).is_some() {
+                        Some(class_name_str.clone())
+                    } else {
+                        None
+                    };
 
-                // 检查静态方法 - 返回函数指针类型
-                // 由于支持方法重载，需要遍历所有同名方法
-                if let Some(methods) = class_info.methods.get(&member.member) {
-                    // 查找第一个静态方法（假设没有重载的静态方法）
-                    if let Some(method_info) = methods.iter().find(|m| m.is_static) {
-                        // 检查方法访问权限
-                        check_member_access(
-                            &member.member,
-                            method_info.is_public,
-                            method_info.is_protected,
-                            method_info.is_private,
-                            &self.current_class,
-                            class_name.as_ref(),
-                            &self.type_registry,
-                            &member.loc,
-                        )?;
-                        // 返回函数指针类型
-                        let param_types = method_info
-                            .params
-                            .iter()
-                            .filter(|p| !p.is_varargs)
-                            .map(|p| p.param_type.clone())
+                if let Some(resolved_class_name) = resolved_class_name {
+                    if let Some(class_info) = self.type_registry.get_class(&resolved_class_name) {
+                        // 首先检查字段
+                        if let Some(field_info) = class_info.fields.get(&member.member) {
+                            if field_info.is_static {
+                                // 检查字段访问权限
+                                check_member_access(
+                                    &member.member,
+                                    field_info.is_public,
+                                    field_info.is_protected,
+                                    field_info.is_private,
+                                    &self.current_class,
+                                    &resolved_class_name,
+                                    &self.type_registry,
+                                    &member.loc,
+                                )?;
+                                return Ok(field_info.field_type.clone());
+                            }
+                            return Err(semantic_error_at_loc(
+                                &member.loc,
+                                format!(
+                                    "Non-static field '{}' in class '{}' cannot be referenced from a static context",
+                                    member.member, resolved_class_name
+                                ),
+                            ));
+                        }
+
+                        let (has_instance_method, candidate_methods) = self
+                            .collect_static_method_candidates(&resolved_class_name, &member.member);
+                        let candidate_methods: Vec<_> = candidate_methods
+                            .into_iter()
+                            .map(|(owner_class, method_info)| {
+                                let owner_type_params = self
+                                    .type_registry
+                                    .get_class(&owner_class)
+                                    .map(|ci| ci.type_params.clone())
+                                    .unwrap_or_default();
+                                (
+                                    owner_class,
+                                    self.specialize_method_info(
+                                        &method_info,
+                                        &owner_type_params,
+                                        type_args.as_deref(),
+                                    ),
+                                )
+                            })
                             .collect();
-                        let return_type = Box::new(method_info.return_type.clone());
-                        return Ok(Type::Function(Box::new(crate::types::FunctionType {
-                            params: param_types,
-                            return_type,
-                            is_static: true,
-                            is_closure: false,
-                        })));
+
+                        // 检查静态方法 - 返回函数指针类型
+                        if let Some((owner_class, method_info)) = candidate_methods.first() {
+                            // 检查方法访问权限
+                            check_member_access(
+                                &member.member,
+                                method_info.is_public,
+                                method_info.is_protected,
+                                method_info.is_private,
+                                &self.current_class,
+                                owner_class,
+                                &self.type_registry,
+                                &member.loc,
+                            )?;
+                            // 返回函数指针类型
+                            let param_types = method_info
+                                .params
+                                .iter()
+                                .filter(|p| !p.is_varargs)
+                                .map(|p| p.param_type.clone())
+                                .collect();
+                            let return_type = Box::new(method_info.return_type.clone());
+                            return Ok(Type::Function(Box::new(crate::types::FunctionType {
+                                params: param_types,
+                                return_type,
+                                is_static: true,
+                                is_closure: false,
+                            })));
+                        }
+
+                        if has_instance_method {
+                            return Err(semantic_error_at_loc(
+                                &member.loc,
+                                format!(
+                                    "Non-static method '{}' in class '{}' cannot be referenced from a static context",
+                                    member.member, resolved_class_name
+                                ),
+                            ));
+                        }
+
+                        return Err(semantic_error_at_loc(
+                            &member.loc,
+                            self.unknown_static_member_message(
+                                &member.member,
+                                &resolved_class_name,
+                            ),
+                        ));
+                    }
+
+                    if let Some(struct_info) = self.type_registry.get_struct(&resolved_class_name) {
+                        if struct_info.fields.contains_key(&member.member) {
+                            return Err(semantic_error_at_loc(
+                                &member.loc,
+                                format!(
+                                    "Non-static field '{}' in struct '{}' cannot be referenced from a static context",
+                                    member.member, resolved_class_name
+                                ),
+                            ));
+                        }
+
+                        let (has_instance_method, candidate_methods) = self
+                            .collect_static_method_candidates(&resolved_class_name, &member.member);
+                        let candidate_methods: Vec<_> = candidate_methods
+                            .into_iter()
+                            .map(|(owner_class, method_info)| {
+                                (
+                                    owner_class,
+                                    self.specialize_method_info(
+                                        &method_info,
+                                        &[],
+                                        type_args.as_deref(),
+                                    ),
+                                )
+                            })
+                            .collect();
+
+                        if let Some((owner_class, method_info)) = candidate_methods.first() {
+                            check_member_access(
+                                &member.member,
+                                method_info.is_public,
+                                method_info.is_protected,
+                                method_info.is_private,
+                                &self.current_class,
+                                owner_class,
+                                &self.type_registry,
+                                &member.loc,
+                            )?;
+                            let param_types = method_info
+                                .params
+                                .iter()
+                                .filter(|p| !p.is_varargs)
+                                .map(|p| p.param_type.clone())
+                                .collect();
+                            let return_type = Box::new(method_info.return_type.clone());
+                            return Ok(Type::Function(Box::new(crate::types::FunctionType {
+                                params: param_types,
+                                return_type,
+                                is_static: true,
+                                is_closure: false,
+                            })));
+                        }
+
+                        if has_instance_method {
+                            return Err(semantic_error_at_loc(
+                                &member.loc,
+                                format!(
+                                    "Non-static method '{}' in struct '{}' cannot be referenced from a static context",
+                                    member.member, resolved_class_name
+                                ),
+                            ));
+                        }
+
+                        return Err(semantic_error_at_loc(
+                            &member.loc,
+                            self.unknown_static_member_message(
+                                &member.member,
+                                &resolved_class_name,
+                            ),
+                        ));
                     }
                 }
-            }
 
-            // 检查是否是 enum variant 访问: EnumName.VariantName
-            if let Some(enum_info) = self.type_registry.get_enum(class_name.as_ref()) {
-                let variant_exists = enum_info.variants.iter().any(|v| v.name == member.member);
-                if variant_exists {
-                    return Ok(Type::Object(class_name.to_string()));
+                // 检查是否是 enum variant 访问: EnumName.VariantName
+                if let Some(enum_info) = self.type_registry.get_enum_by_name(&class_name_str) {
+                    let variant_exists = enum_info.variants.iter().any(|v| v.name == member.member);
+                    if variant_exists {
+                        return Ok(Type::Object(enum_info.name.clone()));
+                    }
+                    return Err(semantic_error_at_loc(
+                        &member.loc,
+                        format!(
+                            "Unknown variant '{}' for enum {}",
+                            member.member, enum_info.name
+                        ),
+                    ));
                 }
-                return Err(semantic_error_at_loc(
-                    &member.loc,
-                    format!(
-                        "Unknown variant '{}' for enum {}",
-                        member.member, class_name
-                    ),
-                ));
             }
         }
 
@@ -1515,14 +1758,75 @@ impl SemanticAnalyzer {
             (new_expr.class_name.clone(), None)
         };
 
+        // 先严格推断构造参数，避免非法表达式漏到代码生成阶段。
+        for arg in &new_expr.args {
+            self.infer_expr_type_internal(arg)?;
+        }
+
         // 检查基础类是否存在
-        if let Some(class_info) = self.type_registry.get_class(&base_class_name) {
+        if let Some(class_info) = self.type_registry.get_class(&base_class_name).cloned() {
             // 检查是否是抽象类
             if class_info.is_abstract {
                 return Err(semantic_error_at_loc(
                     &new_expr.loc,
                     format!("Cannot instantiate abstract class '{}'", base_class_name),
                 ));
+            }
+
+            if class_info.constructors.is_empty() {
+                if !new_expr.args.is_empty() {
+                    return Err(semantic_error_at_loc(
+                        &new_expr.loc,
+                        format!(
+                            "Constructor '{}' cannot be applied to given types: expected 0 arguments, got {}",
+                            base_class_name,
+                            new_expr.args.len()
+                        ),
+                    ));
+                }
+            } else {
+                let mut matched_constructor = None;
+                let mut mismatch_detail = None;
+                for constructor in &class_info.constructors {
+                    match self.check_arguments_compatible(
+                        &new_expr.args,
+                        &constructor.params,
+                        new_expr.loc.line,
+                        new_expr.loc.column,
+                    ) {
+                        Ok(()) => {
+                            matched_constructor = Some(constructor.clone());
+                            break;
+                        }
+                        Err(msg) => {
+                            if mismatch_detail.is_none() {
+                                mismatch_detail = Some(msg);
+                            }
+                        }
+                    }
+                }
+
+                let Some(constructor) = matched_constructor else {
+                    return Err(semantic_error_at_loc(
+                        &new_expr.loc,
+                        format!(
+                            "Constructor '{}' cannot be applied to given types: {}",
+                            base_class_name,
+                            mismatch_detail.unwrap_or_else(|| "argument mismatch".to_string())
+                        ),
+                    ));
+                };
+
+                check_member_access(
+                    &base_class_name,
+                    constructor.is_public,
+                    constructor.is_protected,
+                    constructor.is_private,
+                    &self.current_class,
+                    &base_class_name,
+                    &self.type_registry,
+                    &new_expr.loc,
+                )?;
             }
 
             // 如果类有泛型参数，验证类型参数是否合法
@@ -2228,7 +2532,21 @@ impl SemanticAnalyzer {
     /// 将类型字符串解析为 Type
     /// 用于解析泛型类型参数，如 "int", "String", "long" 等
     fn parse_type_string(&self, type_str: &str) -> Type {
-        match type_str.trim() {
+        let type_str = type_str.trim();
+        if let Some(pos) = type_str.find('<') {
+            if type_str.ends_with('>') {
+                let base = type_str[..pos].trim();
+                let args_str = &type_str[pos + 1..type_str.len() - 1];
+                let args = self
+                    .split_type_arguments(args_str)
+                    .into_iter()
+                    .map(|arg| self.parse_type_string(&arg))
+                    .collect();
+                return Type::Generic(base.to_string(), args);
+            }
+        }
+
+        match type_str {
             "int" => Type::Int32,
             "long" => Type::Int64,
             "float" => Type::Float32,

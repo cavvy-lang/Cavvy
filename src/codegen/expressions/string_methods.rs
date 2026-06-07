@@ -18,17 +18,19 @@ impl IRGenerator {
         member: &MemberAccessExpr,
         args: &[Expr],
     ) -> cayResult<Option<String>> {
-        // 生成对象表达式
-        let obj_result = self.generate_expression(&member.object)?;
-        let (obj_type, obj_val) = self.parse_typed_value(&obj_result);
-
-        // 类型检查：先用 Cavvy 类型，再用 LLVM 类型回退（String 底层是 i8*）
+        // 先用 Cavvy 类型判断，避免把 ClassName.method() 的类名当成值生成。
         if let Some(obj_cay_type) = self.get_expression_type(&member.object) {
             if !matches!(obj_cay_type, crate::types::Type::String) {
                 return Ok(None);
             }
-        } else if obj_type != "i8*" {
-            // Cavvy 类型不可用且 LLVM 不是 i8*（String 的底层表示）
+        } else if self.is_known_static_string_method_target(&member.object) {
+            return Ok(None);
+        }
+
+        // Cavvy 类型不可用时，再生成对象表达式并用 LLVM 类型回退（String 底层是 i8*）。
+        let obj_result = self.generate_expression(&member.object)?;
+        let (obj_type, obj_val) = self.parse_typed_value(&obj_result);
+        if obj_type != "i8*" {
             return Ok(None);
         }
 
@@ -432,5 +434,34 @@ impl IRGenerator {
             }
             _ => Ok(None), // 不是已知的 String 方法
         }
+    }
+
+    fn is_known_static_string_method_target(&self, expr: &Expr) -> bool {
+        let Expr::Identifier(name) = expr else {
+            return false;
+        };
+
+        let name_str = name.as_ref();
+        let base_name = if let Some(pos) = name_str.find('<') {
+            &name_str[..pos]
+        } else {
+            name_str
+        };
+
+        let has_value_binding = self.get_variable_type(name_str).is_some()
+            || self.scope_manager.get_var_type(name_str).is_some()
+            || self.var_types.contains_key(name_str)
+            || self.var_class_map.contains_key(name_str);
+
+        if has_value_binding {
+            return false;
+        }
+
+        self.type_registry.as_ref().is_some_and(|registry| {
+            registry.class_exists(base_name)
+                || registry.find_qualified_class(base_name).is_some()
+                || registry.get_struct(base_name).is_some()
+                || registry.get_enum_by_name(base_name).is_some()
+        })
     }
 }

@@ -219,7 +219,11 @@ impl IRGenerator {
                             };
                             let (class_name, is_class) =
                                 if let Some(ref registry) = self.type_registry {
-                                    if registry.class_exists(base_obj_name) {
+                                    if registry.class_exists(base_obj_name)
+                                        || registry.find_qualified_class(base_obj_name).is_some()
+                                        || registry.get_struct(base_obj_name).is_some()
+                                        || registry.get_enum_by_name(base_obj_name).is_some()
+                                    {
                                         // 是类名，保留原始泛型类型名（如 FileResult<File>）
                                         (obj_name_str.to_string(), true)
                                     } else {
@@ -463,7 +467,9 @@ impl IRGenerator {
         let llvm_ret_type = self.type_to_llvm(&ret_type);
 
         // 预先计算 this 指针值（用于 vtable 分派和直接调用都可能需要）
-        let resolved_this_val = if let Some(obj) = &obj_expr {
+        let resolved_this_val = if is_static_call {
+            None
+        } else if let Some(obj) = &obj_expr {
             if let Expr::Identifier(name) = obj.as_ref() {
                 if name.as_ref() == "super" {
                     if let Some(this_llvm_name) = self.scope_manager.get_llvm_name("this") {

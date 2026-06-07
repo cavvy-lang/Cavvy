@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::error::cayResult;
+use crate::error::{cayResult, codegen_error_at};
 
 impl IRGenerator {
     /// 生成数组长度访问代码（用于 .length 属性或 .length() 方法）
@@ -245,6 +245,30 @@ impl IRGenerator {
                             ),
                         ));
                     }
+                }
+            }
+
+            if let Some(ref registry) = self.type_registry {
+                let has_value_binding = self.get_variable_type(class_name.as_ref()).is_some()
+                    || self
+                        .scope_manager
+                        .get_var_type(class_name.as_ref())
+                        .is_some()
+                    || self.var_types.contains_key(class_name.as_ref())
+                    || self.var_class_map.contains_key(class_name.as_ref());
+                let known_static_target = registry.class_exists(&base_class_name)
+                    || registry.find_qualified_class(&base_class_name).is_some()
+                    || registry.get_struct(&base_class_name).is_some()
+                    || registry.get_enum_by_name(&base_class_name).is_some();
+
+                if known_static_target && !has_value_binding {
+                    return Err(codegen_error_at(
+                        member.loc.clone(),
+                        format!(
+                            "Unknown static member '{}' for type '{}'",
+                            member.member, base_class_name
+                        ),
+                    ));
                 }
             }
         }

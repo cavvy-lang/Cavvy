@@ -429,6 +429,39 @@ public class Example {
     }
 
     #[test]
+    fn test_missing_static_member_is_semantic_error_with_suggestion() {
+        let source = r#"public class FileMode {
+    public FileMode() {
+    }
+
+    public static FileMode read() {
+        return new FileMode();
+    }
+}
+
+public class File {
+    public File(FileMode mode) {
+    }
+}
+
+public class Example {
+    public static void main() {
+        File file = new File(FileMode.READ);
+    }
+}"#;
+
+        let err = analyze_source(source)
+            .expect_err("missing static member should fail in semantic analysis");
+        let message = format!("{:?}", err);
+        assert!(
+            message.contains("Unknown static member 'READ'"),
+            "{}",
+            message
+        );
+        assert!(message.contains("read()"), "{}", message);
+    }
+
+    #[test]
     fn test_source_location_file_prevents_double_source_map_remap() {
         let mut ir_gen = codegen::IRGenerator::new();
         ir_gen.enable_source_map = true;
