@@ -29,8 +29,7 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_access_public.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_access_public.cay")
-        .expect("编译运行失败");
+    let output = compile_and_run_eol("examples/test_access_public.cay").expect("编译运行失败");
     assert_eq!(normalize(&output), "42");
     let _ = std::fs::remove_file("examples/test_access_public.cay");
 }
@@ -58,8 +57,8 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_access_private_same.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_access_private_same.cay")
-        .expect("编译运行失败");
+    let output =
+        compile_and_run_eol("examples/test_access_private_same.cay").expect("编译运行失败");
     assert_eq!(normalize(&output), "100");
     let _ = std::fs::remove_file("examples/test_access_private_same.cay");
 }
@@ -81,10 +80,13 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_access_private_diff.cay", code).unwrap();
-    let error = compile_eol_expect_error("examples/test_access_private_diff.cay")
-        .expect("应该编译失败");
-    assert!(error.contains("private") || error.contains("access"),
-        "应报告 private 访问错误: {}", error);
+    let error =
+        compile_eol_expect_error("examples/test_access_private_diff.cay").expect("应该编译失败");
+    assert!(
+        error.contains("private") || error.contains("access"),
+        "应报告 private 访问错误: {}",
+        error
+    );
     let _ = std::fs::remove_file("examples/test_access_private_diff.cay");
 }
 
@@ -117,8 +119,8 @@ public class Child extends Parent {
 }
 "#;
     std::fs::write("examples/test_access_protected_sub.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_access_protected_sub.cay")
-        .expect("编译运行失败");
+    let output =
+        compile_and_run_eol("examples/test_access_protected_sub.cay").expect("编译运行失败");
     assert_eq!(normalize(&output), "55");
     let _ = std::fs::remove_file("examples/test_access_protected_sub.cay");
 }
@@ -140,10 +142,13 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_access_protected_non.cay", code).unwrap();
-    let error = compile_eol_expect_error("examples/test_access_protected_non.cay")
-        .expect("应该编译失败");
-    assert!(error.contains("protected") || error.contains("access"),
-        "应报告 protected 访问错误: {}", error);
+    let error =
+        compile_eol_expect_error("examples/test_access_protected_non.cay").expect("应该编译失败");
+    assert!(
+        error.contains("protected") || error.contains("access"),
+        "应报告 protected 访问错误: {}",
+        error
+    );
     let _ = std::fs::remove_file("examples/test_access_protected_non.cay");
 }
 
@@ -170,10 +175,13 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_access_private_method.cay", code).unwrap();
-    let error = compile_eol_expect_error("examples/test_access_private_method.cay")
-        .expect("应该编译失败");
-    assert!(error.contains("private") || error.contains("access"),
-        "应报告 private 方法访问错误: {}", error);
+    let error =
+        compile_eol_expect_error("examples/test_access_private_method.cay").expect("应该编译失败");
+    assert!(
+        error.contains("private") || error.contains("access"),
+        "应报告 private 方法访问错误: {}",
+        error
+    );
     let _ = std::fs::remove_file("examples/test_access_private_method.cay");
 }
 
@@ -222,10 +230,13 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_access_static_private.cay", code).unwrap();
-    let error = compile_eol_expect_error("examples/test_access_static_private.cay")
-        .expect("应该编译失败");
-    assert!(error.contains("private") || error.contains("access"),
-        "应报告 private 静态字段访问错误: {}", error);
+    let error =
+        compile_eol_expect_error("examples/test_access_static_private.cay").expect("应该编译失败");
+    assert!(
+        error.contains("private") || error.contains("access"),
+        "应报告 private 静态字段访问错误: {}",
+        error
+    );
     let _ = std::fs::remove_file("examples/test_access_static_private.cay");
 }
 
@@ -255,8 +266,8 @@ public class Singleton {
 "#;
     std::fs::write("examples/test_access_private_ctor.cay", code).unwrap();
     // 私有构造函数在类内部可以调用
-    let output = compile_and_run_eol("examples/test_access_private_ctor.cay")
-        .expect("编译运行失败");
+    let output =
+        compile_and_run_eol("examples/test_access_private_ctor.cay").expect("编译运行失败");
     assert_eq!(normalize(&output), "ok");
     let _ = std::fs::remove_file("examples/test_access_private_ctor.cay");
 }
@@ -289,8 +300,8 @@ public class Child extends Parent {
 }
 "#;
     std::fs::write("examples/test_access_protected_multi.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_access_protected_multi.cay")
-        .expect("编译运行失败");
+    let output =
+        compile_and_run_eol("examples/test_access_protected_multi.cay").expect("编译运行失败");
     assert_eq!(normalize(&output), "10\n10");
     let _ = std::fs::remove_file("examples/test_access_protected_multi.cay");
 }
@@ -316,8 +327,7 @@ public class Circle implements Drawable {
 }
 "#;
     std::fs::write("examples/test_access_interface.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_access_interface.cay")
-        .expect("编译运行失败");
+    let output = compile_and_run_eol("examples/test_access_interface.cay").expect("编译运行失败");
     assert_eq!(normalize(&output), "Drawing a circle");
     let _ = std::fs::remove_file("examples/test_access_interface.cay");
 }
@@ -351,8 +361,7 @@ public class Derived extends Base {
 }
 "#;
     std::fs::write("examples/test_access_ctor_chain.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_access_ctor_chain.cay")
-        .expect("编译运行失败");
+    let output = compile_and_run_eol("examples/test_access_ctor_chain.cay").expect("编译运行失败");
     assert_eq!(normalize(&output), "42");
     let _ = std::fs::remove_file("examples/test_access_ctor_chain.cay");
 }
@@ -377,8 +386,8 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_access_static_method.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_access_static_method.cay")
-        .expect("编译运行失败");
+    let output =
+        compile_and_run_eol("examples/test_access_static_method.cay").expect("编译运行失败");
     assert_eq!(normalize(&output), "3");
     let _ = std::fs::remove_file("examples/test_access_static_method.cay");
 }
@@ -408,8 +417,8 @@ public class Child extends Parent {
 }
 "#;
     std::fs::write("examples/test_access_protected_method.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_access_protected_method.cay")
-        .expect("编译运行失败");
+    let output =
+        compile_and_run_eol("examples/test_access_protected_method.cay").expect("编译运行失败");
     assert_eq!(normalize(&output), "200");
     let _ = std::fs::remove_file("examples/test_access_protected_method.cay");
 }

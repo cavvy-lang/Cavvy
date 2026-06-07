@@ -2,8 +2,8 @@
 //!
 //! 处理return语句的代码生成。
 
-use crate::codegen::context::IRGenerator;
 use crate::ast::*;
+use crate::codegen::context::IRGenerator;
 use crate::error::cayResult;
 
 impl IRGenerator {
@@ -40,48 +40,72 @@ impl IRGenerator {
                     self.emit_line(&format!("  ret double {}", temp));
                 }
                 // 指针到整数转换 (ptrtoint)
-                else if value_type.ends_with("*") && ret_type.starts_with("i") && !ret_type.ends_with("*") {
-                    self.emit_line(&format!("  {} = ptrtoint {} {} to {}",
-                        temp, value_type, val, ret_type));
+                else if value_type.ends_with("*")
+                    && ret_type.starts_with("i")
+                    && !ret_type.ends_with("*")
+                {
+                    self.emit_line(&format!(
+                        "  {} = ptrtoint {} {} to {}",
+                        temp, value_type, val, ret_type
+                    ));
                     self.emit_line(&format!("  ret {} {}", ret_type, temp));
                 }
                 // 整数到指针转换 (inttoptr)
-                else if value_type.starts_with("i") && !value_type.ends_with("*") && ret_type.ends_with("*") {
-                    self.emit_line(&format!("  {} = inttoptr {} {} to {}",
-                        temp, value_type, val, ret_type));
+                else if value_type.starts_with("i")
+                    && !value_type.ends_with("*")
+                    && ret_type.ends_with("*")
+                {
+                    self.emit_line(&format!(
+                        "  {} = inttoptr {} {} to {}",
+                        temp, value_type, val, ret_type
+                    ));
                     self.emit_line(&format!("  ret {} {}", ret_type, temp));
                 }
                 // 整数类型转换
-                else if value_type.starts_with("i") && ret_type.starts_with("i")
-                    && !value_type.ends_with("*") && !ret_type.ends_with("*") {
+                else if value_type.starts_with("i")
+                    && ret_type.starts_with("i")
+                    && !value_type.ends_with("*")
+                    && !ret_type.ends_with("*")
+                {
                     let from_bits: u32 = value_type.trim_start_matches('i').parse().unwrap_or(64);
                     let to_bits: u32 = ret_type.trim_start_matches('i').parse().unwrap_or(64);
 
                     if to_bits > from_bits {
                         // 符号扩展
-                        self.emit_line(&format!("  {} = sext {} {} to {}",
-                            temp, value_type, val, ret_type));
+                        self.emit_line(&format!(
+                            "  {} = sext {} {} to {}",
+                            temp, value_type, val, ret_type
+                        ));
                     } else {
                         // 截断
-                        self.emit_line(&format!("  {} = trunc {} {} to {}",
-                            temp, value_type, val, ret_type));
+                        self.emit_line(&format!(
+                            "  {} = trunc {} {} to {}",
+                            temp, value_type, val, ret_type
+                        ));
                     }
                     self.emit_line(&format!("  ret {} {}", ret_type, temp));
                 }
                 // 整数到浮点数转换
-                else if value_type.starts_with("i") && !value_type.ends_with("*")
-                    && (ret_type == "float" || ret_type == "double") {
-                    self.emit_line(&format!("  {} = sitofp {} {} to {}",
-                        temp, value_type, val, ret_type));
+                else if value_type.starts_with("i")
+                    && !value_type.ends_with("*")
+                    && (ret_type == "float" || ret_type == "double")
+                {
+                    self.emit_line(&format!(
+                        "  {} = sitofp {} {} to {}",
+                        temp, value_type, val, ret_type
+                    ));
                     self.emit_line(&format!("  ret {} {}", ret_type, temp));
                 }
                 // 浮点数到整数转换
-                else if (value_type == "float" || value_type == "double") && ret_type.starts_with("i") {
-                    self.emit_line(&format!("  {} = fptosi {} {} to {}",
-                        temp, value_type, val, ret_type));
+                else if (value_type == "float" || value_type == "double")
+                    && ret_type.starts_with("i")
+                {
+                    self.emit_line(&format!(
+                        "  {} = fptosi {} {} to {}",
+                        temp, value_type, val, ret_type
+                    ));
                     self.emit_line(&format!("  ret {} {}", ret_type, temp));
-                }
-                else {
+                } else {
                     // 类型不兼容，直接返回（可能会出错）
                     self.emit_line(&format!("  ret {}", value));
                 }

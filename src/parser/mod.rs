@@ -4,15 +4,15 @@
 //! 已重构为多个子模块以提高可维护性。
 
 mod classes;
-mod types;
-mod statements;
 mod expressions;
+mod statements;
+mod types;
 mod utils;
 
-use crate::lexer::TokenWithLocation;
 use crate::ast::Program;
-use crate::error::cayResult;
 use crate::diagnostic::DiagnosticCollector;
+use crate::error::cayResult;
+use crate::lexer::TokenWithLocation;
 
 /// 语法分析器
 pub struct Parser {
@@ -31,8 +31,8 @@ pub struct Parser {
 impl Parser {
     /// 创建新的语法分析器
     pub fn new(tokens: Vec<TokenWithLocation>) -> Self {
-        Self { 
-            tokens, 
+        Self {
+            tokens,
             pos: 0,
             diagnostics: DiagnosticCollector::new(),
             source: None,
@@ -42,8 +42,8 @@ impl Parser {
 
     /// 创建带源代码的语法分析器（用于内联IR解析）
     pub fn with_source(tokens: Vec<TokenWithLocation>, source: String) -> Self {
-        Self { 
-            tokens, 
+        Self {
+            tokens,
             pos: 0,
             diagnostics: DiagnosticCollector::new(),
             source: Some(source),
@@ -103,19 +103,26 @@ impl Parser {
             } else if self.check(&crate::lexer::Token::Using) {
                 using_decls.push(self.parse_using_declaration()?);
             } else if self.check(&crate::lexer::Token::Interface)
-                || (self.check(&crate::lexer::Token::Public) && self.check_next(&crate::lexer::Token::Interface))
+                || (self.check(&crate::lexer::Token::Public)
+                    && self.check_next(&crate::lexer::Token::Interface))
             {
                 interfaces.push(self.parse_interface()?);
             } else if self.check(&crate::lexer::Token::Struct)
-                || (self.check(&crate::lexer::Token::Public) && self.check_next(&crate::lexer::Token::Struct))
-                || (self.check(&crate::lexer::Token::Private) && self.check_next(&crate::lexer::Token::Struct))
-                || (self.check(&crate::lexer::Token::Protected) && self.check_next(&crate::lexer::Token::Struct))
+                || (self.check(&crate::lexer::Token::Public)
+                    && self.check_next(&crate::lexer::Token::Struct))
+                || (self.check(&crate::lexer::Token::Private)
+                    && self.check_next(&crate::lexer::Token::Struct))
+                || (self.check(&crate::lexer::Token::Protected)
+                    && self.check_next(&crate::lexer::Token::Struct))
             {
                 structs.push(self.parse_struct()?);
             } else if self.check(&crate::lexer::Token::Enum)
-                || (self.check(&crate::lexer::Token::Public) && self.check_next(&crate::lexer::Token::Enum))
-                || (self.check(&crate::lexer::Token::Private) && self.check_next(&crate::lexer::Token::Enum))
-                || (self.check(&crate::lexer::Token::Protected) && self.check_next(&crate::lexer::Token::Enum))
+                || (self.check(&crate::lexer::Token::Public)
+                    && self.check_next(&crate::lexer::Token::Enum))
+                || (self.check(&crate::lexer::Token::Private)
+                    && self.check_next(&crate::lexer::Token::Enum))
+                || (self.check(&crate::lexer::Token::Protected)
+                    && self.check_next(&crate::lexer::Token::Enum))
             {
                 enums.push(self.parse_enum()?);
             } else if self.check(&crate::lexer::Token::Class)
@@ -214,7 +221,18 @@ impl Parser {
             }
         }
 
-        Ok(Program { classes, structs, enums, interfaces, top_level_functions, extern_declarations, type_aliases, namespace_path, namespace_decls, using_decls })
+        Ok(Program {
+            classes,
+            structs,
+            enums,
+            interfaces,
+            top_level_functions,
+            extern_declarations,
+            type_aliases,
+            namespace_path,
+            namespace_decls,
+            using_decls,
+        })
     }
 
     // 类解析方法
@@ -258,151 +276,151 @@ impl Parser {
     fn parse_parameters(&mut self) -> cayResult<Vec<crate::types::ParameterInfo>> {
         classes::parse_parameters(self)
     }
-    
+
     // 类型解析方法
     fn parse_type(&mut self) -> cayResult<crate::types::Type> {
         types::parse_type(self)
     }
-    
+
     fn is_type_token(&self) -> bool {
         types::is_type_token(self)
     }
-    
+
     fn is_primitive_type_token(&self) -> bool {
         types::is_primitive_type_token(self)
     }
-    
+
     // 语句解析方法
     fn parse_block(&mut self) -> cayResult<crate::ast::Block> {
         statements::parse_block(self)
     }
-    
+
     fn parse_statement(&mut self) -> cayResult<crate::ast::Stmt> {
         statements::parse_statement(self)
     }
-    
+
     fn parse_var_decl(&mut self) -> cayResult<crate::ast::Stmt> {
         statements::parse_var_decl(self)
     }
-    
+
     fn parse_if_statement(&mut self) -> cayResult<crate::ast::Stmt> {
         statements::parse_if_statement(self)
     }
-    
+
     fn parse_while_statement(&mut self) -> cayResult<crate::ast::Stmt> {
         statements::parse_while_statement(self)
     }
-    
+
     fn parse_for_statement(&mut self) -> cayResult<crate::ast::Stmt> {
         statements::parse_for_statement(self)
     }
-    
+
     fn parse_do_while_statement(&mut self) -> cayResult<crate::ast::Stmt> {
         statements::parse_do_while_statement(self)
     }
-    
+
     fn parse_switch_statement(&mut self) -> cayResult<crate::ast::Stmt> {
         statements::parse_switch_statement(self)
     }
-    
+
     fn parse_return_statement(&mut self) -> cayResult<crate::ast::Stmt> {
         statements::parse_return_statement(self)
     }
-    
+
     fn parse_expression_statement(&mut self) -> cayResult<crate::ast::Stmt> {
         statements::parse_expression_statement(self)
     }
-    
+
     // 表达式解析方法
     fn parse_expression(&mut self) -> cayResult<crate::ast::Expr> {
         expressions::parse_expression(self)
     }
-    
+
     fn parse_assignment(&mut self) -> cayResult<crate::ast::Expr> {
         expressions::parse_assignment(self)
     }
-    
+
     fn parse_or(&mut self) -> cayResult<crate::ast::Expr> {
         expressions::parse_or(self)
     }
-    
+
     fn parse_and(&mut self) -> cayResult<crate::ast::Expr> {
         expressions::parse_and(self)
     }
-    
+
     fn parse_bitwise_or(&mut self) -> cayResult<crate::ast::Expr> {
         expressions::parse_bitwise_or(self)
     }
-    
+
     fn parse_bitwise_xor(&mut self) -> cayResult<crate::ast::Expr> {
         expressions::parse_bitwise_xor(self)
     }
-    
+
     fn parse_bitwise_and(&mut self) -> cayResult<crate::ast::Expr> {
         expressions::parse_bitwise_and(self)
     }
-    
+
     fn parse_equality(&mut self) -> cayResult<crate::ast::Expr> {
         expressions::parse_equality(self)
     }
-    
+
     fn parse_comparison(&mut self) -> cayResult<crate::ast::Expr> {
         expressions::parse_comparison(self)
     }
-    
+
     fn parse_shift(&mut self) -> cayResult<crate::ast::Expr> {
         expressions::parse_shift(self)
     }
-    
+
     fn parse_term(&mut self) -> cayResult<crate::ast::Expr> {
         expressions::parse_term(self)
     }
-    
+
     fn parse_factor(&mut self) -> cayResult<crate::ast::Expr> {
         expressions::parse_factor(self)
     }
-    
+
     fn parse_unary(&mut self) -> cayResult<crate::ast::Expr> {
         expressions::parse_unary(self)
     }
-    
+
     fn parse_postfix(&mut self) -> cayResult<crate::ast::Expr> {
         expressions::parse_postfix(self)
     }
-    
+
     fn parse_primary(&mut self) -> cayResult<crate::ast::Expr> {
         expressions::parse_primary(self)
     }
-    
+
     fn parse_arguments(&mut self) -> cayResult<Vec<crate::ast::Expr>> {
         expressions::parse_arguments(self)
     }
-    
+
     fn match_assignment_op(&mut self) -> Option<crate::ast::AssignOp> {
         expressions::match_assignment_op(self)
     }
-    
+
     // 辅助方法
     fn is_at_end(&self) -> bool {
         utils::is_at_end(self)
     }
-    
+
     fn current_token(&self) -> &crate::lexer::Token {
         utils::current_token(self)
     }
-    
+
     fn current_loc(&self) -> crate::error::SourceLocation {
         utils::current_loc(self)
     }
-    
+
     fn previous_loc(&self) -> crate::error::SourceLocation {
         utils::previous_loc(self)
     }
-    
+
     fn advance(&mut self) -> &crate::lexer::Token {
         utils::advance(self)
     }
-    
+
     fn check(&self, token: &crate::lexer::Token) -> bool {
         utils::check(self, token)
     }
@@ -414,15 +432,19 @@ impl Parser {
     fn match_token(&mut self, token: &crate::lexer::Token) -> bool {
         utils::match_token(self, token)
     }
-    
-    fn consume(&mut self, token: &crate::lexer::Token, message: &str) -> cayResult<&crate::lexer::Token> {
+
+    fn consume(
+        &mut self,
+        token: &crate::lexer::Token,
+        message: &str,
+    ) -> cayResult<&crate::lexer::Token> {
         utils::consume(self, token, message)
     }
-    
+
     fn consume_identifier(&mut self, message: &str) -> cayResult<String> {
         utils::consume_identifier(self, message)
     }
-    
+
     fn error(&self, message: &str) -> crate::error::cayError {
         utils::error(self, message)
     }
@@ -442,11 +464,15 @@ impl Parser {
             return false;
         }
         match &self.tokens[pos].token {
-            crate::lexer::Token::Int | crate::lexer::Token::Void |
-            crate::lexer::Token::Long | crate::lexer::Token::Float |
-            crate::lexer::Token::Double | crate::lexer::Token::Bool |
-            crate::lexer::Token::Char | crate::lexer::Token::String |
-            crate::lexer::Token::Identifier(_) => {}
+            crate::lexer::Token::Int
+            | crate::lexer::Token::Void
+            | crate::lexer::Token::Long
+            | crate::lexer::Token::Float
+            | crate::lexer::Token::Double
+            | crate::lexer::Token::Bool
+            | crate::lexer::Token::Char
+            | crate::lexer::Token::String
+            | crate::lexer::Token::Identifier(_) => {}
             _ => return false,
         }
         pos += 1;
@@ -478,10 +504,14 @@ impl Parser {
             return false;
         }
         match &self.tokens[pos].token {
-            crate::lexer::Token::Int | crate::lexer::Token::Void |
-            crate::lexer::Token::Long | crate::lexer::Token::Float |
-            crate::lexer::Token::Double | crate::lexer::Token::Bool |
-            crate::lexer::Token::Char | crate::lexer::Token::String => {}
+            crate::lexer::Token::Int
+            | crate::lexer::Token::Void
+            | crate::lexer::Token::Long
+            | crate::lexer::Token::Float
+            | crate::lexer::Token::Double
+            | crate::lexer::Token::Bool
+            | crate::lexer::Token::Char
+            | crate::lexer::Token::String => {}
             _ => return false,
         }
         pos += 1;
@@ -508,29 +538,46 @@ impl Parser {
         let loc = self.current_loc();
 
         // 必须是以 public 开始
-        self.consume(&crate::lexer::Token::Public, "期望 'public'\n提示: 顶层函数应以 public 开头，例如: public int main() { ... }")?;
+        self.consume(
+            &crate::lexer::Token::Public,
+            "期望 'public'\n提示: 顶层函数应以 public 开头，例如: public int main() { ... }",
+        )?;
 
         self.parse_top_level_function_body(loc, vec![crate::ast::Modifier::Public])
     }
 
     /// 解析顶层函数（不带 public 修饰符）
-    fn parse_top_level_function_without_public(&mut self) -> cayResult<crate::ast::TopLevelFunction> {
+    fn parse_top_level_function_without_public(
+        &mut self,
+    ) -> cayResult<crate::ast::TopLevelFunction> {
         let loc = self.current_loc();
         self.parse_top_level_function_body(loc, vec![])
     }
 
     /// 解析顶层函数的主体部分
-    fn parse_top_level_function_body(&mut self, loc: crate::error::SourceLocation, modifiers: Vec<crate::ast::Modifier>) -> cayResult<crate::ast::TopLevelFunction> {
+    fn parse_top_level_function_body(
+        &mut self,
+        loc: crate::error::SourceLocation,
+        modifiers: Vec<crate::ast::Modifier>,
+    ) -> cayResult<crate::ast::TopLevelFunction> {
         // 解析返回类型（支持函数指针类型）
         let return_type = self.parse_type_or_fn_ptr()?;
 
         // 解析函数名
-        let name = self.consume_identifier("期望函数名\n提示: 返回类型后应跟函数名，例如: int add(int a, int b) { ... }")?;
+        let name = self.consume_identifier(
+            "期望函数名\n提示: 返回类型后应跟函数名，例如: int add(int a, int b) { ... }",
+        )?;
 
         // 解析参数列表
-        self.consume(&crate::lexer::Token::LParen, "期望 '('\n提示: 函数名后应跟 '(' 开始参数列表，例如: add(int a, int b)")?;
+        self.consume(
+            &crate::lexer::Token::LParen,
+            "期望 '('\n提示: 函数名后应跟 '(' 开始参数列表，例如: add(int a, int b)",
+        )?;
         let params = self.parse_parameters()?;
-        self.consume(&crate::lexer::Token::RParen, "期望 ')'\n提示: 参数列表应以 ')' 结束")?;
+        self.consume(
+            &crate::lexer::Token::RParen,
+            "期望 ')'\n提示: 参数列表应以 ')' 结束",
+        )?;
 
         // 解析函数体
         let body = self.parse_block()?;
@@ -551,7 +598,10 @@ impl Parser {
         let loc = self.current_loc();
 
         // 消费 extern 关键字
-        self.consume(&crate::lexer::Token::Extern, "期望 'extern'\n提示: 外部函数声明应以 extern 开头，例如: extern { ... }")?;
+        self.consume(
+            &crate::lexer::Token::Extern,
+            "期望 'extern'\n提示: 外部函数声明应以 extern 开头，例如: extern { ... }",
+        )?;
 
         // 解析调用约定（可选）
         let calling_convention = self.parse_calling_convention()?;
@@ -563,17 +613,27 @@ impl Parser {
         // 1. extern "C" { type func(params); ... }
         // 2. extern type func(params);
 
-        if self.check(&crate::lexer::Token::StringLiteral(None)) ||
-           matches!(self.current_token(), crate::lexer::Token::StringLiteral(Some(_))) {
+        if self.check(&crate::lexer::Token::StringLiteral(None))
+            || matches!(
+                self.current_token(),
+                crate::lexer::Token::StringLiteral(Some(_))
+            )
+        {
             // 字符串字面量指定调用约定，如 extern "C" { ... }
             self.advance(); // 消费字符串字面量
-            self.consume(&crate::lexer::Token::LBrace, "期望 '{'\n提示: 调用约定后应跟 '{' 开始外部函数块，例如: extern \"C\" { ... }")?;
+            self.consume(
+                &crate::lexer::Token::LBrace,
+                "期望 '{'\n提示: 调用约定后应跟 '{' 开始外部函数块，例如: extern \"C\" { ... }",
+            )?;
 
             while !self.check(&crate::lexer::Token::RBrace) && !self.is_at_end() {
                 functions.push(self.parse_extern_function()?);
             }
 
-            self.consume(&crate::lexer::Token::RBrace, "期望 '}'\n提示: 外部函数块应以 '}' 结束")?;
+            self.consume(
+                &crate::lexer::Token::RBrace,
+                "期望 '}'\n提示: 外部函数块应以 '}' 结束",
+            )?;
         } else if self.check(&crate::lexer::Token::LBrace) {
             // extern { ... } - 默认 C 调用约定
             self.advance(); // 消费 {
@@ -582,7 +642,10 @@ impl Parser {
                 functions.push(self.parse_extern_function()?);
             }
 
-            self.consume(&crate::lexer::Token::RBrace, "期望 '}'\n提示: 外部函数块应以 '}' 结束")?;
+            self.consume(
+                &crate::lexer::Token::RBrace,
+                "期望 '}'\n提示: 外部函数块应以 '}' 结束",
+            )?;
         } else {
             // 单个函数声明: extern type func(params);
             functions.push(self.parse_extern_function()?);
@@ -635,9 +698,15 @@ impl Parser {
         let name = self.consume_identifier("Expected function name in extern declaration")?;
 
         // 解析参数列表
-        self.consume(&crate::lexer::Token::LParen, "Expected '(' after extern function name")?;
+        self.consume(
+            &crate::lexer::Token::LParen,
+            "Expected '(' after extern function name",
+        )?;
         let params = self.parse_extern_parameters()?;
-        self.consume(&crate::lexer::Token::RParen, "Expected ')' after extern function parameters")?;
+        self.consume(
+            &crate::lexer::Token::RParen,
+            "Expected ')' after extern function parameters",
+        )?;
 
         // 解析可选的别名: as alias_name
         let alias = if self.check(&crate::lexer::Token::As) {
@@ -648,7 +717,10 @@ impl Parser {
         };
 
         // 消费分号
-        self.consume(&crate::lexer::Token::Semicolon, "Expected ';' after extern function declaration")?;
+        self.consume(
+            &crate::lexer::Token::Semicolon,
+            "Expected ';' after extern function declaration",
+        )?;
 
         Ok(crate::ast::ExternFunction {
             name,
@@ -670,9 +742,14 @@ impl Parser {
                 // 检查是否是裸可变参数 ...
                 if self.check(&Token::DotDotDot) {
                     self.advance(); // 消费 ...
-                    params.push(crate::types::ParameterInfo::new_varargs("...".to_string(), crate::types::Type::CVoid));
+                    params.push(crate::types::ParameterInfo::new_varargs(
+                        "...".to_string(),
+                        crate::types::Type::CVoid,
+                    ));
                     if self.check(&Token::Comma) {
-                        return Err(self.error("可变参数必须是最后一个参数\n提示: 可变参数(...)必须放在参数列表的最后"));
+                        return Err(self.error(
+                            "可变参数必须是最后一个参数\n提示: 可变参数(...)必须放在参数列表的最后",
+                        ));
                     }
                     break;
                 }
@@ -686,7 +763,9 @@ impl Parser {
                 if is_varargs {
                     self.advance(); // 消费 ...
                     // type... 形式的可变参数，需要一个名称
-                    let name = self.consume_identifier("期望参数名\n提示: 可变参数需要名称，例如: int... args")?;
+                    let name = self.consume_identifier(
+                        "期望参数名\n提示: 可变参数需要名称，例如: int... args",
+                    )?;
                     params.push(crate::types::ParameterInfo::new_varargs(name, param_type));
                     // 可变参数之后可以有更多参数（通过命名参数指定）
                     if self.match_token(&Token::Comma) {
@@ -728,19 +807,30 @@ impl Parser {
         let loc = self.current_loc();
 
         // 消费 alias 关键字
-        self.consume(&crate::lexer::Token::Alias, "期望 'alias'\n提示: 类型别名声明应以 alias 开头，例如: alias MyInt = int;")?;
+        self.consume(
+            &crate::lexer::Token::Alias,
+            "期望 'alias'\n提示: 类型别名声明应以 alias 开头，例如: alias MyInt = int;",
+        )?;
 
         // 解析类型名称
-        let name = self.consume_identifier("期望类型别名名称\n提示: alias 后应跟类型名称，例如: alias MyInt = int;")?;
+        let name = self.consume_identifier(
+            "期望类型别名名称\n提示: alias 后应跟类型名称，例如: alias MyInt = int;",
+        )?;
 
         // 消费 =
-        self.consume(&crate::lexer::Token::Assign, "期望 '='\n提示: 类型别名格式为 alias Name = Type;")?;
+        self.consume(
+            &crate::lexer::Token::Assign,
+            "期望 '='\n提示: 类型别名格式为 alias Name = Type;",
+        )?;
 
         // 解析目标类型（支持函数指针类型 fn(...) -> ReturnType）
         let target_type = self.parse_type_or_fn_ptr()?;
 
         // 消费分号
-        self.consume(&crate::lexer::Token::Semicolon, "期望 ';'\n提示: 类型别名声明应以 ';' 结束")?;
+        self.consume(
+            &crate::lexer::Token::Semicolon,
+            "期望 ';'\n提示: 类型别名声明应以 ';' 结束",
+        )?;
 
         // 注册类型别名以便后续解析使用
         self.register_type_alias(name.clone(), target_type.clone());
@@ -808,7 +898,10 @@ impl Parser {
         self.consume(&Token::Fn, "期望 'fn'")?;
 
         // 消费 (
-        self.consume(&Token::LParen, "期望 '('\n提示: 函数指针类型格式为 fn(ParamTypes...) -> ReturnType")?;
+        self.consume(
+            &Token::LParen,
+            "期望 '('\n提示: 函数指针类型格式为 fn(ParamTypes...) -> ReturnType",
+        )?;
 
         // 解析参数类型列表（支持可选参数名）
         let mut param_types = Vec::new();
@@ -844,22 +937,30 @@ impl Parser {
         }
 
         // 消费 )
-        self.consume(&crate::lexer::Token::RParen, "期望 ')'\n提示: 函数指针参数列表应以 ')' 结束")?;
+        self.consume(
+            &crate::lexer::Token::RParen,
+            "期望 ')'\n提示: 函数指针参数列表应以 ')' 结束",
+        )?;
 
         // 消费 ->
-        self.consume(&crate::lexer::Token::Arrow, "期望 '->'\n提示: 函数指针类型需要指定返回类型，格式为 fn(...) -> ReturnType")?;
+        self.consume(
+            &crate::lexer::Token::Arrow,
+            "期望 '->'\n提示: 函数指针类型需要指定返回类型，格式为 fn(...) -> ReturnType",
+        )?;
 
         // 解析返回类型
         let return_type = self.parse_type()?;
 
         // 创建函数类型
         // Cavvy 的所有函数指针都使用闭包格式（打包结构体），所以 is_closure 总是 true
-        Ok(crate::types::Type::Function(Box::new(crate::types::FunctionType {
-            params: param_types,
-            return_type: Box::new(return_type),
-            is_static: true,
-            is_closure: true,
-        })))
+        Ok(crate::types::Type::Function(Box::new(
+            crate::types::FunctionType {
+                params: param_types,
+                return_type: Box::new(return_type),
+                is_static: true,
+                is_closure: true,
+            },
+        )))
     }
 
     // ==================== Namespace 和 Using 解析 ====================
@@ -871,7 +972,10 @@ impl Parser {
         // 解析路径
         let path = self.parse_namespace_path()?;
         // 消费分号
-        self.consume(&crate::lexer::Token::Semicolon, "期望 ';' 结束文件级 namespace 声明\n提示: 文件级 namespace 格式为 'namespace 路径;'")?;
+        self.consume(
+            &crate::lexer::Token::Semicolon,
+            "期望 ';' 结束文件级 namespace 声明\n提示: 文件级 namespace 格式为 'namespace 路径;'",
+        )?;
         Ok(path)
     }
 
@@ -883,7 +987,10 @@ impl Parser {
         // 解析路径
         let path = self.parse_namespace_path()?;
         // 消费 {
-        self.consume(&crate::lexer::Token::LBrace, "期望 '{' 开始 namespace 块\n提示: 块级 namespace 格式为 'namespace 路径 { ... }'")?;
+        self.consume(
+            &crate::lexer::Token::LBrace,
+            "期望 '{' 开始 namespace 块\n提示: 块级 namespace 格式为 'namespace 路径 { ... }'",
+        )?;
 
         let mut classes = Vec::new();
         let mut structs = Vec::new();
@@ -898,19 +1005,26 @@ impl Parser {
             if self.check(&crate::lexer::Token::Namespace) {
                 nested_namespaces.push(self.parse_namespace_block()?);
             } else if self.check(&crate::lexer::Token::Interface)
-                || (self.check(&crate::lexer::Token::Public) && self.check_next(&crate::lexer::Token::Interface))
+                || (self.check(&crate::lexer::Token::Public)
+                    && self.check_next(&crate::lexer::Token::Interface))
             {
                 interfaces.push(self.parse_interface()?);
             } else if self.check(&crate::lexer::Token::Struct)
-                || (self.check(&crate::lexer::Token::Public) && self.check_next(&crate::lexer::Token::Struct))
-                || (self.check(&crate::lexer::Token::Private) && self.check_next(&crate::lexer::Token::Struct))
-                || (self.check(&crate::lexer::Token::Protected) && self.check_next(&crate::lexer::Token::Struct))
+                || (self.check(&crate::lexer::Token::Public)
+                    && self.check_next(&crate::lexer::Token::Struct))
+                || (self.check(&crate::lexer::Token::Private)
+                    && self.check_next(&crate::lexer::Token::Struct))
+                || (self.check(&crate::lexer::Token::Protected)
+                    && self.check_next(&crate::lexer::Token::Struct))
             {
                 structs.push(self.parse_struct()?);
             } else if self.check(&crate::lexer::Token::Enum)
-                || (self.check(&crate::lexer::Token::Public) && self.check_next(&crate::lexer::Token::Enum))
-                || (self.check(&crate::lexer::Token::Private) && self.check_next(&crate::lexer::Token::Enum))
-                || (self.check(&crate::lexer::Token::Protected) && self.check_next(&crate::lexer::Token::Enum))
+                || (self.check(&crate::lexer::Token::Public)
+                    && self.check_next(&crate::lexer::Token::Enum))
+                || (self.check(&crate::lexer::Token::Private)
+                    && self.check_next(&crate::lexer::Token::Enum))
+                || (self.check(&crate::lexer::Token::Protected)
+                    && self.check_next(&crate::lexer::Token::Enum))
             {
                 enums.push(self.parse_enum()?);
             } else if self.check(&crate::lexer::Token::Class)
@@ -941,7 +1055,10 @@ impl Parser {
         }
 
         // 消费 }
-        self.consume(&crate::lexer::Token::RBrace, "期望 '}' 结束 namespace 块\n提示: namespace 块必须以 '}' 结束")?;
+        self.consume(
+            &crate::lexer::Token::RBrace,
+            "期望 '}' 结束 namespace 块\n提示: namespace 块必须以 '}' 结束",
+        )?;
 
         Ok(crate::ast::NamespaceDecl {
             path,
@@ -991,7 +1108,9 @@ impl Parser {
 
         // 路径不能为空
         if path.is_empty() {
-            return Err(self.error("using 声明缺少名称\n提示: using 声明格式为 'using 路径::名称;'"));
+            return Err(
+                self.error("using 声明缺少名称\n提示: using 声明格式为 'using 路径::名称;'")
+            );
         }
 
         // 检查通配符导入（路径最后一部分是 *）
@@ -1002,7 +1121,10 @@ impl Parser {
         }
 
         // 消费分号
-        self.consume(&crate::lexer::Token::Semicolon, "期望 ';' 结束 using 声明\n提示: using 声明格式为 'using 路径::名称;'")?;
+        self.consume(
+            &crate::lexer::Token::Semicolon,
+            "期望 ';' 结束 using 声明\n提示: using 声明格式为 'using 路径::名称;'",
+        )?;
 
         Ok(crate::ast::UsingDecl { path, loc })
     }

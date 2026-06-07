@@ -26,8 +26,7 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_named_basic.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_named_basic.cay")
-        .expect("编译运行失败");
+    let output = compile_and_run_eol("examples/test_named_basic.cay").expect("编译运行失败");
     assert_eq!(normalize(&output), "Alice is 30 years old");
     let _ = std::fs::remove_file("examples/test_named_basic.cay");
 }
@@ -48,8 +47,7 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_named_order.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_named_order.cay")
-        .expect("编译运行失败");
+    let output = compile_and_run_eol("examples/test_named_order.cay").expect("编译运行失败");
     assert_eq!(normalize(&output), "Bob, 25, NYC");
     let _ = std::fs::remove_file("examples/test_named_order.cay");
 }
@@ -70,8 +68,7 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_named_mixed.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_named_mixed.cay")
-        .expect("编译运行失败");
+    let output = compile_and_run_eol("examples/test_named_mixed.cay").expect("编译运行失败");
     assert_eq!(normalize(&output), "Item: Widget!");
     let _ = std::fs::remove_file("examples/test_named_mixed.cay");
 }
@@ -94,8 +91,7 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_named_varargs.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_named_varargs.cay")
-        .expect("编译运行失败");
+    let output = compile_and_run_eol("examples/test_named_varargs.cay").expect("编译运行失败");
     assert_eq!(normalize(&output), "[ERROR] error1\n[ERROR] error2");
     let _ = std::fs::remove_file("examples/test_named_varargs.cay");
 }
@@ -127,8 +123,7 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_named_class.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_named_class.cay")
-        .expect("编译运行失败");
+    let output = compile_and_run_eol("examples/test_named_class.cay").expect("编译运行失败");
     assert_eq!(normalize(&output), "15\n17");
     let _ = std::fs::remove_file("examples/test_named_class.cay");
 }
@@ -155,8 +150,7 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_named_types.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_named_types.cay")
-        .expect("编译运行失败");
+    let output = compile_and_run_eol("examples/test_named_types.cay").expect("编译运行失败");
     assert_eq!(normalize(&output), "Hello\n42\ntrue");
     let _ = std::fs::remove_file("examples/test_named_types.cay");
 }

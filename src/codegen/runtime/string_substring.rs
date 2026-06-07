@@ -13,7 +13,9 @@ impl IRGenerator {
         self.emit_raw("  br i1 %is_null, label %null_case, label %check_bounds");
         self.emit_raw("");
         self.emit_raw("null_case:");
-        self.emit_raw("  ret i8* getelementptr ([1 x i8], [1 x i8]* @.cay_empty_str, i64 0, i64 0)");
+        self.emit_raw(
+            "  ret i8* getelementptr ([1 x i8], [1 x i8]* @.cay_empty_str, i64 0, i64 0)",
+        );
         self.emit_raw("");
         self.emit_raw("check_bounds:");
         self.emit_raw("  %total_len = call i64 @strlen(i8* %str)");
@@ -26,7 +28,9 @@ impl IRGenerator {
         self.emit_raw("  %end_final = select i1 %end_too_large, i32 %total_len_i32, i32 %end");
         self.emit_raw("  ; 确保begin <= end");
         self.emit_raw("  %begin_gt_end = icmp sgt i32 %begin_final, %end_final");
-        self.emit_raw("  %begin_clamped = select i1 %begin_gt_end, i32 %end_final, i32 %begin_final");
+        self.emit_raw(
+            "  %begin_clamped = select i1 %begin_gt_end, i32 %end_final, i32 %begin_final",
+        );
         self.emit_raw("  ; 计算子串长度");
         self.emit_raw("  %sub_len = sub i32 %end_final, %begin_clamped");
         self.emit_raw("  %sub_len_i64 = sext i32 %sub_len to i64");
@@ -38,7 +42,9 @@ impl IRGenerator {
         self.emit_raw("  br i1 %result_null, label %alloc_fail, label %do_memcpy");
         self.emit_raw("");
         self.emit_raw("alloc_fail:");
-        self.emit_raw("  ret i8* getelementptr ([1 x i8], [1 x i8]* @.cay_empty_str, i64 0, i64 0)");
+        self.emit_raw(
+            "  ret i8* getelementptr ([1 x i8], [1 x i8]* @.cay_empty_str, i64 0, i64 0)",
+        );
         self.emit_raw("");
         self.emit_raw("do_memcpy:");
         self.emit_raw("  ; 计算源地址偏移");

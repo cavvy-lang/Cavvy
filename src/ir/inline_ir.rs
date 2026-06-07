@@ -4,8 +4,8 @@
 //! 1. **源码内联 IR**: 在 Cavvy 源码中用 `__ir { ... }` 语法嵌入原始 LLVM IR
 //! 2. **编程内联 IR**: 在 IR Builder 中直接插入原始 IR 片段
 
-use super::value::{IrValue, IrInstruction};
 use super::types::IrType;
+use super::value::{IrInstruction, IrValue};
 
 /// 内联 IR 块 - 表示 Cavvy 源码中的 `__ir { ... }` 块
 ///
@@ -51,21 +51,45 @@ impl InlineIrParser {
     pub fn new() -> Self {
         Self {
             allowed_functions: vec![
-                "add".to_string(), "sub".to_string(), "mul".to_string(),
-                "sdiv".to_string(), "srem".to_string(),
-                "fadd".to_string(), "fsub".to_string(), "fmul".to_string(),
-                "fdiv".to_string(), "frem".to_string(),
-                "and".to_string(), "or".to_string(), "xor".to_string(),
-                "shl".to_string(), "ashr".to_string(), "lshr".to_string(),
-                "icmp".to_string(), "fcmp".to_string(),
-                "sext".to_string(), "zext".to_string(), "trunc".to_string(),
-                "sitofp".to_string(), "fptosi".to_string(), "fpext".to_string(), "fptrunc".to_string(),
-                "bitcast".to_string(), "ptrtoint".to_string(), "inttoptr".to_string(),
+                "add".to_string(),
+                "sub".to_string(),
+                "mul".to_string(),
+                "sdiv".to_string(),
+                "srem".to_string(),
+                "fadd".to_string(),
+                "fsub".to_string(),
+                "fmul".to_string(),
+                "fdiv".to_string(),
+                "frem".to_string(),
+                "and".to_string(),
+                "or".to_string(),
+                "xor".to_string(),
+                "shl".to_string(),
+                "ashr".to_string(),
+                "lshr".to_string(),
+                "icmp".to_string(),
+                "fcmp".to_string(),
+                "sext".to_string(),
+                "zext".to_string(),
+                "trunc".to_string(),
+                "sitofp".to_string(),
+                "fptosi".to_string(),
+                "fpext".to_string(),
+                "fptrunc".to_string(),
+                "bitcast".to_string(),
+                "ptrtoint".to_string(),
+                "inttoptr".to_string(),
                 "getelementptr".to_string(),
-                "alloca".to_string(), "load".to_string(), "store".to_string(),
-                "call".to_string(), "ret".to_string(), "br".to_string(),
-                "select".to_string(), "phi".to_string(),
-                "switch".to_string(), "unreachable".to_string(),
+                "alloca".to_string(),
+                "load".to_string(),
+                "store".to_string(),
+                "call".to_string(),
+                "ret".to_string(),
+                "br".to_string(),
+                "select".to_string(),
+                "phi".to_string(),
+                "switch".to_string(),
+                "unreachable".to_string(),
             ],
             allow_all: false,
         }
@@ -95,7 +119,7 @@ impl InlineIrParser {
         expected_outputs: &[(String, IrType)],
     ) -> Result<InlineIrBlock, String> {
         // eprintln!("DEBUG InlineIrParser::parse: ir_text = '{}'", ir_text);
-        
+
         let lines: Vec<String> = ir_text
             .lines()
             .map(|l| l.trim().to_string())
@@ -126,13 +150,13 @@ impl InlineIrParser {
 
     /// 将内联 IR 块转换为 IR 指令
     pub fn to_instruction(&self, block: &InlineIrBlock) -> IrInstruction {
-        let output_values: Vec<IrValue> = block.outputs.iter()
+        let output_values: Vec<IrValue> = block
+            .outputs
+            .iter()
             .map(|(name, ty)| IrValue::Register(name.clone(), ty.clone()))
             .collect();
 
-        let input_values: Vec<IrValue> = block.inputs.iter()
-            .map(|(_, val)| val.clone())
-            .collect();
+        let input_values: Vec<IrValue> = block.inputs.iter().map(|(_, val)| val.clone()).collect();
 
         IrInstruction::InlineIr {
             lines: block.raw_lines.clone(),
@@ -189,8 +213,7 @@ impl InlineIrParser {
             "call" => {
                 // 检查不调用危险的 C 函数
                 let dangerous = [
-                    "system", "exec", "popen", "fork", "vfork",
-                    "dlopen", "dlsym", "dlclose",
+                    "system", "exec", "popen", "fork", "vfork", "dlopen", "dlsym", "dlclose",
                     "mmap", "munmap", "mprotect",
                 ];
                 for d in &dangerous {
@@ -246,8 +269,8 @@ macro_rules! inline_ir {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::value::IrValue;
     use crate::ir::types::IrType;
+    use crate::ir::value::IrValue;
 
     #[test]
     fn test_valid_inline_ir() {
@@ -512,13 +535,19 @@ mod tests {
     fn test_inline_ir_with_inputs() {
         let parser = InlineIrParser::new();
         let inputs = vec![
-            ("x".to_string(), IrValue::Register("%x".to_string(), IrType::I32)),
-            ("y".to_string(), IrValue::Register("%y".to_string(), IrType::I32)),
+            (
+                "x".to_string(),
+                IrValue::Register("%x".to_string(), IrType::I32),
+            ),
+            (
+                "y".to_string(),
+                IrValue::Register("%y".to_string(), IrType::I32),
+            ),
         ];
         let ir = "%r = add i32 %x, %y";
         let result = parser.parse(ir, &inputs, &[]);
         assert!(result.is_ok());
-        
+
         let block = result.unwrap();
         assert_eq!(block.inputs.len(), 2);
     }
@@ -526,13 +555,11 @@ mod tests {
     #[test]
     fn test_inline_ir_with_outputs() {
         let parser = InlineIrParser::new();
-        let outputs = vec![
-            ("%r".to_string(), IrType::I32),
-        ];
+        let outputs = vec![("%r".to_string(), IrType::I32)];
         let ir = "%r = add i32 %a, %b";
         let result = parser.parse(ir, &[], &outputs);
         assert!(result.is_ok());
-        
+
         let block = result.unwrap();
         assert_eq!(block.outputs.len(), 1);
     }
@@ -540,15 +567,17 @@ mod tests {
     #[test]
     fn test_inline_ir_to_instruction() {
         let parser = InlineIrParser::new();
-        let outputs = vec![
-            ("%r".to_string(), IrType::I32),
-        ];
+        let outputs = vec![("%r".to_string(), IrType::I32)];
         let ir = "%r = add i32 %a, %b";
         let block = parser.parse(ir, &[], &outputs).unwrap();
-        
+
         let inst = parser.to_instruction(&block);
         match inst {
-            crate::ir::value::IrInstruction::InlineIr { lines, outputs, inputs } => {
+            crate::ir::value::IrInstruction::InlineIr {
+                lines,
+                outputs,
+                inputs,
+            } => {
                 assert_eq!(lines.len(), 1);
                 assert_eq!(outputs.len(), 1);
                 assert!(inputs.is_empty());

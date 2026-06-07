@@ -1,9 +1,9 @@
 //! 语义分析器核心实现
 
+use super::symbol_table::{SemanticSymbolInfo, SemanticSymbolTable};
 use crate::ast::*;
-use crate::types::{Type, ParameterInfo, ClassInfo, MethodInfo, FieldInfo, TypeRegistry};
 use crate::error::{cayResult, semantic_error_with_file};
-use super::symbol_table::{SemanticSymbolTable, SemanticSymbolInfo};
+use crate::types::{ClassInfo, FieldInfo, MethodInfo, ParameterInfo, Type, TypeRegistry};
 
 /// 语义分析错误信息（包含位置）
 #[derive(Debug, Clone)]
@@ -16,15 +16,15 @@ pub struct SemanticErrorInfo {
 
 /// 语义分析器
 pub struct SemanticAnalyzer {
-    pub(super) program: Option<std::rc::Rc<Program>>,  // 保存 AST 以供类型推断使用
+    pub(super) program: Option<std::rc::Rc<Program>>, // 保存 AST 以供类型推断使用
     pub(super) type_registry: TypeRegistry,
     pub(super) symbol_table: SemanticSymbolTable,
     pub(super) current_class: Option<String>,
     pub(super) current_method: Option<String>,
-    pub(super) current_method_is_static: bool,  // 当前方法是否是静态方法
-    pub(super) current_method_is_constructor: bool,  // 当前是否是构造函数
+    pub(super) current_method_is_static: bool, // 当前方法是否是静态方法
+    pub(super) current_method_is_constructor: bool, // 当前是否是构造函数
     pub(super) errors: Vec<SemanticErrorInfo>,
-    pub(super) current_file: Option<String>,  // 当前正在分析的文件路径
+    pub(super) current_file: Option<String>, // 当前正在分析的文件路径
     /// 源映射表：输出行号 -> (原始文件, 原始行号)
     /// 用于根据AST中的原始行号反查对应的源文件
     pub(super) source_map: Option<std::collections::HashMap<usize, (String, usize)>>,
@@ -54,10 +54,10 @@ impl SemanticAnalyzer {
             features,
             current_class_type_params: Vec::new(),
         };
-        
+
         // 注册内置函数
         analyzer.register_builtin_functions();
-        
+
         analyzer
     }
 
@@ -71,7 +71,8 @@ impl SemanticAnalyzer {
         let program = program.flatten_namespaces();
 
         // 收集所有有效的 namespace 路径（从类的 namespace_path 中提取）
-        let mut valid_namespaces: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut valid_namespaces: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
         for class in &program.classes {
             let ns_path = &class.namespace_path;
             if !ns_path.is_empty() {
@@ -88,9 +89,12 @@ impl SemanticAnalyzer {
         for using_decl in &program.using_decls {
             if using_decl.path.len() >= 2 {
                 let simple_name = using_decl.path.last().unwrap().clone();
-                let ns_path: Vec<&str> = using_decl.path[..using_decl.path.len() - 1].iter().map(|s| s.as_str()).collect();
+                let ns_path: Vec<&str> = using_decl.path[..using_decl.path.len() - 1]
+                    .iter()
+                    .map(|s| s.as_str())
+                    .collect();
                 let ns_path_str = ns_path.join("::");
-                
+
                 // 验证 namespace 是否存在
                 if !valid_namespaces.contains(&ns_path_str) {
                     self.errors.push(SemanticErrorInfo {
@@ -101,9 +105,10 @@ impl SemanticAnalyzer {
                     });
                     continue;
                 }
-                
+
                 let qualified = format!("{}::{}", ns_path_str, simple_name);
-                self.type_registry.add_namespace_alias(simple_name, qualified);
+                self.type_registry
+                    .add_namespace_alias(simple_name, qualified);
             }
         }
 
@@ -204,7 +209,10 @@ impl SemanticAnalyzer {
                         func.loc.file.clone(),
                         func.loc.line,
                         func.loc.column,
-                        format!("Cavvy是面向对象语言，不允许顶层函数 '{}'。请将函数定义在类中，或使用 -F=top_level_function 启用该特性。", func.name)
+                        format!(
+                            "Cavvy是面向对象语言，不允许顶层函数 '{}'。请将函数定义在类中，或使用 -F=top_level_function 启用该特性。",
+                            func.name
+                        ),
                     ));
                 }
             }
@@ -217,7 +225,7 @@ impl SemanticAnalyzer {
                     func.loc.file.clone(),
                     func.loc.line,
                     func.loc.column,
-                    format!("顶层函数 '{}' 已定义", func.name)
+                    format!("顶层函数 '{}' 已定义", func.name),
                 ));
             }
 
@@ -252,7 +260,10 @@ impl SemanticAnalyzer {
     }
 
     /// 设置源映射表（用于多文件include场景下的正确错误定位）
-    pub fn set_source_map(&mut self, source_map: std::collections::HashMap<usize, (String, usize)>) {
+    pub fn set_source_map(
+        &mut self,
+        source_map: std::collections::HashMap<usize, (String, usize)>,
+    ) {
         self.source_map = Some(source_map);
     }
 
@@ -279,13 +290,23 @@ impl SemanticAnalyzer {
     }
 
     /// 报告语义错误（自动包含当前文件信息）
-    pub fn report_error(&self, line: usize, column: usize, message: impl Into<String>) -> crate::error::cayError {
+    pub fn report_error(
+        &self,
+        line: usize,
+        column: usize,
+        message: impl Into<String>,
+    ) -> crate::error::cayError {
         let msg = message.into();
         semantic_error_with_file(self.current_file.clone(), line, column, msg)
     }
 
     /// 创建语义分析错误信息（自动解析文件路径）
-    pub fn create_error_info(&self, line: usize, column: usize, message: impl Into<String>) -> SemanticErrorInfo {
+    pub fn create_error_info(
+        &self,
+        line: usize,
+        column: usize,
+        message: impl Into<String>,
+    ) -> SemanticErrorInfo {
         let (file, original_line) = self.resolve_file_and_line(line);
         SemanticErrorInfo {
             line: original_line,
@@ -294,10 +315,16 @@ impl SemanticAnalyzer {
             file,
         }
     }
-    
+
     /// 创建语义分析错误信息（带文件路径）
     /// 注意：line 已经是原始行号，不需要再通过 source_map 转换
-    pub fn create_error_info_with_file(&self, file: Option<String>, line: usize, column: usize, message: impl Into<String>) -> SemanticErrorInfo {
+    pub fn create_error_info_with_file(
+        &self,
+        file: Option<String>,
+        line: usize,
+        column: usize,
+        message: impl Into<String>,
+    ) -> SemanticErrorInfo {
         // line 已经是原始行号，直接使用
         // file 如果为 None，则使用 current_file
         let resolved_file = file.or_else(|| self.current_file.clone());
@@ -370,14 +397,27 @@ impl SemanticAnalyzer {
 
     /// 报告语义错误并返回默认类型（用于表达式类型推断）
     /// 这样可以让分析继续，收集更多错误
-    pub fn report_semantic_error(&mut self, line: usize, column: usize, message: impl Into<String>) -> Type {
-        self.errors.push(self.create_error_info(line, column, message));
+    pub fn report_semantic_error(
+        &mut self,
+        line: usize,
+        column: usize,
+        message: impl Into<String>,
+    ) -> Type {
+        self.errors
+            .push(self.create_error_info(line, column, message));
         Type::Int32 // 返回默认类型继续分析
     }
 
     /// 报告语义错误并返回默认类型（带文件路径）
-    pub fn report_semantic_error_with_file(&mut self, file: Option<String>, line: usize, column: usize, message: impl Into<String>) -> Type {
-        self.errors.push(self.create_error_info_with_file(file, line, column, message));
+    pub fn report_semantic_error_with_file(
+        &mut self,
+        file: Option<String>,
+        line: usize,
+        column: usize,
+        message: impl Into<String>,
+    ) -> Type {
+        self.errors
+            .push(self.create_error_info_with_file(file, line, column, message));
         Type::Int32 // 返回默认类型继续分析
     }
 }

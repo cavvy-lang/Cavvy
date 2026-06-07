@@ -14,7 +14,9 @@ impl IRGenerator {
         self.emit_raw("  br i1 %is_null, label %fail, label %do_store");
         self.emit_raw("");
         self.emit_raw("fail:");
-        self.emit_raw("  ret i8* getelementptr ([1 x i8], [1 x i8]* @.cay_empty_str, i64 0, i64 0)");
+        self.emit_raw(
+            "  ret i8* getelementptr ([1 x i8], [1 x i8]* @.cay_empty_str, i64 0, i64 0)",
+        );
         self.emit_raw("");
         self.emit_raw("do_store:");
         self.emit_raw("  ; 存储字符");

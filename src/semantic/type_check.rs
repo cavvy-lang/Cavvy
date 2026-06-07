@@ -1,10 +1,10 @@
 //! 类型检查实现
 
-use crate::ast::*;
-use crate::types::{Type, ParameterInfo};
-use crate::error::cayResult;
 use super::analyzer::SemanticAnalyzer;
 use super::symbol_table::SemanticSymbolInfo;
+use crate::ast::*;
+use crate::error::cayResult;
+use crate::types::{ParameterInfo, Type};
 
 impl SemanticAnalyzer {
     /// 类型检查程序
@@ -13,15 +13,16 @@ impl SemanticAnalyzer {
             self.current_class = Some(class.name.clone());
             self.current_class_type_params = class.type_params.clone();
             self.type_registry.current_namespace = class.namespace_path.clone();
-            
+
             for member in &class.members {
                 match member {
                     ClassMember::Method(method) => {
                         self.current_method = Some(method.name.clone());
-                        self.current_method_is_static = method.modifiers.contains(&Modifier::Static);
+                        self.current_method_is_static =
+                            method.modifiers.contains(&Modifier::Static);
                         self.current_method_is_constructor = false;
                         self.symbol_table.enter_scope();
-                        
+
                         // 非静态方法需要添加 this
                         if !self.current_method_is_static {
                             if let Some(current_class) = &self.current_class {
@@ -32,11 +33,11 @@ impl SemanticAnalyzer {
                                         symbol_type: Type::Object(current_class.clone()),
                                         is_final: true,
                                         is_initialized: true,
-                                    }
+                                    },
                                 );
                             }
                         }
-                        
+
                         // 添加参数到符号表
                         for param in &method.params {
                             // 对泛型类的参数类型进行参数替换
@@ -52,10 +53,10 @@ impl SemanticAnalyzer {
                                     symbol_type: param_type,
                                     is_final: false,
                                     is_initialized: true,
-                                }
+                                },
                             );
                         }
-                        
+
                         // 类型检查方法体
                         if let Some(body) = &method.body {
                             // 对泛型类的返回类型进行参数替换
@@ -64,9 +65,12 @@ impl SemanticAnalyzer {
                             } else {
                                 self.replace_type_params(&method.return_type, &class.type_params)
                             };
-                            self.type_check_statement(&Stmt::Block(body.clone()), Some(&return_type))?;
+                            self.type_check_statement(
+                                &Stmt::Block(body.clone()),
+                                Some(&return_type),
+                            )?;
                         }
-                        
+
                         self.symbol_table.exit_scope();
                         self.current_method = None;
                         self.current_method_is_static = false;
@@ -79,7 +83,7 @@ impl SemanticAnalyzer {
                         self.current_method_is_static = false;
                         self.current_method_is_constructor = true;
                         self.symbol_table.enter_scope();
-                        
+
                         // 添加 this 到符号表
                         self.symbol_table.declare(
                             "this".to_string(),
@@ -88,9 +92,9 @@ impl SemanticAnalyzer {
                                 symbol_type: Type::Object(class.name.clone()),
                                 is_final: true,
                                 is_initialized: true,
-                            }
+                            },
                         );
-                        
+
                         // 添加参数到符号表
                         for param in &ctor.params {
                             self.symbol_table.declare(
@@ -100,13 +104,16 @@ impl SemanticAnalyzer {
                                     symbol_type: param.param_type.clone(),
                                     is_final: false,
                                     is_initialized: true,
-                                }
+                                },
                             );
                         }
-                        
+
                         // 类型检查构造函数体
-                        self.type_check_statement(&Stmt::Block(ctor.body.clone()), Some(&Type::Void))?;
-                        
+                        self.type_check_statement(
+                            &Stmt::Block(ctor.body.clone()),
+                            Some(&Type::Void),
+                        )?;
+
                         self.symbol_table.exit_scope();
                         self.current_method_is_constructor = false;
                     }
@@ -115,7 +122,7 @@ impl SemanticAnalyzer {
                         self.current_method_is_static = false;
                         self.current_method_is_constructor = false;
                         self.symbol_table.enter_scope();
-                        
+
                         // 添加 this 到符号表
                         self.symbol_table.declare(
                             "this".to_string(),
@@ -124,12 +131,15 @@ impl SemanticAnalyzer {
                                 symbol_type: Type::Object(class.name.clone()),
                                 is_final: true,
                                 is_initialized: true,
-                            }
+                            },
                         );
-                        
+
                         // 类型检查析构函数体
-                        self.type_check_statement(&Stmt::Block(dtor.body.clone()), Some(&Type::Void))?;
-                        
+                        self.type_check_statement(
+                            &Stmt::Block(dtor.body.clone()),
+                            Some(&Type::Void),
+                        )?;
+
                         self.symbol_table.exit_scope();
                     }
                     ClassMember::InstanceInitializer(block) => {
@@ -151,7 +161,7 @@ impl SemanticAnalyzer {
                     }
                 }
             }
-            
+
             self.current_class = None;
         }
 
@@ -159,9 +169,9 @@ impl SemanticAnalyzer {
         // 重置命名空间上下文，防止从类处理中泄漏
         self.type_registry.current_namespace.clear();
         for func in &program.top_level_functions {
-            self.current_class = None;  // 顶层函数不属于任何类
+            self.current_class = None; // 顶层函数不属于任何类
             self.current_method = Some(func.name.clone());
-            self.current_method_is_static = true;  // 顶层函数都是静态的
+            self.current_method_is_static = true; // 顶层函数都是静态的
             self.current_method_is_constructor = false;
             self.symbol_table.enter_scope();
 
@@ -174,7 +184,7 @@ impl SemanticAnalyzer {
                         symbol_type: param.param_type.clone(),
                         is_final: false,
                         is_initialized: true,
-                    }
+                    },
                 );
             }
 
@@ -203,7 +213,11 @@ impl SemanticAnalyzer {
     }
 
     /// 类型检查语句
-    pub fn type_check_statement(&mut self, stmt: &Stmt, expected_return: Option<&Type>) -> cayResult<()> {
+    pub fn type_check_statement(
+        &mut self,
+        stmt: &Stmt,
+        expected_return: Option<&Type>,
+    ) -> cayResult<()> {
         match stmt {
             Stmt::Expr(expr) => {
                 self.infer_expr_type_collect_errors(expr);
@@ -214,10 +228,7 @@ impl SemanticAnalyzer {
                     self.errors.push(self.create_error_info(
                         var.loc.line,
                         var.loc.column,
-                        format!(
-                            "Variable '{}' already defined in current scope",
-                            var.name
-                        ),
+                        format!("Variable '{}' already defined in current scope", var.name),
                     ));
                     return Ok(());
                 }
@@ -245,10 +256,7 @@ impl SemanticAnalyzer {
                                 var.loc.file.clone(),
                                 var.loc.line,
                                 var.loc.column,
-                                format!(
-                                    "Cannot assign {} to {}",
-                                    init_type, var_type
-                                ),
+                                format!("Cannot assign {} to {}", init_type, var_type),
                             ));
                         }
                     }
@@ -261,7 +269,7 @@ impl SemanticAnalyzer {
                     ));
                     var_type = Type::Int32; // 默认回退类型
                 }
-                
+
                 self.symbol_table.declare(
                     var.name.clone(),
                     SemanticSymbolInfo {
@@ -269,7 +277,7 @@ impl SemanticAnalyzer {
                         symbol_type: var_type,
                         is_final: var.is_final,
                         is_initialized: var.initializer.is_some(),
-                    }
+                    },
                 );
             }
             Stmt::Return(expr) => {
@@ -278,7 +286,7 @@ impl SemanticAnalyzer {
                 } else {
                     Type::Void
                 };
-                
+
                 if let Some(expected) = expected_return {
                     if !self.types_compatible(&return_type, expected) {
                         // 尝试从表达式获取位置信息
@@ -301,12 +309,18 @@ impl SemanticAnalyzer {
             }
             Stmt::Block(block) => {
                 // 检查是否是多变量声明生成的块（只包含 VarDecl）
-                let is_multi_var_decl = block.statements.iter().all(|s| matches!(s, Stmt::VarDecl(_)));
+                let is_multi_var_decl = block
+                    .statements
+                    .iter()
+                    .all(|s| matches!(s, Stmt::VarDecl(_)));
                 if is_multi_var_decl {
                     // 多变量声明不创建新作用域，在当前作用域内声明所有变量
                     for stmt in &block.statements {
                         if let Stmt::VarDecl(var) = stmt {
-                            self.type_check_statement(&Stmt::VarDecl(var.clone()), expected_return)?;
+                            self.type_check_statement(
+                                &Stmt::VarDecl(var.clone()),
+                                expected_return,
+                            )?;
                         }
                     }
                 } else {
@@ -385,7 +399,7 @@ impl SemanticAnalyzer {
             }
             _ => {}
         }
-        
+
         Ok(())
     }
 }

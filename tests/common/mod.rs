@@ -2,12 +2,12 @@
 //!
 //! 提供测试辅助函数和工具，被多个测试 crate 共享
 
-use std::process::{Command, Stdio, Child};
 use std::fs;
-use std::sync::Mutex;
-use std::time::Duration;
-use std::thread;
 use std::io::Read;
+use std::process::{Child, Command, Stdio};
+use std::sync::Mutex;
+use std::thread;
+use std::time::Duration;
 
 /// 获取当前平台的 cayc 可执行文件路径
 /// Windows: ./target/release/cayc.exe
@@ -80,7 +80,10 @@ pub fn compile_and_run_eol(source_path: &str) -> Result<String, String> {
 ///     &["-F=top_level_function"]
 /// ).expect("编译运行失败");
 /// ```
-pub fn compile_and_run_eol_with_features(source_path: &str, features: &[&str]) -> Result<String, String> {
+pub fn compile_and_run_eol_with_features(
+    source_path: &str,
+    features: &[&str],
+) -> Result<String, String> {
     compile_and_run_eol_with_timeout(source_path, features, Duration::from_secs(10))
 }
 
@@ -107,7 +110,11 @@ pub fn compile_and_run_eol_with_features(source_path: &str, features: &[&str]) -
 ///     Duration::from_secs(5)
 /// ).expect("编译运行失败");
 /// ```
-pub fn compile_and_run_eol_with_timeout(source_path: &str, features: &[&str], timeout: Duration) -> Result<String, String> {
+pub fn compile_and_run_eol_with_timeout(
+    source_path: &str,
+    features: &[&str],
+    timeout: Duration,
+) -> Result<String, String> {
     // 使用唯一ID生成输出文件名，避免测试冲突
     let unique_id = format!("{}_{:?}", std::process::id(), std::thread::current().id());
     let exe_ext = get_exe_extension();
@@ -126,29 +133,29 @@ pub fn compile_and_run_eol_with_timeout(source_path: &str, features: &[&str], ti
         .args(&args)
         .output()
         .map_err(|e| format!("Failed to execute cayc: {}", e))?;
-    
+
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(format!("Compilation failed: {}", stderr));
     }
-    
+
     // 2. 运行生成的 EXE（带超时）
     let mut child = Command::new(&exe_path)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("Failed to spawn {}: {}", exe_path, e))?;
-    
+
     let child_id = child.id();
-    
+
     // 使用线程实现超时等待
     let result = wait_child_with_timeout(&mut child, timeout);
-    
+
     // 如果超时或出错，强制终止进程树
     if result.is_err() {
         let _ = child.kill();
         let _ = child.wait();
-        
+
         // 尝试强制终止（Windows）
         #[cfg(windows)]
         {
@@ -157,11 +164,11 @@ pub fn compile_and_run_eol_with_timeout(source_path: &str, features: &[&str], ti
                 .output();
         }
     }
-    
+
     // 3. 清理生成的文件
     let _ = fs::remove_file(&exe_path);
     let _ = fs::remove_file(&ir_path);
-    
+
     result
 }
 
@@ -196,15 +203,15 @@ pub fn compile_eol_expect_error(source_path: &str) -> Result<String, String> {
         .args(&[source_path, &exe_path])
         .output()
         .map_err(|e| format!("Failed to execute cayc: {}", e))?;
-    
+
     // 清理可能生成的文件
     let _ = fs::remove_file(&exe_path);
     let _ = fs::remove_file(&ir_path);
-    
+
     if output.status.success() {
         return Err("Expected compilation to fail, but it succeeded".to_string());
     }
-    
+
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
     Ok(stderr)
 }
@@ -297,9 +304,7 @@ pub fn assert_output_contains_any(output: &str, expected_substrings: &[&str], te
     assert!(
         found,
         "{}: Expected output to contain at least one of {:?}, got: {}",
-        test_name,
-        expected_substrings,
-        output
+        test_name, expected_substrings, output
     );
 }
 
@@ -316,25 +321,25 @@ pub fn assert_output_contains_any(output: &str, expected_substrings: &[&str], te
 /// * `Err(String)` - 超时或失败时返回错误信息
 fn wait_child_with_timeout(child: &mut Child, timeout: Duration) -> Result<String, String> {
     use std::sync::mpsc;
-    
+
     // 获取输出管道
     let mut stdout_pipe = child.stdout.take().ok_or("Failed to get stdout pipe")?;
     let mut stderr_pipe = child.stderr.take().ok_or("Failed to get stderr pipe")?;
-    
+
     // 使用通道接收输出
     let (tx, rx) = mpsc::channel();
-    
+
     // 在线程中读取输出
     thread::spawn(move || {
         let mut stdout_buf = String::new();
         let mut stderr_buf = String::new();
-        
+
         let stdout_result = stdout_pipe.read_to_string(&mut stdout_buf);
         let stderr_result = stderr_pipe.read_to_string(&mut stderr_buf);
-        
+
         let _ = tx.send((stdout_buf, stderr_buf, stdout_result, stderr_result));
     });
-    
+
     // 等待进程完成或超时
     let start = std::time::Instant::now();
     loop {
@@ -342,16 +347,17 @@ fn wait_child_with_timeout(child: &mut Child, timeout: Duration) -> Result<Strin
         match child.try_wait() {
             Ok(Some(status)) => {
                 // 进程已结束，等待输出读取完成
-                let (stdout, stderr, stdout_res, stderr_res) = rx.recv_timeout(Duration::from_secs(5))
+                let (stdout, stderr, stdout_res, stderr_res) = rx
+                    .recv_timeout(Duration::from_secs(5))
                     .map_err(|_| "Timeout waiting for output read")?;
-                
+
                 if stdout_res.is_err() {
                     return Err(format!("Failed to read stdout: {:?}", stdout_res.err()));
                 }
                 if stderr_res.is_err() {
                     return Err(format!("Failed to read stderr: {:?}", stderr_res.err()));
                 }
-                
+
                 if !status.success() {
                     return Err(format!("Execution failed: {}", stderr));
                 }

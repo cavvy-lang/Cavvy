@@ -1,12 +1,14 @@
-use std::env;
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::process;
-use cavvy::error::{print_error_with_context, cayError, get_error_location, get_error_message, get_error_help};
+use cavvy::error::{
+    cayError, get_error_help, get_error_location, get_error_message, print_error_with_context,
+};
 use cavvy::lexer;
 use cavvy::parser;
 use cavvy::preprocessor;
 use cavvy::semantic;
+use std::env;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process;
 
 /// 使用源映射打印错误信息
 fn print_error_with_source_map(
@@ -24,20 +26,26 @@ fn print_error_with_source_map(
             } else {
                 (source_path, line)
             };
-            
+
             // 尝试读取原始源文件
-            let (source_to_use, filename_to_use, line_to_use) = 
+            let (source_to_use, filename_to_use, line_to_use) =
                 if let Ok(file_content) = fs::read_to_string(orig_file) {
                     (file_content, orig_file, orig_line)
                 } else {
                     (processed_source.to_string(), source_path, line)
                 };
-            
-            print_error_with_location_fixed(error, &source_to_use, filename_to_use, line_to_use, column);
+
+            print_error_with_location_fixed(
+                error,
+                &source_to_use,
+                filename_to_use,
+                line_to_use,
+                column,
+            );
             return;
         }
     }
-    
+
     // 没有位置信息的错误，使用默认方式
     print_error_with_context(error, processed_source, source_path);
 }
@@ -52,21 +60,21 @@ fn print_error_with_location_fixed(
 ) {
     let message = get_error_message(error);
     let help = get_error_help(error);
-    
+
     // 使用 miette 风格格式
     eprintln!("\n  × {}", message);
     eprintln!("   ╭─[{}:{}:{}]", filename, line, column);
-    
+
     // 打印源代码上下文（前后3行）
     let lines: Vec<&str> = source.lines().collect();
     let start_line = line.saturating_sub(3).max(1);
     let end_line = (line + 2).min(lines.len());
-    
+
     for i in start_line..=end_line {
         if i <= lines.len() {
             let line_content = lines[i - 1];
             eprintln!("{:3} │ {}", i, line_content);
-            
+
             if i == line {
                 // 打印错误指示器
                 let prefix_len = column.saturating_sub(1);
@@ -75,23 +83,23 @@ fn print_error_with_location_fixed(
             }
         }
     }
-    
+
     eprintln!("   ╰────");
-    
+
     // 打印帮助信息
     if let Some(help_text) = help {
         if !help_text.is_empty() {
             eprintln!("  help: {}", help_text);
         }
     }
-    
+
     eprintln!();
 }
 
 /// 获取系统包含路径（caylibs目录）
 fn get_system_include_paths() -> Vec<PathBuf> {
     let mut paths = Vec::new();
-    
+
     // 1. 从可执行文件所在目录查找 caylibs
     if let Ok(exe_path) = env::current_exe() {
         if let Some(exe_dir) = exe_path.parent() {
@@ -101,13 +109,13 @@ fn get_system_include_paths() -> Vec<PathBuf> {
             }
         }
     }
-    
+
     // 2. 从当前工作目录查找 caylibs
     let cwd_caylibs = PathBuf::from("caylibs");
     if cwd_caylibs.exists() && !paths.contains(&cwd_caylibs) {
         paths.push(cwd_caylibs);
     }
-    
+
     paths
 }
 
@@ -216,12 +224,22 @@ fn main() {
 
     println!("Cavvy Check v{}", VERSION);
     println!("检查文件: {}", source_path);
-    println!("检查级别: {}", match options.level {
-        CheckLevel::LexOnly => "词法分析",
-        CheckLevel::ParseOnly => "语法分析",
-        CheckLevel::Full => "完整检查（预处理+词法+语法+语义）",
-    });
-    println!("预处理: {}", if options.preprocess { "启用" } else { "跳过" });
+    println!(
+        "检查级别: {}",
+        match options.level {
+            CheckLevel::LexOnly => "词法分析",
+            CheckLevel::ParseOnly => "语法分析",
+            CheckLevel::Full => "完整检查（预处理+词法+语法+语义）",
+        }
+    );
+    println!(
+        "预处理: {}",
+        if options.preprocess {
+            "启用"
+        } else {
+            "跳过"
+        }
+    );
     println!("");
 
     let source = match fs::read_to_string(&source_path) {
@@ -241,10 +259,10 @@ fn main() {
             .parent()
             .map(|p| p.to_path_buf())
             .unwrap_or_else(|| env::current_dir().unwrap_or_else(|_| Path::new(".").to_path_buf()));
-        
+
         // 获取系统包含路径
         let system_paths = get_system_include_paths();
-        
+
         // 使用带系统路径的预处理器（带源映射）
         let base_dir_str = base_dir.to_str().unwrap_or(".");
         let mut pp = if system_paths.is_empty() {
@@ -252,7 +270,7 @@ fn main() {
         } else {
             preprocessor::Preprocessor::with_include_paths(base_dir_str, system_paths)
         };
-        
+
         match pp.process_with_source_map(&source, &source_path) {
             Ok(result) => {
                 println!("  [+] 预处理通过");

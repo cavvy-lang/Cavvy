@@ -32,12 +32,14 @@ impl IRGenerator {
         // 检查空指针
         self.emit_raw("  %is_null = icmp eq i64 %ptr, 0");
         self.emit_raw("  br i1 %is_null, label %return_empty, label %process");
-        
+
         // 返回空字符串
         self.emit_raw("return_empty:");
-        self.emit_raw("  %empty_str = getelementptr [1 x i8], [1 x i8]* @.cay_empty_str, i64 0, i64 0");
+        self.emit_raw(
+            "  %empty_str = getelementptr [1 x i8], [1 x i8]* @.cay_empty_str, i64 0, i64 0",
+        );
         self.emit_raw("  ret i8* %empty_str");
-        
+
         // 处理字符串
         self.emit_raw("process:");
         // 将i64转换为i8*指针
@@ -47,7 +49,7 @@ impl IRGenerator {
         // 检查长度是否为0
         self.emit_raw("  %is_zero = icmp eq i64 %len, 0");
         self.emit_raw("  br i1 %is_zero, label %return_empty, label %alloc");
-        
+
         // 分配内存 (长度 + 1 for null terminator)
         self.emit_raw("alloc:");
         self.emit_raw("  %len_plus_1 = add i64 %len, 1");
@@ -55,7 +57,7 @@ impl IRGenerator {
         // 检查分配是否成功
         self.emit_raw("  %alloc_null = icmp eq i8* %new_ptr, null");
         self.emit_raw("  br i1 %alloc_null, label %return_empty, label %copy");
-        
+
         // 复制字符串
         self.emit_raw("copy:");
         self.emit_raw("  call void @llvm.memcpy.p0i8.p0i8.i64(i8* %new_ptr, i8* %str_ptr, i64 %len, i1 false)");

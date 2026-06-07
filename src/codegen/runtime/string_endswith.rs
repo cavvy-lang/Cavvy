@@ -35,7 +35,9 @@ impl IRGenerator {
         self.emit_raw("  ; 计算后缀在原串中的起始位置");
         self.emit_raw("  %start_offset = sub i64 %str_len, %suffix_len");
         self.emit_raw("  %start_ptr = getelementptr i8, i8* %str, i64 %start_offset");
-        self.emit_raw("  %cmp_result = call i32 @__cay_strncmp(i8* %start_ptr, i8* %suffix, i64 %suffix_len)");
+        self.emit_raw(
+            "  %cmp_result = call i32 @__cay_strncmp(i8* %start_ptr, i8* %suffix, i64 %suffix_len)",
+        );
         self.emit_raw("  %equal = icmp eq i32 %cmp_result, 0");
         self.emit_raw("  ret i1 %equal");
         self.emit_raw("}");

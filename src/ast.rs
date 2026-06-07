@@ -1,5 +1,5 @@
-use crate::types::{Type, ParameterInfo, ClassInfo, MethodInfo};
 use crate::error::SourceLocation;
+use crate::types::{ClassInfo, MethodInfo, ParameterInfo, Type};
 use std::fmt;
 use std::hash::{Hash, Hasher};
 
@@ -11,21 +11,21 @@ pub trait HasLocation {
 #[derive(Debug, Clone)]
 pub struct Program {
     pub classes: Vec<ClassDecl>,
-    pub structs: Vec<StructDecl>,              // 用户自定义 struct 声明
-    pub enums: Vec<EnumDecl>,                  // 用户自定义 enum 声明
+    pub structs: Vec<StructDecl>, // 用户自定义 struct 声明
+    pub enums: Vec<EnumDecl>,     // 用户自定义 enum 声明
     pub interfaces: Vec<InterfaceDecl>,
     pub top_level_functions: Vec<TopLevelFunction>,
-    pub extern_declarations: Vec<ExternDecl>,  // FFI extern 声明
-    pub type_aliases: Vec<TypeAliasDecl>,      // 类型别名声明 (type X = Y)
-    pub namespace_path: Option<Vec<String>>,   // 文件级 namespace 路径 (namespace std;)
-    pub namespace_decls: Vec<NamespaceDecl>,   // 块级 namespace 声明
-    pub using_decls: Vec<UsingDecl>,           // using 声明
+    pub extern_declarations: Vec<ExternDecl>, // FFI extern 声明
+    pub type_aliases: Vec<TypeAliasDecl>,     // 类型别名声明 (type X = Y)
+    pub namespace_path: Option<Vec<String>>,  // 文件级 namespace 路径 (namespace std;)
+    pub namespace_decls: Vec<NamespaceDecl>,  // 块级 namespace 声明
+    pub using_decls: Vec<UsingDecl>,          // using 声明
 }
 
 /// namespace 块级声明 - namespace std { ... }
 #[derive(Debug, Clone)]
 pub struct NamespaceDecl {
-    pub path: Vec<String>,               // 命名空间路径，如 ["std", "io"]
+    pub path: Vec<String>, // 命名空间路径，如 ["std", "io"]
     pub classes: Vec<ClassDecl>,
     pub structs: Vec<StructDecl>,
     pub enums: Vec<EnumDecl>,
@@ -33,14 +33,14 @@ pub struct NamespaceDecl {
     pub top_level_functions: Vec<TopLevelFunction>,
     pub extern_declarations: Vec<ExternDecl>,
     pub type_aliases: Vec<TypeAliasDecl>,
-    pub nested_namespaces: Vec<NamespaceDecl>,  // 嵌套 namespace
+    pub nested_namespaces: Vec<NamespaceDecl>, // 嵌套 namespace
     pub loc: SourceLocation,
 }
 
 /// using 声明 - using std::StringBuilder;
 #[derive(Debug, Clone)]
 pub struct UsingDecl {
-    pub path: Vec<String>,  // 完整路径，如 ["std", "StringBuilder"]，最后一个元素是要导入的名字
+    pub path: Vec<String>, // 完整路径，如 ["std", "StringBuilder"]，最后一个元素是要导入的名字
     pub loc: SourceLocation,
 }
 
@@ -49,7 +49,7 @@ pub struct UsingDecl {
 pub struct TypeAliasDecl {
     pub name: String,
     pub target_type: Type,
-    pub namespace_path: Vec<String>,  // 所属命名空间路径
+    pub namespace_path: Vec<String>, // 所属命名空间路径
     pub loc: SourceLocation,
 }
 
@@ -61,24 +61,24 @@ pub struct TopLevelFunction {
     pub return_type: Type,
     pub params: Vec<ParameterInfo>,
     pub body: Block,
-    pub namespace_path: Vec<String>,  // 所属命名空间路径
+    pub namespace_path: Vec<String>, // 所属命名空间路径
     pub loc: SourceLocation,
 }
 
 /// Extern 声明 - FFI 外部函数声明
 #[derive(Debug, Clone)]
 pub struct ExternDecl {
-    pub calling_convention: CallingConvention,  // 调用约定
-    pub functions: Vec<ExternFunction>,         // 声明的函数列表
-    pub namespace_path: Vec<String>,            // 所属命名空间路径
+    pub calling_convention: CallingConvention, // 调用约定
+    pub functions: Vec<ExternFunction>,        // 声明的函数列表
+    pub namespace_path: Vec<String>,           // 所属命名空间路径
     pub loc: SourceLocation,
 }
 
 /// 外部函数声明
 #[derive(Debug, Clone)]
 pub struct ExternFunction {
-    pub name: String,           // 外部C函数名
-    pub alias: Option<String>,  // 别名（用于Cavvy代码中调用）
+    pub name: String,          // 外部C函数名
+    pub alias: Option<String>, // 别名（用于Cavvy代码中调用）
     pub return_type: Type,
     pub params: Vec<ParameterInfo>,
     pub loc: SourceLocation,
@@ -87,11 +87,11 @@ pub struct ExternFunction {
 /// 调用约定
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CallingConvention {
-    Cdecl,      // 默认 C 调用约定
-    Stdcall,    // Windows stdcall
-    Fastcall,   // fastcall
-    Sysv64,     // System V AMD64 ABI (Linux/macOS)
-    Win64,      // Windows x64 calling convention
+    Cdecl,    // 默认 C 调用约定
+    Stdcall,  // Windows stdcall
+    Fastcall, // fastcall
+    Sysv64,   // System V AMD64 ABI (Linux/macOS)
+    Win64,    // Windows x64 calling convention
 }
 
 #[derive(Debug, Clone)]
@@ -99,7 +99,7 @@ pub struct InterfaceDecl {
     pub name: String,
     pub modifiers: Vec<Modifier>,
     pub methods: Vec<MethodDecl>,
-    pub namespace_path: Vec<String>,  // 所属命名空间路径
+    pub namespace_path: Vec<String>, // 所属命名空间路径
     pub loc: SourceLocation,
 }
 
@@ -111,7 +111,7 @@ pub struct StructDecl {
     pub modifiers: Vec<Modifier>,
     pub fields: Vec<FieldDecl>,
     pub methods: Vec<MethodDecl>,
-    pub namespace_path: Vec<String>,  // 所属命名空间路径
+    pub namespace_path: Vec<String>, // 所属命名空间路径
     pub loc: SourceLocation,
 }
 
@@ -121,9 +121,9 @@ pub struct StructDecl {
 pub struct EnumDecl {
     pub name: String,
     pub modifiers: Vec<Modifier>,
-    pub type_params: Vec<String>,          // 泛型类型参数：["T"]
+    pub type_params: Vec<String>, // 泛型类型参数：["T"]
     pub variants: Vec<EnumVariant>,
-    pub namespace_path: Vec<String>,       // 所属命名空间路径
+    pub namespace_path: Vec<String>, // 所属命名空间路径
     pub loc: SourceLocation,
 }
 
@@ -131,7 +131,7 @@ pub struct EnumDecl {
 #[derive(Debug, Clone)]
 pub struct EnumVariant {
     pub name: String,
-    pub payload_type: Option<Type>,    // variant 携带的数据类型
+    pub payload_type: Option<Type>, // variant 携带的数据类型
     pub loc: SourceLocation,
 }
 
@@ -139,11 +139,11 @@ pub struct EnumVariant {
 pub struct ClassDecl {
     pub name: String,
     pub modifiers: Vec<Modifier>,
-    pub type_params: Vec<String>,      // 泛型类型参数: <T, U, ...>
+    pub type_params: Vec<String>, // 泛型类型参数: <T, U, ...>
     pub parent: Option<String>,
-    pub interfaces: Vec<String>,  // 实现的接口列表
+    pub interfaces: Vec<String>, // 实现的接口列表
     pub members: Vec<ClassMember>,
-    pub namespace_path: Vec<String>,  // 所属命名空间路径
+    pub namespace_path: Vec<String>, // 所属命名空间路径
     pub loc: SourceLocation,
 }
 
@@ -153,8 +153,8 @@ pub enum ClassMember {
     Field(FieldDecl),
     Constructor(ConstructorDecl),
     Destructor(DestructorDecl),
-    InstanceInitializer(Block),  // 实例初始化块 { ... }
-    StaticInitializer(Block),    // 静态初始化块 static { ... }
+    InstanceInitializer(Block), // 实例初始化块 { ... }
+    StaticInitializer(Block),   // 静态初始化块 static { ... }
 }
 
 #[derive(Debug, Clone)]
@@ -189,8 +189,8 @@ pub struct ConstructorDecl {
 /// 构造函数调用（this() 或 super()）
 #[derive(Debug, Clone)]
 pub enum ConstructorCall {
-    This(Vec<Expr>),   // this(args)
-    Super(Vec<Expr>),  // super(args)
+    This(Vec<Expr>),  // this(args)
+    Super(Vec<Expr>), // super(args)
 }
 
 /// 析构函数声明
@@ -210,10 +210,10 @@ pub enum Modifier {
     Final,
     Abstract,
     Native,
-    Main,      // 标记主类，用于解决多main冲突
-    Override,  // @Override 注解，标记方法重写
-    Test,      // @Test 注解，标记测试方法
-    FreeFunction,  // @FreeFunction 注解，将类方法导出为可直接调用的顶层函数
+    Main,         // 标记主类，用于解决多main冲突
+    Override,     // @Override 注解，标记方法重写
+    Test,         // @Test 注解，标记测试方法
+    FreeFunction, // @FreeFunction 注解，将类方法导出为可直接调用的顶层函数
 }
 
 #[derive(Debug, Clone)]
@@ -233,16 +233,16 @@ pub enum Stmt {
     DoWhile(DoWhileStmt),
     Switch(SwitchStmt),
     Block(Block),
-    Scope(ScopeStmt),  // 0.5.0.0: scope 栈分配块
-    Break(Option<String>, SourceLocation),  // 可选的标签 + 源码位置
-    Continue(Option<String>, SourceLocation),  // 可选的标签 + 源码位置
-    InlineIr(InlineIrStmt),  // 内联IR语句块
+    Scope(ScopeStmt),                         // 0.5.0.0: scope 栈分配块
+    Break(Option<String>, SourceLocation),    // 可选的标签 + 源码位置
+    Continue(Option<String>, SourceLocation), // 可选的标签 + 源码位置
+    InlineIr(InlineIrStmt),                   // 内联IR语句块
 }
 
 /// 内联IR语句 - __ir { ... }
 #[derive(Debug, Clone)]
 pub struct InlineIrStmt {
-    pub raw_lines: Vec<String>,  // IR文本行
+    pub raw_lines: Vec<String>, // IR文本行
     pub loc: SourceLocation,
 }
 
@@ -302,7 +302,10 @@ pub struct DoWhileStmt {
 #[derive(Debug, Clone)]
 pub enum CaseValue {
     Integer(i64),
-    EnumVariant { enum_name: String, variant_name: String },
+    EnumVariant {
+        enum_name: String,
+        variant_name: String,
+    },
 }
 
 impl CaseValue {
@@ -317,9 +320,10 @@ impl CaseValue {
     /// 获取enum variant信息（如果是EnumVariant变体）
     pub fn as_enum_variant(&self) -> Option<(&str, &str)> {
         match self {
-            CaseValue::EnumVariant { enum_name, variant_name } => {
-                Some((enum_name.as_str(), variant_name.as_str()))
-            }
+            CaseValue::EnumVariant {
+                enum_name,
+                variant_name,
+            } => Some((enum_name.as_str(), variant_name.as_str())),
             _ => None,
         }
     }
@@ -329,7 +333,10 @@ impl fmt::Display for CaseValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             CaseValue::Integer(v) => write!(f, "{}", v),
-            CaseValue::EnumVariant { enum_name, variant_name } => {
+            CaseValue::EnumVariant {
+                enum_name,
+                variant_name,
+            } => {
                 write!(f, "{}.{}", enum_name, variant_name)
             }
         }
@@ -374,14 +381,14 @@ pub enum Expr {
     Cast(CastExpr),
     ArrayCreation(ArrayCreationExpr),
     ArrayAccess(ArrayAccessExpr),
-    ArrayInit(ArrayInitExpr),  // 数组初始化: {1, 2, 3}
-    MethodRef(MethodRefExpr),  // 方法引用: ClassName::methodName
-    Lambda(LambdaExpr),        // Lambda 表达式: (params) -> { body }
-    Ternary(TernaryExpr),      // 三元运算符: condition ? true_expr : false_expr
+    ArrayInit(ArrayInitExpr),   // 数组初始化: {1, 2, 3}
+    MethodRef(MethodRefExpr),   // 方法引用: ClassName::methodName
+    Lambda(LambdaExpr),         // Lambda 表达式: (params) -> { body }
+    Ternary(TernaryExpr),       // 三元运算符: condition ? true_expr : false_expr
     InstanceOf(InstanceOfExpr), // instanceof 运算符: obj instanceof Type
-    Alloc(AllocExpr),          // 0.5.0.0: 内存分配表达式: __cay_alloc(size)
-    Dealloc(DeallocExpr),      // 0.5.0.0: 内存释放表达式: __cay_free(ptr)
-    NamedArg(NamedArgExpr),    // 命名参数: name=value
+    Alloc(AllocExpr),           // 0.5.0.0: 内存分配表达式: __cay_alloc(size)
+    Dealloc(DeallocExpr),       // 0.5.0.0: 内存释放表达式: __cay_free(ptr)
+    NamedArg(NamedArgExpr),     // 命名参数: name=value
 }
 
 impl HasLocation for Expr {
@@ -535,8 +542,8 @@ pub enum UnaryOp {
     PreDec,
     PostInc,
     PostDec,
-    AddressOf,  // &variable - 取地址
-    Deref,      // *pointer - 解引用
+    AddressOf, // &variable - 取地址
+    Deref,     // *pointer - 解引用
 }
 
 #[derive(Debug, Clone)]
@@ -589,8 +596,8 @@ pub struct CastExpr {
 #[derive(Debug, Clone)]
 pub struct ArrayCreationExpr {
     pub element_type: Type,
-    pub sizes: Vec<Expr>,  // 支持多维数组，每个维度的大小
-    pub zero_init: bool,   // 是否零初始化 new Type[size]()
+    pub sizes: Vec<Expr>, // 支持多维数组，每个维度的大小
+    pub zero_init: bool,  // 是否零初始化 new Type[size]()
     pub loc: SourceLocation,
 }
 
@@ -612,8 +619,8 @@ pub struct ArrayAccessExpr {
 /// 方法引用表达式: ClassName::methodName 或 obj::methodName
 #[derive(Debug, Clone)]
 pub struct MethodRefExpr {
-    pub class_name: Option<String>,  // 类名（静态方法引用）
-    pub object: Option<Box<Expr>>,   // 对象表达式（实例方法引用）
+    pub class_name: Option<String>, // 类名（静态方法引用）
+    pub object: Option<Box<Expr>>,  // 对象表达式（实例方法引用）
     pub method_name: String,
     pub loc: SourceLocation,
 }
@@ -630,14 +637,14 @@ pub struct LambdaExpr {
 #[derive(Debug, Clone)]
 pub struct LambdaParam {
     pub name: String,
-    pub param_type: Option<Type>,  // 可选的类型注解
+    pub param_type: Option<Type>, // 可选的类型注解
 }
 
 /// Lambda 体（可以是表达式或语句块）
 #[derive(Debug, Clone)]
 pub enum LambdaBody {
-    Expr(Box<Expr>),      // 单表达式: (x) -> x * 2
-    Block(Block),         // 语句块: (x) -> { return x * 2; }
+    Expr(Box<Expr>), // 单表达式: (x) -> x * 2
+    Block(Block),    // 语句块: (x) -> { return x * 2; }
 }
 
 /// 三元运算符表达式: condition ? true_expr : false_expr
@@ -753,12 +760,34 @@ impl Program {
                 } else {
                     full_path.clone()
                 };
-                flatten_ns(nested, &nested_parent_path, classes, structs, enums, interfaces, top_level_functions, extern_declarations, type_aliases, depth + 1);
+                flatten_ns(
+                    nested,
+                    &nested_parent_path,
+                    classes,
+                    structs,
+                    enums,
+                    interfaces,
+                    top_level_functions,
+                    extern_declarations,
+                    type_aliases,
+                    depth + 1,
+                );
             }
         }
 
         for (i, ns) in self.namespace_decls.iter().enumerate() {
-            flatten_ns(ns, &[], &mut classes, &mut structs, &mut enums, &mut interfaces, &mut top_level_functions, &mut extern_declarations, &mut type_aliases, 0);
+            flatten_ns(
+                ns,
+                &[],
+                &mut classes,
+                &mut structs,
+                &mut enums,
+                &mut interfaces,
+                &mut top_level_functions,
+                &mut extern_declarations,
+                &mut type_aliases,
+                0,
+            );
         }
 
         // 如果有文件级 namespace，设置给所有没有 namespace_path 的全局声明

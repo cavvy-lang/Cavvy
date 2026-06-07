@@ -2,8 +2,8 @@
 //!
 //! 处理语句块（带作用域管理）的代码生成。
 
-use crate::codegen::context::IRGenerator;
 use crate::ast::*;
+use crate::codegen::context::IRGenerator;
 use crate::error::cayResult;
 
 impl IRGenerator {

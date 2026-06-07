@@ -2,16 +2,16 @@
 //!
 //! 本模块将表达式解析拆分为多个子模块以提高可维护性。
 
-mod binary;
-mod unary;
-mod primary;
-mod postfix;
-mod lambda;
 mod assignment;
+mod binary;
+mod lambda;
+mod postfix;
+mod primary;
+mod unary;
 
-pub use binary::*;
-pub use unary::*;
-pub use primary::*;
-pub use postfix::*;
-pub use lambda::*;
 pub use assignment::*;
+pub use binary::*;
+pub use lambda::*;
+pub use postfix::*;
+pub use primary::*;
+pub use unary::*;

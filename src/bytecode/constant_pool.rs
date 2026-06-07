@@ -186,7 +186,12 @@ impl ConstantPool {
     }
 
     /// 添加字段引用
-    pub fn add_field_ref(&mut self, class_name: &str, field_name: &str, descriptor: &str) -> ConstantIndex {
+    pub fn add_field_ref(
+        &mut self,
+        class_name: &str,
+        field_name: &str,
+        descriptor: &str,
+    ) -> ConstantIndex {
         let class_index = self.add_class(class_name);
         let name_and_type_index = self.add_name_and_type(field_name, descriptor);
         self.add(Constant::FieldRef {
@@ -196,7 +201,12 @@ impl ConstantPool {
     }
 
     /// 添加方法引用
-    pub fn add_method_ref(&mut self, class_name: &str, method_name: &str, descriptor: &str) -> ConstantIndex {
+    pub fn add_method_ref(
+        &mut self,
+        class_name: &str,
+        method_name: &str,
+        descriptor: &str,
+    ) -> ConstantIndex {
         let class_index = self.add_class(class_name);
         let name_and_type_index = self.add_name_and_type(method_name, descriptor);
         self.add(Constant::MethodRef {
@@ -206,7 +216,12 @@ impl ConstantPool {
     }
 
     /// 添加接口方法引用
-    pub fn add_interface_method_ref(&mut self, interface_name: &str, method_name: &str, descriptor: &str) -> ConstantIndex {
+    pub fn add_interface_method_ref(
+        &mut self,
+        interface_name: &str,
+        method_name: &str,
+        descriptor: &str,
+    ) -> ConstantIndex {
         let class_index = self.add_class(interface_name);
         let name_and_type_index = self.add_name_and_type(method_name, descriptor);
         self.add(Constant::InterfaceMethodRef {
@@ -241,9 +256,7 @@ impl ConstantPool {
     /// 获取字符串（解析String常量的UTF8内容）
     pub fn get_string(&self, index: ConstantIndex) -> Option<String> {
         match self.get(index) {
-            Some(Constant::String(utf8_index)) => {
-                self.get_utf8(*utf8_index).map(|s| s.to_string())
-            }
+            Some(Constant::String(utf8_index)) => self.get_utf8(*utf8_index).map(|s| s.to_string()),
             Some(Constant::Utf8(s)) => Some(s.clone()),
             _ => None,
         }
@@ -340,27 +353,42 @@ impl ConstantPool {
                 bytes.push(ConstantTag::Class.to_byte());
                 bytes.extend_from_slice(&name_index.to_le_bytes());
             }
-            Constant::FieldRef { class_index, name_and_type_index } => {
+            Constant::FieldRef {
+                class_index,
+                name_and_type_index,
+            } => {
                 bytes.push(ConstantTag::FieldRef.to_byte());
                 bytes.extend_from_slice(&class_index.to_le_bytes());
                 bytes.extend_from_slice(&name_and_type_index.to_le_bytes());
             }
-            Constant::MethodRef { class_index, name_and_type_index } => {
+            Constant::MethodRef {
+                class_index,
+                name_and_type_index,
+            } => {
                 bytes.push(ConstantTag::MethodRef.to_byte());
                 bytes.extend_from_slice(&class_index.to_le_bytes());
                 bytes.extend_from_slice(&name_and_type_index.to_le_bytes());
             }
-            Constant::InterfaceMethodRef { class_index, name_and_type_index } => {
+            Constant::InterfaceMethodRef {
+                class_index,
+                name_and_type_index,
+            } => {
                 bytes.push(ConstantTag::InterfaceMethodRef.to_byte());
                 bytes.extend_from_slice(&class_index.to_le_bytes());
                 bytes.extend_from_slice(&name_and_type_index.to_le_bytes());
             }
-            Constant::NameAndType { name_index, descriptor_index } => {
+            Constant::NameAndType {
+                name_index,
+                descriptor_index,
+            } => {
                 bytes.push(ConstantTag::NameAndType.to_byte());
                 bytes.extend_from_slice(&name_index.to_le_bytes());
                 bytes.extend_from_slice(&descriptor_index.to_le_bytes());
             }
-            Constant::MethodHandle { reference_kind, reference_index } => {
+            Constant::MethodHandle {
+                reference_kind,
+                reference_index,
+            } => {
                 bytes.push(ConstantTag::MethodHandle.to_byte());
                 bytes.push(*reference_kind);
                 bytes.extend_from_slice(&reference_index.to_le_bytes());
@@ -369,7 +397,10 @@ impl ConstantPool {
                 bytes.push(ConstantTag::MethodType.to_byte());
                 bytes.extend_from_slice(&descriptor_index.to_le_bytes());
             }
-            Constant::InvokeDynamic { bootstrap_method_attr_index, name_and_type_index } => {
+            Constant::InvokeDynamic {
+                bootstrap_method_attr_index,
+                name_and_type_index,
+            } => {
                 bytes.push(ConstantTag::InvokeDynamic.to_byte());
                 bytes.extend_from_slice(&bootstrap_method_attr_index.to_le_bytes());
                 bytes.extend_from_slice(&name_and_type_index.to_le_bytes());
@@ -513,27 +544,39 @@ impl ConstantPool {
                     return None;
                 }
                 let class_index = u16::from_le_bytes([bytes[*offset], bytes[*offset + 1]]);
-                let name_and_type_index = u16::from_le_bytes([bytes[*offset + 2], bytes[*offset + 3]]);
+                let name_and_type_index =
+                    u16::from_le_bytes([bytes[*offset + 2], bytes[*offset + 3]]);
                 *offset += 4;
-                Some(Constant::FieldRef { class_index, name_and_type_index })
+                Some(Constant::FieldRef {
+                    class_index,
+                    name_and_type_index,
+                })
             }
             ConstantTag::MethodRef => {
                 if *offset + 4 > bytes.len() {
                     return None;
                 }
                 let class_index = u16::from_le_bytes([bytes[*offset], bytes[*offset + 1]]);
-                let name_and_type_index = u16::from_le_bytes([bytes[*offset + 2], bytes[*offset + 3]]);
+                let name_and_type_index =
+                    u16::from_le_bytes([bytes[*offset + 2], bytes[*offset + 3]]);
                 *offset += 4;
-                Some(Constant::MethodRef { class_index, name_and_type_index })
+                Some(Constant::MethodRef {
+                    class_index,
+                    name_and_type_index,
+                })
             }
             ConstantTag::InterfaceMethodRef => {
                 if *offset + 4 > bytes.len() {
                     return None;
                 }
                 let class_index = u16::from_le_bytes([bytes[*offset], bytes[*offset + 1]]);
-                let name_and_type_index = u16::from_le_bytes([bytes[*offset + 2], bytes[*offset + 3]]);
+                let name_and_type_index =
+                    u16::from_le_bytes([bytes[*offset + 2], bytes[*offset + 3]]);
                 *offset += 4;
-                Some(Constant::InterfaceMethodRef { class_index, name_and_type_index })
+                Some(Constant::InterfaceMethodRef {
+                    class_index,
+                    name_and_type_index,
+                })
             }
             ConstantTag::NameAndType => {
                 if *offset + 4 > bytes.len() {
@@ -542,7 +585,10 @@ impl ConstantPool {
                 let name_index = u16::from_le_bytes([bytes[*offset], bytes[*offset + 1]]);
                 let descriptor_index = u16::from_le_bytes([bytes[*offset + 2], bytes[*offset + 3]]);
                 *offset += 4;
-                Some(Constant::NameAndType { name_index, descriptor_index })
+                Some(Constant::NameAndType {
+                    name_index,
+                    descriptor_index,
+                })
             }
             ConstantTag::MethodHandle => {
                 if *offset + 3 > bytes.len() {
@@ -551,7 +597,10 @@ impl ConstantPool {
                 let reference_kind = bytes[*offset];
                 let reference_index = u16::from_le_bytes([bytes[*offset + 1], bytes[*offset + 2]]);
                 *offset += 3;
-                Some(Constant::MethodHandle { reference_kind, reference_index })
+                Some(Constant::MethodHandle {
+                    reference_kind,
+                    reference_index,
+                })
             }
             ConstantTag::MethodType => {
                 if *offset + 2 > bytes.len() {
@@ -565,10 +614,15 @@ impl ConstantPool {
                 if *offset + 4 > bytes.len() {
                     return None;
                 }
-                let bootstrap_method_attr_index = u16::from_le_bytes([bytes[*offset], bytes[*offset + 1]]);
-                let name_and_type_index = u16::from_le_bytes([bytes[*offset + 2], bytes[*offset + 3]]);
+                let bootstrap_method_attr_index =
+                    u16::from_le_bytes([bytes[*offset], bytes[*offset + 1]]);
+                let name_and_type_index =
+                    u16::from_le_bytes([bytes[*offset + 2], bytes[*offset + 3]]);
                 *offset += 4;
-                Some(Constant::InvokeDynamic { bootstrap_method_attr_index, name_and_type_index })
+                Some(Constant::InvokeDynamic {
+                    bootstrap_method_attr_index,
+                    name_and_type_index,
+                })
             }
             ConstantTag::Module => {
                 if *offset + 2 > bytes.len() {

@@ -54,28 +54,28 @@ impl IRGenerator {
     /// * 空间: O(d)，其中 d 是作用域嵌套深度
     pub fn generate_scope(&mut self, stmt: &ScopeStmt) -> cayResult<()> {
         let scope_id = self.new_temp().replace("%", "");
-        
+
         // 生成 scope 入口标签（用于调试和可读性）
         self.emit_line(&format!("; ====== scope {} start ======", scope_id));
-        
+
         // 在 scope 开始时创建一个新的作用域层级
         // 这使得 scope 内部声明的变量不会与外部冲突
         self.scope_manager.enter_scope();
-        
+
         // 生成 scope 体内的所有语句
         for statement in &stmt.body.statements {
             self.generate_statement(statement)?;
         }
-        
+
         // scope 结束时，生成清理代码
         // 注意：对于栈分配（alloca），实际上不需要显式释放
         // LLVM 在函数返回时自动清理所有 alloca
         // 但为了完整性，我们记录 scope 的结束
         self.emit_line(&format!("; ====== scope {} end ======", scope_id));
-        
+
         // 弹出 scope 层级
         self.scope_manager.exit_scope();
-        
+
         Ok(())
     }
 }
@@ -83,7 +83,7 @@ impl IRGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{Block, Stmt, ScopeStmt};
+    use crate::ast::{Block, ScopeStmt, Stmt};
     use crate::error::SourceLocation;
 
     /// 测试 scope 代码生成的基本结构
@@ -91,15 +91,23 @@ mod tests {
     fn test_scope_codegen_structure() {
         // 这个测试验证 scope 语句能生成正确的代码结构
         // 实际测试需要完整的 CodeGenerator 设置，这里只验证接口
-        
+
         let scope_stmt = ScopeStmt {
             body: Block {
                 statements: vec![],
-                loc: SourceLocation { file: None, line: 1, column: 1 },
+                loc: SourceLocation {
+                    file: None,
+                    line: 1,
+                    column: 1,
+                },
             },
-            loc: SourceLocation { file: None, line: 1, column: 1 },
+            loc: SourceLocation {
+                file: None,
+                line: 1,
+                column: 1,
+            },
         };
-        
+
         // 验证 ScopeStmt 结构正确
         assert!(scope_stmt.body.statements.is_empty());
     }
@@ -110,19 +118,35 @@ mod tests {
         let inner_scope = Stmt::Scope(ScopeStmt {
             body: Block {
                 statements: vec![],
-                loc: SourceLocation { file: None, line: 2, column: 5 },
+                loc: SourceLocation {
+                    file: None,
+                    line: 2,
+                    column: 5,
+                },
             },
-            loc: SourceLocation { file: None, line: 2, column: 5 },
+            loc: SourceLocation {
+                file: None,
+                line: 2,
+                column: 5,
+            },
         });
-        
+
         let outer_scope = ScopeStmt {
             body: Block {
                 statements: vec![inner_scope],
-                loc: SourceLocation { file: None, line: 1, column: 1 },
+                loc: SourceLocation {
+                    file: None,
+                    line: 1,
+                    column: 1,
+                },
             },
-            loc: SourceLocation { file: None, line: 1, column: 1 },
+            loc: SourceLocation {
+                file: None,
+                line: 1,
+                column: 1,
+            },
         };
-        
+
         // 验证嵌套结构
         assert_eq!(outer_scope.body.statements.len(), 1);
     }

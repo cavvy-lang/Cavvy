@@ -1,6 +1,5 @@
 /// 字节码混淆器
 /// 提供多种混淆技术来保护字节码，防止逆向工程
-
 use super::*;
 use std::collections::HashMap;
 
@@ -116,15 +115,28 @@ impl BytecodeObfuscator {
         }
 
         // 更新常量池中的名称
-            self.update_names_in_constant_pool(&module.constant_pool);
+        self.update_names_in_constant_pool(&module.constant_pool);
     }
 
     /// 检查是否为系统保留名称
     fn is_system_name(&self, name: &str) -> bool {
         let system_names = [
-            "main", "print", "println", "readInt", "readFloat", "readLine",
-            "String", "int", "long", "float", "double", "boolean", "char",
-            "void", "Object", "Class",
+            "main",
+            "print",
+            "println",
+            "readInt",
+            "readFloat",
+            "readLine",
+            "String",
+            "int",
+            "long",
+            "float",
+            "double",
+            "boolean",
+            "char",
+            "void",
+            "Object",
+            "Class",
         ];
         system_names.contains(&name)
     }
@@ -138,7 +150,8 @@ impl BytecodeObfuscator {
         // 生成混淆名称：使用_0x前缀的十六进制编码
         let obfuscated = format!("_0x{:08x}", self.counter);
         self.counter += 1;
-        self.name_mapping.insert(original.to_string(), obfuscated.clone());
+        self.name_mapping
+            .insert(original.to_string(), obfuscated.clone());
         obfuscated
     }
 
@@ -150,7 +163,7 @@ impl BytecodeObfuscator {
         if self.name_mapping.is_empty() {
             return;
         }
-        
+
         // 记录混淆映射信息到元数据
         // 实际的常量池修改需要在序列化阶段进行
         for (original, obfuscated) in &self.name_mapping {
@@ -192,9 +205,18 @@ impl BytecodeObfuscator {
 
             // 在条件跳转前插入不透明谓词
             match instr.opcode {
-                Opcode::Ifeq | Opcode::Ifne | Opcode::Iflt | Opcode::Ifge |
-                Opcode::Ifgt | Opcode::Ifle | Opcode::IfIcmpeq | Opcode::IfIcmpne |
-                Opcode::IfIcmplt | Opcode::IfIcmpge | Opcode::IfIcmpgt | Opcode::IfIcmple => {
+                Opcode::Ifeq
+                | Opcode::Ifne
+                | Opcode::Iflt
+                | Opcode::Ifge
+                | Opcode::Ifgt
+                | Opcode::Ifle
+                | Opcode::IfIcmpeq
+                | Opcode::IfIcmpne
+                | Opcode::IfIcmplt
+                | Opcode::IfIcmpge
+                | Opcode::IfIcmpgt
+                | Opcode::IfIcmple => {
                     // 插入不透明谓词：总是为真的条件
                     // 例如：(x * x) >= 0 对于所有整数x都成立
                     new_instructions.push(Instruction::iconst(0));
@@ -263,19 +285,19 @@ impl BytecodeObfuscator {
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
-                .as_nanos() as u64
+                .as_nanos() as u64,
         );
-        
+
         // 生成多字节密钥（更安全）
         let key_len = 8;
         let mut key = Vec::with_capacity(key_len);
         for _ in 0..key_len {
             key.push((rng.next() % 256) as u8);
         }
-        
+
         // 将加密密钥存入元数据
         module.metadata.insert("__str_enc_key".to_string(), key);
-        
+
         // 标记字符串已加密
         module.metadata.insert("__str_enc".to_string(), vec![1]);
     }
@@ -287,8 +309,14 @@ impl BytecodeObfuscator {
 
         // 使用哈希值作为排序键
         module.functions.sort_by(|a, b| {
-            let name_a = module.constant_pool.get_string(a.name_index).unwrap_or_default();
-            let name_b = module.constant_pool.get_string(b.name_index).unwrap_or_default();
+            let name_a = module
+                .constant_pool
+                .get_string(a.name_index)
+                .unwrap_or_default();
+            let name_b = module
+                .constant_pool
+                .get_string(b.name_index)
+                .unwrap_or_default();
 
             let mut hasher_a = DefaultHasher::new();
             name_a.hash(&mut hasher_a);

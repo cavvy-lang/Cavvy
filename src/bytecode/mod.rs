@@ -1,13 +1,13 @@
-pub mod instructions;
 pub mod constant_pool;
-pub mod serializer;
-pub mod obfuscator;
+pub mod instructions;
 pub mod jit;
 pub mod linker;
+pub mod obfuscator;
+pub mod serializer;
 
-use std::collections::HashMap;
-use instructions::*;
 use constant_pool::*;
+use instructions::*;
+use std::collections::HashMap;
 
 /// Cavvy字节码文件魔数
 pub const CAYBC_MAGIC: &[u8; 4] = b"CAY\x01";
@@ -245,7 +245,8 @@ impl BytecodeModule {
     /// 查找函数
     pub fn find_function(&self, name: &str) -> Option<&FunctionDefinition> {
         self.functions.iter().find(|f| {
-            self.constant_pool.get_string(f.name_index)
+            self.constant_pool
+                .get_string(f.name_index)
                 .map(|s| s == name)
                 .unwrap_or(false)
         })
@@ -254,7 +255,8 @@ impl BytecodeModule {
     /// 查找类型定义
     pub fn find_type(&self, name: &str) -> Option<&TypeDefinition> {
         self.type_definitions.iter().find(|t| {
-            self.constant_pool.get_string(t.name_index)
+            self.constant_pool
+                .get_string(t.name_index)
                 .map(|s| s == name)
                 .unwrap_or(false)
         })
@@ -270,9 +272,6 @@ impl BytecodeModule {
 
 impl Default for BytecodeModule {
     fn default() -> Self {
-        Self::new(
-            "unnamed".to_string(),
-            "unknown".to_string(),
-        )
+        Self::new("unnamed".to_string(), "unknown".to_string())
     }
 }

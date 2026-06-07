@@ -2,8 +2,8 @@
 //!
 //! 处理整数、浮点数、布尔、字符串、字符和 null 字面量。
 
-use crate::codegen::context::IRGenerator;
 use crate::ast::*;
+use crate::codegen::context::IRGenerator;
 use crate::error::cayResult;
 
 impl IRGenerator {
@@ -44,8 +44,10 @@ impl IRGenerator {
                 let global_name = self.get_or_create_string_constant(s);
                 let temp = self.new_temp();
                 let len = s.len() + 1;
-                self.emit_line(&format!("  {} = getelementptr [{} x i8], [{} x i8]* {}, i64 0, i64 0",
-                    temp, len, len, global_name));
+                self.emit_line(&format!(
+                    "  {} = getelementptr [{} x i8], [{} x i8]* {}, i64 0, i64 0",
+                    temp, len, len, global_name
+                ));
                 Ok(format!("i8* {}", temp))
             }
             LiteralValue::Char(c) => Ok(format!("i8 {}", *c as u8)),

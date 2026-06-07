@@ -83,10 +83,7 @@ pub enum LexerError {
     },
 
     #[error("未闭合的字符串字面量")]
-    #[diagnostic(
-        code(lexer::unterminated_string),
-        help("请在字符串末尾添加双引号")
-    )]
+    #[diagnostic(code(lexer::unterminated_string), help("请在字符串末尾添加双引号"))]
     UnterminatedString {
         #[source_code]
         src: NamedSource<String>,
@@ -173,10 +170,7 @@ pub enum ParserError {
     },
 
     #[error("缺少分号")]
-    #[diagnostic(
-        code(parser::missing_semicolon),
-        help("在语句末尾添加分号 ';'")
-    )]
+    #[diagnostic(code(parser::missing_semicolon), help("在语句末尾添加分号 ';'"))]
     MissingSemicolon {
         #[source_code]
         src: NamedSource<String>,
@@ -197,10 +191,7 @@ pub enum ParserError {
     },
 
     #[error("未闭合的括号")]
-    #[diagnostic(
-        code(parser::unmatched_brace),
-        help("确保所有括号都正确配对")
-    )]
+    #[diagnostic(code(parser::unmatched_brace), help("确保所有括号都正确配对"))]
     UnmatchedBrace {
         brace: char,
         #[source_code]
@@ -266,10 +257,7 @@ pub enum SemanticError {
     },
 
     #[error("类型不匹配: 期望 {expected}，但找到 {found}")]
-    #[diagnostic(
-        code(semantic::type_mismatch),
-        help("确保类型兼容或进行显式转换")
-    )]
+    #[diagnostic(code(semantic::type_mismatch), help("确保类型兼容或进行显式转换"))]
     TypeMismatch {
         expected: String,
         found: String,
@@ -330,7 +318,13 @@ pub enum SemanticError {
 
 impl SemanticError {
     /// 创建未定义标识符错误
-    pub fn undefined_identifier(name: &str, source: &str, source_name: &str, offset: usize, len: usize) -> Self {
+    pub fn undefined_identifier(
+        name: &str,
+        source: &str,
+        source_name: &str,
+        offset: usize,
+        len: usize,
+    ) -> Self {
         Self::UndefinedIdentifier {
             name: name.to_string(),
             src: NamedSource::new(source_name, source.to_string()),
@@ -360,10 +354,7 @@ impl SemanticError {
 #[derive(Error, Debug, Diagnostic)]
 pub enum CodeGenError {
     #[error("不支持的特性: {feature}")]
-    #[diagnostic(
-        code(codegen::unsupported_feature),
-        help("该特性在当前版本中不受支持")
-    )]
+    #[diagnostic(code(codegen::unsupported_feature), help("该特性在当前版本中不受支持"))]
     UnsupportedFeature {
         feature: String,
         #[source_code]
@@ -390,12 +381,12 @@ pub type Result<T> = miette::Result<T>;
 pub fn line_col_to_offset(source: &str, line: usize, column: usize) -> usize {
     let mut current_line = 1;
     let mut current_col = 1;
-    
+
     for (offset, ch) in source.char_indices() {
         if current_line == line && current_col == column {
             return offset;
         }
-        
+
         if ch == '\n' {
             current_line += 1;
             current_col = 1;
@@ -403,14 +394,14 @@ pub fn line_col_to_offset(source: &str, line: usize, column: usize) -> usize {
             current_col += 1;
         }
     }
-    
+
     source.len()
 }
 
 /// 计算行的字节偏移范围
 pub fn line_range(source: &str, line: usize) -> (usize, usize) {
     let mut current_line = 1;
-    
+
     for (offset, ch) in source.char_indices() {
         if current_line == line {
             // 找到行尾
@@ -421,12 +412,12 @@ pub fn line_range(source: &str, line: usize) -> (usize, usize) {
             }
             return (offset, source.len());
         }
-        
+
         if ch == '\n' {
             current_line += 1;
         }
     }
-    
+
     (source.len(), source.len())
 }
 

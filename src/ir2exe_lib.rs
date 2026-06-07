@@ -3,11 +3,11 @@
 //! 该模块提供将 LLVM IR 编译为可执行文件的功能，
 //! 被 cayc 和 ir2exe 共享使用。
 
-use std::env;
-use std::path::{Path, PathBuf, Component};
-use std::process;
-use crate::error::{print_miette_error, print_tool_error, print_warning};
 use crate::embedded_llc::{self, EmbeddedLlcOptions};
+use crate::error::{print_miette_error, print_tool_error, print_warning};
+use std::env;
+use std::path::{Component, Path, PathBuf};
+use std::process;
 
 /// 源位置信息
 #[derive(Debug, Clone)]
@@ -31,7 +31,8 @@ impl IRSourceMap {
     }
 
     pub fn add_mapping(&mut self, ir_line: usize, file: String, line: usize, column: usize) {
-        self.mappings.insert(ir_line, SourcePosition { file, line, column });
+        self.mappings
+            .insert(ir_line, SourcePosition { file, line, column });
     }
 
     pub fn get_source_position(&self, ir_line: usize) -> Option<&SourcePosition> {
@@ -39,18 +40,18 @@ impl IRSourceMap {
         if let Some(pos) = self.mappings.get(&ir_line) {
             return Some(pos);
         }
-        
+
         // 如果没有精确匹配，查找最近的映射（小于或等于给定行号的最大映射）
         let mut closest_line = 0usize;
         let mut found = false;
-        
+
         for (&mapped_line, _) in &self.mappings {
             if mapped_line <= ir_line && mapped_line > closest_line {
                 closest_line = mapped_line;
                 found = true;
             }
         }
-        
+
         if found {
             self.mappings.get(&closest_line)
         } else {
@@ -67,11 +68,11 @@ pub fn parse_source_map_from_ir(ir_content: &str) -> IRSourceMap {
 
     for line in ir_content.lines() {
         current_line += 1;
-        
+
         // 检查是否是源映射注释
         if let Some(comment_start) = line.find("; !source ") {
             let comment = &line[comment_start + 10..]; // 跳过 "; !source "
-            
+
             // 解析格式: file:line:column
             // 处理Windows路径 (E:\path\file.cay:10:5) - 从后往前找冒号
             if let Some(last_colon) = comment.rfind(':') {
@@ -79,8 +80,10 @@ pub fn parse_source_map_from_ir(ir_content: &str) -> IRSourceMap {
                     let file = comment[..second_last_colon].to_string();
                     let line_str = &comment[second_last_colon + 1..last_colon];
                     let col_str = &comment[last_colon + 1..];
-                    
-                    if let (Ok(line_num), Ok(col_num)) = (line_str.parse::<usize>(), col_str.parse::<usize>()) {
+
+                    if let (Ok(line_num), Ok(col_num)) =
+                        (line_str.parse::<usize>(), col_str.parse::<usize>())
+                    {
                         source_map.add_mapping(current_line, file, line_num, col_num);
                     }
                 }
@@ -104,7 +107,7 @@ fn parse_clang_error_line(error_msg: &str) -> Option<usize> {
                 }
             }
         }
-        
+
         // 匹配 <stdin>: 格式
         if let Some(pos) = line.find("<stdin>:") {
             let rest = &line[pos + 8..];
@@ -123,14 +126,14 @@ fn parse_clang_error_line(error_msg: &str) -> Option<usize> {
 fn read_source_context(file_path: &str, line_num: usize, context_lines: usize) -> Option<String> {
     let content = std::fs::read_to_string(file_path).ok()?;
     let lines: Vec<&str> = content.lines().collect();
-    
+
     if line_num == 0 || line_num > lines.len() {
         return None;
     }
-    
+
     let start = line_num.saturating_sub(context_lines + 1);
     let end = (line_num + context_lines).min(lines.len());
-    
+
     let mut result = String::new();
     for i in start..end {
         let line_number = i + 1;
@@ -141,7 +144,7 @@ fn read_source_context(file_path: &str, line_num: usize, context_lines: usize) -
         };
         result.push_str(&format!("{}{:4} | {}\n", prefix, line_number, lines[i]));
     }
-    
+
     Some(result)
 }
 
@@ -150,28 +153,32 @@ pub fn remap_clang_error(error_msg: &str, source_map: &IRSourceMap, _ir_file_nam
     let mut result = String::new();
     let mut last_source_file: Option<String> = None;
     let mut last_source_line: Option<usize> = None;
-    
+
     for line in error_msg.lines() {
         // 尝试解析错误行号
         if let Some(ir_line) = parse_clang_error_line(line) {
             if let Some(source_pos) = source_map.get_source_position(ir_line) {
                 // 避免重复显示相同的源位置
-                let is_duplicate = last_source_file.as_ref() == Some(&source_pos.file) 
+                let is_duplicate = last_source_file.as_ref() == Some(&source_pos.file)
                     && last_source_line == Some(source_pos.line);
-                
+
                 if !is_duplicate {
                     // 添加源文件位置头
-                    result.push_str(&format!("\n  at {}:{}:{}\n", source_pos.file, source_pos.line, source_pos.column));
-                    
+                    result.push_str(&format!(
+                        "\n  at {}:{}:{}\n",
+                        source_pos.file, source_pos.line, source_pos.column
+                    ));
+
                     // 读取并显示源代码上下文
-                    if let Some(context) = read_source_context(&source_pos.file, source_pos.line, 2) {
+                    if let Some(context) = read_source_context(&source_pos.file, source_pos.line, 2)
+                    {
                         result.push_str(&context);
                     }
-                    
+
                     last_source_file = Some(source_pos.file.clone());
                     last_source_line = Some(source_pos.line);
                 }
-                
+
                 // 修改错误行，指向源文件
                 let modified_line = if line.contains("error:") {
                     if let Some(error_pos) = line.rfind("error:") {
@@ -190,24 +197,24 @@ pub fn remap_clang_error(error_msg: &str, source_map: &IRSourceMap, _ir_file_nam
                 } else {
                     format!("\n  {}", line)
                 };
-                
+
                 result.push_str(&modified_line);
                 continue;
             }
         }
-        
+
         // 对于代码指示行（如 "    |     ^"），跳过
         if line.trim().starts_with('|') || line.trim().starts_with('^') {
             continue;
         }
-        
+
         // 其他行
         if !line.trim().is_empty() {
             result.push('\n');
             result.push_str(line);
         }
     }
-    
+
     result.trim_end().to_string()
 }
 
@@ -222,7 +229,7 @@ pub fn add_clang_error_notice(remapped_error: &str) -> String {
 /// 规范化路径，去除 . 和 ..
 pub fn normalize_path(path: &Path) -> PathBuf {
     let mut components = Vec::new();
-    
+
     for component in path.components() {
         match component {
             Component::Prefix(prefix) => {
@@ -249,7 +256,7 @@ pub fn normalize_path(path: &Path) -> PathBuf {
             }
         }
     }
-    
+
     let mut result = PathBuf::new();
     for component in components {
         result.push(component.as_os_str());
@@ -290,7 +297,7 @@ pub fn find_clang() -> Result<PathBuf, String> {
             return Ok(PathBuf::from("clang"));
         }
     }
-    
+
     // 2. 尝试编译器所在目录或项目根目录下的 llvm-minimal
     if let Ok(exe_path) = env::current_exe() {
         if let Some(exe_dir) = exe_path.parent() {
@@ -301,7 +308,7 @@ pub fn find_clang() -> Result<PathBuf, String> {
             }
         }
     }
-    
+
     // 3. 都找不到，返回错误
     Err("找不到 clang 编译器。请确保 clang 已安装并在 PATH 中，或将 llvm-minimal 放在编译器同目录下。".to_string())
 }
@@ -314,7 +321,7 @@ pub fn find_llc() -> Result<PathBuf, String> {
             return Ok(PathBuf::from("llc"));
         }
     }
-    
+
     // 2. 尝试编译器所在目录或项目根目录下的 llvm-minimal
     if let Ok(exe_path) = env::current_exe() {
         if let Some(exe_dir) = exe_path.parent() {
@@ -323,7 +330,7 @@ pub fn find_llc() -> Result<PathBuf, String> {
             } else {
                 "llvm-minimal/bin-linux/llc"
             };
-            
+
             for path in get_llvm_minimal_paths(exe_dir, sub_path) {
                 if path.exists() {
                     return Ok(path);
@@ -331,7 +338,7 @@ pub fn find_llc() -> Result<PathBuf, String> {
             }
         }
     }
-    
+
     // 3. 都找不到，返回错误
     Err("找不到 llc (LLVM IR 编译器)。请确保 LLVM 已安装并在 PATH 中，或将 llvm-minimal 放在编译器同目录下。".to_string())
 }
@@ -339,17 +346,17 @@ pub fn find_llc() -> Result<PathBuf, String> {
 /// 获取可能的 llvm-minimal 路径列表
 pub fn get_llvm_minimal_paths(exe_dir: &Path, sub_path: &str) -> Vec<PathBuf> {
     let mut paths = Vec::new();
-    
+
     // 1. 编译器所在目录
     paths.push(exe_dir.join(sub_path));
-    
+
     // 2. 尝试向上查找项目根目录
     if let Some(parent) = exe_dir.parent() {
         if let Some(grandparent) = parent.parent() {
             paths.push(grandparent.join(sub_path));
         }
     }
-    
+
     paths
 }
 
@@ -380,13 +387,17 @@ pub fn find_lld_for_target(target: &str) -> Result<PathBuf, String> {
 /// 查找指定名称的 lld 链接器
 pub fn find_lld_linker(linker_name: &str) -> Result<PathBuf, String> {
     // 1. 首先尝试系统 PATH
-    let test_arg = if linker_name == "lld-link" { "/?" } else { "--version" };
+    let test_arg = if linker_name == "lld-link" {
+        "/?"
+    } else {
+        "--version"
+    };
     if let Ok(output) = process::Command::new(linker_name).arg(test_arg).output() {
         if output.status.code().is_some() {
             return Ok(PathBuf::from(linker_name));
         }
     }
-    
+
     // 2. 尝试编译器所在目录或项目根目录下的 llvm-minimal
     if let Ok(exe_path) = env::current_exe() {
         if let Some(exe_dir) = exe_path.parent() {
@@ -400,7 +411,7 @@ pub fn find_lld_linker(linker_name: &str) -> Result<PathBuf, String> {
             } else {
                 format!("llvm-minimal/bin-linux/{}", exe_name)
             };
-            
+
             for path in get_llvm_minimal_paths(exe_dir, &sub_path) {
                 if path.exists() {
                     return Ok(path);
@@ -408,9 +419,12 @@ pub fn find_lld_linker(linker_name: &str) -> Result<PathBuf, String> {
             }
         }
     }
-    
+
     // 3. 都找不到，返回错误
-    Err(format!("找不到 {} (LLVM 链接器)。请确保 LLVM 已安装并在 PATH 中，或将 llvm-minimal 放在编译器同目录下。", linker_name))
+    Err(format!(
+        "找不到 {} (LLVM 链接器)。请确保 LLVM 已安装并在 PATH 中，或将 llvm-minimal 放在编译器同目录下。",
+        linker_name
+    ))
 }
 
 /// 检测可用的工具链
@@ -422,17 +436,20 @@ pub fn detect_toolchain(target: &str) -> Result<(ToolchainType, PathBuf, Option<
             return Ok((ToolchainType::LlcLld, llc_path, Some(lld_path)));
         }
     }
-    
+
     // 如果 llc + lld 不可用，回退到 clang
     if let Ok(clang_path) = find_clang() {
         return Ok((ToolchainType::Clang, clang_path, None));
     }
-    
+
     // 都找不到
-    Err(format!("找不到可用的编译工具链。请确保以下之一可用：\n\
+    Err(format!(
+        "找不到可用的编译工具链。请确保以下之一可用：\n\
          1. llc + {} (默认)\n\
          2. clang\n\
-         或将 llvm-minimal 目录放在编译器同目录下。", get_lld_linker_name(target)))
+         或将 llvm-minimal 目录放在编译器同目录下。",
+        get_lld_linker_name(target)
+    ))
 }
 
 /// IR 到 EXE 编译选项
@@ -540,13 +557,13 @@ pub struct CompileResult {
 }
 
 /// 将 IR 编译为 EXE（主入口函数）
-/// 
+///
 /// # Arguments
 /// * `input_file` - 输入 IR 文件路径
 /// * `output_file` - 输出可执行文件路径
 /// * `options` - 编译选项
 /// * `source_map` - 可选的源映射表（用于错误映射）
-/// 
+///
 /// # Returns
 /// 编译成功返回 Ok(CompileResult)，失败返回 Err(String)
 pub fn compile_ir_to_exe(
@@ -569,7 +586,7 @@ pub fn compile_ir_to_exe(
     } else {
         IRSourceMap::new()
     };
-    
+
     let effective_source_map = source_map.unwrap_or(&parsed_source_map);
 
     // 检测工具链并编译
@@ -579,23 +596,47 @@ pub fn compile_ir_to_exe(
     } else if options.use_clang {
         // 强制使用 clang
         let clang_path = find_clang()?;
-        compile_with_clang(input_file, output_file, options, effective_source_map, &clang_path)
+        compile_with_clang(
+            input_file,
+            output_file,
+            options,
+            effective_source_map,
+            &clang_path,
+        )
     } else if options.use_llc_lld {
         // 强制使用 llc + 对应平台的 lld
         let llc_path = find_llc()?;
         let lld_path = find_lld_for_target(&options.target)?;
-        compile_with_llc_lld(input_file, output_file, options, effective_source_map, &llc_path, &lld_path)
+        compile_with_llc_lld(
+            input_file,
+            output_file,
+            options,
+            effective_source_map,
+            &llc_path,
+            &lld_path,
+        )
     } else {
         // 自动检测工具链
         let (toolchain_type, tool_path, tool_path2) = detect_toolchain(&options.target)?;
 
         match toolchain_type {
-            ToolchainType::Clang => {
-                compile_with_clang(input_file, output_file, options, effective_source_map, &tool_path)
-            }
+            ToolchainType::Clang => compile_with_clang(
+                input_file,
+                output_file,
+                options,
+                effective_source_map,
+                &tool_path,
+            ),
             ToolchainType::LlcLld => {
                 let lld_path = tool_path2.ok_or("lld path should exist")?;
-                compile_with_llc_lld(input_file, output_file, options, effective_source_map, &tool_path, &lld_path)
+                compile_with_llc_lld(
+                    input_file,
+                    output_file,
+                    options,
+                    effective_source_map,
+                    &tool_path,
+                    &lld_path,
+                )
             }
         }
     }
@@ -614,17 +655,18 @@ fn compile_with_clang(
         .ok()
         .and_then(|p| p.parent().map(|p| p.to_path_buf()))
         .unwrap_or_else(|| PathBuf::from("."));
-    
+
     // 根据目标平台选择库路径
-    let mut lib_paths: Vec<PathBuf> = if options.target.contains("windows") || options.target.contains("mingw") {
-        vec![
-            exe_dir.join("lib/mingw64/x86_64-w64-mingw32/lib"),
-            exe_dir.join("lib/mingw64/lib"),
-            exe_dir.join("lib/mingw64/lib/gcc/x86_64-w64-mingw32/15.2.0"),
-        ]
-    } else {
-        vec![]
-    };
+    let mut lib_paths: Vec<PathBuf> =
+        if options.target.contains("windows") || options.target.contains("mingw") {
+            vec![
+                exe_dir.join("lib/mingw64/x86_64-w64-mingw32/lib"),
+                exe_dir.join("lib/mingw64/lib"),
+                exe_dir.join("lib/mingw64/lib/gcc/x86_64-w64-mingw32/15.2.0"),
+            ]
+        } else {
+            vec![]
+        };
 
     // 添加 Cavvy 运行时库路径
     let cayrt_path = exe_dir.join("caylibs/bin");
@@ -664,8 +706,10 @@ fn compile_with_clang(
     // 构建 clang 命令
     let mut cmd = process::Command::new(clang_exe);
     cmd.arg(input_file)
-        .arg("-o").arg(output_file)
-        .arg("-target").arg(&options.target)
+        .arg("-o")
+        .arg(output_file)
+        .arg("-target")
+        .arg(&options.target)
         .arg(&options.optimization)
         .arg("-Wno-override-module");
 
@@ -693,11 +737,21 @@ fn compile_with_clang(
     }
     if let Some(ref mavx) = options.mavx {
         match mavx.as_str() {
-            "avx" => { cmd.arg("-mavx"); }
-            "avx2" => { cmd.arg("-mavx2"); }
-            "avx512f" => { cmd.arg("-mavx512f"); }
-            "avx512" => { cmd.arg("-mavx512f"); }
-            _ => { cmd.arg(format!("-m{}", mavx)); }
+            "avx" => {
+                cmd.arg("-mavx");
+            }
+            "avx2" => {
+                cmd.arg("-mavx2");
+            }
+            "avx512f" => {
+                cmd.arg("-mavx512f");
+            }
+            "avx512" => {
+                cmd.arg("-mavx512f");
+            }
+            _ => {
+                cmd.arg(format!("-m{}", mavx));
+            }
         };
     }
     if options.mneon {
@@ -786,19 +840,13 @@ fn compile_with_clang(
 
     // 根据目标平台选择默认库
     if options.target.contains("windows") || options.target.contains("mingw") {
-        cmd.arg("-lkernel32")
-            .arg("-lmsvcrt")
-            .arg("-ladvapi32");
+        cmd.arg("-lkernel32").arg("-lmsvcrt").arg("-ladvapi32");
     } else if options.target.contains("linux") {
-        cmd.arg("-lc")
-            .arg("-lm")
-            .arg("-lpthread");
+        cmd.arg("-lc").arg("-lm").arg("-lpthread");
     } else if options.target.contains("darwin") {
-        cmd.arg("-lc")
-            .arg("-lm");
+        cmd.arg("-lc").arg("-lm");
     } else {
-        cmd.arg("-lc")
-            .arg("-lm");
+        cmd.arg("-lc").arg("-lm");
     }
 
     // 额外库
@@ -811,12 +859,13 @@ fn compile_with_clang(
         cmd.arg(flag);
     }
 
-    let output = cmd.output()
+    let output = cmd
+        .output()
         .map_err(|e| format!("执行 clang 失败: {}", e))?;
 
     if !output.status.success() {
         let error_msg = String::from_utf8_lossy(&output.stderr);
-        
+
         // 使用源映射重新映射错误信息
         let remapped_error = if !source_map.mappings.is_empty() {
             let mapped = remap_clang_error(&error_msg, source_map, input_file);
@@ -824,9 +873,12 @@ fn compile_with_clang(
         } else {
             error_msg.to_string()
         };
-        
-        return Err(format!("clang 编译失败 (exit code: {}): {}", 
-            output.status.code().unwrap_or(-1), remapped_error));
+
+        return Err(format!(
+            "clang 编译失败 (exit code: {}): {}",
+            output.status.code().unwrap_or(-1),
+            remapped_error
+        ));
     }
 
     if !output.stderr.is_empty() {
@@ -864,11 +916,9 @@ fn compile_with_embedded_llc(
 ) -> Result<CompileResult, String> {
     // 检查嵌入式 LLVM 是否可用
     if !embedded_llc::is_embedded_llvm_available() {
-        return Err(
-            "嵌入式 LLVM 支持未启用。".to_string() +
-            "请使用 --features embedded-llvm 重新编译 Cavvy，" +
-            "或使用外部 llc 工具链。"
-        );
+        return Err("嵌入式 LLVM 支持未启用。".to_string()
+            + "请使用 --features embedded-llvm 重新编译 Cavvy，"
+            + "或使用外部 llc 工具链。");
     }
 
     // 读取 IR 文件内容
@@ -939,7 +989,8 @@ fn compile_with_embedded_llc(
             }
 
             // 默认库
-            lld_cmd.arg("cayrt.lib")
+            lld_cmd
+                .arg("cayrt.lib")
                 .arg("kernel32.lib")
                 .arg("user32.lib")
                 .arg("advapi32.lib")
@@ -953,16 +1004,16 @@ fn compile_with_embedded_llc(
             // MinGW 目标: 使用 ld.lld (GNU ld 兼容模式)
             lld_cmd.arg("-m").arg("i386pep");
             lld_cmd.arg("-o").arg(output_file);
-            
+
             // 输入目标文件
             lld_cmd.arg(&obj_file);
-            
+
             // Cavvy 运行时库路径
             let cayrt_path = exe_dir.join("caylibs/bin");
             if cayrt_path.exists() {
                 lld_cmd.arg("-L").arg(&cayrt_path);
             }
-            
+
             // 添加本地 lib 路径 (MinGW 库)
             let local_lib_paths = vec![
                 exe_dir.join("lib/mingw64/x86_64-w64-mingw32/lib"),
@@ -974,12 +1025,12 @@ fn compile_with_embedded_llc(
                     lld_cmd.arg("-L").arg(lib_path);
                 }
             }
-            
+
             // 额外库路径
             for path in &options.extra_lib_paths {
                 lld_cmd.arg("-L").arg(path);
             }
-            
+
             // 添加启动文件 (crt)
             let crt_paths = vec![
                 exe_dir.join("lib/mingw64/x86_64-w64-mingw32/lib"),
@@ -994,19 +1045,20 @@ fn compile_with_embedded_llc(
                     }
                 }
             }
-            
+
             // Cavvy 运行时库
             lld_cmd.arg("-lcayrt");
-            
+
             // 默认库
-            lld_cmd.arg("-lmingw32")
+            lld_cmd
+                .arg("-lmingw32")
                 .arg("-lmingwex")
                 .arg("-lmsvcrt")
                 .arg("-lkernel32")
                 .arg("-ladvapi32")
                 .arg("-lgcc")
                 .arg("-lgcc_eh");
-            
+
             // 添加 crtend.o
             for crt_path in &crt_paths {
                 if crt_path.exists() {
@@ -1017,12 +1069,12 @@ fn compile_with_embedded_llc(
                     }
                 }
             }
-            
+
             // 额外库
             for lib in &options.extra_libs {
                 lld_cmd.arg(format!("-l{}", lib));
             }
-            
+
             if options.static_link {
                 lld_cmd.arg("-static");
             }
@@ -1091,18 +1143,21 @@ fn compile_with_embedded_llc(
         lld_cmd.arg(flag);
     }
 
-    let lld_output = lld_cmd.output()
-        .map_err(|e| {
-            let _ = std::fs::remove_file(&obj_file);
-            format!("执行 {} 失败: {}", linker_name, e)
-        })?;
+    let lld_output = lld_cmd.output().map_err(|e| {
+        let _ = std::fs::remove_file(&obj_file);
+        format!("执行 {} 失败: {}", linker_name, e)
+    })?;
 
     if !lld_output.status.success() {
         // 保留目标文件以便调试
         // eprintln!("  [DEBUG] 链接失败，保留目标文件: {}", obj_file);
         let error_msg = String::from_utf8_lossy(&lld_output.stderr);
-        return Err(format!("{} 链接失败 (exit code: {}): {}",
-            linker_name, lld_output.status.code().unwrap_or(-1), error_msg));
+        return Err(format!(
+            "{} 链接失败 (exit code: {}): {}",
+            linker_name,
+            lld_output.status.code().unwrap_or(-1),
+            error_msg
+        ));
     }
 
     let exe_size = std::fs::metadata(output_file)
@@ -1113,7 +1168,10 @@ fn compile_with_embedded_llc(
         success: true,
         output_file: output_file.to_string(),
         exe_size_kb: exe_size,
-        messages: vec![format!("生成: {} ({:.1} KB) [嵌入式 llc]", output_file, exe_size)],
+        messages: vec![format!(
+            "生成: {} ({:.1} KB) [嵌入式 llc]",
+            output_file, exe_size
+        )],
     })
 }
 
@@ -1131,16 +1189,18 @@ fn compile_with_llc_lld(
         .ok()
         .and_then(|p| p.parent().map(|p| p.to_path_buf()))
         .unwrap_or_else(|| PathBuf::from("."));
-    
+
     // 生成临时目标文件路径
     let obj_file = format!("{}.obj", input_file);
-    
+
     // 步骤1: 使用 llc 将 IR 编译为目标文件
     let mut llc_cmd = process::Command::new(llc_exe);
-    llc_cmd.arg("-filetype=obj")
-        .arg("-o").arg(&obj_file)
+    llc_cmd
+        .arg("-filetype=obj")
+        .arg("-o")
+        .arg(&obj_file)
         .arg(input_file);
-    
+
     // 优化级别
     let opt_level = match options.optimization.as_str() {
         "-O0" => "-O=0",
@@ -1152,12 +1212,12 @@ fn compile_with_llc_lld(
         _ => "-O=2",
     };
     llc_cmd.arg(opt_level);
-    
+
     // 目标平台
     let is_windows = options.target.contains("windows") || options.target.contains("mingw");
     let is_darwin = options.target.contains("darwin") || options.target.contains("macos");
     let is_wasm = options.target.contains("wasm");
-    
+
     if is_windows {
         llc_cmd.arg("-mtriple=x86_64-w64-mingw32");
     } else if is_darwin {
@@ -1165,15 +1225,16 @@ fn compile_with_llc_lld(
     } else if is_wasm {
         llc_cmd.arg("-mtriple=wasm32-unknown-unknown");
     }
-    
+
     // CPU 指令集
     if let Some(ref march) = options.march {
         llc_cmd.arg(format!("-mcpu={}", march));
     }
-    
-    let llc_output = llc_cmd.output()
+
+    let llc_output = llc_cmd
+        .output()
         .map_err(|e| format!("执行 llc 失败: {}", e))?;
-    
+
     if !llc_output.status.success() {
         let error_msg = String::from_utf8_lossy(&llc_output.stderr);
         let remapped_error = if !source_map.mappings.is_empty() {
@@ -1183,14 +1244,17 @@ fn compile_with_llc_lld(
             error_msg.to_string()
         };
         let _ = std::fs::remove_file(&obj_file);
-        return Err(format!("llc 编译失败 (exit code: {}): {}", 
-            llc_output.status.code().unwrap_or(-1), remapped_error));
+        return Err(format!(
+            "llc 编译失败 (exit code: {}): {}",
+            llc_output.status.code().unwrap_or(-1),
+            remapped_error
+        ));
     }
-    
+
     // 步骤2: 使用对应平台的 lld 链接目标文件
     let linker_name = get_lld_linker_name(&options.target);
     let mut lld_cmd = process::Command::new(lld_exe);
-    
+
     if is_windows {
         // Windows/MinGW: 使用 ld.lld 的 GNU 风格参数
         lld_cmd.arg("-flavor").arg("gnu");
@@ -1239,7 +1303,8 @@ fn compile_with_llc_lld(
         lld_cmd.arg("-lcayrt");
 
         // 默认库
-        lld_cmd.arg("-lmingw32")
+        lld_cmd
+            .arg("-lmingw32")
             .arg("-lmingwex")
             .arg("-lmsvcrt")
             .arg("-lkernel32")
@@ -1268,19 +1333,23 @@ fn compile_with_llc_lld(
         lld_cmd.arg("-o").arg(output_file);
         lld_cmd.arg(&obj_file);
         lld_cmd.arg("-arch").arg("x86_64");
-        lld_cmd.arg("-platform_version").arg("macos").arg("11.0").arg("11.0");
+        lld_cmd
+            .arg("-platform_version")
+            .arg("macos")
+            .arg("11.0")
+            .arg("11.0");
         lld_cmd.arg("-lSystem");
-        
+
         // 额外库路径
         for path in &options.extra_lib_paths {
             lld_cmd.arg("-L").arg(path);
         }
-        
+
         // 额外库
         for lib in &options.extra_libs {
             lld_cmd.arg(format!("-l{}", lib));
         }
-        
+
         if options.static_link {
             lld_cmd.arg("-static");
         }
@@ -1293,12 +1362,12 @@ fn compile_with_llc_lld(
         lld_cmd.arg(&obj_file);
         lld_cmd.arg("--no-entry");
         lld_cmd.arg("--export-dynamic");
-        
+
         // 额外库路径
         for path in &options.extra_lib_paths {
             lld_cmd.arg("-L").arg(path);
         }
-        
+
         // 额外库
         for lib in &options.extra_libs {
             lld_cmd.arg(format!("-l{}", lib));
@@ -1307,7 +1376,7 @@ fn compile_with_llc_lld(
         // Linux/Unix: 使用 GNU ld 风格参数
         lld_cmd.arg("-o").arg(output_file);
         lld_cmd.arg(&obj_file);
-        
+
         // 添加标准库搜索路径 - ld.lld 不会自动搜索系统库路径
         // 时间复杂度: O(1) - 固定数量的路径
         let default_lib_paths = vec![
@@ -1324,23 +1393,23 @@ fn compile_with_llc_lld(
                 lld_cmd.arg("-L").arg(lib_path);
             }
         }
-        
+
         // 额外库路径
         for path in &options.extra_lib_paths {
             lld_cmd.arg("-L").arg(path);
         }
-        
+
         // 添加启动文件和默认库
         // 注意: ld.lld 需要显式链接这些库，不像 GNU ld 那样自动处理
         lld_cmd.arg("-lc");
         lld_cmd.arg("-ldl");
         lld_cmd.arg("-lpthread");
-        
+
         // 额外库
         for lib in &options.extra_libs {
             lld_cmd.arg(format!("-l{}", lib));
         }
-        
+
         if options.static_link {
             lld_cmd.arg("-static");
         }
@@ -1348,18 +1417,17 @@ fn compile_with_llc_lld(
             lld_cmd.arg("-g");
         }
     }
-    
+
     // 其他链接器标志
     for flag in &options.extra_ldflags {
         lld_cmd.arg(flag);
     }
-    
-    let lld_output = lld_cmd.output()
-        .map_err(|e| {
-            let _ = std::fs::remove_file(&obj_file);
-            format!("执行 {} 失败: {}", linker_name, e)
-        })?;
-    
+
+    let lld_output = lld_cmd.output().map_err(|e| {
+        let _ = std::fs::remove_file(&obj_file);
+        format!("执行 {} 失败: {}", linker_name, e)
+    })?;
+
     if !lld_output.status.success() {
         // 保留目标文件以便调试
         // eprintln!("  [DEBUG] 链接失败，保留目标文件: {}", obj_file);
@@ -1370,13 +1438,17 @@ fn compile_with_llc_lld(
         } else {
             error_msg.to_string()
         };
-        return Err(format!("{} 链接失败 (exit code: {}): {}", 
-            linker_name, lld_output.status.code().unwrap_or(-1), remapped_error));
+        return Err(format!(
+            "{} 链接失败 (exit code: {}): {}",
+            linker_name,
+            lld_output.status.code().unwrap_or(-1),
+            remapped_error
+        ));
     }
-    
+
     // 清理临时目标文件
     let _ = std::fs::remove_file(&obj_file);
-    
+
     let exe_size = std::fs::metadata(output_file)
         .map(|m| m.len() as f64 / 1024.0)
         .unwrap_or(0.0);

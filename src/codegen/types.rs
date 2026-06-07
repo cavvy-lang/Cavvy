@@ -14,7 +14,7 @@ impl IRGenerator {
                     ty.clone()
                 }
             }
-            _ => ty.clone()
+            _ => ty.clone(),
         }
     }
 
@@ -22,7 +22,7 @@ impl IRGenerator {
     pub fn type_to_llvm(&self, ty: &Type) -> String {
         // 首先解析类型别名
         let resolved_ty = self.resolve_type(ty);
-        
+
         match &resolved_ty {
             Type::Void => "void".to_string(),
             Type::Int32 => "i32".to_string(),
@@ -43,7 +43,7 @@ impl IRGenerator {
                 } else {
                     "i8*".to_string()
                 }
-            },
+            }
             Type::Array(inner) => {
                 // LLVM 不允许 void*，使用 i8* 代替
                 if matches!(inner.as_ref(), Type::CVoid) {
@@ -51,26 +51,26 @@ impl IRGenerator {
                 } else {
                     format!("{}*", self.type_to_llvm(inner))
                 }
-            },
+            }
             Type::Function(_) => "i8*".to_string(),
             Type::Auto => "i8*".to_string(), // 不应到达此处，语义分析应已解析
             // FFI 类型映射
-            Type::CInt => "i32".to_string(),      // C int 通常为 32 位
-            Type::CUInt => "i32".to_string(),     // C unsigned int 通常为 32 位
-            Type::CLong => self.c_long_llvm(),    // 平台相关
-            Type::CULong => self.c_long_llvm(),   // 同 CLong
-            Type::CShort => "i16".to_string(),    // C short 为 16 位
-            Type::CUShort => "i16".to_string(),   // C unsigned short 为 16 位
-            Type::CChar => "i8".to_string(),      // C char 为 8 位
-            Type::CUChar => "i8".to_string(),     // C unsigned char 为 8 位
-            Type::CFloat => "float".to_string(),  // C float 为 32 位
+            Type::CInt => "i32".to_string(),    // C int 通常为 32 位
+            Type::CUInt => "i32".to_string(),   // C unsigned int 通常为 32 位
+            Type::CLong => self.c_long_llvm(),  // 平台相关
+            Type::CULong => self.c_long_llvm(), // 同 CLong
+            Type::CShort => "i16".to_string(),  // C short 为 16 位
+            Type::CUShort => "i16".to_string(), // C unsigned short 为 16 位
+            Type::CChar => "i8".to_string(),    // C char 为 8 位
+            Type::CUChar => "i8".to_string(),   // C unsigned char 为 8 位
+            Type::CFloat => "float".to_string(), // C float 为 32 位
             Type::CDouble => "double".to_string(), // C double 为 64 位
-            Type::SizeT => "i64".to_string(),     // size_t 在 64 位系统为 64 位
-            Type::SSizeT => "i64".to_string(),    // ssize_t 在 64 位系统为 64 位
-            Type::UIntPtr => "i64".to_string(),   // uintptr_t 在 64 位系统为 64 位
-            Type::IntPtr => "i64".to_string(),    // intptr_t 在 64 位系统为 64 位
-            Type::CVoid => "void".to_string(),    // C void
-            Type::CBool => "i8".to_string(),      // C bool 通常为 8 位
+            Type::SizeT => "i64".to_string(),   // size_t 在 64 位系统为 64 位
+            Type::SSizeT => "i64".to_string(),  // ssize_t 在 64 位系统为 64 位
+            Type::UIntPtr => "i64".to_string(), // uintptr_t 在 64 位系统为 64 位
+            Type::IntPtr => "i64".to_string(),  // intptr_t 在 64 位系统为 64 位
+            Type::CVoid => "void".to_string(),  // C void
+            Type::CBool => "i8".to_string(),    // C bool 通常为 8 位
             // FFI 指针和结构体
             Type::Pointer(inner) => {
                 // LLVM 不允许 void*，使用 i8* 代替
@@ -79,8 +79,8 @@ impl IRGenerator {
                 } else {
                     format!("{}*", self.type_to_llvm(inner))
                 }
-            },
-            Type::Struct(name) => format!("%struct.{}", name),                // 命名结构体
+            }
+            Type::Struct(name) => format!("%struct.{}", name), // 命名结构体
             // 泛型类型 - 默认为 i8* 指针
             Type::GenericParam(_) => "i8*".to_string(),
             Type::Generic(_, _) => "i8*".to_string(),
@@ -106,8 +106,11 @@ impl IRGenerator {
             let mut depth = 0;
             let mut brace_end = 0;
             for (i, ch) in typed_val.char_indices() {
-                if ch == '{' { depth += 1; }
-                else if ch == '}' { depth -= 1; }
+                if ch == '{' {
+                    depth += 1;
+                } else if ch == '}' {
+                    depth -= 1;
+                }
                 if depth == 0 {
                     brace_end = i + 1;
                     break;

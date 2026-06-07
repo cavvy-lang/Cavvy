@@ -7,24 +7,24 @@
 use crate::codegen::context::IRGenerator;
 
 // 子模块声明（保留用于 future 扩展）
-mod string_concat;
+mod args_support;
+mod bool_to_string;
+mod buffer_to_string;
+mod char_to_string;
 mod float_to_string;
 mod int_to_string;
-mod bool_to_string;
-mod char_to_string;
-mod string_length;
-mod string_substring;
-mod string_indexof;
-mod string_lastindexof;
-mod string_startswith;
-mod string_endswith;
-mod string_charat;
-mod string_replace;
-mod string_isempty;
-mod string_equals;
-mod buffer_to_string;
 mod ptr_operations;
-mod args_support;
+mod string_charat;
+mod string_concat;
+mod string_endswith;
+mod string_equals;
+mod string_indexof;
+mod string_isempty;
+mod string_lastindexof;
+mod string_length;
+mod string_replace;
+mod string_startswith;
+mod string_substring;
 
 impl IRGenerator {
     /// 发射IR头部（外部声明和运行时函数声明）
@@ -37,7 +37,7 @@ impl IRGenerator {
                 "windows" => "x86_64-w64-mingw32",
                 "linux" => "x86_64-unknown-linux-gnu",
                 "macos" => "x86_64-apple-darwin",
-                _ => "x86_64-unknown-linux-gnu"
+                _ => "x86_64-unknown-linux-gnu",
             }
         } else if cfg!(target_os = "windows") {
             "x86_64-w64-mingw32"
@@ -120,21 +120,46 @@ impl IRGenerator {
         // 声明外部C库函数
         let extern_decls = vec![
             ("strlen", "i64", vec!["i8*"], "declare i64 @strlen(i8*)"),
-            ("strcmp", "i32", vec!["i8*", "i8*"], "declare i32 @strcmp(i8*, i8*)"),
-            ("calloc", "i8*", vec!["i64", "i64"], "declare i8* @calloc(i64, i64)"),
+            (
+                "strcmp",
+                "i32",
+                vec!["i8*", "i8*"],
+                "declare i32 @strcmp(i8*, i8*)",
+            ),
+            (
+                "calloc",
+                "i8*",
+                vec!["i64", "i64"],
+                "declare i8* @calloc(i64, i64)",
+            ),
             ("exit", "void", vec!["i32"], "declare void @exit(i32)"),
             ("atoi", "i32", vec!["i8*"], "declare i32 @atoi(i8*)"),
-            ("snprintf", "i32", vec!["i8*", "i64", "i8*", "..."], "declare i32 @snprintf(i8*, i64, i8*, ...)"),
-            ("fgets", "i8*", vec!["i8*", "i32", "i8*"], "declare i8* @fgets(i8*, i32, i8*)"),
+            (
+                "snprintf",
+                "i32",
+                vec!["i8*", "i64", "i8*", "..."],
+                "declare i32 @snprintf(i8*, i64, i8*, ...)",
+            ),
+            (
+                "fgets",
+                "i8*",
+                vec!["i8*", "i32", "i8*"],
+                "declare i8* @fgets(i8*, i32, i8*)",
+            ),
         ];
 
         for (name, ret, params, decl) in extern_decls {
             let sig = if params.contains(&"...") {
-                format!("{}@{}@{}@...", name, ret, params[..params.len()-1].join("@"))
+                format!(
+                    "{}@{}@{}@...",
+                    name,
+                    ret,
+                    params[..params.len() - 1].join("@")
+                )
             } else if params.is_empty() {
                 format!("{}@{}@void", name, ret)
             } else {
-                format!("{}@{}@{}" , name, ret, params.join("@"))
+                format!("{}@{}@{}", name, ret, params.join("@"))
             };
             if !self.is_extern_emitted(&sig) {
                 self.emit_raw(decl);

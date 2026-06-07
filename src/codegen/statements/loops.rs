@@ -2,8 +2,8 @@
 //!
 //! 处理while、for、do-while循环的代码生成。
 
-use crate::codegen::context::IRGenerator;
 use crate::ast::*;
+use crate::codegen::context::IRGenerator;
 use crate::error::cayResult;
 
 impl IRGenerator {
@@ -14,7 +14,11 @@ impl IRGenerator {
         let end_label = self.new_label("while.end");
 
         // 进入循环上下文
-        self.enter_loop(cond_label.clone(), end_label.clone(), while_stmt.label.clone());
+        self.enter_loop(
+            cond_label.clone(),
+            end_label.clone(),
+            while_stmt.label.clone(),
+        );
 
         self.emit_line(&format!("  br label %{}", cond_label));
 
@@ -26,10 +30,15 @@ impl IRGenerator {
         if cond_type == "i1" {
             self.emit_line(&format!("  {} = icmp ne i1 {}, 0", cond_reg, cond_val));
         } else {
-            self.emit_line(&format!("  {} = icmp ne {} {}, 0", cond_reg, cond_type, cond_val));
+            self.emit_line(&format!(
+                "  {} = icmp ne {} {}, 0",
+                cond_reg, cond_type, cond_val
+            ));
         }
-        self.emit_line(&format!("  br i1 {}, label %{}, label %{}",
-            cond_reg, body_label, end_label));
+        self.emit_line(&format!(
+            "  br i1 {}, label %{}, label %{}",
+            cond_reg, body_label, end_label
+        ));
 
         // 循环体
         self.emit_line(&format!("{}:", body_label));
@@ -58,7 +67,11 @@ impl IRGenerator {
         }
 
         // 进入循环上下文（continue 跳转到 update 标签）
-        self.enter_loop(update_label.clone(), end_label.clone(), for_stmt.label.clone());
+        self.enter_loop(
+            update_label.clone(),
+            end_label.clone(),
+            for_stmt.label.clone(),
+        );
 
         self.emit_line(&format!("  br label %{}", cond_label));
 
@@ -71,10 +84,15 @@ impl IRGenerator {
             if cond_type == "i1" {
                 self.emit_line(&format!("  {} = icmp ne i1 {}, 0", cond_reg, cond_val));
             } else {
-                self.emit_line(&format!("  {} = icmp ne {} {}, 0", cond_reg, cond_type, cond_val));
+                self.emit_line(&format!(
+                    "  {} = icmp ne {} {}, 0",
+                    cond_reg, cond_type, cond_val
+                ));
             }
-            self.emit_line(&format!("  br i1 {}, label %{}, label %{}",
-                cond_reg, body_label, end_label));
+            self.emit_line(&format!(
+                "  br i1 {}, label %{}, label %{}",
+                cond_reg, body_label, end_label
+            ));
         } else {
             // 无条件时默认跳转到循环体（无限循环）
             self.emit_line(&format!("  br label %{}", body_label));
@@ -108,7 +126,11 @@ impl IRGenerator {
         let end_label = self.new_label("dowhile.end");
 
         // 进入循环上下文
-        self.enter_loop(cond_label.clone(), end_label.clone(), do_while_stmt.label.clone());
+        self.enter_loop(
+            cond_label.clone(),
+            end_label.clone(),
+            do_while_stmt.label.clone(),
+        );
 
         // 先执行循环体
         self.emit_line(&format!("  br label %{}", body_label));
@@ -124,10 +146,15 @@ impl IRGenerator {
         if cond_type == "i1" {
             self.emit_line(&format!("  {} = icmp ne i1 {}, 0", cond_reg, cond_val));
         } else {
-            self.emit_line(&format!("  {} = icmp ne {} {}, 0", cond_reg, cond_type, cond_val));
+            self.emit_line(&format!(
+                "  {} = icmp ne {} {}, 0",
+                cond_reg, cond_type, cond_val
+            ));
         }
-        self.emit_line(&format!("  br i1 {}, label %{}, label %{}",
-            cond_reg, body_label, end_label));
+        self.emit_line(&format!(
+            "  br i1 {}, label %{}, label %{}",
+            cond_reg, body_label, end_label
+        ));
 
         // 结束块
         self.emit_line(&format!("{}:", end_label));

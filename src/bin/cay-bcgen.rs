@@ -1,20 +1,20 @@
+use cavvy::bytecode::constant_pool::ConstantPool;
+use cavvy::bytecode::instructions::{Instruction, Opcode};
+use cavvy::bytecode::{BytecodeModule, CodeBody, obfuscator, serializer};
+use cavvy::error::{print_miette_error, print_tool_error, print_warning};
 use std::env;
 use std::fs;
-use std::process;
 use std::path::Path;
-use cavvy::bytecode::{BytecodeModule, CodeBody, serializer, obfuscator};
-use cavvy::bytecode::instructions::{Instruction, Opcode};
-use cavvy::bytecode::constant_pool::ConstantPool;
-use cavvy::error::{print_miette_error, print_tool_error, print_warning};
+use std::process;
 
 const VERSION: &str = env!("CAY_BCGEN_VERSION");
 
 /// 字节码生成选项
 struct BcgenOptions {
-    obfuscate: bool,           // --obfuscate: 混淆字节码
-    obfuscate_level: String,   // --obfuscate-level: 混淆级别 (light/normal/deep)
+    obfuscate: bool,             // --obfuscate: 混淆字节码
+    obfuscate_level: String,     // --obfuscate-level: 混淆级别 (light/normal/deep)
     output_file: Option<String>, // -o: 输出文件
-    verbose: bool,             // --verbose: 详细输出
+    verbose: bool,               // --verbose: 详细输出
 }
 
 impl Default for BcgenOptions {
@@ -110,16 +110,15 @@ fn parse_args(args: &[String]) -> Result<(BcgenOptions, String), String> {
 /// 编译Cavvy源码为字节码模块
 fn compile_to_bytecode(source: &str, source_path: &str) -> Result<BytecodeModule, String> {
     // 1. 词法分析
-    let tokens = cavvy::lexer::lex(source)
-        .map_err(|e| format!("词法分析错误: {:?}", e))?;
+    let tokens = cavvy::lexer::lex(source).map_err(|e| format!("词法分析错误: {:?}", e))?;
 
     // 2. 语法分析
-    let ast = cavvy::parser::parse(tokens)
-        .map_err(|e| format!("语法分析错误: {:?}", e))?;
+    let ast = cavvy::parser::parse(tokens).map_err(|e| format!("语法分析错误: {:?}", e))?;
 
     // 3. 语义分析
     let mut analyzer = cavvy::semantic::SemanticAnalyzer::new();
-    analyzer.analyze(&ast)
+    analyzer
+        .analyze(&ast)
         .map_err(|e| format!("语义分析错误: {:?}", e))?;
 
     // 4. 生成字节码模块
@@ -143,10 +142,10 @@ fn compile_to_bytecode(source: &str, source_path: &str) -> Result<BytecodeModule
 fn generate_bytecode_from_ast(
     ast: &cavvy::ast::Program,
     module: &mut BytecodeModule,
-    type_registry: &cavvy::types::TypeRegistry
+    type_registry: &cavvy::types::TypeRegistry,
 ) -> Result<(), String> {
-    use cavvy::bytecode::*;
     use cavvy::ast::*;
+    use cavvy::bytecode::*;
 
     // 处理顶层函数
     for func in &ast.top_level_functions {
@@ -194,7 +193,9 @@ fn generate_bytecode_from_ast(
     // 处理类定义
     for class in &ast.classes {
         let name_index = module.constant_pool.add_utf8(&class.name);
-        let parent_index = class.parent.as_ref()
+        let parent_index = class
+            .parent
+            .as_ref()
             .map(|p| module.constant_pool.add_utf8(p));
 
         let mut interface_indices = Vec::new();
@@ -219,14 +220,26 @@ fn generate_bytecode_from_ast(
                     let initial_value = field.initializer.as_ref().and_then(|init| {
                         if let Expr::Literal(lit) = init {
                             match &lit.value {
-                                LiteralValue::Int32(v) => Some(module.constant_pool.add_integer(*v)),
+                                LiteralValue::Int32(v) => {
+                                    Some(module.constant_pool.add_integer(*v))
+                                }
                                 LiteralValue::Int64(v) => Some(module.constant_pool.add_long(*v)),
-                                LiteralValue::Float32(v) => Some(module.constant_pool.add_float(*v)),
-                                LiteralValue::Float64(v) => Some(module.constant_pool.add_double(*v)),
+                                LiteralValue::Float32(v) => {
+                                    Some(module.constant_pool.add_float(*v))
+                                }
+                                LiteralValue::Float64(v) => {
+                                    Some(module.constant_pool.add_double(*v))
+                                }
                                 LiteralValue::String(s) => Some(module.constant_pool.add_string(s)),
-                                LiteralValue::Bool(true) => Some(module.constant_pool.add_integer(1)),
-                                LiteralValue::Bool(false) => Some(module.constant_pool.add_integer(0)),
-                                LiteralValue::Char(c) => Some(module.constant_pool.add_integer(*c as i32)),
+                                LiteralValue::Bool(true) => {
+                                    Some(module.constant_pool.add_integer(1))
+                                }
+                                LiteralValue::Bool(false) => {
+                                    Some(module.constant_pool.add_integer(0))
+                                }
+                                LiteralValue::Char(c) => {
+                                    Some(module.constant_pool.add_integer(*c as i32))
+                                }
                                 LiteralValue::Null => None,
                             }
                         } else {
@@ -249,24 +262,26 @@ fn generate_bytecode_from_ast(
                 }
                 ClassMember::Method(method) => {
                     let method_name_index = module.constant_pool.add_utf8(&method.name);
-                    let return_type_index = get_type_index(&method.return_type, &mut module.constant_pool);
+                    let return_type_index =
+                        get_type_index(&method.return_type, &mut module.constant_pool);
 
                     let mut param_type_indices = Vec::new();
                     let mut param_name_indices = Vec::new();
                     let mut param_names = Vec::new();
 
                     for param in &method.params {
-                        param_type_indices.push(get_type_index(&param.param_type, &mut module.constant_pool));
+                        param_type_indices
+                            .push(get_type_index(&param.param_type, &mut module.constant_pool));
                         param_name_indices.push(module.constant_pool.add_utf8(&param.name));
                         param_names.push(param.name.clone());
                     }
 
-                    let body = method.body.as_ref()
+                    let body = method
+                        .body
+                        .as_ref()
                         .map(|b| generate_code_body(b, module, &param_names).ok())
                         .flatten()
-                        .map(|(body, max_locals)| {
-                            (body, max_locals)
-                        });
+                        .map(|(body, max_locals)| (body, max_locals));
 
                     let method_modifiers = MethodModifiers {
                         is_public: method.modifiers.contains(&Modifier::Public),
@@ -279,11 +294,14 @@ fn generate_bytecode_from_ast(
                         is_override: method.modifiers.contains(&Modifier::Override),
                     };
 
-                    let (body_raw, max_locals) = body.unwrap_or((CodeBody {
-                        instructions: Vec::new(),
-                        exception_table: Vec::new(),
-                        line_number_table: Vec::new(),
-                    }, 0));
+                    let (body_raw, max_locals) = body.unwrap_or((
+                        CodeBody {
+                            instructions: Vec::new(),
+                            exception_table: Vec::new(),
+                            line_number_table: Vec::new(),
+                        },
+                        0,
+                    ));
 
                     let method_def = MethodDefinition {
                         name_index: method_name_index,
@@ -317,7 +335,11 @@ fn generate_bytecode_from_ast(
 }
 
 /// 生成代码体
-fn generate_code_body(block: &cavvy::ast::Block, module: &mut BytecodeModule, params: &[String]) -> Result<(CodeBody, u16), String> {
+fn generate_code_body(
+    block: &cavvy::ast::Block,
+    module: &mut BytecodeModule,
+    params: &[String],
+) -> Result<(CodeBody, u16), String> {
     use cavvy::bytecode::instructions::*;
 
     let mut instructions = Vec::new();
@@ -340,18 +362,26 @@ fn generate_code_body(block: &cavvy::ast::Block, module: &mut BytecodeModule, pa
     fix_jump_offsets(&mut instructions, &ctx)?;
 
     let max_locals = tracker.max_locals();
-    Ok((CodeBody {
-        instructions,
-        exception_table: Vec::new(),
-        line_number_table: Vec::new(),
-    }, max_locals))
+    Ok((
+        CodeBody {
+            instructions,
+            exception_table: Vec::new(),
+            line_number_table: Vec::new(),
+        },
+        max_locals,
+    ))
 }
 
 /// 跳转占位符，用于两阶段编译
 #[derive(Debug, Clone)]
 enum JumpPlaceholder {
-    IfEq { condition_end: usize, else_start: Option<usize> },
-    Goto { from: usize },
+    IfEq {
+        condition_end: usize,
+        else_start: Option<usize>,
+    },
+    Goto {
+        from: usize,
+    },
 }
 
 /// 语句生成上下文
@@ -416,8 +446,8 @@ fn generate_statement(
     ctx: &mut StatementContext,
     tracker: &mut LocalVarTracker,
 ) -> Result<(), String> {
-    use cavvy::bytecode::instructions::*;
     use cavvy::ast::*;
+    use cavvy::bytecode::instructions::*;
 
     match stmt {
         Stmt::Expr(expr) => {
@@ -463,20 +493,29 @@ fn generate_statement(
                 generate_statement(else_branch, instructions, module, ctx, tracker)?;
 
                 // 记录占位符用于后续修复
-                ctx.placeholders.push((ifeq_pos, JumpPlaceholder::IfEq {
-                    condition_end: else_start as usize,
-                    else_start: Some(else_start as usize),
-                }));
-                ctx.placeholders.push((goto_pos, JumpPlaceholder::Goto {
-                    from: instructions.len(),
-                }));
+                ctx.placeholders.push((
+                    ifeq_pos,
+                    JumpPlaceholder::IfEq {
+                        condition_end: else_start as usize,
+                        else_start: Some(else_start as usize),
+                    },
+                ));
+                ctx.placeholders.push((
+                    goto_pos,
+                    JumpPlaceholder::Goto {
+                        from: instructions.len(),
+                    },
+                ));
             } else {
                 // 没有 else 分支，条件不满足时跳转到 if 之后
                 let after_then = instructions.len();
-                ctx.placeholders.push((ifeq_pos, JumpPlaceholder::IfEq {
-                    condition_end: after_then,
-                    else_start: None,
-                }));
+                ctx.placeholders.push((
+                    ifeq_pos,
+                    JumpPlaceholder::IfEq {
+                        condition_end: after_then,
+                        else_start: None,
+                    },
+                ));
             }
         }
         Stmt::Block(block) => {
@@ -514,7 +553,10 @@ fn generate_statement(
             let ifne_pos = instructions.len();
             // 使用 Ifne 操作码：不等于0时跳转
             let loop_offset = (loop_start as i16) - (ifne_pos as i16) - 1;
-            instructions.push(Instruction::with_operands(Opcode::Ifne, loop_offset.to_le_bytes().to_vec()));
+            instructions.push(Instruction::with_operands(
+                Opcode::Ifne,
+                loop_offset.to_le_bytes().to_vec(),
+            ));
         }
         Stmt::Break(_label, _loc) => {
             // break 语句 - 简化实现：生成 return 指令
@@ -547,7 +589,10 @@ fn generate_statement(
                 }
                 // 比较 - 使用 if_icmpne 判断不相等则跳过
                 let ifne_pos = instructions.len();
-                instructions.push(Instruction::with_operands(Opcode::IfIcmpne, 0i16.to_le_bytes().to_vec()));
+                instructions.push(Instruction::with_operands(
+                    Opcode::IfIcmpne,
+                    0i16.to_le_bytes().to_vec(),
+                ));
                 // 生成 case 体
                 for stmt in &case.body {
                     generate_statement(stmt, instructions, module, ctx, tracker)?;
@@ -555,7 +600,8 @@ fn generate_statement(
                 // 修复跳转
                 let after_case = instructions.len();
                 let offset = (after_case as i16) - (ifne_pos as i16) - 1;
-                instructions[ifne_pos] = Instruction::with_operands(Opcode::IfIcmpne, offset.to_le_bytes().to_vec());
+                instructions[ifne_pos] =
+                    Instruction::with_operands(Opcode::IfIcmpne, offset.to_le_bytes().to_vec());
             }
             // 处理 default 分支
             if let Some(ref default_body) = switch_stmt.default {
@@ -581,12 +627,18 @@ fn generate_statement(
 }
 
 /// 修复跳转偏移量
-fn fix_jump_offsets(instructions: &mut [Instruction], ctx: &StatementContext) -> Result<(), String> {
+fn fix_jump_offsets(
+    instructions: &mut [Instruction],
+    ctx: &StatementContext,
+) -> Result<(), String> {
     use cavvy::bytecode::instructions::*;
 
     for (pos, placeholder) in &ctx.placeholders {
         match placeholder {
-            JumpPlaceholder::IfEq { condition_end, else_start: _ } => {
+            JumpPlaceholder::IfEq {
+                condition_end,
+                else_start: _,
+            } => {
                 // 计算从 ifeq 指令到目标位置的偏移量
                 // ifeq 指令本身占3字节（1字节opcode + 2字节offset）
                 let offset = (*condition_end as i16) - (*pos as i16) - 1;
@@ -624,50 +676,48 @@ fn generate_expression(
     module: &mut BytecodeModule,
     tracker: &mut LocalVarTracker,
 ) -> Result<(), String> {
-    use cavvy::bytecode::instructions::*;
     use cavvy::ast::*;
+    use cavvy::bytecode::instructions::*;
 
     match expr {
-        Expr::Literal(lit_expr) => {
-            match &lit_expr.value {
-                LiteralValue::Int32(v) => {
-                    if *v >= -128 && *v <= 127 {
-                        instructions.push(Instruction::iconst(*v as i8));
-                    } else {
-                        let index = module.constant_pool.add_integer(*v);
-                        instructions.push(Instruction::ldc(index));
-                    }
-                }
-                LiteralValue::Int64(v) => {
-                    let index = module.constant_pool.add_long(*v);
+        Expr::Literal(lit_expr) => match &lit_expr.value {
+            LiteralValue::Int32(v) => {
+                if *v >= -128 && *v <= 127 {
+                    instructions.push(Instruction::iconst(*v as i8));
+                } else {
+                    let index = module.constant_pool.add_integer(*v);
                     instructions.push(Instruction::ldc(index));
-                }
-                LiteralValue::Float32(v) => {
-                    let index = module.constant_pool.add_float(*v);
-                    instructions.push(Instruction::ldc(index));
-                }
-                LiteralValue::Float64(v) => {
-                    let index = module.constant_pool.add_double(*v);
-                    instructions.push(Instruction::ldc(index));
-                }
-                LiteralValue::Bool(true) => {
-                    instructions.push(Instruction::iconst(1));
-                }
-                LiteralValue::Bool(false) => {
-                    instructions.push(Instruction::iconst(0));
-                }
-                LiteralValue::String(s) => {
-                    let index = module.constant_pool.add_string(s);
-                    instructions.push(Instruction::ldc(index));
-                }
-                LiteralValue::Char(c) => {
-                    instructions.push(Instruction::iconst(*c as i8));
-                }
-                LiteralValue::Null => {
-                    instructions.push(Instruction::new(Opcode::AconstNull));
                 }
             }
-        }
+            LiteralValue::Int64(v) => {
+                let index = module.constant_pool.add_long(*v);
+                instructions.push(Instruction::ldc(index));
+            }
+            LiteralValue::Float32(v) => {
+                let index = module.constant_pool.add_float(*v);
+                instructions.push(Instruction::ldc(index));
+            }
+            LiteralValue::Float64(v) => {
+                let index = module.constant_pool.add_double(*v);
+                instructions.push(Instruction::ldc(index));
+            }
+            LiteralValue::Bool(true) => {
+                instructions.push(Instruction::iconst(1));
+            }
+            LiteralValue::Bool(false) => {
+                instructions.push(Instruction::iconst(0));
+            }
+            LiteralValue::String(s) => {
+                let index = module.constant_pool.add_string(s);
+                instructions.push(Instruction::ldc(index));
+            }
+            LiteralValue::Char(c) => {
+                instructions.push(Instruction::iconst(*c as i8));
+            }
+            LiteralValue::Null => {
+                instructions.push(Instruction::new(Opcode::AconstNull));
+            }
+        },
         Expr::Identifier(ident) => {
             // 加载局部变量
             if let Some(index) = tracker.lookup(&ident.name) {
@@ -707,7 +757,10 @@ fn generate_expression(
                     // 生成 object 引用
                     generate_expression(&member.object, instructions, module, tracker)?;
                     let index = module.constant_pool.add_utf8(&member.member);
-                    instructions.push(Instruction::with_operands(Opcode::Invokevirtual, index.to_le_bytes().to_vec()));
+                    instructions.push(Instruction::with_operands(
+                        Opcode::Invokevirtual,
+                        index.to_le_bytes().to_vec(),
+                    ));
                 }
                 _ => {
                     // 其他调用形式暂不支持
@@ -749,7 +802,10 @@ fn generate_expression(
             // 成员访问 - 简化实现：加载对象后加载字段
             generate_expression(&member.object, instructions, module, tracker)?;
             let index = module.constant_pool.add_utf8(&member.member);
-            instructions.push(Instruction::with_operands(Opcode::Getfield, index.to_le_bytes().to_vec()));
+            instructions.push(Instruction::with_operands(
+                Opcode::Getfield,
+                index.to_le_bytes().to_vec(),
+            ));
         }
         Expr::ArrayAccess(array_access) => {
             // 数组访问 - 生成数组和索引
@@ -760,13 +816,19 @@ fn generate_expression(
         Expr::New(new_expr) => {
             // new 表达式 - 简化实现
             let type_index = module.constant_pool.add_utf8(&new_expr.class_name);
-            instructions.push(Instruction::with_operands(Opcode::New, type_index.to_le_bytes().to_vec()));
+            instructions.push(Instruction::with_operands(
+                Opcode::New,
+                type_index.to_le_bytes().to_vec(),
+            ));
             instructions.push(Instruction::new(Opcode::Dup));
             // 生成构造函数参数
             for arg in &new_expr.args {
                 generate_expression(arg, instructions, module, tracker)?;
             }
-            instructions.push(Instruction::with_operands(Opcode::Invokespecial, type_index.to_le_bytes().to_vec()));
+            instructions.push(Instruction::with_operands(
+                Opcode::Invokespecial,
+                type_index.to_le_bytes().to_vec(),
+            ));
         }
         Expr::Ternary(ternary) => {
             // 三元表达式: condition ? true_branch : false_branch
@@ -827,7 +889,7 @@ fn main() {
             print_miette_error(
                 "cavvy::argument_error",
                 &e,
-                Some("请检查命令行参数是否正确")
+                Some("请检查命令行参数是否正确"),
             );
             print_usage();
             process::exit(1);
@@ -839,7 +901,7 @@ fn main() {
         print_miette_error(
             "cavvy::io_error",
             &format!("源文件 '{}' 不存在", source_path),
-            Some("请检查文件路径是否正确")
+            Some("请检查文件路径是否正确"),
         );
         process::exit(1);
     }
@@ -867,7 +929,7 @@ fn main() {
             print_miette_error(
                 "cavvy::io_error",
                 &format!("无法读取源文件 '{}': {}", source_path, e),
-                Some("请检查文件路径是否正确，文件是否存在")
+                Some("请检查文件路径是否正确，文件是否存在"),
             );
             process::exit(1);
         }
@@ -938,15 +1000,13 @@ fn main() {
         print_miette_error(
             "cavvy::io_error",
             &format!("无法写入输出文件 '{}': {}", output_path, e),
-            Some("请检查输出目录是否有写入权限")
+            Some("请检查输出目录是否有写入权限"),
         );
         process::exit(1);
     }
 
     // 获取文件大小
-    let file_size = fs::metadata(&output_path)
-        .map(|m| m.len())
-        .unwrap_or(0);
+    let file_size = fs::metadata(&output_path).map(|m| m.len()).unwrap_or(0);
 
     if options.verbose {
         println!();

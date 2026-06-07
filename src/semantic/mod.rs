@@ -4,16 +4,18 @@
 //! 已重构为多个子模块以提高可维护性。
 
 // 子模块声明
-mod symbol_table;
 mod analyzer;
 mod class_analysis;
-mod type_check;
 mod expr_inference;
-mod type_utils;
+mod symbol_table;
+mod type_check;
 mod type_inference_result;
+mod type_utils;
 
 // 公开导出
-pub use symbol_table::{SemanticSymbolTable, SemanticSymbolInfo};
 pub use analyzer::{SemanticAnalyzer, SemanticErrorInfo};
-pub use type_inference_result::{TypeInferenceResult, TypeInferenceError, TypeInferenceErrorCollector};
+pub use symbol_table::{SemanticSymbolInfo, SemanticSymbolTable};
+pub use type_inference_result::{
+    TypeInferenceError, TypeInferenceErrorCollector, TypeInferenceResult,
+};
 pub use type_utils::resolve_call_args;

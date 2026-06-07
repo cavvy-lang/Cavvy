@@ -1,14 +1,16 @@
 //! 类型解析
 
-use crate::types::Type;
-use crate::error::cayResult;
 use super::Parser;
+use crate::error::cayResult;
+use crate::types::Type;
 
 /// 解析类型（支持多维数组和指针，以及类型别名）
 pub fn parse_type(parser: &mut Parser) -> cayResult<Type> {
     let (ty, extra_generic_closers) = parse_type_inner(parser)?;
     if extra_generic_closers > 0 {
-        return Err(parser.error("泛型类型实参列表中多余的 '>'\n提示: 请检查泛型类型的尖括号是否匹配"));
+        return Err(
+            parser.error("泛型类型实参列表中多余的 '>'\n提示: 请检查泛型类型的尖括号是否匹配")
+        );
     }
 
     Ok(ty)
@@ -19,7 +21,9 @@ pub fn parse_type(parser: &mut Parser) -> cayResult<Type> {
 pub fn parse_generic_type_args(parser: &mut Parser) -> cayResult<Vec<Type>> {
     let (args, extra_generic_closers) = parse_generic_type_args_inner(parser)?;
     if extra_generic_closers > 0 {
-        return Err(parser.error("泛型类型实参列表中多余的 '>'\n提示: 请检查泛型类型的尖括号是否匹配"));
+        return Err(
+            parser.error("泛型类型实参列表中多余的 '>'\n提示: 请检查泛型类型的尖括号是否匹配")
+        );
     }
 
     Ok(args)
@@ -27,62 +31,145 @@ pub fn parse_generic_type_args(parser: &mut Parser) -> cayResult<Vec<Type>> {
 
 fn parse_type_inner(parser: &mut Parser) -> cayResult<(Type, usize)> {
     let base_type = match parser.current_token() {
-        crate::lexer::Token::Int => { parser.advance(); Type::Int32 }
-        crate::lexer::Token::Long => { parser.advance(); Type::Int64 }
-        crate::lexer::Token::Float => { parser.advance(); Type::Float32 }
-        crate::lexer::Token::Double => { parser.advance(); Type::Float64 }
-        crate::lexer::Token::Bool => { parser.advance(); Type::Bool }
-        crate::lexer::Token::String => { parser.advance(); Type::String }
-        crate::lexer::Token::Char => { parser.advance(); Type::Char }
-        crate::lexer::Token::Void => { parser.advance(); Type::Void }
+        crate::lexer::Token::Int => {
+            parser.advance();
+            Type::Int32
+        }
+        crate::lexer::Token::Long => {
+            parser.advance();
+            Type::Int64
+        }
+        crate::lexer::Token::Float => {
+            parser.advance();
+            Type::Float32
+        }
+        crate::lexer::Token::Double => {
+            parser.advance();
+            Type::Float64
+        }
+        crate::lexer::Token::Bool => {
+            parser.advance();
+            Type::Bool
+        }
+        crate::lexer::Token::String => {
+            parser.advance();
+            Type::String
+        }
+        crate::lexer::Token::Char => {
+            parser.advance();
+            Type::Char
+        }
+        crate::lexer::Token::Void => {
+            parser.advance();
+            Type::Void
+        }
         // FFI 类型
-        crate::lexer::Token::CInt => { parser.advance(); Type::CInt }
-        crate::lexer::Token::CUInt => { parser.advance(); Type::CUInt }
-        crate::lexer::Token::CLong => { parser.advance(); Type::CLong }
-        crate::lexer::Token::CULong => { parser.advance(); Type::CULong }
-        crate::lexer::Token::CShort => { parser.advance(); Type::CShort }
-        crate::lexer::Token::CUShort => { parser.advance(); Type::CUShort }
-        crate::lexer::Token::CChar => { parser.advance(); Type::CChar }
-        crate::lexer::Token::CUChar => { parser.advance(); Type::CUChar }
-        crate::lexer::Token::CFloat => { parser.advance(); Type::CFloat }
-        crate::lexer::Token::CDouble => { parser.advance(); Type::CDouble }
-        crate::lexer::Token::SizeT => { parser.advance(); Type::SizeT }
-        crate::lexer::Token::SSizeT => { parser.advance(); Type::SSizeT }
-        crate::lexer::Token::UIntPtr => { parser.advance(); Type::UIntPtr }
-        crate::lexer::Token::IntPtr => { parser.advance(); Type::IntPtr }
-        crate::lexer::Token::CVoid => { parser.advance(); Type::CVoid }
-        crate::lexer::Token::CBool => { parser.advance(); Type::CBool }
+        crate::lexer::Token::CInt => {
+            parser.advance();
+            Type::CInt
+        }
+        crate::lexer::Token::CUInt => {
+            parser.advance();
+            Type::CUInt
+        }
+        crate::lexer::Token::CLong => {
+            parser.advance();
+            Type::CLong
+        }
+        crate::lexer::Token::CULong => {
+            parser.advance();
+            Type::CULong
+        }
+        crate::lexer::Token::CShort => {
+            parser.advance();
+            Type::CShort
+        }
+        crate::lexer::Token::CUShort => {
+            parser.advance();
+            Type::CUShort
+        }
+        crate::lexer::Token::CChar => {
+            parser.advance();
+            Type::CChar
+        }
+        crate::lexer::Token::CUChar => {
+            parser.advance();
+            Type::CUChar
+        }
+        crate::lexer::Token::CFloat => {
+            parser.advance();
+            Type::CFloat
+        }
+        crate::lexer::Token::CDouble => {
+            parser.advance();
+            Type::CDouble
+        }
+        crate::lexer::Token::SizeT => {
+            parser.advance();
+            Type::SizeT
+        }
+        crate::lexer::Token::SSizeT => {
+            parser.advance();
+            Type::SSizeT
+        }
+        crate::lexer::Token::UIntPtr => {
+            parser.advance();
+            Type::UIntPtr
+        }
+        crate::lexer::Token::IntPtr => {
+            parser.advance();
+            Type::IntPtr
+        }
+        crate::lexer::Token::CVoid => {
+            parser.advance();
+            Type::CVoid
+        }
+        crate::lexer::Token::CBool => {
+            parser.advance();
+            Type::CBool
+        }
         // c_string 是 *c_char 的别名
-        crate::lexer::Token::CString => { parser.advance(); Type::Pointer(Box::new(Type::CChar)) }
-        crate::lexer::Token::CInt64 => { parser.advance(); Type::Int64 }
-        crate::lexer::Token::CUInt64 => { parser.advance(); Type::Int64 }
-            crate::lexer::Token::Identifier(name) => {
-                let mut name = name.clone();
-                parser.advance();
-                // 支持命名空间限定类型名: std::StringBuilder, std::io::File
-                while parser.check(&crate::lexer::Token::DoubleColon) {
-                    parser.advance(); // 消费 ::
-                    let next = parser.consume_identifier("期望命名空间后的标识符\n提示: 限定类型名格式为 'ns::Type' 或 'ns::sub::Type'")?;
-                    name = format!("{}::{}", name, next);
-                }
-                // 检查是否是已定义的类型别名
-                if let Some(aliased_type) = parser.get_type_alias(&name) {
-                    aliased_type
-                } else {
-                    // 检查是否有泛型类型参数 <...>
-                    let type_name = Type::Object(name.clone());
-                    if parser.check(&crate::lexer::Token::Lt) {
-                        // 解析泛型类型参数: Optional<int, String>
-                        let (type_args, extra_generic_closers) = parse_generic_type_args_inner(parser)?;
-                        if extra_generic_closers > 0 {
-                            return Ok((Type::Generic(name, type_args), extra_generic_closers));
-                        }
-                        Type::Generic(name, type_args)
-                    } else {
-                        type_name
+        crate::lexer::Token::CString => {
+            parser.advance();
+            Type::Pointer(Box::new(Type::CChar))
+        }
+        crate::lexer::Token::CInt64 => {
+            parser.advance();
+            Type::Int64
+        }
+        crate::lexer::Token::CUInt64 => {
+            parser.advance();
+            Type::Int64
+        }
+        crate::lexer::Token::Identifier(name) => {
+            let mut name = name.clone();
+            parser.advance();
+            // 支持命名空间限定类型名: std::StringBuilder, std::io::File
+            while parser.check(&crate::lexer::Token::DoubleColon) {
+                parser.advance(); // 消费 ::
+                let next = parser.consume_identifier(
+                    "期望命名空间后的标识符\n提示: 限定类型名格式为 'ns::Type' 或 'ns::sub::Type'",
+                )?;
+                name = format!("{}::{}", name, next);
+            }
+            // 检查是否是已定义的类型别名
+            if let Some(aliased_type) = parser.get_type_alias(&name) {
+                aliased_type
+            } else {
+                // 检查是否有泛型类型参数 <...>
+                let type_name = Type::Object(name.clone());
+                if parser.check(&crate::lexer::Token::Lt) {
+                    // 解析泛型类型参数: Optional<int, String>
+                    let (type_args, extra_generic_closers) = parse_generic_type_args_inner(parser)?;
+                    if extra_generic_closers > 0 {
+                        return Ok((Type::Generic(name, type_args), extra_generic_closers));
                     }
+                    Type::Generic(name, type_args)
+                } else {
+                    type_name
                 }
             }
+        }
         _ => {
             let current_token = parser.current_token();
             let (token_desc, suggestion) = match current_token {
@@ -191,7 +278,10 @@ fn parse_type_inner(parser: &mut Parser) -> cayResult<(Type, usize)> {
 
     // 检查多维数组类型 Type[][]...
     while parser.match_token(&crate::lexer::Token::LBracket) {
-        parser.consume(&crate::lexer::Token::RBracket, "期望 ']'\n提示: 数组类型声明应为 Type[]，例如: int[]")?;
+        parser.consume(
+            &crate::lexer::Token::RBracket,
+            "期望 ']'\n提示: 数组类型声明应为 Type[]，例如: int[]",
+        )?;
         result_type = Type::Array(Box::new(result_type));
     }
 
@@ -201,7 +291,10 @@ fn parse_type_inner(parser: &mut Parser) -> cayResult<(Type, usize)> {
 fn parse_generic_type_args_inner(parser: &mut Parser) -> cayResult<(Vec<Type>, usize)> {
     let mut args = Vec::new();
 
-    parser.consume(&crate::lexer::Token::Lt, "期望 '<' 开始泛型类型实参\n提示: 泛型类型实参应以 '<' 开始，例如: Optional<int>")?;
+    parser.consume(
+        &crate::lexer::Token::Lt,
+        "期望 '<' 开始泛型类型实参\n提示: 泛型类型实参应以 '<' 开始，例如: Optional<int>",
+    )?;
 
     loop {
         let (arg_type, extra_generic_closers) = parse_type_inner(parser)?;
@@ -246,7 +339,8 @@ fn consume_generic_type_close(parser: &mut Parser) -> cayResult<usize> {
 
 /// 检查当前token是否是类型token
 pub fn is_type_token(parser: &Parser) -> bool {
-    matches!(parser.current_token(),
+    matches!(
+        parser.current_token(),
         crate::lexer::Token::Int | crate::lexer::Token::Long | crate::lexer::Token::Float |
         crate::lexer::Token::Double | crate::lexer::Token::Bool | crate::lexer::Token::String |
         crate::lexer::Token::Char | crate::lexer::Token::Void | crate::lexer::Token::Identifier(_) |
@@ -263,9 +357,14 @@ pub fn is_type_token(parser: &Parser) -> bool {
 
 /// 检查当前token是否是原始类型token
 pub fn is_primitive_type_token(parser: &Parser) -> bool {
-    matches!(parser.current_token(),
-        crate::lexer::Token::Int | crate::lexer::Token::Long | crate::lexer::Token::Float |
-        crate::lexer::Token::Double | crate::lexer::Token::Bool | crate::lexer::Token::String |
-        crate::lexer::Token::Char
+    matches!(
+        parser.current_token(),
+        crate::lexer::Token::Int
+            | crate::lexer::Token::Long
+            | crate::lexer::Token::Float
+            | crate::lexer::Token::Double
+            | crate::lexer::Token::Bool
+            | crate::lexer::Token::String
+            | crate::lexer::Token::Char
     )
 }

@@ -61,17 +61,20 @@ public class FileTest {
     }
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_file_basic_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("File basic read/write test passed!"), 
-                "Test should pass, got: {}", output);
+            assert!(
+                output.contains("File basic read/write test passed!"),
+                "Test should pass, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);
@@ -120,17 +123,20 @@ public class FileTest {
     }
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_file_static_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("File.readAllText static method test passed!"), 
-                "Test should pass, got: {}", output);
+            assert!(
+                output.contains("File.readAllText static method test passed!"),
+                "Test should pass, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);
@@ -189,17 +195,20 @@ public class FileTest {
     }
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_file_info_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("FileInfo test passed!"), 
-                "Test should pass, got: {}", output);
+            assert!(
+                output.contains("FileInfo test passed!"),
+                "Test should pass, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);
@@ -252,17 +261,20 @@ public class FileTest {
     }
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_file_readline_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("readLine test passed!"), 
-                "Test should pass, got: {}", output);
+            assert!(
+                output.contains("readLine test passed!"),
+                "Test should pass, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);
@@ -315,17 +327,20 @@ public class FileTest {
     }
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_file_append_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("Append mode test passed!"), 
-                "Test should pass, got: {}", output);
+            assert!(
+                output.contains("Append mode test passed!"),
+                "Test should pass, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);
@@ -379,17 +394,20 @@ public class FileTest {
     }
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_file_coexist_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("Static and instance methods coexist test passed!"), 
-                "Test should pass, got: {}", output);
+            assert!(
+                output.contains("Static and instance methods coexist test passed!"),
+                "Test should pass, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);

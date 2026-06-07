@@ -20,20 +20,19 @@ public class Test {
 
     // 词法分析
     let tokens = cavvy::lexer::lex(source).expect("Lexing failed");
-    
+
     println!("Tokens:");
     for (i, t) in tokens.iter().enumerate() {
         println!("  {}: {:?} at {:?}", i, t.token, t.loc);
     }
-    
+
     // 语法分析（带源代码）
-    let ast = cavvy::parser::parse_with_source(tokens, source.to_string())
-        .expect("Parsing failed");
-    
+    let ast = cavvy::parser::parse_with_source(tokens, source.to_string()).expect("Parsing failed");
+
     // 查找内联IR语句
     println!("\nTotal functions: {}", ast.top_level_functions.len());
     println!("Total classes: {}", ast.classes.len());
-    
+
     for (ci, class) in ast.classes.iter().enumerate() {
         println!("\nClass [{}]: {:?}", ci, class.name);
         println!("  Members count: {}", class.members.len());
@@ -47,7 +46,10 @@ public class Test {
                         println!("    Statement [{}]: {:?}", si, disc);
                         match stmt {
                             cavvy::ast::Stmt::InlineIr(inline_ir) => {
-                                println!("      -> Inline IR with {} lines:", inline_ir.raw_lines.len());
+                                println!(
+                                    "      -> Inline IR with {} lines:",
+                                    inline_ir.raw_lines.len()
+                                );
                                 for (j, line) in inline_ir.raw_lines.iter().enumerate() {
                                     println!("         [{}]: '{}'", j, line);
                                 }
@@ -67,7 +69,7 @@ public class Test {
             }
         }
     }
-    
+
     // 验证内联IR行数
     let mut found = false;
     for class in &ast.classes {
@@ -89,6 +91,6 @@ public class Test {
             }
         }
     }
-    
+
     assert!(found, "Should find inline IR with 2 lines");
 }

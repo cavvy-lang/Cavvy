@@ -27,19 +27,25 @@ public int main() {
     return 0;
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_type_basic_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("MyInt: 10"), 
-                "MyInt alias should work, got: {}", output);
-            assert!(output.contains("Basic type alias test passed"), 
-                "Test should pass, got: {}", output);
+            assert!(
+                output.contains("MyInt: 10"),
+                "MyInt alias should work, got: {}",
+                output
+            );
+            assert!(
+                output.contains("Basic type alias test passed"),
+                "Test should pass, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);
@@ -81,19 +87,25 @@ public int main() {
     return 0;
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_c_type_alias_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("CInt: 42"), 
-                "CInt alias should work, got: {}", output);
-            assert!(output.contains("C type alias test passed"), 
-                "Test should pass, got: {}", output);
+            assert!(
+                output.contains("CInt: 42"),
+                "CInt alias should work, got: {}",
+                output
+            );
+            assert!(
+                output.contains("C type alias test passed"),
+                "Test should pass, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);
@@ -154,21 +166,30 @@ public int main() {
     return 0;
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_fn_type_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("add(5,3) = 8"), 
-                "BinaryOp should work, got: {}", output);
-            assert!(output.contains("negate(10) = -10"), 
-                "UnaryOp should work, got: {}", output);
-            assert!(output.contains("Function pointer type test passed"), 
-                "Test should pass, got: {}", output);
+            assert!(
+                output.contains("add(5,3) = 8"),
+                "BinaryOp should work, got: {}",
+                output
+            );
+            assert!(
+                output.contains("negate(10) = -10"),
+                "UnaryOp should work, got: {}",
+                output
+            );
+            assert!(
+                output.contains("Function pointer type test passed"),
+                "Test should pass, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);
@@ -208,19 +229,25 @@ public int main() {
     return 0;
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_type_chain_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("IntAlias3: 100"), 
-                "Type alias chain should work, got: {}", output);
-            assert!(output.contains("Type alias chain test passed"), 
-                "Test should pass, got: {}", output);
+            assert!(
+                output.contains("IntAlias3: 100"),
+                "Type alias chain should work, got: {}",
+                output
+            );
+            assert!(
+                output.contains("Type alias chain test passed"),
+                "Test should pass, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);
@@ -285,19 +312,25 @@ public int main() {
     return 0;
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_complex_fn_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("Callback called with code 42"), 
-                "Callback should be called, got: {}", output);
-            assert!(output.contains("Complex function pointer test passed"), 
-                "Test should pass, got: {}", output);
+            assert!(
+                output.contains("Callback called with code 42"),
+                "Callback should be called, got: {}",
+                output
+            );
+            assert!(
+                output.contains("Complex function pointer test passed"),
+                "Test should pass, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);
@@ -357,21 +390,30 @@ public int main() {
     return 1;
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_fn_in_class_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("multiply(10,5) = 50"), 
-                "Multiply should work, got: {}", output);
-            assert!(output.contains("divide(10,5) = 2"), 
-                "Divide should work, got: {}", output);
-            assert!(output.contains("Function pointer in class test passed"), 
-                "Test should pass, got: {}", output);
+            assert!(
+                output.contains("multiply(10,5) = 50"),
+                "Multiply should work, got: {}",
+                output
+            );
+            assert!(
+                output.contains("divide(10,5) = 2"),
+                "Divide should work, got: {}",
+                output
+            );
+            assert!(
+                output.contains("Function pointer in class test passed"),
+                "Test should pass, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);
@@ -414,19 +456,25 @@ public int main() {
     return 1;
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_type_array_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("Sum: 150"), 
-                "Array sum should be 150, got: {}", output);
-            assert!(output.contains("Type alias with array test passed"), 
-                "Test should pass, got: {}", output);
+            assert!(
+                output.contains("Sum: 150"),
+                "Array sum should be 150, got: {}",
+                output
+            );
+            assert!(
+                output.contains("Type alias with array test passed"),
+                "Test should pass, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);
@@ -477,19 +525,25 @@ public int main() {
     return 0;
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_type_scope_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("GlobalInt: 100"), 
-                "GlobalInt should work, got: {}", output);
-            assert!(output.contains("Type alias scope test passed"), 
-                "Test should pass, got: {}", output);
+            assert!(
+                output.contains("GlobalInt: 100"),
+                "GlobalInt should work, got: {}",
+                output
+            );
+            assert!(
+                output.contains("Type alias scope test passed"),
+                "Test should pass, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);
@@ -533,19 +587,25 @@ public int main() {
     return 0;
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_recursive_type_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("Created node with data 10"), 
-                "Node 1 should be created, got: {}", output);
-            assert!(output.contains("Recursive type pattern test passed"), 
-                "Test should pass, got: {}", output);
+            assert!(
+                output.contains("Created node with data 10"),
+                "Node 1 should be created, got: {}",
+                output
+            );
+            assert!(
+                output.contains("Recursive type pattern test passed"),
+                "Test should pass, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);

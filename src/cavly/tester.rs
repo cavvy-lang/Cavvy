@@ -8,13 +8,13 @@
 // 时间复杂度: O(n*m) 测试发现和编译, O(n) 结果收集
 // 空间复杂度: O(n) 测试列表和结果
 
+use anyhow::{Context, Result, bail};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
-use anyhow::{Result, Context, bail};
 
-use super::config::{CavlyConfig, TestTarget};
 use super::builder::find_cayc;
+use super::config::{CavlyConfig, TestTarget};
 use super::ensure_dir;
 
 /// 单个测试结果
@@ -109,7 +109,9 @@ impl TestRunner {
         // 1. 发现测试
         let tests = self.discover_tests();
         if tests.is_empty() {
-            println!("没有发现测试目标。在 cavly.toml 中添加 [[test]] 或在 tests/ 目录下放置 .cay 文件。");
+            println!(
+                "没有发现测试目标。在 cavly.toml 中添加 [[test]] 或在 tests/ 目录下放置 .cay 文件。"
+            );
             return Ok(TestSummary {
                 total: 0,
                 passed: 0,
@@ -125,7 +127,7 @@ impl TestRunner {
                 .into_iter()
                 .filter(|t| t.name.contains(filter.as_str()))
                 .collect();
-            
+
             if filtered.is_empty() {
                 println!("没有测试匹配过滤器: '{}'", filter);
                 return Ok(TestSummary {
@@ -136,7 +138,7 @@ impl TestRunner {
                     results: Vec::new(),
                 });
             }
-            
+
             if self.verbose {
                 println!("Cavly: 过滤器 '{}' 匹配 {} 个测试", filter, filtered.len());
             }
@@ -146,7 +148,11 @@ impl TestRunner {
         };
 
         let test_count = tests.len();
-        println!("\nrunning {} test{}", test_count, if test_count > 1 { "s" } else { "" });
+        println!(
+            "\nrunning {} test{}",
+            test_count,
+            if test_count > 1 { "s" } else { "" }
+        );
 
         // 3. 准备构建目录和查找编译器
         let target_dir = self.config.target_path(&self.project_root);
@@ -185,7 +191,7 @@ impl TestRunner {
 
             // 运行测试
             let result = self.run_test(&test_exe, test);
-            
+
             if result.passed {
                 passed += 1;
             } else {
@@ -244,9 +250,7 @@ impl TestRunner {
         };
         let test_exe = test_build_dir.join(&exe_name);
 
-        let mut args = vec![
-            format!("-O{}", self.config.build.opt_level),
-        ];
+        let mut args = vec![format!("-O{}", self.config.build.opt_level)];
 
         // harness 模式：添加 --test 标志
         if test.harness {
@@ -262,7 +266,8 @@ impl TestRunner {
         args.push(test_exe.to_string_lossy().to_string());
 
         if self.verbose {
-            println!("Cavly:   编译测试 {}: {} {}", 
+            println!(
+                "Cavly:   编译测试 {}: {} {}",
                 test.name,
                 cayc_path.display(),
                 args.join(" ")
@@ -322,15 +327,15 @@ impl TestRunner {
                                     .as_ref()
                                     .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
                                     .unwrap_or_default();
-                                
+
                                 return TestResult {
                                     name: test.name.clone(),
                                     passed: status.success(),
                                     duration: start.elapsed(),
-                                    error: if status.success() { 
-                                        None 
-                                    } else { 
-                                        Some(format!("退出码: {:?}", status.code())) 
+                                    error: if status.success() {
+                                        None
+                                    } else {
+                                        Some(format!("退出码: {:?}", status.code()))
                                     },
                                     stdout,
                                 };
@@ -391,7 +396,11 @@ impl TestRunner {
                             None
                         } else {
                             let stderr = String::from_utf8_lossy(&output.stderr);
-                            Some(format!("退出码: {:?}\nstderr:\n{}", output.status.code(), stderr))
+                            Some(format!(
+                                "退出码: {:?}\nstderr:\n{}",
+                                output.status.code(),
+                                stderr
+                            ))
                         },
                         stdout,
                     }
@@ -414,16 +423,9 @@ impl TestRunner {
         // 打印每个测试的结果
         for result in &summary.results {
             if result.passed {
-                println!(
-                    "test {} ... ok ({:.2?})",
-                    result.name,
-                    result.duration
-                );
+                println!("test {} ... ok ({:.2?})", result.name, result.duration);
             } else {
-                println!(
-                    "test {} ... FAILED",
-                    result.name
-                );
+                println!("test {} ... FAILED", result.name);
                 if let Some(ref error) = result.error {
                     // 缩进显示错误信息
                     for line in error.lines() {
@@ -444,15 +446,12 @@ impl TestRunner {
         if summary.is_success() {
             println!(
                 "test result: ok. {} passed; 0 failed; finished in {:.2?}",
-                summary.passed,
-                summary.total_duration
+                summary.passed, summary.total_duration
             );
         } else {
             println!(
                 "test result: FAILED. {} passed; {} failed; finished in {:.2?}",
-                summary.passed,
-                summary.failed,
-                summary.total_duration
+                summary.passed, summary.failed, summary.total_duration
             );
         }
     }
@@ -492,7 +491,7 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let config = CavlyConfig::default();
         let runner = TestRunner::new(temp.path().to_path_buf(), config);
-        
+
         let tests = runner.discover_tests();
         assert!(tests.is_empty());
     }

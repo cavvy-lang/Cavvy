@@ -32,7 +32,9 @@ impl IRGenerator {
         self.emit_raw("  br i1 %is_null, label %fail, label %copy");
         self.emit_raw("  ");
         self.emit_raw("fail:");
-        self.emit_raw("  ret i8* getelementptr ([1 x i8], [1 x i8]* @.cay_empty_str, i64 0, i64 0)");
+        self.emit_raw(
+            "  ret i8* getelementptr ([1 x i8], [1 x i8]* @.cay_empty_str, i64 0, i64 0)",
+        );
         self.emit_raw("  ");
         self.emit_raw("copy:");
         self.emit_raw("  ; 快速内存复制（LLVM 会优化为 SSE/AVX 或 rep movsb）");

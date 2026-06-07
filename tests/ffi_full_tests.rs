@@ -42,19 +42,30 @@ public int main() {
     return 0;
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_c_types_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("c_char: 65"), "c_char should work, got: {}", output);
-            assert!(output.contains("c_uchar: 255"), "c_uchar should work, got: {}", output);
-            assert!(output.contains("All C basic types test passed"), 
-                "All C types test should pass, got: {}", output);
+            assert!(
+                output.contains("c_char: 65"),
+                "c_char should work, got: {}",
+                output
+            );
+            assert!(
+                output.contains("c_uchar: 255"),
+                "c_uchar should work, got: {}",
+                output
+            );
+            assert!(
+                output.contains("All C basic types test passed"),
+                "All C types test should pass, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);
@@ -93,19 +104,25 @@ public int main() {
     return 0;
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_size_t_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("size_t value:"), 
-                "size_t should work, got: {}", output);
-            assert!(output.contains("Size_t and pointer types test passed"), 
-                "Test should pass, got: {}", output);
+            assert!(
+                output.contains("size_t value:"),
+                "size_t should work, got: {}",
+                output
+            );
+            assert!(
+                output.contains("Size_t and pointer types test passed"),
+                "Test should pass, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);
@@ -145,17 +162,20 @@ public int main() {
     return 0;
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_intptr_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("Intptr types test passed"), 
-                "Intptr types test should pass, got: {}", output);
+            assert!(
+                output.contains("Intptr types test passed"),
+                "Intptr types test should pass, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);
@@ -186,19 +206,25 @@ public int main() {
     return 0;
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_callconv_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("Testing cdecl calling convention"), 
-                "Cdecl should work, got: {}", output);
-            assert!(output.contains("Calling conventions test passed"), 
-                "Calling conventions test should pass, got: {}", output);
+            assert!(
+                output.contains("Testing cdecl calling convention"),
+                "Cdecl should work, got: {}",
+                output
+            );
+            assert!(
+                output.contains("Calling conventions test passed"),
+                "Calling conventions test should pass, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);
@@ -248,19 +274,25 @@ public int main() {
     return 0;
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_ffi_string_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("Copied string: Hello, FFI!"), 
-                "strcpy should work, got: {}", output);
-            assert!(output.contains("FFI string operations test passed"), 
-                "FFI string test should pass, got: {}", output);
+            assert!(
+                output.contains("Copied string: Hello, FFI!"),
+                "strcpy should work, got: {}",
+                output
+            );
+            assert!(
+                output.contains("FFI string operations test passed"),
+                "FFI string test should pass, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);
@@ -311,17 +343,20 @@ public int main() {
     return 0;
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_mem_ops_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("Memory operations test passed"), 
-                "Memory operations test should pass, got: {}", output);
+            assert!(
+                output.contains("Memory operations test passed"),
+                "Memory operations test should pass, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);
@@ -375,19 +410,25 @@ public int main() {
     return 0;
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_callback_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol_with_features(&temp_path, &["-F=top_level_function"]);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("Sorting array with 5 elements"), 
-                "Should show sorting info, got: {}", output);
-            assert!(output.contains("Callback pattern test passed"), 
-                "Callback pattern test should pass, got: {}", output);
+            assert!(
+                output.contains("Sorting array with 5 elements"),
+                "Should show sorting info, got: {}",
+                output
+            );
+            assert!(
+                output.contains("Callback pattern test passed"),
+                "Callback pattern test should pass, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);
@@ -428,17 +469,20 @@ public int main() {
     return 0;
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_ffi_error_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("FFI error handling test passed"), 
-                "FFI error handling test should pass, got: {}", output);
+            assert!(
+                output.contains("FFI error handling test passed"),
+                "FFI error handling test should pass, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);

@@ -29,31 +29,31 @@ impl IRGenerator {
     pub fn generate_alloc_expression(&mut self, alloc: &AllocExpr) -> cayResult<String> {
         // 生成大小表达式
         let size_val = self.generate_expression(&alloc.size)?;
-        
+
         // 提取大小值（去掉类型前缀）
         let size = if size_val.contains(' ') {
             size_val.split_whitespace().nth(1).unwrap_or("0")
         } else {
             &size_val
         };
-        
+
         // 调用 malloc 分配内存
         let malloc_temp = self.new_temp();
         self.emit_line(&format!(
             "  {} = call i8* @malloc(i64 {})",
             malloc_temp, size
         ));
-        
+
         // 将指针转换为 i64（Cavvy 的 long 类型）
         let ptr_int = self.new_temp();
         self.emit_line(&format!(
             "  {} = ptrtoint i8* {} to i64",
             ptr_int, malloc_temp
         ));
-        
+
         Ok(format!("i64 {}", ptr_int.replace('%', "")))
     }
-    
+
     /// 生成内存释放表达式的 LLVM IR
     ///
     /// Cavvy 代码:
@@ -75,27 +75,21 @@ impl IRGenerator {
     pub fn generate_dealloc_expression(&mut self, dealloc: &DeallocExpr) -> cayResult<String> {
         // 生成指针表达式
         let ptr_val = self.generate_expression(&dealloc.ptr)?;
-        
+
         // 提取指针值（去掉类型前缀）
         let ptr = if ptr_val.contains(' ') {
             ptr_val.split_whitespace().nth(1).unwrap_or("0")
         } else {
             &ptr_val
         };
-        
+
         // 将 i64 转换为 i8* 指针
         let ptr_i8 = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = inttoptr i64 {} to i8*",
-            ptr_i8, ptr
-        ));
-        
+        self.emit_line(&format!("  {} = inttoptr i64 {} to i8*", ptr_i8, ptr));
+
         // 调用 free 释放内存
-        self.emit_line(&format!(
-            "  call void @free(i8* {})",
-            ptr_i8
-        ));
-        
+        self.emit_line(&format!("  call void @free(i8* {})", ptr_i8));
+
         Ok("void".to_string())
     }
 }
@@ -103,37 +97,53 @@ impl IRGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{Expr, LiteralValue, LiteralExpr};
+    use crate::ast::{Expr, LiteralExpr, LiteralValue};
     use crate::error::SourceLocation;
-    
+
     /// 测试分配表达式结构
     #[test]
     fn test_alloc_expr_structure() {
         let alloc_expr = AllocExpr {
-            size: Box::new(Expr::Literal(LiteralExpr { 
-                value: LiteralValue::Int64(64), 
-                loc: SourceLocation { file: None, line: 1, column: 1 } 
+            size: Box::new(Expr::Literal(LiteralExpr {
+                value: LiteralValue::Int64(64),
+                loc: SourceLocation {
+                    file: None,
+                    line: 1,
+                    column: 1,
+                },
             })),
             align: None,
-            loc: SourceLocation { file: None, line: 1, column: 1 },
+            loc: SourceLocation {
+                file: None,
+                line: 1,
+                column: 1,
+            },
         };
-        
+
         // 验证结构
         assert!(matches!(alloc_expr.size.as_ref(), Expr::Literal(_)));
         assert!(alloc_expr.align.is_none());
     }
-    
+
     /// 测试释放表达式结构
     #[test]
     fn test_dealloc_expr_structure() {
         let dealloc_expr = DeallocExpr {
-            ptr: Box::new(Expr::Literal(LiteralExpr { 
-                value: LiteralValue::Int64(0x1234), 
-                loc: SourceLocation { file: None, line: 1, column: 1 } 
+            ptr: Box::new(Expr::Literal(LiteralExpr {
+                value: LiteralValue::Int64(0x1234),
+                loc: SourceLocation {
+                    file: None,
+                    line: 1,
+                    column: 1,
+                },
             })),
-            loc: SourceLocation { file: None, line: 1, column: 1 },
+            loc: SourceLocation {
+                file: None,
+                line: 1,
+                column: 1,
+            },
         };
-        
+
         // 验证结构
         assert!(matches!(dealloc_expr.ptr.as_ref(), Expr::Literal(_)));
     }

@@ -1,11 +1,10 @@
-use std::env;
-use std::process;
-use std::path::{Path, PathBuf};
 use cavvy::error::{print_miette_error, print_tool_error, print_warning};
 use cavvy::ir2exe_lib::{
-    Ir2ExeOptions, compile_ir_to_exe, parse_source_map_from_ir, 
-    normalize_path, IRSourceMap
+    IRSourceMap, Ir2ExeOptions, compile_ir_to_exe, normalize_path, parse_source_map_from_ir,
 };
+use std::env;
+use std::path::{Path, PathBuf};
+use std::process;
 
 const VERSION: &str = env!("IR2EXE_VERSION");
 
@@ -87,7 +86,10 @@ fn print_usage() {
     println!("  --cflags <flags>      传递额外的编译器标志");
     println!("  --static              静态链接");
     println!("  -fPIC                 生成位置无关代码");
-    println!("  --target <target>     指定目标平台 (默认: {})", default_target);
+    println!(
+        "  --target <target>     指定目标平台 (默认: {})",
+        default_target
+    );
     println!("  --fno-exceptions      禁用异常处理");
     println!("  --fno-rtti            禁用运行时类型信息");
     println!("");
@@ -103,18 +105,27 @@ fn print_usage() {
     println!("Examples:");
     println!("  ir2exe input.ll {}", output_ext);
     println!("  ir2exe -O3 --lto input.ll {}", output_ext);
-    println!("  ir2exe -O3 --march=native --mtune=native input.ll {}", output_ext);
+    println!(
+        "  ir2exe -O3 --march=native --mtune=native input.ll {}",
+        output_ext
+    );
     println!("  ir2exe -O3 --mavx2 --fvectorize input.ll {}", output_ext);
-    println!("  ir2exe --pgo-gen -O2 input.ll {}      # 编译分析版本", output_ext);
+    println!(
+        "  ir2exe --pgo-gen -O2 input.ll {}      # 编译分析版本",
+        output_ext
+    );
     println!("  # 运行程序生成 .profraw 文件后...");
     println!("  llvm-profdata merge *.profraw -o app.profdata");
-    println!("  ir2exe --pgo-use app.profdata -O3 input.ll {}  # 编译优化版本", output_ext);
+    println!(
+        "  ir2exe --pgo-use app.profdata -O3 input.ll {}  # 编译优化版本",
+        output_ext
+    );
 }
 
 fn parse_args(args: &[String]) -> Result<(Ir2ExeOptions, String, String), String> {
     let mut options = Ir2ExeOptions::default();
     options.target = get_default_target();
-    
+
     let mut input_file: Option<String> = None;
     let mut output_file: Option<String> = None;
     let mut i = 1;
@@ -340,7 +351,7 @@ fn parse_args(args: &[String]) -> Result<(Ir2ExeOptions, String, String), String
             .file_stem()
             .and_then(|stem| stem.to_str())
             .unwrap_or("output");
-        
+
         // 根据目标平台选择扩展名
         if options.target.contains("windows") || options.target.contains("mingw") {
             format!("{}.exe", stem)
@@ -363,7 +374,7 @@ fn main() {
             print_miette_error(
                 "cavvy::argument_error",
                 &e,
-                Some("请检查命令行参数是否正确")
+                Some("请检查命令行参数是否正确"),
             );
             print_usage();
             process::exit(1);
@@ -378,11 +389,7 @@ fn main() {
         env::current_dir()
             .map_err(|e| format!("无法获取当前目录: {}", e))
             .unwrap_or_else(|e| {
-                print_miette_error(
-                    "cavvy::io_error",
-                    &e,
-                    Some("请检查当前目录权限")
-                );
+                print_miette_error("cavvy::io_error", &e, Some("请检查当前目录权限"));
                 process::exit(1);
             })
             .join(input_path)
@@ -398,11 +405,7 @@ fn main() {
         env::current_dir()
             .map_err(|e| format!("无法获取当前目录: {}", e))
             .unwrap_or_else(|e| {
-                print_miette_error(
-                    "cavvy::io_error",
-                    &e,
-                    Some("请检查当前目录权限")
-                );
+                print_miette_error("cavvy::io_error", &e, Some("请检查当前目录权限"));
                 process::exit(1);
             })
             .join(output_path)
@@ -416,11 +419,7 @@ fn main() {
             std::fs::create_dir_all(parent)
                 .map_err(|e| format!("无法创建输出目录: {}", e))
                 .unwrap_or_else(|e| {
-                    print_miette_error(
-                        "cavvy::io_error",
-                        &e,
-                        Some("请检查输出目录权限")
-                    );
+                    print_miette_error("cavvy::io_error", &e, Some("请检查输出目录权限"));
                     process::exit(1);
                 });
         }
@@ -436,7 +435,7 @@ fn main() {
     } else {
         "通用模式"
     };
-    
+
     println!("IR 编译器 v{} ({})", VERSION, mode);
     println!("IR 文件: {}", input_file);
     println!("输出: {}", output_file);
@@ -522,7 +521,7 @@ fn main() {
             print_miette_error(
                 "cavvy::io_error",
                 &format!("无法读取IR文件: {}", e),
-                Some("请检查IR文件路径是否正确")
+                Some("请检查IR文件路径是否正确"),
             );
             process::exit(1);
         }
@@ -540,22 +539,29 @@ fn main() {
             for msg in &result.messages {
                 println!("  {}", msg);
             }
-            
+
             // PGO 提示
             if options.pgo_gen {
                 println!("");
                 println!("[I] PGO: 运行程序生成 .profraw 文件后，执行:");
                 println!("    llvm-profdata merge *.profraw -o app.profdata");
-                println!("    ir2exe --pgo-use app.profdata [其他选项] input.ll {}", 
-                    if cfg!(target_os = "windows") { "output.exe" } else { "output" });
+                println!(
+                    "    ir2exe --pgo-use app.profdata [其他选项] input.ll {}",
+                    if cfg!(target_os = "windows") {
+                        "output.exe"
+                    } else {
+                        "output"
+                    }
+                );
             }
-            
+
             println!("");
             println!("[I] 提示: 使用 './{}' 可直接运行并测速", output_file);
             println!("");
-            
+
             // 根据目标平台显示完成消息
-            let mode_str = if options.target.contains("windows") || options.target.contains("mingw") {
+            let mode_str = if options.target.contains("windows") || options.target.contains("mingw")
+            {
                 "MinGW-w64 模式"
             } else if options.target.contains("linux") {
                 "Linux ELF 模式"

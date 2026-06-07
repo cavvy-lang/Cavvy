@@ -45,7 +45,13 @@ impl TypeInferenceResult {
     }
 
     /// 创建带有错误的结果（带文件路径）
-    pub fn with_error_and_file(ty: Type, file: Option<String>, line: usize, column: usize, message: impl Into<String>) -> Self {
+    pub fn with_error_and_file(
+        ty: Type,
+        file: Option<String>,
+        line: usize,
+        column: usize,
+        message: impl Into<String>,
+    ) -> Self {
         Self {
             ty,
             errors: vec![TypeInferenceError {
@@ -68,7 +74,13 @@ impl TypeInferenceResult {
     }
 
     /// 添加错误（带文件路径）
-    pub fn add_error_with_file(&mut self, file: Option<String>, line: usize, column: usize, message: impl Into<String>) {
+    pub fn add_error_with_file(
+        &mut self,
+        file: Option<String>,
+        line: usize,
+        column: usize,
+        message: impl Into<String>,
+    ) {
         self.errors.push(TypeInferenceError {
             line,
             column,
@@ -102,9 +114,7 @@ pub struct TypeInferenceErrorCollector {
 
 impl TypeInferenceErrorCollector {
     pub fn new() -> Self {
-        Self {
-            errors: Vec::new(),
-        }
+        Self { errors: Vec::new() }
     }
 
     pub fn add_error(&mut self, line: usize, column: usize, message: impl Into<String>) {
@@ -116,7 +126,13 @@ impl TypeInferenceErrorCollector {
         });
     }
 
-    pub fn add_error_with_file(&mut self, file: Option<String>, line: usize, column: usize, message: impl Into<String>) {
+    pub fn add_error_with_file(
+        &mut self,
+        file: Option<String>,
+        line: usize,
+        column: usize,
+        message: impl Into<String>,
+    ) {
         self.errors.push(TypeInferenceError {
             line,
             column,

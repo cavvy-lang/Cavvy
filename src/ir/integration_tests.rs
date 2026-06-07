@@ -15,7 +15,8 @@ mod integration_tests {
         let ast = parser::parse(tokens).expect("Parsing failed");
 
         // 语义分析（启用顶层函数特性）
-        let mut analyzer = semantic::SemanticAnalyzer::with_features(vec!["top_level_function".to_string()]);
+        let mut analyzer =
+            semantic::SemanticAnalyzer::with_features(vec!["top_level_function".to_string()]);
         analyzer.analyze(&ast).expect("Semantic analysis failed");
 
         // IR 构建
@@ -28,7 +29,11 @@ mod integration_tests {
     fn verify_and_emit(module: &IrModule) -> String {
         // 验证
         let result = IrVerifier::new().verify(module);
-        assert!(result.is_valid, "IR verification failed: {:?}", result.errors);
+        assert!(
+            result.is_valid,
+            "IR verification failed: {:?}",
+            result.errors
+        );
 
         // 发射
         LlvmBackend::emit_module(module).expect("LLVM emission failed")
@@ -452,7 +457,11 @@ public class A {
 "#;
         let module = build_ir(source);
         let result = IrVerifier::new().verify(&module);
-        assert!(result.is_valid, "Verifier should accept valid IR: {:?}", result.errors);
+        assert!(
+            result.is_valid,
+            "Verifier should accept valid IR: {:?}",
+            result.errors
+        );
     }
 
     #[test]
@@ -463,7 +472,7 @@ public class A {
         // 注意：IrFunction::new 会创建 entry 块，但没有 terminator
         let mut bad_module = module;
         bad_module.add_function(func);
-        
+
         let result = IrVerifier::new().verify(&bad_module);
         assert!(!result.is_valid);
     }
@@ -529,7 +538,7 @@ public class A {
         "#;
         let result = parser.parse(ir, &[], &[]);
         assert!(result.is_ok());
-        
+
         let block = result.unwrap();
         assert_eq!(block.raw_lines.len(), 4);
     }
@@ -583,13 +592,11 @@ public class A {
             ("a".to_string(), IrValue::IntConst(10, IrType::I32)),
             ("b".to_string(), IrValue::IntConst(20, IrType::I32)),
         ];
-        let outputs = vec![
-            ("%result".to_string(), IrType::I32),
-        ];
+        let outputs = vec![("%result".to_string(), IrType::I32)];
         let ir = "%result = add i32 %a, %b";
         let result = parser.parse(ir, &inputs, &outputs);
         assert!(result.is_ok());
-        
+
         let block = result.unwrap();
         assert_eq!(block.inputs.len(), 2);
         assert_eq!(block.outputs.len(), 1);
@@ -604,7 +611,7 @@ public class A {
         "#;
         let block = parser.parse(ir, &[], &[]).unwrap();
         let inst = parser.to_instruction(&block);
-        
+
         match inst {
             crate::ir::value::IrInstruction::InlineIr { lines, .. } => {
                 assert_eq!(lines.len(), 2);
@@ -619,16 +626,47 @@ public class A {
     fn test_inline_ir_all_allowed_opcodes() {
         let parser = InlineIrParser::new();
         let opcodes = vec![
-            "add", "sub", "mul", "sdiv", "srem",
-            "fadd", "fsub", "fmul", "fdiv", "frem",
-            "and", "or", "xor", "shl", "ashr", "lshr",
-            "icmp", "fcmp",
-            "sext", "zext", "trunc", "sitofp", "fptosi", "fpext", "fptrunc",
-            "bitcast", "ptrtoint", "inttoptr",
-            "getelementptr", "alloca", "load", "store",
-            "call", "ret", "br", "select", "phi", "switch", "unreachable",
+            "add",
+            "sub",
+            "mul",
+            "sdiv",
+            "srem",
+            "fadd",
+            "fsub",
+            "fmul",
+            "fdiv",
+            "frem",
+            "and",
+            "or",
+            "xor",
+            "shl",
+            "ashr",
+            "lshr",
+            "icmp",
+            "fcmp",
+            "sext",
+            "zext",
+            "trunc",
+            "sitofp",
+            "fptosi",
+            "fpext",
+            "fptrunc",
+            "bitcast",
+            "ptrtoint",
+            "inttoptr",
+            "getelementptr",
+            "alloca",
+            "load",
+            "store",
+            "call",
+            "ret",
+            "br",
+            "select",
+            "phi",
+            "switch",
+            "unreachable",
         ];
-        
+
         for opcode in opcodes {
             let ir = if opcode.starts_with('i') || opcode.starts_with('f') {
                 format!("%r = {} eq i32 %a, %b", opcode)
@@ -645,7 +683,7 @@ public class A {
             } else {
                 format!("%r = {} i32 %a, %b", opcode)
             };
-            
+
             let result = parser.parse(&ir, &[], &[]);
             assert!(result.is_ok(), "Opcode '{}' should be allowed", opcode);
         }
@@ -655,11 +693,10 @@ public class A {
     fn test_inline_ir_security_comprehensive() {
         let parser = InlineIrParser::new();
         let dangerous_calls = vec![
-            "system", "exec", "popen", "fork", "vfork",
-            "dlopen", "dlsym", "dlclose",
-            "mmap", "munmap", "mprotect",
+            "system", "exec", "popen", "fork", "vfork", "dlopen", "dlsym", "dlclose", "mmap",
+            "munmap", "mprotect",
         ];
-        
+
         for call in dangerous_calls {
             let ir = format!("call i32 @{}()", call);
             let result = parser.parse(&ir, &[], &[]);
@@ -674,7 +711,7 @@ public class A {
     #[test]
     fn test_ir_type_conversion_from_cavvy() {
         use crate::types::Type;
-        
+
         assert_eq!(IrType::from(&Type::Int32), IrType::I32);
         assert_eq!(IrType::from(&Type::Int64), IrType::I64);
         assert_eq!(IrType::from(&Type::Float32), IrType::F32);
@@ -682,7 +719,10 @@ public class A {
         assert_eq!(IrType::from(&Type::Bool), IrType::I1);
         assert_eq!(IrType::from(&Type::Char), IrType::I8);
         assert_eq!(IrType::from(&Type::Void), IrType::Void);
-        assert_eq!(IrType::from(&Type::String), IrType::Pointer(Box::new(IrType::I8)));
+        assert_eq!(
+            IrType::from(&Type::String),
+            IrType::Pointer(Box::new(IrType::I8))
+        );
     }
 
     #[test]
@@ -746,7 +786,11 @@ public class Stats {
         let stats = module.stats();
 
         // f1, f2, __ctor → 3 个函数
-        assert!(stats.function_count >= 3, "Expected >= 3 functions, got {}", stats.function_count);
+        assert!(
+            stats.function_count >= 3,
+            "Expected >= 3 functions, got {}",
+            stats.function_count
+        );
         assert!(stats.instruction_count > 0, "Expected instructions");
     }
 
@@ -786,12 +830,26 @@ public class Stats {
         assert!(ir.contains("BaseMath.__ctor"));
         assert!(ir.contains("BaseMath.getBase"));
 
-        println!("Large program stats: {} functions, {} blocks, {} instructions, {} strings",
-            stats.function_count, stats.block_count, stats.instruction_count, stats.string_count);
+        println!(
+            "Large program stats: {} functions, {} blocks, {} instructions, {} strings",
+            stats.function_count, stats.block_count, stats.instruction_count, stats.string_count
+        );
 
         // 统计应该合理
-        assert!(stats.function_count > 15, "Expected >15 functions, got {}", stats.function_count);
-        assert!(stats.block_count > 30, "Expected >30 blocks, got {}", stats.block_count);
-        assert!(stats.instruction_count > 100, "Expected >100 instructions, got {}", stats.instruction_count);
+        assert!(
+            stats.function_count > 15,
+            "Expected >15 functions, got {}",
+            stats.function_count
+        );
+        assert!(
+            stats.block_count > 30,
+            "Expected >30 blocks, got {}",
+            stats.block_count
+        );
+        assert!(
+            stats.instruction_count > 100,
+            "Expected >100 instructions, got {}",
+            stats.instruction_count
+        );
     }
 }

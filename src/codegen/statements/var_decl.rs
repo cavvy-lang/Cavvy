@@ -2,10 +2,10 @@
 //!
 //! 处理变量声明和初始化的代码生成。
 
-use crate::codegen::context::IRGenerator;
 use crate::ast::*;
-use crate::types::Type;
+use crate::codegen::context::IRGenerator;
 use crate::error::{cayResult, semantic_error_with_file};
+use crate::types::Type;
 
 impl IRGenerator {
     /// 从表达式推断类型
@@ -23,21 +23,19 @@ impl IRGenerator {
             },
             Expr::Identifier(name) => {
                 // 从变量类型映射中查找
-                self.var_types.get(name.as_ref()).and_then(|llvm_type| {
-                    self.llvm_type_to_cay_type(llvm_type)
-                })
-            },
+                self.var_types
+                    .get(name.as_ref())
+                    .and_then(|llvm_type| self.llvm_type_to_cay_type(llvm_type))
+            }
             Expr::Binary(bin) => {
                 // 对于二元表达式，尝试推断结果类型
                 self.infer_type_from_expr(&bin.left)
-            },
-            Expr::Unary(unary) => {
-                self.infer_type_from_expr(&unary.operand)
-            },
+            }
+            Expr::Unary(unary) => self.infer_type_from_expr(&unary.operand),
             Expr::Call(call) => {
                 // 对于函数调用，尝试从类型注册表获取返回类型
                 self.infer_call_return_type(call)
-            },
+            }
             Expr::MemberAccess(member) => {
                 // 对于方法调用如 obj.method()，尝试推断返回类型
                 if let Expr::Identifier(obj_name) = &*member.object {
@@ -54,17 +52,22 @@ impl IRGenerator {
             }
             Expr::Lambda(lambda) => {
                 // Lambda 表达式推断为函数指针类型
-                let param_types: Vec<Type> = lambda.params.iter()
+                let param_types: Vec<Type> = lambda
+                    .params
+                    .iter()
                     .map(|p| p.param_type.clone().unwrap_or(Type::Int32))
                     .collect();
                 let return_type = match &lambda.body {
-                    LambdaBody::Expr(expr) => self.infer_type_from_expr(expr).unwrap_or(Type::Int32),
+                    LambdaBody::Expr(expr) => {
+                        self.infer_type_from_expr(expr).unwrap_or(Type::Int32)
+                    }
                     LambdaBody::Block(block) => {
                         // 查找块中的 return 语句
                         let mut ret_type = Type::Void;
                         for stmt in &block.statements {
                             if let Stmt::Return(Some(ret_expr)) = stmt {
-                                ret_type = self.infer_type_from_expr(ret_expr).unwrap_or(Type::Int32);
+                                ret_type =
+                                    self.infer_type_from_expr(ret_expr).unwrap_or(Type::Int32);
                                 break;
                             }
                         }
@@ -105,7 +108,9 @@ impl IRGenerator {
             if let Expr::Identifier(name) = call.callee.as_ref() {
                 // 尝试在当前类中查找
                 if !self.current_class.is_empty() {
-                    if let Some(method_info) = registry.get_method(&self.current_class, name.as_ref()) {
+                    if let Some(method_info) =
+                        registry.get_method(&self.current_class, name.as_ref())
+                    {
                         return Some(method_info.return_type.clone());
                     }
                 }
@@ -121,7 +126,11 @@ impl IRGenerator {
                         break;
                     }
                 }
-                let arg_types_slice: Option<&[Type]> = if arg_types_resolved { Some(&arg_types) } else { None };
+                let arg_types_slice: Option<&[Type]> = if arg_types_resolved {
+                    Some(&arg_types)
+                } else {
+                    None
+                };
 
                 // obj.method() 形式
                 if let Expr::Identifier(obj_name) = &*member.object {
@@ -132,7 +141,8 @@ impl IRGenerator {
                             registry.find_method(&self.current_class, &member.member, types)
                         } else {
                             None
-                        }.or_else(|| registry.get_method(&self.current_class, &member.member));
+                        }
+                        .or_else(|| registry.get_method(&self.current_class, &member.member));
                         if let Some(method_info) = found {
                             return Some(method_info.return_type.clone());
                         }
@@ -142,7 +152,8 @@ impl IRGenerator {
                                 registry.find_method(&qname, &member.member, types)
                             } else {
                                 None
-                            }.or_else(|| registry.get_method(&qname, &member.member));
+                            }
+                            .or_else(|| registry.get_method(&qname, &member.member));
                             if let Some(method_info) = found_q {
                                 return Some(method_info.return_type.clone());
                             }
@@ -155,7 +166,8 @@ impl IRGenerator {
                             registry.find_method(obj_name_str, &member.member, types)
                         } else {
                             None
-                        }.or_else(|| registry.get_method(obj_name_str, &member.member));
+                        }
+                        .or_else(|| registry.get_method(obj_name_str, &member.member));
                         if let Some(method_info) = found {
                             return Some(method_info.return_type.clone());
                         }
@@ -166,7 +178,8 @@ impl IRGenerator {
                             registry.find_method(class_name, &member.member, types)
                         } else {
                             None
-                        }.or_else(|| registry.get_method(class_name, &member.member));
+                        }
+                        .or_else(|| registry.get_method(class_name, &member.member));
                         if let Some(method_info) = found {
                             return Some(method_info.return_type.clone());
                         }
@@ -175,16 +188,26 @@ impl IRGenerator {
                     if let Some(var_cay_type) = self.var_cay_types.get(obj_name_str) {
                         if let crate::types::Type::String = var_cay_type {
                             // String 类型特殊处理
-                            if member.member == "length" || member.member == "indexOf" || 
-                               member.member == "lastIndexOf" || member.member == "compareTo" {
+                            if member.member == "length"
+                                || member.member == "indexOf"
+                                || member.member == "lastIndexOf"
+                                || member.member == "compareTo"
+                            {
                                 return Some(crate::types::Type::Int32);
-                            } else if member.member == "substring" || 
-                                      member.member == "toString" || member.member == "replace" ||
-                                      member.member == "toLowerCase" || member.member == "toUpperCase" {
+                            } else if member.member == "substring"
+                                || member.member == "toString"
+                                || member.member == "replace"
+                                || member.member == "toLowerCase"
+                                || member.member == "toUpperCase"
+                            {
                                 return Some(crate::types::Type::String);
-                            } else if member.member == "equals" || member.member == "isEmpty" ||
-                                      member.member == "startsWith" || member.member == "endsWith" ||
-                                      member.member == "contains" || member.member == "equalsIgnoreCase" {
+                            } else if member.member == "equals"
+                                || member.member == "isEmpty"
+                                || member.member == "startsWith"
+                                || member.member == "endsWith"
+                                || member.member == "contains"
+                                || member.member == "equalsIgnoreCase"
+                            {
                                 return Some(crate::types::Type::Bool);
                             } else if member.member == "charAt" {
                                 return Some(crate::types::Type::Char);
@@ -199,22 +222,33 @@ impl IRGenerator {
                                 registry.find_method(&class_name, &member.member, types)
                             } else {
                                 None
-                            }.or_else(|| registry.get_method(&class_name, &member.member));
+                            }
+                            .or_else(|| registry.get_method(&class_name, &member.member));
                             if let Some(method_info) = found {
                                 return Some(method_info.return_type.clone());
                             }
                         } else if let crate::types::Type::String = obj_type {
                             // String 类型特殊处理
-                            if member.member == "length" || member.member == "indexOf" || 
-                               member.member == "lastIndexOf" || member.member == "compareTo" {
+                            if member.member == "length"
+                                || member.member == "indexOf"
+                                || member.member == "lastIndexOf"
+                                || member.member == "compareTo"
+                            {
                                 return Some(crate::types::Type::Int32);
-                            } else if member.member == "substring" || 
-                                      member.member == "toString" || member.member == "replace" ||
-                                      member.member == "toLowerCase" || member.member == "toUpperCase" {
+                            } else if member.member == "substring"
+                                || member.member == "toString"
+                                || member.member == "replace"
+                                || member.member == "toLowerCase"
+                                || member.member == "toUpperCase"
+                            {
                                 return Some(crate::types::Type::String);
-                            } else if member.member == "equals" || member.member == "isEmpty" ||
-                                      member.member == "startsWith" || member.member == "endsWith" ||
-                                      member.member == "contains" || member.member == "equalsIgnoreCase" {
+                            } else if member.member == "equals"
+                                || member.member == "isEmpty"
+                                || member.member == "startsWith"
+                                || member.member == "endsWith"
+                                || member.member == "contains"
+                                || member.member == "equalsIgnoreCase"
+                            {
                                 return Some(crate::types::Type::Bool);
                             } else if member.member == "charAt" {
                                 return Some(crate::types::Type::Char);
@@ -271,8 +305,10 @@ impl IRGenerator {
                 self.infer_type_from_expr(init).unwrap_or(Type::Int32)
             } else {
                 return Err(semantic_error_with_file(
-                    var.loc.file.clone(), var.loc.line, var.loc.column,
-                    "'auto' variable declaration requires an initializer".to_string()
+                    var.loc.file.clone(),
+                    var.loc.line,
+                    var.loc.column,
+                    "'auto' variable declaration requires an initializer".to_string(),
                 ));
             }
         } else {
@@ -280,24 +316,30 @@ impl IRGenerator {
         };
 
         let var_type = self.type_to_llvm(&actual_type);
-        let align = self.get_type_align(&var_type);  // 获取对齐
+        let align = self.get_type_align(&var_type); // 获取对齐
 
         // 使用作用域管理器生成唯一的 LLVM 变量名
         let llvm_name = self.scope_manager.declare_var(&var.name, &var_type);
 
-        self.emit_line(&format!("  %{} = alloca {}, align {}", llvm_name, var_type, align));
+        self.emit_line(&format!(
+            "  %{} = alloca {}, align {}",
+            llvm_name, var_type, align
+        ));
         // 同时存储到旧系统以保持兼容性
         self.var_types.insert(var.name.clone(), var_type.clone());
         // 存储Cavvy类型信息，用于准确的类型推断
-        self.var_cay_types.insert(var.name.clone(), actual_type.clone());
+        self.var_cay_types
+            .insert(var.name.clone(), actual_type.clone());
         // 如果变量类型是对象，记录其类名以便后续方法调用解析
         match &actual_type {
             Type::Object(class_name) => {
-                self.var_class_map.insert(var.name.clone(), class_name.clone());
+                self.var_class_map
+                    .insert(var.name.clone(), class_name.clone());
             }
             Type::Generic(class_name, _) => {
                 // 泛型类型：记录基础类名
-                self.var_class_map.insert(var.name.clone(), class_name.clone());
+                self.var_class_map
+                    .insert(var.name.clone(), class_name.clone());
             }
             _ => {}
         }
@@ -306,20 +348,23 @@ impl IRGenerator {
             // 特殊处理数组初始化，传递目标类型信息
             if let Expr::ArrayInit(array_init) = init {
                 let value = self.generate_array_init_with_type(array_init, &actual_type)?;
-                self.emit_line(&format!("  store {}, {}* %{}",
-                    value, var_type, llvm_name));
+                self.emit_line(&format!("  store {}, {}* %{}", value, var_type, llvm_name));
             } else if let Expr::Lambda(lambda_expr) = init {
                 // Lambda 表达式特殊处理：传递变量名以支持闭包捕获
                 let value = self.generate_lambda(lambda_expr, Some(&var.name))?;
                 let (value_type, val) = self.parse_typed_value(&value);
                 if value_type != var_type {
                     let temp = self.new_temp();
-                    self.emit_line(&format!("  {} = bitcast {} {} to {}",
-                        temp, value_type, val, var_type));
-                    self.emit_line(&format!("  store {} {}, {}* %{}, align {}", var_type, temp, var_type, llvm_name, align));
+                    self.emit_line(&format!(
+                        "  {} = bitcast {} {} to {}",
+                        temp, value_type, val, var_type
+                    ));
+                    self.emit_line(&format!(
+                        "  store {} {}, {}* %{}, align {}",
+                        var_type, temp, var_type, llvm_name, align
+                    ));
                 } else {
-                    self.emit_line(&format!("  store {}, {}* %{}",
-                        value, var_type, llvm_name));
+                    self.emit_line(&format!("  store {}, {}* %{}", value, var_type, llvm_name));
                 }
             } else {
                 let value = self.generate_expression(init)?;
@@ -332,68 +377,128 @@ impl IRGenerator {
                     // null 赋值给指针类型（int 0 转换为指针）- 必须最先检查
                     if (val == "0" || val == "null") && var_type.ends_with("*") {
                         // null 可以直接存储到指针类型
-                        self.emit_line(&format!("  store {} null, {}* %{}, align {}", var_type, var_type, llvm_name, align));
+                        self.emit_line(&format!(
+                            "  store {} null, {}* %{}, align {}",
+                            var_type, var_type, llvm_name, align
+                        ));
                     }
                     // 浮点类型转换
                     else if value_type == "double" && var_type == "float" {
                         // double -> float 转换
                         self.emit_line(&format!("  {} = fptrunc double {} to float", temp, val));
                         let align = self.get_type_align("float");
-                        self.emit_line(&format!("  store float {}, float* %{}, align {}", temp, llvm_name, align));
+                        self.emit_line(&format!(
+                            "  store float {}, float* %{}, align {}",
+                            temp, llvm_name, align
+                        ));
                     } else if value_type == "float" && var_type == "double" {
                         // float -> double 转换
                         self.emit_line(&format!("  {} = fpext float {} to double", temp, val));
                         let align = self.get_type_align("double");
-                        self.emit_line(&format!("  store double {}, double* %{}, align {}", temp, llvm_name, align));
+                        self.emit_line(&format!(
+                            "  store double {}, double* %{}, align {}",
+                            temp, llvm_name, align
+                        ));
                     }
                     // 指针类型转换 (bitcast)
                     else if value_type.ends_with("*") && var_type.ends_with("*") {
-                        self.emit_line(&format!("  {} = bitcast {} {} to {}",
-                            temp, value_type, val, var_type));
-                        self.emit_line(&format!("  store {} {}, {}* %{}, align {}", var_type, temp, var_type, llvm_name, align));
+                        self.emit_line(&format!(
+                            "  {} = bitcast {} {} to {}",
+                            temp, value_type, val, var_type
+                        ));
+                        self.emit_line(&format!(
+                            "  store {} {}, {}* %{}, align {}",
+                            var_type, temp, var_type, llvm_name, align
+                        ));
                     }
                     // 整数类型转换
-                    else if value_type.starts_with("i") && var_type.starts_with("i") && !value_type.ends_with("*") && !var_type.ends_with("*") {
-                        let from_bits: u32 = value_type.trim_start_matches('i').parse().unwrap_or(64);
+                    else if value_type.starts_with("i")
+                        && var_type.starts_with("i")
+                        && !value_type.ends_with("*")
+                        && !var_type.ends_with("*")
+                    {
+                        let from_bits: u32 =
+                            value_type.trim_start_matches('i').parse().unwrap_or(64);
                         let to_bits: u32 = var_type.trim_start_matches('i').parse().unwrap_or(64);
 
                         if to_bits > from_bits {
                             // 符号扩展
-                            self.emit_line(&format!("  {} = sext {} {} to {}",
-                                temp, value_type, val, var_type));
+                            self.emit_line(&format!(
+                                "  {} = sext {} {} to {}",
+                                temp, value_type, val, var_type
+                            ));
                         } else {
                             // 截断
-                            self.emit_line(&format!("  {} = trunc {} {} to {}",
-                                temp, value_type, val, var_type));
+                            self.emit_line(&format!(
+                                "  {} = trunc {} {} to {}",
+                                temp, value_type, val, var_type
+                            ));
                         }
-                        self.emit_line(&format!("  store {} {}, {}* %{}, align {}", var_type, temp, var_type, llvm_name, align));
+                        self.emit_line(&format!(
+                            "  store {} {}, {}* %{}, align {}",
+                            var_type, temp, var_type, llvm_name, align
+                        ));
                     }
                     // 整数到浮点数转换
-                    else if value_type.starts_with("i") && !value_type.ends_with("*")
-                        && (var_type == "float" || var_type == "double") {
-                        self.emit_line(&format!("  {} = sitofp {} {} to {}",
-                            temp, value_type, val, var_type));
-                        self.emit_line(&format!("  store {} {}, {}* %{}, align {}", var_type, temp, var_type, llvm_name, align));
+                    else if value_type.starts_with("i")
+                        && !value_type.ends_with("*")
+                        && (var_type == "float" || var_type == "double")
+                    {
+                        self.emit_line(&format!(
+                            "  {} = sitofp {} {} to {}",
+                            temp, value_type, val, var_type
+                        ));
+                        self.emit_line(&format!(
+                            "  store {} {}, {}* %{}, align {}",
+                            var_type, temp, var_type, llvm_name, align
+                        ));
                     }
                     // 浮点数到整数转换
-                    else if (value_type == "float" || value_type == "double") && var_type.starts_with("i") {
-                        self.emit_line(&format!("  {} = fptosi {} {} to {}",
-                            temp, value_type, val, var_type));
-                        self.emit_line(&format!("  store {} {}, {}* %{}, align {}", var_type, temp, var_type, llvm_name, align));
+                    else if (value_type == "float" || value_type == "double")
+                        && var_type.starts_with("i")
+                    {
+                        self.emit_line(&format!(
+                            "  {} = fptosi {} {} to {}",
+                            temp, value_type, val, var_type
+                        ));
+                        self.emit_line(&format!(
+                            "  store {} {}, {}* %{}, align {}",
+                            var_type, temp, var_type, llvm_name, align
+                        ));
                     }
                     // 指针到整数转换 (ptrtoint)
-                    else if value_type.ends_with("*") && var_type.starts_with("i") && !var_type.ends_with("*") {
-                        self.emit_line(&format!("  {} = ptrtoint {} {} to {}",
-                            temp, value_type, val, var_type));
-                        self.emit_line(&format!("  store {} {}, {}* %{}, align {}", var_type, temp, var_type, llvm_name, align));
+                    else if value_type.ends_with("*")
+                        && var_type.starts_with("i")
+                        && !var_type.ends_with("*")
+                    {
+                        self.emit_line(&format!(
+                            "  {} = ptrtoint {} {} to {}",
+                            temp, value_type, val, var_type
+                        ));
+                        self.emit_line(&format!(
+                            "  store {} {}, {}* %{}, align {}",
+                            var_type, temp, var_type, llvm_name, align
+                        ));
                     }
                     // 整数到指针转换 (inttoptr)
-                    else if var_type.ends_with("*") && value_type.starts_with("i") && !value_type.ends_with("*") {
+                    else if var_type.ends_with("*")
+                        && value_type.starts_with("i")
+                        && !value_type.ends_with("*")
+                    {
                         // LLVM 不支持 void*，使用 i8* 代替
-                        let llvm_var_type: &str = if var_type == "void*" { "i8*" } else { &var_type };
-                        self.emit_line(&format!("  {} = inttoptr {} {} to {}",
-                            temp, value_type, val, llvm_var_type));
-                        self.emit_line(&format!("  store {} {}, {}* %{}, align {}", var_type, temp, var_type, llvm_name, align));
+                        let llvm_var_type: &str = if var_type == "void*" {
+                            "i8*"
+                        } else {
+                            &var_type
+                        };
+                        self.emit_line(&format!(
+                            "  {} = inttoptr {} {} to {}",
+                            temp, value_type, val, llvm_var_type
+                        ));
+                        self.emit_line(&format!(
+                            "  store {} {}, {}* %{}, align {}",
+                            var_type, temp, var_type, llvm_name, align
+                        ));
                     }
                     // i8* 解箱转换（用于泛型类型返回值）
                     // 对于泛型类如 Box<T>.get() 返回 i8*，需要解箱为具体值类型
@@ -403,76 +508,118 @@ impl IRGenerator {
                             let int_val = self.new_temp();
                             self.emit_line(&format!("  {} = ptrtoint i8* {} to i64", int_val, val));
                             let trunc_i8 = self.new_temp();
-                            self.emit_line(&format!("  {} = trunc i64 {} to i8", trunc_i8, int_val));
+                            self.emit_line(&format!(
+                                "  {} = trunc i64 {} to i8",
+                                trunc_i8, int_val
+                            ));
                             self.emit_line(&format!("  {} = trunc i8 {} to i1", temp, trunc_i8));
-                            self.emit_line(&format!("  store i1 {}, i1* %{}, align {}", temp, llvm_name, align));
+                            self.emit_line(&format!(
+                                "  store i1 {}, i1* %{}, align {}",
+                                temp, llvm_name, align
+                            ));
                         }
                         // i8* -> i8 (char)：指针转整数，截断到 i8
                         else if var_type == "i8" {
                             let int_val = self.new_temp();
                             self.emit_line(&format!("  {} = ptrtoint i8* {} to i64", int_val, val));
                             self.emit_line(&format!("  {} = trunc i64 {} to i8", temp, int_val));
-                            self.emit_line(&format!("  store i8 {}, i8* %{}, align {}", temp, llvm_name, align));
+                            self.emit_line(&format!(
+                                "  store i8 {}, i8* %{}, align {}",
+                                temp, llvm_name, align
+                            ));
                         }
                         // i8* -> i16：指针转整数，截断到 i16
                         else if var_type == "i16" {
                             let int_val = self.new_temp();
                             self.emit_line(&format!("  {} = ptrtoint i8* {} to i64", int_val, val));
                             self.emit_line(&format!("  {} = trunc i64 {} to i16", temp, int_val));
-                            self.emit_line(&format!("  store i16 {}, i16* %{}, align {}", temp, llvm_name, align));
+                            self.emit_line(&format!(
+                                "  store i16 {}, i16* %{}, align {}",
+                                temp, llvm_name, align
+                            ));
                         }
                         // i8* -> i32：指针转整数，截断到 i32
                         else if var_type == "i32" {
                             let int_val = self.new_temp();
                             self.emit_line(&format!("  {} = ptrtoint i8* {} to i64", int_val, val));
                             self.emit_line(&format!("  {} = trunc i64 {} to i32", temp, int_val));
-                            self.emit_line(&format!("  store i32 {}, i32* %{}, align {}", temp, llvm_name, align));
+                            self.emit_line(&format!(
+                                "  store i32 {}, i32* %{}, align {}",
+                                temp, llvm_name, align
+                            ));
                         }
                         // i8* -> i64：指针转整数
                         else if var_type == "i64" {
                             self.emit_line(&format!("  {} = ptrtoint i8* {} to i64", temp, val));
-                            self.emit_line(&format!("  store i64 {}, i64* %{}, align {}", temp, llvm_name, align));
+                            self.emit_line(&format!(
+                                "  store i64 {}, i64* %{}, align {}",
+                                temp, llvm_name, align
+                            ));
                         }
                         // i8* -> float：指针转整数，bitcast 到 float
                         else if var_type == "float" {
                             let int_val = self.new_temp();
                             self.emit_line(&format!("  {} = ptrtoint i8* {} to i64", int_val, val));
                             let double_val = self.new_temp();
-                            self.emit_line(&format!("  {} = bitcast i64 {} to double", double_val, int_val));
-                            self.emit_line(&format!("  {} = fptrunc double {} to float", temp, double_val));
-                            self.emit_line(&format!("  store float {}, float* %{}, align {}", temp, llvm_name, align));
+                            self.emit_line(&format!(
+                                "  {} = bitcast i64 {} to double",
+                                double_val, int_val
+                            ));
+                            self.emit_line(&format!(
+                                "  {} = fptrunc double {} to float",
+                                temp, double_val
+                            ));
+                            self.emit_line(&format!(
+                                "  store float {}, float* %{}, align {}",
+                                temp, llvm_name, align
+                            ));
                         }
                         // i8* -> double：指针转整数，bitcast 到 double
                         else if var_type == "double" {
                             let int_val = self.new_temp();
                             self.emit_line(&format!("  {} = ptrtoint i8* {} to i64", int_val, val));
-                            self.emit_line(&format!("  {} = bitcast i64 {} to double", temp, int_val));
-                            self.emit_line(&format!("  store double {}, double* %{}, align {}", temp, llvm_name, align));
+                            self.emit_line(&format!(
+                                "  {} = bitcast i64 {} to double",
+                                temp, int_val
+                            ));
+                            self.emit_line(&format!(
+                                "  store double {}, double* %{}, align {}",
+                                temp, llvm_name, align
+                            ));
                         }
                         // i8* -> 其他指针类型：bitcast
                         else if var_type.ends_with("*") {
-                            self.emit_line(&format!("  {} = bitcast i8* {} to {}", temp, val, var_type));
-                            self.emit_line(&format!("  store {} {}, {}* %{}, align {}", var_type, temp, var_type, llvm_name, align));
-                        }
-                        else {
+                            self.emit_line(&format!(
+                                "  {} = bitcast i8* {} to {}",
+                                temp, val, var_type
+                            ));
+                            self.emit_line(&format!(
+                                "  store {} {}, {}* %{}, align {}",
+                                var_type, temp, var_type, llvm_name, align
+                            ));
+                        } else {
                             // 类型不兼容，报错
-                            return Err(crate::error::codegen_error_at(var.loc.clone(),
-                                format!("Cannot unbox i8* to {} in variable initialization '{}'", 
-                                    var_type, var.name)
+                            return Err(crate::error::codegen_error_at(
+                                var.loc.clone(),
+                                format!(
+                                    "Cannot unbox i8* to {} in variable initialization '{}'",
+                                    var_type, var.name
+                                ),
                             ));
                         }
-                    }
-                    else {
+                    } else {
                         // 类型不兼容，报错
-                        return Err(crate::error::codegen_error_at(var.loc.clone(),
-                            format!("Cannot convert {} to {} in variable initialization '{}'", 
-                                value_type, var_type, var.name)
+                        return Err(crate::error::codegen_error_at(
+                            var.loc.clone(),
+                            format!(
+                                "Cannot convert {} to {} in variable initialization '{}'",
+                                value_type, var_type, var.name
+                            ),
                         ));
                     }
                 } else {
                     // 类型匹配，直接存储
-                    self.emit_line(&format!("  store {}, {}* %{}",
-                        value, var_type, llvm_name));
+                    self.emit_line(&format!("  store {}, {}* %{}", value, var_type, llvm_name));
                 }
             }
         }

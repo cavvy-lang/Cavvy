@@ -16,12 +16,16 @@ impl IRGenerator {
         self.emit_raw("  br i1 %is_null, label %fail, label %do_fmt");
         self.emit_raw("");
         self.emit_raw("fail:");
-        self.emit_raw("  ret i8* getelementptr ([1 x i8], [1 x i8]* @.cay_empty_str, i64 0, i64 0)");
+        self.emit_raw(
+            "  ret i8* getelementptr ([1 x i8], [1 x i8]* @.cay_empty_str, i64 0, i64 0)",
+        );
         self.emit_raw("");
         self.emit_raw("do_fmt:");
         self.emit_raw("  ; 将 float 转换为 double（C 的可变参数函数会自动提升 float 为 double）");
         self.emit_raw("  %value_d = fpext float %value to double");
-        self.emit_raw("  %fmt_ptr = getelementptr [3 x i8], [3 x i8]* @.str.float_fmt, i64 0, i64 0");
+        self.emit_raw(
+            "  %fmt_ptr = getelementptr [3 x i8], [3 x i8]* @.str.float_fmt, i64 0, i64 0",
+        );
         self.emit_raw("  ; 调用 snprintf（指定缓冲区大小，使用 %f 格式，传递 double）");
         self.emit_raw("  call i32 (i8*, i64, i8*, ...) @snprintf(i8* %buf, i64 64, i8* %fmt_ptr, double %value_d)");
         self.emit_raw("  ret i8* %buf");
@@ -38,10 +42,14 @@ impl IRGenerator {
         self.emit_raw("  br i1 %is_null, label %fail, label %do_fmt");
         self.emit_raw("");
         self.emit_raw("fail:");
-        self.emit_raw("  ret i8* getelementptr ([1 x i8], [1 x i8]* @.cay_empty_str, i64 0, i64 0)");
+        self.emit_raw(
+            "  ret i8* getelementptr ([1 x i8], [1 x i8]* @.cay_empty_str, i64 0, i64 0)",
+        );
         self.emit_raw("");
         self.emit_raw("do_fmt:");
-        self.emit_raw("  %fmt_ptr = getelementptr [4 x i8], [4 x i8]* @.str.double_fmt, i64 0, i64 0");
+        self.emit_raw(
+            "  %fmt_ptr = getelementptr [4 x i8], [4 x i8]* @.str.double_fmt, i64 0, i64 0",
+        );
         self.emit_raw("  ; 调用 snprintf（指定缓冲区大小）");
         self.emit_raw("  call i32 (i8*, i64, i8*, ...) @snprintf(i8* %buf, i64 64, i8* %fmt_ptr, double %value)");
         self.emit_raw("  ret i8* %buf");

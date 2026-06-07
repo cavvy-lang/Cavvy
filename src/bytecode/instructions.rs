@@ -542,48 +542,158 @@ impl Opcode {
     pub fn operand_size(self) -> Option<usize> {
         match self {
             // 无操作数指令
-            Opcode::AconstNull | Opcode::Iconst0 | Opcode::Iconst1 | Opcode::IconstM1 |
-            Opcode::Iload0 | Opcode::Iload1 | Opcode::Iload2 | Opcode::Iload3 |
-            Opcode::Aload0 | Opcode::Aload1 | Opcode::Aload2 | Opcode::Aload3 |
-            Opcode::Istore0 | Opcode::Istore1 | Opcode::Istore2 | Opcode::Istore3 |
-            Opcode::Astore0 | Opcode::Astore1 | Opcode::Astore2 | Opcode::Astore3 |
-            Opcode::Arraylength |
-            Opcode::Iaload | Opcode::Laload | Opcode::Faload | Opcode::Daload | Opcode::Aaload |
-            Opcode::Iastore | Opcode::Lastore | Opcode::Fastore | Opcode::Dastore | Opcode::Aastore |
-            Opcode::Pop | Opcode::Pop2 | Opcode::Dup | Opcode::DupX1 | Opcode::DupX2 | Opcode::Swap |
-            Opcode::Iadd | Opcode::Ladd | Opcode::Fadd | Opcode::Dadd |
-            Opcode::Isub | Opcode::Lsub | Opcode::Fsub | Opcode::Dsub |
-            Opcode::Imul | Opcode::Lmul | Opcode::Fmul | Opcode::Dmul |
-            Opcode::Idiv | Opcode::Ldiv | Opcode::Fdiv | Opcode::Ddiv |
-            Opcode::Irem | Opcode::Lrem | Opcode::Frem | Opcode::Drem |
-            Opcode::Ineg | Opcode::Lneg | Opcode::Fneg | Opcode::Dneg |
-            Opcode::Ishl | Opcode::Lshl | Opcode::Ishr | Opcode::Lshr |
-            Opcode::Iushr | Opcode::Lushr |
-            Opcode::Iand | Opcode::Land | Opcode::Ior | Opcode::Lor | Opcode::Ixor | Opcode::Lxor |
-            Opcode::I2l | Opcode::I2f | Opcode::I2d |
-            Opcode::L2i | Opcode::L2f | Opcode::L2d |
-            Opcode::F2i | Opcode::F2l | Opcode::F2d |
-            Opcode::D2i | Opcode::D2l | Opcode::D2f |
-            Opcode::I2b | Opcode::I2c | Opcode::I2s |
-            Opcode::Lcmp | Opcode::Fcmpl | Opcode::Fcmpg | Opcode::Dcmpl | Opcode::Dcmpg |
-            Opcode::Return | Opcode::Ireturn | Opcode::Lreturn | Opcode::Freturn | Opcode::Dreturn | Opcode::Areturn |
-            Opcode::Monitorenter | Opcode::Monitorexit |
-            Opcode::Breakpoint | Opcode::Impdep1 | Opcode::Impdep2 | Opcode::Invalid => Some(0),
+            Opcode::AconstNull
+            | Opcode::Iconst0
+            | Opcode::Iconst1
+            | Opcode::IconstM1
+            | Opcode::Iload0
+            | Opcode::Iload1
+            | Opcode::Iload2
+            | Opcode::Iload3
+            | Opcode::Aload0
+            | Opcode::Aload1
+            | Opcode::Aload2
+            | Opcode::Aload3
+            | Opcode::Istore0
+            | Opcode::Istore1
+            | Opcode::Istore2
+            | Opcode::Istore3
+            | Opcode::Astore0
+            | Opcode::Astore1
+            | Opcode::Astore2
+            | Opcode::Astore3
+            | Opcode::Arraylength
+            | Opcode::Iaload
+            | Opcode::Laload
+            | Opcode::Faload
+            | Opcode::Daload
+            | Opcode::Aaload
+            | Opcode::Iastore
+            | Opcode::Lastore
+            | Opcode::Fastore
+            | Opcode::Dastore
+            | Opcode::Aastore
+            | Opcode::Pop
+            | Opcode::Pop2
+            | Opcode::Dup
+            | Opcode::DupX1
+            | Opcode::DupX2
+            | Opcode::Swap
+            | Opcode::Iadd
+            | Opcode::Ladd
+            | Opcode::Fadd
+            | Opcode::Dadd
+            | Opcode::Isub
+            | Opcode::Lsub
+            | Opcode::Fsub
+            | Opcode::Dsub
+            | Opcode::Imul
+            | Opcode::Lmul
+            | Opcode::Fmul
+            | Opcode::Dmul
+            | Opcode::Idiv
+            | Opcode::Ldiv
+            | Opcode::Fdiv
+            | Opcode::Ddiv
+            | Opcode::Irem
+            | Opcode::Lrem
+            | Opcode::Frem
+            | Opcode::Drem
+            | Opcode::Ineg
+            | Opcode::Lneg
+            | Opcode::Fneg
+            | Opcode::Dneg
+            | Opcode::Ishl
+            | Opcode::Lshl
+            | Opcode::Ishr
+            | Opcode::Lshr
+            | Opcode::Iushr
+            | Opcode::Lushr
+            | Opcode::Iand
+            | Opcode::Land
+            | Opcode::Ior
+            | Opcode::Lor
+            | Opcode::Ixor
+            | Opcode::Lxor
+            | Opcode::I2l
+            | Opcode::I2f
+            | Opcode::I2d
+            | Opcode::L2i
+            | Opcode::L2f
+            | Opcode::L2d
+            | Opcode::F2i
+            | Opcode::F2l
+            | Opcode::F2d
+            | Opcode::D2i
+            | Opcode::D2l
+            | Opcode::D2f
+            | Opcode::I2b
+            | Opcode::I2c
+            | Opcode::I2s
+            | Opcode::Lcmp
+            | Opcode::Fcmpl
+            | Opcode::Fcmpg
+            | Opcode::Dcmpl
+            | Opcode::Dcmpg
+            | Opcode::Return
+            | Opcode::Ireturn
+            | Opcode::Lreturn
+            | Opcode::Freturn
+            | Opcode::Dreturn
+            | Opcode::Areturn
+            | Opcode::Monitorenter
+            | Opcode::Monitorexit
+            | Opcode::Breakpoint
+            | Opcode::Impdep1
+            | Opcode::Impdep2
+            | Opcode::Invalid => Some(0),
 
             // 1字节操作数
             Opcode::Iconst => Some(1),
 
             // 2字节操作数
-            Opcode::Ldc | Opcode::Iload | Opcode::Lload | Opcode::Fload | Opcode::Dload | Opcode::Aload |
-            Opcode::Istore | Opcode::Lstore | Opcode::Fstore | Opcode::Dstore | Opcode::Astore |
-            Opcode::Newarray | Opcode::Anewarray |
-            Opcode::Ifeq | Opcode::Ifne | Opcode::Iflt | Opcode::Ifge | Opcode::Ifgt | Opcode::Ifle |
-            Opcode::IfIcmpeq | Opcode::IfIcmpne | Opcode::IfIcmplt | Opcode::IfIcmpge |
-            Opcode::IfIcmpgt | Opcode::IfIcmple | Opcode::IfAcmpeq | Opcode::IfAcmpne |
-            Opcode::Ifnull | Opcode::Ifnonnull | Opcode::Goto | Opcode::Jsr |
-            Opcode::Invokevirtual | Opcode::Invokestatic | Opcode::Invokespecial | Opcode::Invokefunction |
-            Opcode::New | Opcode::Getfield | Opcode::Putfield | Opcode::Getstatic | Opcode::Putstatic |
-            Opcode::Instanceof | Opcode::Checkcast => Some(2),
+            Opcode::Ldc
+            | Opcode::Iload
+            | Opcode::Lload
+            | Opcode::Fload
+            | Opcode::Dload
+            | Opcode::Aload
+            | Opcode::Istore
+            | Opcode::Lstore
+            | Opcode::Fstore
+            | Opcode::Dstore
+            | Opcode::Astore
+            | Opcode::Newarray
+            | Opcode::Anewarray
+            | Opcode::Ifeq
+            | Opcode::Ifne
+            | Opcode::Iflt
+            | Opcode::Ifge
+            | Opcode::Ifgt
+            | Opcode::Ifle
+            | Opcode::IfIcmpeq
+            | Opcode::IfIcmpne
+            | Opcode::IfIcmplt
+            | Opcode::IfIcmpge
+            | Opcode::IfIcmpgt
+            | Opcode::IfIcmple
+            | Opcode::IfAcmpeq
+            | Opcode::IfAcmpne
+            | Opcode::Ifnull
+            | Opcode::Ifnonnull
+            | Opcode::Goto
+            | Opcode::Jsr
+            | Opcode::Invokevirtual
+            | Opcode::Invokestatic
+            | Opcode::Invokespecial
+            | Opcode::Invokefunction
+            | Opcode::New
+            | Opcode::Getfield
+            | Opcode::Putfield
+            | Opcode::Getstatic
+            | Opcode::Putstatic
+            | Opcode::Instanceof
+            | Opcode::Checkcast => Some(2),
 
             // 4字节操作数
             Opcode::Lconst | Opcode::Fconst | Opcode::GotoW => Some(4),
@@ -594,7 +704,7 @@ impl Opcode {
             // 变长指令
             Opcode::Multianewarray => Some(3), // 2字节类型索引 + 1字节维度
             Opcode::Invokeinterface => Some(4), // 2字节索引 + 1字节计数 + 1字节填充
-            Opcode::Invokedynamic => Some(4), // 2字节索引 + 2字节填充
+            Opcode::Invokedynamic => Some(4),  // 2字节索引 + 2字节填充
             Opcode::Tableswitch | Opcode::Lookupswitch | Opcode::Wide | Opcode::Ret => None,
         }
     }
@@ -620,10 +730,7 @@ impl Instruction {
 
     /// 创建带操作数的指令
     pub fn with_operands(opcode: Opcode, operands: Vec<u8>) -> Self {
-        Self {
-            opcode,
-            operands,
-        }
+        Self { opcode, operands }
     }
 
     /// 创建加载常量指令

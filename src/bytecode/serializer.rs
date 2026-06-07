@@ -1,6 +1,5 @@
 /// 字节码序列化器
 /// 负责将BytecodeModule序列化为二进制格式，以及从二进制格式反序列化
-
 use super::*;
 
 /// 字节码文件扩展名
@@ -157,10 +156,18 @@ fn serialize_type_definition(bytes: &mut Vec<u8>, type_def: &TypeDefinition) {
 /// 序列化类型修饰符
 fn serialize_type_modifiers(bytes: &mut Vec<u8>, modifiers: &TypeModifiers) {
     let mut flags: u8 = 0;
-    if modifiers.is_public { flags |= 0x01; }
-    if modifiers.is_final { flags |= 0x02; }
-    if modifiers.is_abstract { flags |= 0x04; }
-    if modifiers.is_interface { flags |= 0x08; }
+    if modifiers.is_public {
+        flags |= 0x01;
+    }
+    if modifiers.is_final {
+        flags |= 0x02;
+    }
+    if modifiers.is_abstract {
+        flags |= 0x04;
+    }
+    if modifiers.is_interface {
+        flags |= 0x08;
+    }
     bytes.push(flags);
 }
 
@@ -181,11 +188,21 @@ fn serialize_field_definition(bytes: &mut Vec<u8>, field: &FieldDefinition) {
 /// 序列化字段修饰符
 fn serialize_field_modifiers(bytes: &mut Vec<u8>, modifiers: &FieldModifiers) {
     let mut flags: u8 = 0;
-    if modifiers.is_public { flags |= 0x01; }
-    if modifiers.is_private { flags |= 0x02; }
-    if modifiers.is_protected { flags |= 0x04; }
-    if modifiers.is_static { flags |= 0x08; }
-    if modifiers.is_final { flags |= 0x10; }
+    if modifiers.is_public {
+        flags |= 0x01;
+    }
+    if modifiers.is_private {
+        flags |= 0x02;
+    }
+    if modifiers.is_protected {
+        flags |= 0x04;
+    }
+    if modifiers.is_static {
+        flags |= 0x08;
+    }
+    if modifiers.is_final {
+        flags |= 0x10;
+    }
     bytes.push(flags);
 }
 
@@ -221,14 +238,30 @@ fn serialize_method_definition(bytes: &mut Vec<u8>, method: &MethodDefinition) {
 /// 序列化方法修饰符
 fn serialize_method_modifiers(bytes: &mut Vec<u8>, modifiers: &MethodModifiers) {
     let mut flags: u16 = 0;
-    if modifiers.is_public { flags |= 0x0001; }
-    if modifiers.is_private { flags |= 0x0002; }
-    if modifiers.is_protected { flags |= 0x0004; }
-    if modifiers.is_static { flags |= 0x0008; }
-    if modifiers.is_final { flags |= 0x0010; }
-    if modifiers.is_abstract { flags |= 0x0020; }
-    if modifiers.is_native { flags |= 0x0040; }
-    if modifiers.is_override { flags |= 0x0080; }
+    if modifiers.is_public {
+        flags |= 0x0001;
+    }
+    if modifiers.is_private {
+        flags |= 0x0002;
+    }
+    if modifiers.is_protected {
+        flags |= 0x0004;
+    }
+    if modifiers.is_static {
+        flags |= 0x0008;
+    }
+    if modifiers.is_final {
+        flags |= 0x0010;
+    }
+    if modifiers.is_abstract {
+        flags |= 0x0020;
+    }
+    if modifiers.is_native {
+        flags |= 0x0040;
+    }
+    if modifiers.is_override {
+        flags |= 0x0080;
+    }
     bytes.extend_from_slice(&flags.to_le_bytes());
 }
 
@@ -357,8 +390,9 @@ pub fn deserialize(bytes: &[u8]) -> Result<BytecodeModule, SerializationError> {
     let header = deserialize_header(bytes, &mut offset)?;
 
     // 4. 反序列化常量池
-    let constant_pool = ConstantPool::deserialize(bytes, &mut offset)
-        .ok_or_else(|| SerializationError::InvalidFormat("Failed to deserialize constant pool".to_string()))?;
+    let constant_pool = ConstantPool::deserialize(bytes, &mut offset).ok_or_else(|| {
+        SerializationError::InvalidFormat("Failed to deserialize constant pool".to_string())
+    })?;
 
     // 5. 反序列化类型定义
     let type_definitions = deserialize_type_definitions(bytes, &mut offset)?;
@@ -387,7 +421,10 @@ pub fn deserialize(bytes: &[u8]) -> Result<BytecodeModule, SerializationError> {
 }
 
 /// 反序列化头部信息
-fn deserialize_header(bytes: &[u8], offset: &mut usize) -> Result<ModuleHeader, SerializationError> {
+fn deserialize_header(
+    bytes: &[u8],
+    offset: &mut usize,
+) -> Result<ModuleHeader, SerializationError> {
     let name = deserialize_string(bytes, offset)?;
     let target_platform = deserialize_string(bytes, offset)?;
     let timestamp = read_u64(bytes, offset)?;
@@ -409,7 +446,9 @@ fn deserialize_header(bytes: &[u8], offset: &mut usize) -> Result<ModuleHeader, 
 /// 读取u8
 fn read_u8(bytes: &[u8], offset: &mut usize) -> Result<u8, SerializationError> {
     if *offset >= bytes.len() {
-        return Err(SerializationError::InvalidFormat("Unexpected end of data".to_string()));
+        return Err(SerializationError::InvalidFormat(
+            "Unexpected end of data".to_string(),
+        ));
     }
     let value = bytes[*offset];
     *offset += 1;
@@ -419,7 +458,9 @@ fn read_u8(bytes: &[u8], offset: &mut usize) -> Result<u8, SerializationError> {
 /// 读取u16
 fn read_u16(bytes: &[u8], offset: &mut usize) -> Result<u16, SerializationError> {
     if *offset + 2 > bytes.len() {
-        return Err(SerializationError::InvalidFormat("Unexpected end of data".to_string()));
+        return Err(SerializationError::InvalidFormat(
+            "Unexpected end of data".to_string(),
+        ));
     }
     let value = u16::from_le_bytes([bytes[*offset], bytes[*offset + 1]]);
     *offset += 2;
@@ -429,7 +470,9 @@ fn read_u16(bytes: &[u8], offset: &mut usize) -> Result<u16, SerializationError>
 /// 读取u32
 fn read_u32(bytes: &[u8], offset: &mut usize) -> Result<u32, SerializationError> {
     if *offset + 4 > bytes.len() {
-        return Err(SerializationError::InvalidFormat("Unexpected end of data".to_string()));
+        return Err(SerializationError::InvalidFormat(
+            "Unexpected end of data".to_string(),
+        ));
     }
     let value = u32::from_le_bytes([
         bytes[*offset],
@@ -444,7 +487,9 @@ fn read_u32(bytes: &[u8], offset: &mut usize) -> Result<u32, SerializationError>
 /// 读取u64
 fn read_u64(bytes: &[u8], offset: &mut usize) -> Result<u64, SerializationError> {
     if *offset + 8 > bytes.len() {
-        return Err(SerializationError::InvalidFormat("Unexpected end of data".to_string()));
+        return Err(SerializationError::InvalidFormat(
+            "Unexpected end of data".to_string(),
+        ));
     }
     let value = u64::from_le_bytes([
         bytes[*offset],
@@ -464,7 +509,9 @@ fn read_u64(bytes: &[u8], offset: &mut usize) -> Result<u64, SerializationError>
 fn deserialize_string(bytes: &[u8], offset: &mut usize) -> Result<String, SerializationError> {
     let len = read_u32(bytes, offset)? as usize;
     if *offset + len > bytes.len() {
-        return Err(SerializationError::InvalidFormat("String length exceeds data".to_string()));
+        return Err(SerializationError::InvalidFormat(
+            "String length exceeds data".to_string(),
+        ));
     }
     let s = String::from_utf8(bytes[*offset..*offset + len].to_vec())
         .map_err(|_| SerializationError::InvalidFormat("Invalid UTF-8 string".to_string()))?;
@@ -473,7 +520,10 @@ fn deserialize_string(bytes: &[u8], offset: &mut usize) -> Result<String, Serial
 }
 
 /// 反序列化字符串数组
-fn deserialize_string_vec(bytes: &[u8], offset: &mut usize) -> Result<Vec<String>, SerializationError> {
+fn deserialize_string_vec(
+    bytes: &[u8],
+    offset: &mut usize,
+) -> Result<Vec<String>, SerializationError> {
     let len = read_u32(bytes, offset)? as usize;
     let mut vec = Vec::with_capacity(len);
     for _ in 0..len {
@@ -483,7 +533,10 @@ fn deserialize_string_vec(bytes: &[u8], offset: &mut usize) -> Result<Vec<String
 }
 
 /// 反序列化类型定义列表
-fn deserialize_type_definitions(bytes: &[u8], offset: &mut usize) -> Result<Vec<TypeDefinition>, SerializationError> {
+fn deserialize_type_definitions(
+    bytes: &[u8],
+    offset: &mut usize,
+) -> Result<Vec<TypeDefinition>, SerializationError> {
     let len = read_u32(bytes, offset)? as usize;
     let mut types = Vec::with_capacity(len);
     for _ in 0..len {
@@ -493,7 +546,10 @@ fn deserialize_type_definitions(bytes: &[u8], offset: &mut usize) -> Result<Vec<
 }
 
 /// 反序列化单个类型定义
-fn deserialize_type_definition(bytes: &[u8], offset: &mut usize) -> Result<TypeDefinition, SerializationError> {
+fn deserialize_type_definition(
+    bytes: &[u8],
+    offset: &mut usize,
+) -> Result<TypeDefinition, SerializationError> {
     let name_index = read_u16(bytes, offset)?;
     let parent_index = if read_u8(bytes, offset)? != 0 {
         Some(read_u16(bytes, offset)?)
@@ -532,7 +588,10 @@ fn deserialize_type_definition(bytes: &[u8], offset: &mut usize) -> Result<TypeD
 }
 
 /// 反序列化类型修饰符
-fn deserialize_type_modifiers(bytes: &[u8], offset: &mut usize) -> Result<TypeModifiers, SerializationError> {
+fn deserialize_type_modifiers(
+    bytes: &[u8],
+    offset: &mut usize,
+) -> Result<TypeModifiers, SerializationError> {
     let flags = read_u8(bytes, offset)?;
     Ok(TypeModifiers {
         is_public: flags & 0x01 != 0,
@@ -543,7 +602,10 @@ fn deserialize_type_modifiers(bytes: &[u8], offset: &mut usize) -> Result<TypeMo
 }
 
 /// 反序列化字段定义
-fn deserialize_field_definition(bytes: &[u8], offset: &mut usize) -> Result<FieldDefinition, SerializationError> {
+fn deserialize_field_definition(
+    bytes: &[u8],
+    offset: &mut usize,
+) -> Result<FieldDefinition, SerializationError> {
     let name_index = read_u16(bytes, offset)?;
     let type_index = read_u16(bytes, offset)?;
     let modifiers = deserialize_field_modifiers(bytes, offset)?;
@@ -562,7 +624,10 @@ fn deserialize_field_definition(bytes: &[u8], offset: &mut usize) -> Result<Fiel
 }
 
 /// 反序列化字段修饰符
-fn deserialize_field_modifiers(bytes: &[u8], offset: &mut usize) -> Result<FieldModifiers, SerializationError> {
+fn deserialize_field_modifiers(
+    bytes: &[u8],
+    offset: &mut usize,
+) -> Result<FieldModifiers, SerializationError> {
     let flags = read_u8(bytes, offset)?;
     Ok(FieldModifiers {
         is_public: flags & 0x01 != 0,
@@ -574,7 +639,10 @@ fn deserialize_field_modifiers(bytes: &[u8], offset: &mut usize) -> Result<Field
 }
 
 /// 反序列化方法定义
-fn deserialize_method_definition(bytes: &[u8], offset: &mut usize) -> Result<MethodDefinition, SerializationError> {
+fn deserialize_method_definition(
+    bytes: &[u8],
+    offset: &mut usize,
+) -> Result<MethodDefinition, SerializationError> {
     let name_index = read_u16(bytes, offset)?;
     let return_type_index = read_u16(bytes, offset)?;
 
@@ -614,7 +682,10 @@ fn deserialize_method_definition(bytes: &[u8], offset: &mut usize) -> Result<Met
 }
 
 /// 反序列化方法修饰符
-fn deserialize_method_modifiers(bytes: &[u8], offset: &mut usize) -> Result<MethodModifiers, SerializationError> {
+fn deserialize_method_modifiers(
+    bytes: &[u8],
+    offset: &mut usize,
+) -> Result<MethodModifiers, SerializationError> {
     let flags = read_u16(bytes, offset)?;
     Ok(MethodModifiers {
         is_public: flags & 0x0001 != 0,
@@ -637,11 +708,17 @@ fn deserialize_code_body(bytes: &[u8], offset: &mut usize) -> Result<CodeBody, S
         let opcode_byte = read_u8(bytes, offset)?;
         let opcode = Opcode::from_byte(opcode_byte);
 
-        let operand_size = opcode.operand_size()
-            .ok_or_else(|| SerializationError::InvalidFormat(format!("Variable-length opcode not supported: {:?}", opcode)))?;
+        let operand_size = opcode.operand_size().ok_or_else(|| {
+            SerializationError::InvalidFormat(format!(
+                "Variable-length opcode not supported: {:?}",
+                opcode
+            ))
+        })?;
 
         if *offset + operand_size > bytes.len() {
-            return Err(SerializationError::InvalidFormat("Instruction operands exceed data".to_string()));
+            return Err(SerializationError::InvalidFormat(
+                "Instruction operands exceed data".to_string(),
+            ));
         }
 
         let operands = bytes[*offset..*offset + operand_size].to_vec();
@@ -678,7 +755,10 @@ fn deserialize_code_body(bytes: &[u8], offset: &mut usize) -> Result<CodeBody, S
 }
 
 /// 反序列化函数定义列表
-fn deserialize_function_definitions(bytes: &[u8], offset: &mut usize) -> Result<Vec<FunctionDefinition>, SerializationError> {
+fn deserialize_function_definitions(
+    bytes: &[u8],
+    offset: &mut usize,
+) -> Result<Vec<FunctionDefinition>, SerializationError> {
     let len = read_u32(bytes, offset)? as usize;
     let mut functions = Vec::with_capacity(len);
     for _ in 0..len {
@@ -688,7 +768,10 @@ fn deserialize_function_definitions(bytes: &[u8], offset: &mut usize) -> Result<
 }
 
 /// 反序列化单个函数定义
-fn deserialize_function_definition(bytes: &[u8], offset: &mut usize) -> Result<FunctionDefinition, SerializationError> {
+fn deserialize_function_definition(
+    bytes: &[u8],
+    offset: &mut usize,
+) -> Result<FunctionDefinition, SerializationError> {
     let name_index = read_u16(bytes, offset)?;
     let return_type_index = read_u16(bytes, offset)?;
 
@@ -722,7 +805,10 @@ fn deserialize_function_definition(bytes: &[u8], offset: &mut usize) -> Result<F
 }
 
 /// 反序列化全局变量列表
-fn deserialize_global_variables(bytes: &[u8], offset: &mut usize) -> Result<Vec<GlobalVariable>, SerializationError> {
+fn deserialize_global_variables(
+    bytes: &[u8],
+    offset: &mut usize,
+) -> Result<Vec<GlobalVariable>, SerializationError> {
     let len = read_u32(bytes, offset)? as usize;
     let mut vars = Vec::with_capacity(len);
     for _ in 0..len {
@@ -745,7 +831,10 @@ fn deserialize_global_variables(bytes: &[u8], offset: &mut usize) -> Result<Vec<
 }
 
 /// 反序列化字符串表
-fn deserialize_string_table(bytes: &[u8], offset: &mut usize) -> Result<Vec<String>, SerializationError> {
+fn deserialize_string_table(
+    bytes: &[u8],
+    offset: &mut usize,
+) -> Result<Vec<String>, SerializationError> {
     let len = read_u32(bytes, offset)? as usize;
     let mut table = Vec::with_capacity(len);
     for _ in 0..len {
@@ -755,14 +844,19 @@ fn deserialize_string_table(bytes: &[u8], offset: &mut usize) -> Result<Vec<Stri
 }
 
 /// 反序列化元数据
-fn deserialize_metadata(bytes: &[u8], offset: &mut usize) -> Result<std::collections::HashMap<String, Vec<u8>>, SerializationError> {
+fn deserialize_metadata(
+    bytes: &[u8],
+    offset: &mut usize,
+) -> Result<std::collections::HashMap<String, Vec<u8>>, SerializationError> {
     let len = read_u32(bytes, offset)? as usize;
     let mut metadata = std::collections::HashMap::new();
     for _ in 0..len {
         let key = deserialize_string(bytes, offset)?;
         let value_len = read_u32(bytes, offset)? as usize;
         if *offset + value_len > bytes.len() {
-            return Err(SerializationError::InvalidFormat("Metadata value exceeds data".to_string()));
+            return Err(SerializationError::InvalidFormat(
+                "Metadata value exceeds data".to_string(),
+            ));
         }
         let value = bytes[*offset..*offset + value_len].to_vec();
         *offset += value_len;

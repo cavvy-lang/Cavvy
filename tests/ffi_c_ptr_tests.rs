@@ -31,20 +31,26 @@ public int main() {
     return 0;
 }
 "#;
-    
+
     // 写入临时文件
     let temp_path = format!("tests/temp_c_ptr_basic_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("Memory allocated successfully"), 
-                "Should allocate memory, got: {}", output);
-            assert!(output.contains("Memory freed successfully"), 
-                "Should free memory, got: {}", output);
+            assert!(
+                output.contains("Memory allocated successfully"),
+                "Should allocate memory, got: {}",
+                output
+            );
+            assert!(
+                output.contains("Memory freed successfully"),
+                "Should free memory, got: {}",
+                output
+            );
         }
         Err(e) => {
             // 如果编译失败，可能是语法还不完全支持，记录错误
@@ -79,17 +85,20 @@ public int main() {
     return 0;
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_c_ptr_multi_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("Pointer array allocated"), 
-                "Should allocate pointer array, got: {}", output);
+            assert!(
+                output.contains("Pointer array allocated"),
+                "Should allocate pointer array, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);
@@ -127,17 +136,20 @@ public int main() {
     return 0;
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_c_void_ptr_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("Memory initialized with memset"), 
-                "Should use memset with void*, got: {}", output);
+            assert!(
+                output.contains("Memory initialized with memset"),
+                "Should use memset with void*, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);
@@ -184,17 +196,20 @@ public int main() {
     return 1;
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_fn_ptr_alias_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("Function pointer type alias works"), 
-                "Function pointer type alias should work, got: {}", output);
+            assert!(
+                output.contains("Function pointer type alias works"),
+                "Function pointer type alias should work, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);
@@ -231,19 +246,25 @@ public int main() {
     return 0;
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_extern_fn_ptr_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("Value: 42"), 
-                "Callback should print value, got: {}", output);
-            assert!(output.contains("Callback test passed"), 
-                "Callback test should pass, got: {}", output);
+            assert!(
+                output.contains("Value: 42"),
+                "Callback should print value, got: {}",
+                output
+            );
+            assert!(
+                output.contains("Callback test passed"),
+                "Callback test should pass, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);
@@ -278,17 +299,20 @@ public int main() {
     return 0;
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_type_alias_chain_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("Type alias chain works"), 
-                "Type alias chain should work, got: {}", output);
+            assert!(
+                output.contains("Type alias chain works"),
+                "Type alias chain should work, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);
@@ -340,19 +364,25 @@ public int main() {
     return 0;
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_qsort_style_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("Sorting 5 elements"), 
-                "Should show sorting info, got: {}", output);
-            assert!(output.contains("Qsort-style callback test passed"), 
-                "Qsort test should pass, got: {}", output);
+            assert!(
+                output.contains("Sorting 5 elements"),
+                "Should show sorting info, got: {}",
+                output
+            );
+            assert!(
+                output.contains("Qsort-style callback test passed"),
+                "Qsort test should pass, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);
@@ -406,21 +436,30 @@ public int main() {
     return 1;
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_fn_ptr_return_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("add(10,5) = 15"), 
-                "Should show add result, got: {}", output);
-            assert!(output.contains("subtract(10,5) = 5"), 
-                "Should show subtract result, got: {}", output);
-            assert!(output.contains("Function pointer return test passed"), 
-                "Function pointer return test should pass, got: {}", output);
+            assert!(
+                output.contains("add(10,5) = 15"),
+                "Should show add result, got: {}",
+                output
+            );
+            assert!(
+                output.contains("subtract(10,5) = 5"),
+                "Should show subtract result, got: {}",
+                output
+            );
+            assert!(
+                output.contains("Function pointer return test passed"),
+                "Function pointer return test should pass, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);

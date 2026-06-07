@@ -1,7 +1,7 @@
 //! 语义分析符号表
 
-use std::collections::HashMap;
 use crate::types::Type;
+use std::collections::HashMap;
 
 /// 语义分析符号表
 pub struct SemanticSymbolTable {
@@ -19,7 +19,9 @@ pub struct SemanticSymbolInfo {
 
 impl SemanticSymbolTable {
     pub fn new() -> Self {
-        Self { scopes: vec![HashMap::new()] }
+        Self {
+            scopes: vec![HashMap::new()],
+        }
     }
 
     pub fn enter_scope(&mut self) {

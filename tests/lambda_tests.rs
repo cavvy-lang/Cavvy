@@ -23,8 +23,7 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_lambda_basic.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_lambda_basic.cay")
-        .expect("编译运行失败");
+    let output = compile_and_run_eol("examples/test_lambda_basic.cay").expect("编译运行失败");
     assert_eq!(normalize(&output), "Hello from lambda");
     let _ = std::fs::remove_file("examples/test_lambda_basic.cay");
 }
@@ -40,8 +39,7 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_lambda_params.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_lambda_params.cay")
-        .expect("编译运行失败");
+    let output = compile_and_run_eol("examples/test_lambda_params.cay").expect("编译运行失败");
     assert_eq!(normalize(&output), "7");
     let _ = std::fs::remove_file("examples/test_lambda_params.cay");
 }
@@ -57,8 +55,7 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_lambda_expr.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_lambda_expr.cay")
-        .expect("编译运行失败");
+    let output = compile_and_run_eol("examples/test_lambda_expr.cay").expect("编译运行失败");
     assert_eq!(normalize(&output), "10");
     let _ = std::fs::remove_file("examples/test_lambda_expr.cay");
 }
@@ -79,8 +76,7 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_lambda_param2.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_lambda_param2.cay")
-        .expect("编译运行失败");
+    let output = compile_and_run_eol("examples/test_lambda_param2.cay").expect("编译运行失败");
     assert_eq!(normalize(&output), "100");
     let _ = std::fs::remove_file("examples/test_lambda_param2.cay");
 }
@@ -102,8 +98,7 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_lambda_return.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_lambda_return.cay")
-        .expect("编译运行失败");
+    let output = compile_and_run_eol("examples/test_lambda_return.cay").expect("编译运行失败");
     assert_eq!(normalize(&output), "15");
     let _ = std::fs::remove_file("examples/test_lambda_return.cay");
 }
@@ -123,8 +118,7 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_lambda_loop.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_lambda_loop.cay")
-        .expect("编译运行失败");
+    let output = compile_and_run_eol("examples/test_lambda_loop.cay").expect("编译运行失败");
     assert_eq!(normalize(&output), "100\n101\n102");
     let _ = std::fs::remove_file("examples/test_lambda_loop.cay");
 }
@@ -147,8 +141,7 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_lambda_multi.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_lambda_multi.cay")
-        .expect("编译运行失败");
+    let output = compile_and_run_eol("examples/test_lambda_multi.cay").expect("编译运行失败");
     assert_eq!(normalize(&output), "Sum: 7\nProduct: 12");
     let _ = std::fs::remove_file("examples/test_lambda_multi.cay");
 }
@@ -169,8 +162,7 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_lambda_nested.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_lambda_nested.cay")
-        .expect("编译运行失败");
+    let output = compile_and_run_eol("examples/test_lambda_nested.cay").expect("编译运行失败");
     assert_eq!(normalize(&output), "15");
     let _ = std::fs::remove_file("examples/test_lambda_nested.cay");
 }
@@ -191,8 +183,7 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_lambda_string.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_lambda_string.cay")
-        .expect("编译运行失败");
+    let output = compile_and_run_eol("examples/test_lambda_string.cay").expect("编译运行失败");
     assert_eq!(normalize(&output), "Result: hello");
     let _ = std::fs::remove_file("examples/test_lambda_string.cay");
 }

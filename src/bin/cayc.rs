@@ -1,10 +1,10 @@
-use std::env;
-use std::fs;
-use std::process;
-use std::path::{Path, PathBuf};
 use cavvy::Compiler;
 use cavvy::error::{print_error_with_context, print_miette_error, print_tool_error, print_warning};
-use cavvy::ir2exe_lib::{Ir2ExeOptions, compile_ir_to_exe, parse_source_map_from_ir, IRSourceMap};
+use cavvy::ir2exe_lib::{IRSourceMap, Ir2ExeOptions, compile_ir_to_exe, parse_source_map_from_ir};
+use std::env;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process;
 
 const VERSION: &str = env!("CAYC_VERSION");
 
@@ -23,34 +23,34 @@ struct CompileOptions {
     static_link: bool,            // --static
     position_independent: bool,   // -fPIC/-fPIE
     // LTO 选项
-    lto: bool,                    // --lto, --lto=full
-    lto_thin: bool,               // --lto=thin
+    lto: bool,      // --lto, --lto=full
+    lto_thin: bool, // --lto=thin
     // CPU 指令集
-    march: Option<String>,        // -march=<cpu>
-    mtune: Option<String>,        // -mtune=<cpu>
-    mcpu: Option<String>,         // -mcpu=<cpu> (ARM/AArch64)
-    msse: Option<String>,         // -msse, -msse2, -msse3, etc.
-    mavx: Option<String>,         // -mavx, -mavx2, -mavx512f, etc.
-    mneon: bool,                  // --mneon (ARM)
+    march: Option<String>, // -march=<cpu>
+    mtune: Option<String>, // -mtune=<cpu>
+    mcpu: Option<String>,  // -mcpu=<cpu> (ARM/AArch64)
+    msse: Option<String>,  // -msse, -msse2, -msse3, etc.
+    mavx: Option<String>,  // -mavx, -mavx2, -mavx512f, etc.
+    mneon: bool,           // --mneon (ARM)
     // PGO 选项
-    pgo_gen: bool,                // -fprofile-generate
-    pgo_use: Option<String>,      // -fprofile-use=<path>
-    pgo_cs: bool,                 // -fcs-profile-generate
+    pgo_gen: bool,           // -fprofile-generate
+    pgo_use: Option<String>, // -fprofile-use=<path>
+    pgo_cs: bool,            // -fcs-profile-generate
     // 其他优化
-    fno_exceptions: bool,         // -fno-exceptions
-    fno_rtti: bool,               // -fno-rtti
-    fomit_frame_pointer: bool,    // -fomit-frame-pointer
-    funroll_loops: bool,          // -funroll-loops
-    fvectorize: bool,             // -fvectorize
-    fslp_vectorize: bool,         // -fslp-vectorize
+    fno_exceptions: bool,      // -fno-exceptions
+    fno_rtti: bool,            // -fno-rtti
+    fomit_frame_pointer: bool, // -fomit-frame-pointer
+    funroll_loops: bool,       // -funroll-loops
+    fvectorize: bool,          // -fvectorize
+    fslp_vectorize: bool,      // -fslp-vectorize
     // 工具链选项
-    use_clang: bool,              // --use-clang (强制使用clang)
-    use_llc_lld: bool,            // --use-llc-lld (强制使用llc+lld)
-    use_embedded_llc: bool,       // --use-embedded-llc (实验性)
+    use_clang: bool,        // --use-clang (强制使用clang)
+    use_llc_lld: bool,      // --use-llc-lld (强制使用llc+lld)
+    use_embedded_llc: bool, // --use-embedded-llc (实验性)
     // 语言特性
-    features: Vec<String>,        // -F/--feature=<feature>
+    features: Vec<String>, // -F/--feature=<feature>
     // 测试模式
-    test_mode: bool,              // --test
+    test_mode: bool, // --test
 }
 
 /// 根据当前操作系统自动选择默认目标平台
@@ -388,7 +388,7 @@ fn parse_args(args: &[String]) -> Result<(CompileOptions, String, String), Strin
             .file_stem()
             .and_then(|stem| stem.to_str())
             .unwrap_or("output");
-        
+
         // 根据目标平台选择扩展名
         if options.target.contains("windows") || options.target.contains("mingw") {
             format!("{}.exe", stem)
@@ -401,8 +401,6 @@ fn parse_args(args: &[String]) -> Result<(CompileOptions, String, String), Strin
     Ok((options, input_file, output_file))
 }
 
-
-
 fn main() {
     let args: Vec<String> = env::args().collect();
 
@@ -412,7 +410,7 @@ fn main() {
             print_miette_error(
                 "cavvy::argument_error",
                 &e,
-                Some("请检查命令行参数是否正确")
+                Some("请检查命令行参数是否正确"),
             );
             print_usage();
             process::exit(1);
@@ -507,7 +505,7 @@ fn main() {
             print_miette_error(
                 "cavvy::io_error",
                 &format!("无法读取源文件 '{}': {}", source_path, e),
-                Some("请检查文件路径是否正确，文件是否存在")
+                Some("请检查文件路径是否正确，文件是否存在"),
             );
             process::exit(1);
         }
@@ -556,7 +554,7 @@ fn main() {
             print_miette_error(
                 "cavvy::io_error",
                 &format!("无法读取IR文件 '{}': {}", ir_file, e),
-                Some("请检查IR文件路径是否正确")
+                Some("请检查IR文件路径是否正确"),
             );
             process::exit(1);
         }
@@ -603,7 +601,10 @@ fn main() {
 
     // Windows 平台自动检测 socket 相关函数并添加 ws2_32 库
     #[cfg(target_os = "windows")]
-    if ir_content.contains("WSAStartup") || ir_content.contains("socket(") || ir_content.contains("@socket(") {
+    if ir_content.contains("WSAStartup")
+        || ir_content.contains("socket(")
+        || ir_content.contains("@socket(")
+    {
         ir2exe_options.extra_libs.push("ws2_32".to_string());
     }
 

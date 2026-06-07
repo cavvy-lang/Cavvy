@@ -97,10 +97,7 @@ impl InlineIrBridge {
             .iter()
             .map(|(name, llvm_name, ty)| {
                 let ir_ty = self.convert_type_to_ir(ty);
-                let ir_value = crate::ir::value::IrValue::Register(
-                    llvm_name.clone(),
-                    ir_ty
-                );
+                let ir_value = crate::ir::value::IrValue::Register(llvm_name.clone(), ir_ty);
                 (name.clone(), ir_value)
             })
             .collect();
@@ -109,37 +106,41 @@ impl InlineIrBridge {
         // eprintln!("DEBUG bridge: inline_ir.raw_lines = {:?}", inline_ir.raw_lines);
         let raw_text = inline_ir.raw_lines.join("\n");
         // eprintln!("DEBUG bridge: raw_text = '{}'", raw_text);
-        let parsed_block = self.parser.parse(&raw_text, &ir_inputs, &[])
-            .map_err(|e| crate::error::cayError::CodeGen {
+        let parsed_block = self.parser.parse(&raw_text, &ir_inputs, &[]).map_err(|e| {
+            crate::error::cayError::CodeGen {
                 code: "E5004".to_string(),
                 file: None,
                 line: 0,
                 column: 0,
                 message: format!("Inline IR parse error: {}", e),
                 suggestion: "Check your inline IR syntax and variable references".to_string(),
-            })?;
+            }
+        })?;
 
         // 4. 生成变量映射（支持变量名和参数索引）
         let mut input_mappings = HashMap::new();
-        
+
         // 4.1 添加变量名映射
         for (name, llvm_name, _) in &available_vars {
             input_mappings.insert(name.clone(), llvm_name.clone());
         }
-        
+
         // 4.2 为所有可见变量分配索引（%0, %1, %2...）
         // 顺序：参数按声明顺序，然后是局部变量
         let param_order = codegen.get_current_param_order();
         let mut idx = 0;
-        
+
         // 先映射参数
         for param_name in param_order.iter() {
-            if let Some((_, llvm_name, _)) = available_vars.iter().find(|(name, _, _)| name == param_name) {
+            if let Some((_, llvm_name, _)) = available_vars
+                .iter()
+                .find(|(name, _, _)| name == param_name)
+            {
                 input_mappings.insert(idx.to_string(), llvm_name.clone());
                 idx += 1;
             }
         }
-        
+
         // 再映射局部变量（非参数）
         for (name, llvm_name, _) in &available_vars {
             if !param_order.contains(name) {
@@ -171,18 +172,14 @@ impl InlineIrBridge {
     /// 收集当前作用域的变量信息
     ///
     /// 从CodeGen的作用域管理器中提取所有可见变量
-    fn collect_scope_variables(
-        &self,
-        codegen: &IRGenerator,
-    ) -> Vec<(String, String, Type)> {
+    fn collect_scope_variables(&self, codegen: &IRGenerator) -> Vec<(String, String, Type)> {
         let mut vars = Vec::new();
         let class_name = codegen.get_current_class();
 
         // 获取参数变量
         for (name, var_scope) in codegen.get_all_scope_vars() {
-            let cay_type = codegen.get_var_cay_type(&name)
-                .unwrap_or(Type::Void);
-            
+            let cay_type = codegen.get_var_cay_type(&name).unwrap_or(Type::Void);
+
             // 对于参数，使用原始LLVM参数名（如 TestInlineIrBasic.a）
             // 而不是alloca创建的变量名（如 a_s1）
             let llvm_name = if var_scope.is_parameter {
@@ -190,7 +187,7 @@ impl InlineIrBridge {
             } else {
                 var_scope.llvm_name.clone()
             };
-            
+
             vars.push((name, llvm_name, cay_type));
         }
 
@@ -206,18 +203,18 @@ impl InlineIrBridge {
             Type::Float64 => crate::ir::types::IrType::F64,
             Type::Bool => crate::ir::types::IrType::I1,
             Type::Char => crate::ir::types::IrType::I8,
-            Type::String => crate::ir::types::IrType::Pointer(
-                Box::new(crate::ir::types::IrType::I8)
-            ),
-            Type::Array(elem_ty) => crate::ir::types::IrType::Pointer(
-                Box::new(self.convert_type_to_ir(elem_ty))
-            ),
-            Type::Object(class_name) => crate::ir::types::IrType::Pointer(
-                Box::new(crate::ir::types::IrType::Struct {
+            Type::String => {
+                crate::ir::types::IrType::Pointer(Box::new(crate::ir::types::IrType::I8))
+            }
+            Type::Array(elem_ty) => {
+                crate::ir::types::IrType::Pointer(Box::new(self.convert_type_to_ir(elem_ty)))
+            }
+            Type::Object(class_name) => {
+                crate::ir::types::IrType::Pointer(Box::new(crate::ir::types::IrType::Struct {
                     name: class_name.clone(),
                     fields: Vec::new(),
-                })
-            ),
+                }))
+            }
             _ => crate::ir::types::IrType::I32, // 默认i32
         }
     }
@@ -250,11 +247,7 @@ impl InlineIrBridge {
     /// # 复杂度
     /// - 时间: O(n * m * k)，n为行长度，m为映射数，k为平均变量名长度
     /// - 空间: O(n)
-    fn replace_variables(
-        &self,
-        line: &str,
-        mappings: &HashMap<String, String>,
-    ) -> String {
+    fn replace_variables(&self, line: &str, mappings: &HashMap<String, String>) -> String {
         let mut result = String::with_capacity(line.len() * 2);
         let chars: Vec<char> = line.chars().collect();
         let mut i = 0;
@@ -307,17 +300,11 @@ impl Default for InlineIrBridge {
 /// 为IRGenerator添加协作桥支持
 pub trait InlineIrBridgeSupport {
     /// 使用协作桥处理内联IR
-    fn process_inline_ir_with_bridge(
-        &self,
-        inline_ir: &InlineIrStmt,
-    ) -> cayResult<InlineIrResult>;
+    fn process_inline_ir_with_bridge(&self, inline_ir: &InlineIrStmt) -> cayResult<InlineIrResult>;
 }
 
 impl InlineIrBridgeSupport for IRGenerator {
-    fn process_inline_ir_with_bridge(
-        &self,
-        inline_ir: &InlineIrStmt,
-    ) -> cayResult<InlineIrResult> {
+    fn process_inline_ir_with_bridge(&self, inline_ir: &InlineIrStmt) -> cayResult<InlineIrResult> {
         let bridge = InlineIrBridge::new();
         bridge.process_inline_ir(self, inline_ir)
     }

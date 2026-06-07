@@ -1,10 +1,10 @@
 //! 语句解析
 
+use super::Parser;
+use super::expressions::parse_expression;
+use super::types::{is_primitive_type_token, parse_type};
 use crate::ast::*;
 use crate::error::cayResult;
-use super::Parser;
-use super::types::{parse_type, is_primitive_type_token};
-use super::expressions::parse_expression;
 
 /// 给语句添加标签
 fn add_label_to_stmt(stmt: Stmt, label: String) -> Stmt {
@@ -28,7 +28,10 @@ fn add_label_to_stmt(stmt: Stmt, label: String) -> Stmt {
 /// 解析代码块
 pub fn parse_block(parser: &mut Parser) -> cayResult<Block> {
     let loc = parser.current_loc();
-    parser.consume(&crate::lexer::Token::LBrace, "期望 '{'\n提示: 代码块以 '{' 开始，例如: { ... }")?;
+    parser.consume(
+        &crate::lexer::Token::LBrace,
+        "期望 '{'\n提示: 代码块以 '{' 开始，例如: { ... }",
+    )?;
 
     let mut statements = Vec::new();
     while !parser.check(&crate::lexer::Token::RBrace) && !parser.is_at_end() {
@@ -36,17 +39,20 @@ pub fn parse_block(parser: &mut Parser) -> cayResult<Block> {
         while parser.check(&crate::lexer::Token::Newline) {
             parser.advance();
         }
-        
+
         // 再次检查是否到达代码块结束
         if parser.check(&crate::lexer::Token::RBrace) || parser.is_at_end() {
             break;
         }
-        
+
         statements.push(parse_statement(parser)?);
     }
 
-    parser.consume(&crate::lexer::Token::RBrace, "期望 '}'\n提示: 代码块以 '}' 结束")?;
-    
+    parser.consume(
+        &crate::lexer::Token::RBrace,
+        "期望 '}'\n提示: 代码块以 '}' 结束",
+    )?;
+
     Ok(Block { statements, loc })
 }
 
@@ -57,13 +63,13 @@ pub fn parse_statement(parser: &mut Parser) -> cayResult<Stmt> {
         // 向前看检查是否是冒号
         let checkpoint = parser.pos;
         parser.advance(); // 跳过标识符
-        
+
         if parser.check(&crate::lexer::Token::Colon) {
             parser.advance(); // 跳过冒号
-            
+
             // 解析带标签的语句
             let stmt = parse_statement(parser)?;
-            
+
             // 给语句添加标签
             return Ok(add_label_to_stmt(stmt, label_name));
         } else {
@@ -71,7 +77,7 @@ pub fn parse_statement(parser: &mut Parser) -> cayResult<Stmt> {
             parser.pos = checkpoint;
         }
     }
-    
+
     match parser.current_token() {
         crate::lexer::Token::LBrace => Ok(Stmt::Block(parse_block(parser)?)),
         crate::lexer::Token::If => parse_if_statement(parser),
@@ -84,31 +90,39 @@ pub fn parse_statement(parser: &mut Parser) -> cayResult<Stmt> {
         crate::lexer::Token::Break => {
             let loc = parser.current_loc();
             parser.advance();
-            
+
             // 检查是否有标签
-            let label = if let crate::lexer::Token::Identifier(name) = parser.current_token().clone() {
-                parser.advance();
-                Some(name)
-            } else {
-                None
-            };
-            
-            parser.consume(&crate::lexer::Token::Semicolon, "期望 ';'\n提示: break 语句应以 ';' 结束")?;
+            let label =
+                if let crate::lexer::Token::Identifier(name) = parser.current_token().clone() {
+                    parser.advance();
+                    Some(name)
+                } else {
+                    None
+                };
+
+            parser.consume(
+                &crate::lexer::Token::Semicolon,
+                "期望 ';'\n提示: break 语句应以 ';' 结束",
+            )?;
             Ok(Stmt::Break(label, loc))
         }
         crate::lexer::Token::Continue => {
             let loc = parser.current_loc();
             parser.advance();
-            
+
             // 检查是否有标签
-            let label = if let crate::lexer::Token::Identifier(name) = parser.current_token().clone() {
-                parser.advance();
-                Some(name)
-            } else {
-                None
-            };
-            
-            parser.consume(&crate::lexer::Token::Semicolon, "期望 ';'\n提示: continue 语句应以 ';' 结束")?;
+            let label =
+                if let crate::lexer::Token::Identifier(name) = parser.current_token().clone() {
+                    parser.advance();
+                    Some(name)
+                } else {
+                    None
+                };
+
+            parser.consume(
+                &crate::lexer::Token::Semicolon,
+                "期望 ';'\n提示: continue 语句应以 ';' 结束",
+            )?;
             Ok(Stmt::Continue(label, loc))
         }
         crate::lexer::Token::InlineIr => parse_inline_ir_statement(parser),
@@ -168,7 +182,9 @@ pub fn parse_var_decl(parser: &mut Parser) -> cayResult<Stmt> {
         parser.advance(); // 消费 var/let/auto
 
         // 解析变量名
-        let name = parser.consume_identifier("期望变量名\n提示: var/let/auto 后应跟变量名，例如: var x: int = 10;")?;
+        let name = parser.consume_identifier(
+            "期望变量名\n提示: var/let/auto 后应跟变量名，例如: var x: int = 10;",
+        )?;
 
         // 检查是否有类型注解 (: type)
         let explicit_type = if parser.match_token(&crate::lexer::Token::Colon) {
@@ -231,7 +247,8 @@ pub fn parse_var_decl(parser: &mut Parser) -> cayResult<Stmt> {
 
     while parser.match_token(&crate::lexer::Token::Comma) {
         // 解析下一个变量名
-        let next_name = parser.consume_identifier("期望变量名\n提示: 逗号后应跟变量名，例如: int a = 10, b, c;")?;
+        let next_name = parser
+            .consume_identifier("期望变量名\n提示: 逗号后应跟变量名，例如: int a = 10, b, c;")?;
 
         // 检查是否有初始化表达式
         let next_initializer = if parser.match_token(&crate::lexer::Token::Assign) {
@@ -269,17 +286,23 @@ pub fn parse_if_statement(parser: &mut Parser) -> cayResult<Stmt> {
     let loc = parser.current_loc();
     parser.advance(); // consume 'if'
 
-    parser.consume(&crate::lexer::Token::LParen, "期望 '('\n提示: if 后应跟 '(' 开始条件表达式，例如: if (x > 0) { ... }")?;
+    parser.consume(
+        &crate::lexer::Token::LParen,
+        "期望 '('\n提示: if 后应跟 '(' 开始条件表达式，例如: if (x > 0) { ... }",
+    )?;
     let condition = parse_expression(parser)?;
-    parser.consume(&crate::lexer::Token::RParen, "期望 ')'\n提示: 条件表达式应以 ')' 结束，例如: if (x > 0) { ... }")?;
-    
+    parser.consume(
+        &crate::lexer::Token::RParen,
+        "期望 ')'\n提示: 条件表达式应以 ')' 结束，例如: if (x > 0) { ... }",
+    )?;
+
     let then_branch = Box::new(parse_statement(parser)?);
     let else_branch = if parser.match_token(&crate::lexer::Token::Else) {
         Some(Box::new(parse_statement(parser)?))
     } else {
         None
     };
-    
+
     Ok(Stmt::If(IfStmt {
         condition,
         then_branch,
@@ -293,12 +316,18 @@ pub fn parse_while_statement(parser: &mut Parser) -> cayResult<Stmt> {
     let loc = parser.current_loc();
     parser.advance(); // consume 'while'
 
-    parser.consume(&crate::lexer::Token::LParen, "期望 '('\n提示: while 后应跟 '(' 开始条件表达式，例如: while (x > 0) { ... }")?;
+    parser.consume(
+        &crate::lexer::Token::LParen,
+        "期望 '('\n提示: while 后应跟 '(' 开始条件表达式，例如: while (x > 0) { ... }",
+    )?;
     let condition = parse_expression(parser)?;
-    parser.consume(&crate::lexer::Token::RParen, "期望 ')'\n提示: 条件表达式应以 ')' 结束，例如: while (x > 0) { ... }")?;
-    
+    parser.consume(
+        &crate::lexer::Token::RParen,
+        "期望 ')'\n提示: 条件表达式应以 ')' 结束，例如: while (x > 0) { ... }",
+    )?;
+
     let body = Box::new(parse_statement(parser)?);
-    
+
     Ok(Stmt::While(WhileStmt {
         condition,
         body,
@@ -312,7 +341,10 @@ pub fn parse_for_statement(parser: &mut Parser) -> cayResult<Stmt> {
     let loc = parser.current_loc();
     parser.advance(); // consume 'for'
 
-    parser.consume(&crate::lexer::Token::LParen, "期望 '('\n提示: for 后应跟 '(' 开始循环头，例如: for (int i = 0; i < 10; i++) { ... }")?;
+    parser.consume(
+        &crate::lexer::Token::LParen,
+        "期望 '('\n提示: for 后应跟 '(' 开始循环头，例如: for (int i = 0; i < 10; i++) { ... }",
+    )?;
 
     let init = if parser.check(&crate::lexer::Token::Semicolon) {
         parser.advance(); // consume ';'
@@ -334,10 +366,13 @@ pub fn parse_for_statement(parser: &mut Parser) -> cayResult<Stmt> {
         Some(parse_expression(parser)?)
     };
 
-    parser.consume(&crate::lexer::Token::RParen, "期望 ')'\n提示: for 循环头应以 ')' 结束，例如: for (int i = 0; i < 10; i++) { ... }")?;
-    
+    parser.consume(
+        &crate::lexer::Token::RParen,
+        "期望 ')'\n提示: for 循环头应以 ')' 结束，例如: for (int i = 0; i < 10; i++) { ... }",
+    )?;
+
     let body = Box::new(parse_statement(parser)?);
-    
+
     Ok(Stmt::For(ForStmt {
         init,
         condition,
@@ -355,12 +390,24 @@ pub fn parse_do_while_statement(parser: &mut Parser) -> cayResult<Stmt> {
 
     let body = Box::new(parse_statement(parser)?);
 
-    parser.consume(&crate::lexer::Token::While, "期望 'while'\n提示: do 语句后应跟 while，例如: do { ... } while (condition);")?;
-    parser.consume(&crate::lexer::Token::LParen, "期望 '('\n提示: while 后应跟 '(' 开始条件表达式，例如: while (x > 0)")?;
+    parser.consume(
+        &crate::lexer::Token::While,
+        "期望 'while'\n提示: do 语句后应跟 while，例如: do { ... } while (condition);",
+    )?;
+    parser.consume(
+        &crate::lexer::Token::LParen,
+        "期望 '('\n提示: while 后应跟 '(' 开始条件表达式，例如: while (x > 0)",
+    )?;
     let condition = parse_expression(parser)?;
-    parser.consume(&crate::lexer::Token::RParen, "期望 ')'\n提示: 条件表达式应以 ')' 结束")?;
-    parser.consume(&crate::lexer::Token::Semicolon, "期望 ';'\n提示: do-while 语句应以 ';' 结束")?;
-    
+    parser.consume(
+        &crate::lexer::Token::RParen,
+        "期望 ')'\n提示: 条件表达式应以 ')' 结束",
+    )?;
+    parser.consume(
+        &crate::lexer::Token::Semicolon,
+        "期望 ';'\n提示: do-while 语句应以 ';' 结束",
+    )?;
+
     Ok(Stmt::DoWhile(DoWhileStmt {
         condition,
         body,
@@ -374,26 +421,35 @@ pub fn parse_switch_statement(parser: &mut Parser) -> cayResult<Stmt> {
     let loc = parser.current_loc();
     parser.advance(); // consume 'switch'
 
-    parser.consume(&crate::lexer::Token::LParen, "期望 '('\n提示: switch 后应跟 '(' 开始表达式，例如: switch (x) { ... }")?;
+    parser.consume(
+        &crate::lexer::Token::LParen,
+        "期望 '('\n提示: switch 后应跟 '(' 开始表达式，例如: switch (x) { ... }",
+    )?;
     let expr = parse_expression(parser)?;
-    parser.consume(&crate::lexer::Token::RParen, "期望 ')'\n提示: 表达式应以 ')' 结束，例如: switch (x) { ... }")?;
+    parser.consume(
+        &crate::lexer::Token::RParen,
+        "期望 ')'\n提示: 表达式应以 ')' 结束，例如: switch (x) { ... }",
+    )?;
 
-    parser.consume(&crate::lexer::Token::LBrace, "期望 '{'\n提示: switch 体以 '{' 开始，例如: switch (x) { case 1: ... }")?;
-    
+    parser.consume(
+        &crate::lexer::Token::LBrace,
+        "期望 '{'\n提示: switch 体以 '{' 开始，例如: switch (x) { case 1: ... }",
+    )?;
+
     let mut cases = Vec::new();
     let mut default = None;
-    
+
     while !parser.check(&crate::lexer::Token::RBrace) && !parser.is_at_end() {
         if parser.match_token(&crate::lexer::Token::Case) {
             // 解析 case 值（支持整数、字符常量和 enum variant）
             let case_value = match *parser.current_token() {
                 crate::lexer::Token::IntegerLiteral(Some((v, _))) => {
-                    let val = v;  // v 是 i64
+                    let val = v; // v 是 i64
                     parser.advance();
                     CaseValue::Integer(val)
                 }
                 crate::lexer::Token::CharLiteral(Some(c)) => {
-                    let val = c as i64;  // 字符转换为整数
+                    let val = c as i64; // 字符转换为整数
                     parser.advance();
                     CaseValue::Integer(val)
                 }
@@ -401,14 +457,19 @@ pub fn parse_switch_statement(parser: &mut Parser) -> cayResult<Stmt> {
                     // 可能是 enum variant: Color.Red 或带解构: Result.Ok(int val)
                     let enum_name = enum_name.clone();
                     parser.advance();
-                    
+
                     // 检查是否是 MemberAccess: EnumName.VariantName
                     if parser.check(&crate::lexer::Token::Dot) {
                         parser.advance(); // consume '.'
-                        
-                        if let crate::lexer::Token::Identifier(variant_name) = parser.current_token().clone() {
+
+                        if let crate::lexer::Token::Identifier(variant_name) =
+                            parser.current_token().clone()
+                        {
                             parser.advance();
-                            CaseValue::EnumVariant { enum_name, variant_name }
+                            CaseValue::EnumVariant {
+                                enum_name,
+                                variant_name,
+                            }
                         } else {
                             return Err(parser.error(&format!(
                                 "期望 enum variant 名称\n提示: case 标签格式为 'EnumName.VariantName'"
@@ -467,10 +528,12 @@ pub fn parse_switch_statement(parser: &mut Parser) -> cayResult<Stmt> {
                     )));
                 }
             };
-            
+
             // 检查是否有枚举 variant 解构绑定: case EnumName.Variant(Type var_name):
             let mut payload_binding: Option<PayloadBinding> = None;
-            if matches!(case_value, CaseValue::EnumVariant { .. }) && parser.check(&crate::lexer::Token::LParen) {
+            if matches!(case_value, CaseValue::EnumVariant { .. })
+                && parser.check(&crate::lexer::Token::LParen)
+            {
                 parser.advance(); // consume '('
                 let var_type = super::types::parse_type(parser)?;
                 if let crate::lexer::Token::Identifier(var_name) = parser.current_token().clone() {
@@ -481,24 +544,41 @@ pub fn parse_switch_statement(parser: &mut Parser) -> cayResult<Stmt> {
                     return Err(parser.error("期望变量名\n提示: enum variant 解构格式为 'case EnumName.Variant(Type varName):'"));
                 }
             }
-            
-            parser.consume(&crate::lexer::Token::Colon, "期望 ':'\n提示: case 值后应跟 ':'，例如: case 1:")?;
-            
+
+            parser.consume(
+                &crate::lexer::Token::Colon,
+                "期望 ':'\n提示: case 值后应跟 ':'，例如: case 1:",
+            )?;
+
             // 解析 case 体（直到遇到另一个 case、default 或 }）
             let mut body = Vec::new();
-            while !parser.check(&crate::lexer::Token::Case) && !parser.check(&crate::lexer::Token::Default)
-                && !parser.check(&crate::lexer::Token::RBrace) && !parser.is_at_end() {
+            while !parser.check(&crate::lexer::Token::Case)
+                && !parser.check(&crate::lexer::Token::Default)
+                && !parser.check(&crate::lexer::Token::RBrace)
+                && !parser.is_at_end()
+            {
                 body.push(parse_statement(parser)?);
             }
-            
-            cases.push(Case { value: case_value, body, payload_binding, loc: parser.current_loc() });
+
+            cases.push(Case {
+                value: case_value,
+                body,
+                payload_binding,
+                loc: parser.current_loc(),
+            });
         } else if parser.match_token(&crate::lexer::Token::Default) {
-            parser.consume(&crate::lexer::Token::Colon, "期望 ':'\n提示: default 后应跟 ':'，例如: default:")?;
+            parser.consume(
+                &crate::lexer::Token::Colon,
+                "期望 ':'\n提示: default 后应跟 ':'，例如: default:",
+            )?;
 
             // 解析 default 体
             let mut body = Vec::new();
-            while !parser.check(&crate::lexer::Token::Case) && !parser.check(&crate::lexer::Token::Default)
-                && !parser.check(&crate::lexer::Token::RBrace) && !parser.is_at_end() {
+            while !parser.check(&crate::lexer::Token::Case)
+                && !parser.check(&crate::lexer::Token::Default)
+                && !parser.check(&crate::lexer::Token::RBrace)
+                && !parser.is_at_end()
+            {
                 body.push(parse_statement(parser)?);
             }
 
@@ -553,8 +633,11 @@ pub fn parse_switch_statement(parser: &mut Parser) -> cayResult<Stmt> {
         }
     }
 
-    parser.consume(&crate::lexer::Token::RBrace, "期望 '}'\n提示: switch 体以 '}' 结束")?;
-    
+    parser.consume(
+        &crate::lexer::Token::RBrace,
+        "期望 '}'\n提示: switch 体以 '}' 结束",
+    )?;
+
     Ok(Stmt::Switch(SwitchStmt {
         expr,
         cases,
@@ -567,22 +650,28 @@ pub fn parse_switch_statement(parser: &mut Parser) -> cayResult<Stmt> {
 pub fn parse_return_statement(parser: &mut Parser) -> cayResult<Stmt> {
     let _loc = parser.current_loc();
     parser.advance(); // consume 'return'
-    
+
     let value = if !parser.check(&crate::lexer::Token::Semicolon) {
         Some(parse_expression(parser)?)
     } else {
         None
     };
-    
-    parser.consume(&crate::lexer::Token::Semicolon, "期望 ';'\n提示: return 语句应以 ';' 结束，例如: return 0;")?;
-    
+
+    parser.consume(
+        &crate::lexer::Token::Semicolon,
+        "期望 ';'\n提示: return 语句应以 ';' 结束，例如: return 0;",
+    )?;
+
     Ok(Stmt::Return(value))
 }
 
 /// 解析表达式语句
 pub fn parse_expression_statement(parser: &mut Parser) -> cayResult<Stmt> {
     let expr = parse_expression(parser)?;
-    parser.consume(&crate::lexer::Token::Semicolon, "期望 ';'\n提示: 表达式语句应以 ';' 结束，例如: x = 10;")?;
+    parser.consume(
+        &crate::lexer::Token::Semicolon,
+        "期望 ';'\n提示: 表达式语句应以 ';' 结束，例如: x = 10;",
+    )?;
     Ok(Stmt::Expr(expr))
 }
 
@@ -599,17 +688,17 @@ pub fn parse_expression_statement(parser: &mut Parser) -> cayResult<Stmt> {
 pub fn parse_scope_statement(parser: &mut Parser) -> cayResult<Stmt> {
     let loc = parser.current_loc();
     parser.advance(); // consume 'scope'
-    
+
     // 解析 scope 体（代码块）
     let body = parse_block(parser)?;
-    
+
     Ok(Stmt::Scope(ScopeStmt { body, loc }))
 }
 
 /// 解析内联IR语句
-/// 
+///
 /// 语法: __ir { raw_llvm_ir_lines... }
-/// 
+///
 /// 示例:
 ///   __ir {
 ///       %result = add i32 %a, %b
@@ -620,7 +709,10 @@ pub fn parse_inline_ir_statement(parser: &mut Parser) -> cayResult<Stmt> {
     parser.advance(); // consume '__ir'
 
     // 期望 {
-    parser.consume(&crate::lexer::Token::LBrace, "期望 '{'\n提示: __ir 后应跟 '{' 开始 IR 块")?;
+    parser.consume(
+        &crate::lexer::Token::LBrace,
+        "期望 '{'\n提示: __ir 后应跟 '{' 开始 IR 块",
+    )?;
 
     // 从token流解析内联IR（更可靠的方法）
     let raw_lines = parse_inline_ir_from_tokens(parser)?;
@@ -654,7 +746,10 @@ fn skip_inline_ir_tokens(parser: &mut Parser) {
 /// 从源代码直接提取内联IR文本
 ///
 /// 通过定位__ir关键字和匹配的{}来提取原始IR文本
-fn extract_inline_ir_from_source(source: &str, start_loc: &crate::error::SourceLocation) -> cayResult<Vec<String>> {
+fn extract_inline_ir_from_source(
+    source: &str,
+    start_loc: &crate::error::SourceLocation,
+) -> cayResult<Vec<String>> {
     // 找到起始位置（__ir后的{）
     let mut line_num = 1;
     let mut pos = 0;
@@ -713,7 +808,7 @@ fn extract_inline_ir_from_source(source: &str, start_loc: &crate::error::SourceL
     Err(crate::error::parser_error(
         start_loc.line,
         start_loc.column,
-        "无法从源代码提取内联IR块"
+        "无法从源代码提取内联IR块",
     ))
 }
 
@@ -726,7 +821,7 @@ fn parse_inline_ir_from_tokens(parser: &mut Parser) -> cayResult<Vec<String>> {
 
     while !parser.is_at_end() && brace_depth > 0 {
         let token_line = parser.current_loc().line;
-        
+
         // 如果行号变化，保存当前行并开始新行
         if token_line != current_line_num && !current_line.is_empty() {
             let line = join_ir_tokens(&current_line);
@@ -736,7 +831,7 @@ fn parse_inline_ir_from_tokens(parser: &mut Parser) -> cayResult<Vec<String>> {
             current_line.clear();
             current_line_num = token_line;
         }
-        
+
         match parser.current_token() {
             crate::lexer::Token::LBrace => {
                 brace_depth += 1;
@@ -1064,7 +1159,7 @@ fn join_ir_tokens(tokens: &[String]) -> String {
             let prev = &tokens[i - 1];
             // 不需要在前面加空格的情况:
             // - 当前是 ) , ( *  时
-            // - 前一个是 @ (  时  
+            // - 前一个是 @ (  时
             let no_space = token == ")"
                 || token == ","
                 || token == "("
@@ -1082,6 +1177,8 @@ fn join_ir_tokens(tokens: &[String]) -> String {
 
 /// 判断 token 是否是 LLVM 类型名（后面跟 * 不需要空格）
 fn is_llvm_type_token(token: &str) -> bool {
-    matches!(token, "i1" | "i8" | "i16" | "i32" | "i64" 
-        | "float" | "double" | "void" | "%struct" | "label")
+    matches!(
+        token,
+        "i1" | "i8" | "i16" | "i32" | "i64" | "float" | "double" | "void" | "%struct" | "label"
+    )
 }

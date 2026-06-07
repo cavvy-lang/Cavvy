@@ -9,8 +9,8 @@
 //! 3. 使用 cavly test 运行 CavvyN 的测试
 //! 4. 验证所有步骤成功完成
 
-use std::process::Command;
 use std::path::Path;
+use std::process::Command;
 use std::sync::Mutex;
 
 /// CavvyN 测试互斥锁 - 所有 CavvyN 测试共享同一目录，必须串行执行
@@ -231,11 +231,7 @@ fn test_cavvyn_info() {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    assert!(
-        output.status.success(),
-        "cavly info 失败: {}",
-        stdout
-    );
+    assert!(output.status.success(), "cavly info 失败: {}", stdout);
 
     // 验证输出包含项目信息
     assert!(
@@ -270,16 +266,16 @@ fn test_cavvyn_clean() {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    assert!(
-        output.status.success(),
-        "cavly clean 失败: {}",
-        stdout
-    );
+    assert!(output.status.success(), "cavly clean 失败: {}", stdout);
 
     // 验证目标目录被清理
     let target_dir = Path::new(CAVVYN_PATH).join("target");
     assert!(
-        !target_dir.exists() || target_dir.read_dir().map(|mut i| i.next().is_none()).unwrap_or(true),
+        !target_dir.exists()
+            || target_dir
+                .read_dir()
+                .map(|mut i| i.next().is_none())
+                .unwrap_or(true),
         "清理后目标目录应不存在或为空"
     );
 }
@@ -397,8 +393,5 @@ fn test_cavvyn_full_workflow() {
         .output()
         .expect("info 失败");
 
-    assert!(
-        info_output.status.success(),
-        "info 失败"
-    );
+    assert!(info_output.status.success(), "info 失败");
 }

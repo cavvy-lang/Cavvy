@@ -1,14 +1,16 @@
 // cay-dp: Cavvy Debugger - Parse PreViewer
 // 语法解析预览工具 - 显示源代码的语法分析结果（AST）
 
+use cavvy::ast::{
+    ClassDecl, ClassMember, FieldDecl, InterfaceDecl, MethodDecl, Program, TopLevelFunction,
+};
+use cavvy::lexer::lex_with_diagnostics;
+use cavvy::parser::parse_with_source;
+use cavvy::preprocessor::preprocess;
 use std::env;
 use std::fs;
 use std::path::Path;
 use std::process;
-use cavvy::lexer::lex_with_diagnostics;
-use cavvy::parser::parse_with_source;
-use cavvy::ast::{Program, ClassDecl, InterfaceDecl, TopLevelFunction, ClassMember, MethodDecl, FieldDecl};
-use cavvy::preprocessor::preprocess;
 
 const VERSION: &str = env!("CAY_DP_VERSION");
 
@@ -111,7 +113,7 @@ fn main() {
             .parent()
             .map(|p| p.to_str().unwrap_or("."))
             .unwrap_or(".");
-        
+
         match preprocess(&source, &file_path, base_dir) {
             Ok(processed) => processed,
             Err(e) => {
@@ -126,8 +128,10 @@ fn main() {
     if lexer_diagnostics.has_errors() {
         eprintln!("词法分析错误:");
         for diag in lexer_diagnostics.diagnostics() {
-            eprintln!("  [{}] {} (行 {}, 列 {})", 
-                diag.code, diag.message, diag.location.line, diag.location.column);
+            eprintln!(
+                "  [{}] {} (行 {}, 列 {})",
+                diag.code, diag.message, diag.location.line, diag.location.column
+            );
         }
         process::exit(1);
     }
@@ -154,9 +158,18 @@ fn print_ast_pretty(ast: &Program, options: &Options, file_path: &str) {
     let item_color = if options.no_color { "" } else { "\x1b[1;33m" };
     let detail_color = if options.no_color { "" } else { "\x1b[32m" };
 
-    println!("{}╔══════════════════════════════════════════════════════════════╗{}", header_color, reset);
-    println!("{}║         Cavvy Debugger - Parse PreViewer v{}              ║{}", header_color, VERSION, reset);
-    println!("{}╚══════════════════════════════════════════════════════════════╝{}", header_color, reset);
+    println!(
+        "{}╔══════════════════════════════════════════════════════════════╗{}",
+        header_color, reset
+    );
+    println!(
+        "{}║         Cavvy Debugger - Parse PreViewer v{}              ║{}",
+        header_color, VERSION, reset
+    );
+    println!(
+        "{}╚══════════════════════════════════════════════════════════════╝{}",
+        header_color, reset
+    );
     println!();
     println!("源文件: {}", file_path);
     println!();
@@ -174,10 +187,14 @@ fn print_ast_pretty(ast: &Program, options: &Options, file_path: &str) {
     if !ast.type_aliases.is_empty() {
         println!("{}类型别名:{}", section_color, reset);
         for alias in &ast.type_aliases {
-            println!("  {}{} {}= {}{}", 
-                item_color, alias.name, 
-                detail_color, format!("{:?}", alias.target_type), 
-                reset);
+            println!(
+                "  {}{} {}= {}{}",
+                item_color,
+                alias.name,
+                detail_color,
+                format!("{:?}", alias.target_type),
+                reset
+            );
         }
         println!();
     }
@@ -186,17 +203,24 @@ fn print_ast_pretty(ast: &Program, options: &Options, file_path: &str) {
     if !ast.extern_declarations.is_empty() {
         println!("{}Extern 声明:{}", section_color, reset);
         for ext in &ast.extern_declarations {
-            println!("  {}{:?} 调用约定{}", 
-                item_color, ext.calling_convention, reset);
+            println!(
+                "  {}{:?} 调用约定{}",
+                item_color, ext.calling_convention, reset
+            );
             for func in &ext.functions {
-                let params: Vec<String> = func.params.iter()
+                let params: Vec<String> = func
+                    .params
+                    .iter()
                     .map(|p| format!("{}: {:?}", p.name, p.param_type))
                     .collect();
-                println!("    {}fn {}({}) -> {:?}{}", 
-                    detail_color, func.name, 
+                println!(
+                    "    {}fn {}({}) -> {:?}{}",
+                    detail_color,
+                    func.name,
                     params.join(", "),
                     func.return_type,
-                    reset);
+                    reset
+                );
             }
         }
         println!();
@@ -235,7 +259,9 @@ fn print_class(class: &ClassDecl, options: &Options, indent: usize) {
     let reset = if options.no_color { "" } else { "\x1b[0m" };
     let indent_str = " ".repeat(indent);
 
-    let modifiers: Vec<&str> = class.modifiers.iter()
+    let modifiers: Vec<&str> = class
+        .modifiers
+        .iter()
         .map(|m| match m {
             cavvy::ast::Modifier::Public => "public",
             cavvy::ast::Modifier::Private => "private",
@@ -261,11 +287,20 @@ fn print_class(class: &ClassDecl, options: &Options, indent: usize) {
         String::new()
     };
 
-    println!("{}{}{}class {}{}{}{}", 
+    println!(
+        "{}{}{}class {}{}{}{}",
         indent_str,
-        if modifiers.is_empty() { "".to_string() } else { format!("{} ", modifiers.join(" ")) },
-        item_color, class.name, extends, implements,
-        reset);
+        if modifiers.is_empty() {
+            "".to_string()
+        } else {
+            format!("{} ", modifiers.join(" "))
+        },
+        item_color,
+        class.name,
+        extends,
+        implements,
+        reset
+    );
 
     if !options.compact {
         for member in &class.members {
@@ -284,7 +319,9 @@ fn print_field(field: &FieldDecl, options: &Options, indent: usize) {
     let reset = if options.no_color { "" } else { "\x1b[0m" };
     let indent_str = " ".repeat(indent);
 
-    let modifiers: Vec<&str> = field.modifiers.iter()
+    let modifiers: Vec<&str> = field
+        .modifiers
+        .iter()
         .map(|m| match m {
             cavvy::ast::Modifier::Public => "public",
             cavvy::ast::Modifier::Private => "private",
@@ -295,12 +332,20 @@ fn print_field(field: &FieldDecl, options: &Options, indent: usize) {
         })
         .filter(|s| !s.is_empty())
         .collect();
-    
-    println!("{}  {}{} {}: {:?}{}", 
+
+    println!(
+        "{}  {}{} {}: {:?}{}",
         indent_str,
-        if modifiers.is_empty() { "".to_string() } else { format!("{} ", modifiers.join(" ")) },
-        detail_color, field.name, field.field_type,
-        reset);
+        if modifiers.is_empty() {
+            "".to_string()
+        } else {
+            format!("{} ", modifiers.join(" "))
+        },
+        detail_color,
+        field.name,
+        field.field_type,
+        reset
+    );
 }
 
 fn print_interface(iface: &InterfaceDecl, options: &Options, indent: usize) {
@@ -308,8 +353,10 @@ fn print_interface(iface: &InterfaceDecl, options: &Options, indent: usize) {
     let reset = if options.no_color { "" } else { "\x1b[0m" };
     let indent_str = " ".repeat(indent);
 
-    println!("{}{}interface {}{}", 
-        indent_str, item_color, iface.name, reset);
+    println!(
+        "{}{}interface {}{}",
+        indent_str, item_color, iface.name, reset
+    );
 
     if !options.compact {
         for method in &iface.methods {
@@ -324,7 +371,9 @@ fn print_method(method: &MethodDecl, options: &Options, indent: usize) {
     let reset = if options.no_color { "" } else { "\x1b[0m" };
     let indent_str = " ".repeat(indent);
 
-    let modifiers: Vec<&str> = method.modifiers.iter()
+    let modifiers: Vec<&str> = method
+        .modifiers
+        .iter()
         .map(|m| match m {
             cavvy::ast::Modifier::Public => "public",
             cavvy::ast::Modifier::Private => "private",
@@ -338,20 +387,29 @@ fn print_method(method: &MethodDecl, options: &Options, indent: usize) {
         .filter(|s| !s.is_empty())
         .collect();
 
-    let params: Vec<String> = method.params.iter()
+    let params: Vec<String> = method
+        .params
+        .iter()
         .map(|p| format!("{}: {:?}", p.name, p.param_type))
         .collect();
 
     let body_indicator = if method.body.is_some() { "" } else { ";" };
 
-    println!("{}{}{}fn {}({}) -> {:?}{}{}", 
+    println!(
+        "{}{}{}fn {}({}) -> {:?}{}{}",
         indent_str,
-        if modifiers.is_empty() { "".to_string() } else { format!("{} ", modifiers.join(" ")) },
-        detail_color, method.name, 
+        if modifiers.is_empty() {
+            "".to_string()
+        } else {
+            format!("{} ", modifiers.join(" "))
+        },
+        detail_color,
+        method.name,
         params.join(", "),
         method.return_type,
         body_indicator,
-        reset);
+        reset
+    );
 }
 
 fn print_constructor(ctor: &cavvy::ast::ConstructorDecl, options: &Options, indent: usize) {
@@ -360,7 +418,9 @@ fn print_constructor(ctor: &cavvy::ast::ConstructorDecl, options: &Options, inde
     let reset = if options.no_color { "" } else { "\x1b[0m" };
     let indent_str = " ".repeat(indent);
 
-    let modifiers: Vec<&str> = ctor.modifiers.iter()
+    let modifiers: Vec<&str> = ctor
+        .modifiers
+        .iter()
         .map(|m| match m {
             cavvy::ast::Modifier::Public => "public",
             cavvy::ast::Modifier::Private => "private",
@@ -370,16 +430,24 @@ fn print_constructor(ctor: &cavvy::ast::ConstructorDecl, options: &Options, inde
         .filter(|s| !s.is_empty())
         .collect();
 
-    let params: Vec<String> = ctor.params.iter()
+    let params: Vec<String> = ctor
+        .params
+        .iter()
         .map(|p| format!("{}: {:?}", p.name, p.param_type))
         .collect();
 
-    println!("{}{}{}constructor({}){}", 
+    println!(
+        "{}{}{}constructor({}){}",
         indent_str,
-        if modifiers.is_empty() { "".to_string() } else { format!("{} ", modifiers.join(" ")) },
-        detail_color, 
+        if modifiers.is_empty() {
+            "".to_string()
+        } else {
+            format!("{} ", modifiers.join(" "))
+        },
+        detail_color,
         params.join(", "),
-        reset);
+        reset
+    );
 }
 
 fn print_top_level_function(func: &TopLevelFunction, options: &Options, indent: usize) {
@@ -388,7 +456,9 @@ fn print_top_level_function(func: &TopLevelFunction, options: &Options, indent: 
     let reset = if options.no_color { "" } else { "\x1b[0m" };
     let indent_str = " ".repeat(indent);
 
-    let modifiers: Vec<&str> = func.modifiers.iter()
+    let modifiers: Vec<&str> = func
+        .modifiers
+        .iter()
         .map(|m| match m {
             cavvy::ast::Modifier::Public => "public",
             cavvy::ast::Modifier::Static => "static",
@@ -397,31 +467,49 @@ fn print_top_level_function(func: &TopLevelFunction, options: &Options, indent: 
         .filter(|s| !s.is_empty())
         .collect();
 
-    let params: Vec<String> = func.params.iter()
+    let params: Vec<String> = func
+        .params
+        .iter()
         .map(|p| format!("{}: {:?}", p.name, p.param_type))
         .collect();
 
-    println!("{}{}{}fn {}({}) -> {:?}{}", 
+    println!(
+        "{}{}{}fn {}({}) -> {:?}{}",
         indent_str,
-        if modifiers.is_empty() { "".to_string() } else { format!("{} ", modifiers.join(" ")) },
-        detail_color, func.name, 
+        if modifiers.is_empty() {
+            "".to_string()
+        } else {
+            format!("{} ", modifiers.join(" "))
+        },
+        detail_color,
+        func.name,
         params.join(", "),
         func.return_type,
-        reset);
+        reset
+    );
 }
 
 fn print_ast_json(ast: &Program) {
     use std::io::Write;
-    
+
     let mut output = String::new();
     output.push_str("{\n");
-    output.push_str(&format!("  \"type_aliases\": {},\n", ast.type_aliases.len()));
-    output.push_str(&format!("  \"extern_declarations\": {},\n", ast.extern_declarations.len()));
+    output.push_str(&format!(
+        "  \"type_aliases\": {},\n",
+        ast.type_aliases.len()
+    ));
+    output.push_str(&format!(
+        "  \"extern_declarations\": {},\n",
+        ast.extern_declarations.len()
+    ));
     output.push_str(&format!("  \"interfaces\": {},\n", ast.interfaces.len()));
     output.push_str(&format!("  \"classes\": {},\n", ast.classes.len()));
-    output.push_str(&format!("  \"top_level_functions\": {}\n", ast.top_level_functions.len()));
+    output.push_str(&format!(
+        "  \"top_level_functions\": {}\n",
+        ast.top_level_functions.len()
+    ));
     output.push_str("}\n");
-    
+
     if let Err(e) = std::io::stdout().write_all(output.as_bytes()) {
         eprintln!("写入stdout失败: {}", e);
     }

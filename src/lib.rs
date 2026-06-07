@@ -1,16 +1,16 @@
-pub mod error;
-pub mod diagnostic;
-pub mod miette_diagnostic;
-pub mod types;
 pub mod ast;
-pub mod preprocessor;
-pub mod lexer;
-pub mod parser;
-pub mod semantic;
-pub mod codegen;
-pub mod ir;
-pub mod rcpl;
 pub mod bytecode;
+pub mod codegen;
+pub mod diagnostic;
+pub mod error;
+pub mod ir;
+pub mod lexer;
+pub mod miette_diagnostic;
+pub mod parser;
+pub mod preprocessor;
+pub mod rcpl;
+pub mod semantic;
+pub mod types;
 // Cavly 包管理器模块
 pub mod cavly;
 
@@ -20,14 +20,14 @@ pub mod ir2exe_lib;
 // 嵌入式 LLVM LLC 编译器模块（实验性）
 pub mod embedded_llc;
 
+pub use diagnostic::DiagnosticCollector;
+pub use diagnostic::print_diagnostics;
 /// 新的统一错误类型（推荐使用）
 pub use error::CompilerError;
 pub use error::CompilerResult;
-pub use diagnostic::print_diagnostics;
-pub use diagnostic::DiagnosticCollector;
 
-use std::path::{Path, PathBuf};
 use error::cayResult;
+use std::path::{Path, PathBuf};
 
 /// 编译器配置选项
 #[derive(Debug, Clone)]
@@ -38,7 +38,7 @@ pub struct CompilerOptions {
     pub defines: Vec<String>,
     pub undefines: Vec<String>,
     pub obfuscate: bool,
-    pub debug: bool,               // 生成 DWARF 调试信息
+    pub debug: bool, // 生成 DWARF 调试信息
     /// 额外的包含路径（供 #include 搜索）
     pub include_paths: Vec<String>,
     /// 测试模式：生成 __cavvy_test_main 入口，自动调用所有 @Test 方法
@@ -71,7 +71,7 @@ impl Compiler {
             options: CompilerOptions::default(),
         }
     }
-    
+
     pub fn with_options(options: CompilerOptions) -> Self {
         Self { options }
     }
@@ -130,11 +130,10 @@ impl Compiler {
         }
 
         // 输出到文件
-        std::fs::write(output_path, ir)
-            .map_err(|e| error::cayError::Io {
-                file: Some(output_path.to_string()),
-                message: e.to_string(),
-            })?;
+        std::fs::write(output_path, ir).map_err(|e| error::cayError::Io {
+            file: Some(output_path.to_string()),
+            message: e.to_string(),
+        })?;
 
         Ok(())
     }
@@ -148,7 +147,12 @@ impl Compiler {
     ///
     /// # Returns
     /// 编译成功返回 Ok(())
-    pub fn compile_with_source_map(&self, source: &str, source_map: std::collections::HashMap<usize, (String, usize)>, output_path: &str) -> cayResult<()> {
+    pub fn compile_with_source_map(
+        &self,
+        source: &str,
+        source_map: std::collections::HashMap<usize, (String, usize)>,
+        output_path: &str,
+    ) -> cayResult<()> {
         self.compile_with_source_map_and_main_file(source, source_map, output_path, None)
     }
 
@@ -162,7 +166,13 @@ impl Compiler {
     ///
     /// # Returns
     /// 编译成功返回 Ok(())
-    pub fn compile_with_source_map_and_main_file(&self, source: &str, source_map: std::collections::HashMap<usize, (String, usize)>, output_path: &str, main_file: Option<String>) -> cayResult<()> {
+    pub fn compile_with_source_map_and_main_file(
+        &self,
+        source: &str,
+        source_map: std::collections::HashMap<usize, (String, usize)>,
+        output_path: &str,
+        main_file: Option<String>,
+    ) -> cayResult<()> {
         // 保留一份源映射用于语义分析错误定位
         let source_map_for_analyzer = source_map.clone();
 
@@ -175,7 +185,14 @@ impl Compiler {
             println!("Tokens:");
             for (i, t) in tokens.iter().enumerate() {
                 if let Some(ref file) = t.source_file {
-                    println!("  {}: {:?} at {}:{} (original: {})", i, t.token, file, t.source_line.unwrap_or(t.loc.line), t.loc);
+                    println!(
+                        "  {}: {:?} at {}:{} (original: {})",
+                        i,
+                        t.token,
+                        file,
+                        t.source_line.unwrap_or(t.loc.line),
+                        t.loc
+                    );
                 } else {
                     println!("  {}: {:?} at {}", i, t.token, t.loc);
                 }
@@ -217,11 +234,10 @@ impl Compiler {
         }
 
         // 输出到文件
-        std::fs::write(output_path, ir)
-            .map_err(|e| error::cayError::Io {
-                file: Some(output_path.to_string()),
-                message: e.to_string(),
-            })?;
+        std::fs::write(output_path, ir).map_err(|e| error::cayError::Io {
+            file: Some(output_path.to_string()),
+            message: e.to_string(),
+        })?;
 
         Ok(())
     }
@@ -236,11 +252,10 @@ impl Compiler {
     /// 编译成功返回 Ok(())
     pub fn compile_file(&self, input_path: &str, output_path: &str) -> cayResult<()> {
         // 读取源文件
-        let source = std::fs::read_to_string(input_path)
-            .map_err(|e| error::cayError::Io {
-                file: Some(input_path.to_string()),
-                message: format!("无法读取源文件: {}", e),
-            })?;
+        let source = std::fs::read_to_string(input_path).map_err(|e| error::cayError::Io {
+            file: Some(input_path.to_string()),
+            message: format!("无法读取源文件: {}", e),
+        })?;
 
         // 获取基础目录（用于解析相对路径的 #include）
         let base_dir = Path::new(input_path)
@@ -292,7 +307,9 @@ impl Compiler {
     }
 
     /// 将预处理器源映射转换为HashMap格式
-    fn convert_source_map(source_map: &preprocessor::SourceMap) -> std::collections::HashMap<usize, (String, usize)> {
+    fn convert_source_map(
+        source_map: &preprocessor::SourceMap,
+    ) -> std::collections::HashMap<usize, (String, usize)> {
         let mut map = std::collections::HashMap::new();
         for (idx, pos) in source_map.mappings.iter().enumerate() {
             // idx + 1 是 1-based 的输出行号
@@ -380,7 +397,8 @@ public class Test {
     }
 }"#;
 
-        analyze_source(source).expect("ClassName.contains should resolve to the static class method");
+        analyze_source(source)
+            .expect("ClassName.contains should resolve to the static class method");
     }
 
     #[test]
@@ -403,7 +421,8 @@ public class Example {
     }
 }"#;
 
-        let err = analyze_source(source).expect_err("missing method should fail in semantic analysis");
+        let err =
+            analyze_source(source).expect_err("missing method should fail in semantic analysis");
         let message = format!("{:?}", err);
         assert!(message.contains("Unknown method 'isOpen'"), "{}", message);
         assert!(message.contains("isOpened"), "{}", message);
@@ -417,7 +436,10 @@ public class Example {
         let mut source_map = std::collections::HashMap::new();
         source_map.insert(
             621,
-            (r"\\?\E:\spj\EOL\target\release\caylibs\StringBuilder.cay".to_string(), 10),
+            (
+                r"\\?\E:\spj\EOL\target\release\caylibs\StringBuilder.cay".to_string(),
+                10,
+            ),
         );
         ir_gen.set_preprocessor_source_map(source_map);
 
@@ -430,11 +452,17 @@ public class Example {
         ir_gen.emit_line("%x = alloca i32");
 
         assert!(
-            ir_gen.code.contains(r"; !source E:\spj\EOL\examples\text_editor.cay:621:9"),
+            ir_gen
+                .code
+                .contains(r"; !source E:\spj\EOL\examples\text_editor.cay:621:9"),
             "{}",
             ir_gen.code
         );
-        assert!(!ir_gen.code.contains("StringBuilder.cay"), "{}", ir_gen.code);
+        assert!(
+            !ir_gen.code.contains("StringBuilder.cay"),
+            "{}",
+            ir_gen.code
+        );
         assert!(!ir_gen.code.contains(r"\\?\"), "{}", ir_gen.code);
     }
 
@@ -446,7 +474,11 @@ public class Example {
         let error = "llc.exe: error: llc.exe: text_editor.ll:4834:21: error: use of undefined value '@_ZN3std4FileE.isOpen'\n    %t11 = call i64 @_ZN3std4FileE.isOpen()\n                    ^";
         let remapped = ir2exe_lib::remap_clang_error(error, &source_map, "text_editor.ll");
 
-        assert!(remapped.contains("at examples/text_editor.cay:637:18"), "{}", remapped);
+        assert!(
+            remapped.contains("at examples/text_editor.cay:637:18"),
+            "{}",
+            remapped
+        );
         assert!(remapped.contains("use of undefined value"), "{}", remapped);
         assert!(!remapped.contains("text_editor.ll:4834:21"), "{}", remapped);
     }

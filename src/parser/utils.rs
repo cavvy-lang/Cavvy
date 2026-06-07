@@ -2,10 +2,10 @@
 //!
 //! 提供语法分析器的通用工具函数和增强的错误处理
 
-use crate::lexer::{Token, TokenWithLocation};
-use crate::error::{cayResult, cayError};
-use crate::diagnostic::{Diagnostic, ErrorCodes, CompilationPhase, FixSuggestion};
 use super::Parser;
+use crate::diagnostic::{CompilationPhase, Diagnostic, ErrorCodes, FixSuggestion};
+use crate::error::{cayError, cayResult};
+use crate::lexer::{Token, TokenWithLocation};
 
 /// 检查是否到达令牌流末尾
 pub fn is_at_end(parser: &Parser) -> bool {
@@ -36,7 +36,7 @@ pub fn current_full_loc(parser: &Parser) -> crate::error::SourceLocation {
     };
     crate::error::SourceLocation {
         file: token.source_file.clone(),
-        line: token.loc.line,  // 使用预处理后的行号，让语义分析器来映射
+        line: token.loc.line, // 使用预处理后的行号，让语义分析器来映射
         column: token.loc.column,
     }
 }
@@ -50,7 +50,7 @@ pub fn previous_full_loc(parser: &Parser) -> crate::error::SourceLocation {
     };
     crate::error::SourceLocation {
         file: token.source_file.clone(),
-        line: token.loc.line,  // 使用预处理后的行号，让语义分析器来映射
+        line: token.loc.line, // 使用预处理后的行号，让语义分析器来映射
         column: token.loc.column,
     }
 }
@@ -127,41 +127,56 @@ pub fn consume<'a>(parser: &'a mut Parser, token: &Token, message: &str) -> cayR
         } else {
             current_full_loc(parser)
         };
-        
+
         // 创建详细的错误信息
         let (error_code, detailed_message, suggestion) = match token {
             Token::Semicolon => (
                 ErrorCodes::PARSER_EXPECTED_SEMICOLON,
-                format!("期望分号 ';'，但找到 '{}'", get_token_name(current_token(parser))),
-                "在语句末尾添加分号 ';'".to_string()
+                format!(
+                    "期望分号 ';'，但找到 '{}'",
+                    get_token_name(current_token(parser))
+                ),
+                "在语句末尾添加分号 ';'".to_string(),
             ),
             Token::LBrace => (
                 ErrorCodes::PARSER_EXPECTED_BRACE,
-                format!("期望左大括号 '{{'，但找到 '{}'", get_token_name(current_token(parser))),
-                "在代码块开始处添加 '{{'".to_string()
+                format!(
+                    "期望左大括号 '{{'，但找到 '{}'",
+                    get_token_name(current_token(parser))
+                ),
+                "在代码块开始处添加 '{{'".to_string(),
             ),
             Token::RBrace => (
                 ErrorCodes::PARSER_EXPECTED_BRACE,
-                format!("期望右大括号 '}}'，但找到 '{}'", get_token_name(current_token(parser))),
-                "在代码块结束处添加 '}}'".to_string()
+                format!(
+                    "期望右大括号 '}}'，但找到 '{}'",
+                    get_token_name(current_token(parser))
+                ),
+                "在代码块结束处添加 '}}'".to_string(),
             ),
             Token::LParen => (
                 ErrorCodes::PARSER_EXPECTED_PAREN,
-                format!("期望左括号 '('，但找到 '{}'", get_token_name(current_token(parser))),
-                "在表达式或参数列表开始处添加 '('".to_string()
+                format!(
+                    "期望左括号 '('，但找到 '{}'",
+                    get_token_name(current_token(parser))
+                ),
+                "在表达式或参数列表开始处添加 '('".to_string(),
             ),
             Token::RParen => (
                 ErrorCodes::PARSER_EXPECTED_PAREN,
-                format!("期望右括号 ')'，但找到 '{}'", get_token_name(current_token(parser))),
-                "在表达式或参数列表结束处添加 ')'".to_string()
+                format!(
+                    "期望右括号 ')'，但找到 '{}'",
+                    get_token_name(current_token(parser))
+                ),
+                "在表达式或参数列表结束处添加 ')'".to_string(),
             ),
             _ => (
                 ErrorCodes::PARSER_UNEXPECTED_TOKEN,
                 message.to_string(),
-                format!("期望 '{}'", get_token_name(token))
+                format!("期望 '{}'", get_token_name(token)),
             ),
         };
-        
+
         // 添加到诊断收集器
         let diagnostic = Diagnostic::error(
             error_code,
@@ -187,17 +202,19 @@ pub fn consume_identifier(parser: &mut Parser, message: &str) -> cayResult<Strin
         let loc = current_full_loc(parser);
         let actual = get_token_name(current_token(parser));
         let detailed_message = format!("期望标识符，但找到 '{}'", actual);
-        
+
         let diagnostic = Diagnostic::error(
             ErrorCodes::PARSER_EXPECTED_IDENTIFIER,
             CompilationPhase::Parser,
             detailed_message.clone(),
             crate::diagnostic::SourceLocation::new(loc.file.clone(), loc.line, loc.column),
         )
-        .with_suggestion(FixSuggestion::new("使用有效的标识符名称（以字母或下划线开头）"));
+        .with_suggestion(FixSuggestion::new(
+            "使用有效的标识符名称（以字母或下划线开头）",
+        ));
 
         parser.diagnostics.add(diagnostic.clone());
-        
+
         Err(crate::error::CompilerError(diagnostic).into())
     }
 }
@@ -205,7 +222,7 @@ pub fn consume_identifier(parser: &mut Parser, message: &str) -> cayResult<Strin
 /// 创建错误（新系统：基于 Diagnostic + 错误代码）
 pub fn error(parser: &Parser, message: &str) -> cayError {
     let loc = current_full_loc(parser);
-    
+
     // 创建 Diagnostic 并添加到收集器
     let diagnostic = crate::diagnostic::Diagnostic::error(
         ErrorCodes::PARSER_UNEXPECTED_TOKEN,
@@ -213,19 +230,23 @@ pub fn error(parser: &Parser, message: &str) -> cayError {
         message.to_string(),
         crate::diagnostic::SourceLocation::new(loc.file.clone(), loc.line, loc.column),
     );
-    
+
     // 注意：这里无法 mutable 访问 parser（因为 parser 是 & 引用），
     // 所以暂时不添加到收集器。调用 create_parser_error 的代码已达到此目的。
-    
+
     // 转换为 cayError（迁移期间保持向后兼容）
     crate::error::CompilerError(diagnostic).into()
 }
 
 /// 创建详细的语法错误（使用新系统）
-pub fn create_parser_error(parser: &mut Parser, error_code: &'static str, message: impl Into<String>) -> cayError {
+pub fn create_parser_error(
+    parser: &mut Parser,
+    error_code: &'static str,
+    message: impl Into<String>,
+) -> cayError {
     let loc = current_full_loc(parser);
     let message = message.into();
-    
+
     let diagnostic = crate::diagnostic::Diagnostic::error(
         error_code,
         CompilationPhase::Parser,
@@ -383,31 +404,59 @@ pub fn get_token_name(token: &Token) -> String {
 
 /// 检查令牌是否是类型关键字
 pub fn is_type_token(parser: &Parser) -> bool {
-    matches!(current_token(parser),
-        Token::Int | Token::Long | Token::Float | Token::Double |
-        Token::Bool | Token::String | Token::Char | Token::Void |
-        Token::Auto | Token::Var | Token::Let |
-        Token::CInt | Token::CLong | Token::CShort | Token::CChar |
-        Token::CFloat | Token::CDouble | Token::SizeT | Token::SSizeT |
-        Token::UIntPtr | Token::IntPtr | Token::CVoid | Token::CBool |
-        Token::CInt64 | Token::CUInt64 | Token::Identifier(_)
+    matches!(
+        current_token(parser),
+        Token::Int
+            | Token::Long
+            | Token::Float
+            | Token::Double
+            | Token::Bool
+            | Token::String
+            | Token::Char
+            | Token::Void
+            | Token::Auto
+            | Token::Var
+            | Token::Let
+            | Token::CInt
+            | Token::CLong
+            | Token::CShort
+            | Token::CChar
+            | Token::CFloat
+            | Token::CDouble
+            | Token::SizeT
+            | Token::SSizeT
+            | Token::UIntPtr
+            | Token::IntPtr
+            | Token::CVoid
+            | Token::CBool
+            | Token::CInt64
+            | Token::CUInt64
+            | Token::Identifier(_)
     )
 }
 
 /// 同步到下一个语句边界（用于错误恢复）
 pub fn synchronize(parser: &mut Parser) {
     advance(parser);
-    
+
     while !is_at_end(parser) {
         if matches!(current_token(parser), Token::Semicolon) {
             advance(parser);
             return;
         }
-        
+
         match current_token(parser) {
-            Token::Class | Token::Struct | Token::Enum | Token::Interface | Token::Public | 
-            Token::Private | Token::Protected | Token::If | 
-            Token::While | Token::For | Token::Return => {
+            Token::Class
+            | Token::Struct
+            | Token::Enum
+            | Token::Interface
+            | Token::Public
+            | Token::Private
+            | Token::Protected
+            | Token::If
+            | Token::While
+            | Token::For
+            | Token::Return => {
                 return;
             }
             _ => {

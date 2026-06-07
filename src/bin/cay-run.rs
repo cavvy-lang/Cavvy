@@ -1,27 +1,27 @@
+use cavvy::Compiler;
+use cavvy::bytecode::obfuscator;
+use cavvy::bytecode::{jit, serializer};
+use cavvy::error::cayError;
+use cavvy::error::{print_error_with_context, print_miette_error, print_tool_error, print_warning};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{self, Command, Stdio};
-use cavvy::Compiler;
-use cavvy::bytecode::{serializer, jit};
-use cavvy::bytecode::obfuscator;
-use cavvy::error::{print_error_with_context, print_miette_error, print_tool_error, print_warning};
-use cavvy::error::cayError;
 
 const VERSION: &str = env!("CAY_RUN_VERSION");
 
 /// 运行选项
 struct RunOptions {
-    keep_temp: bool,           // --keep-temp: 保留临时文件
-    verbose: bool,             // --verbose: 详细输出
+    keep_temp: bool,             // --keep-temp: 保留临时文件
+    verbose: bool,               // --verbose: 详细输出
     output_file: Option<String>, // -o: 指定输出可执行文件名
-    no_run: bool,              // --no-run: 只编译不运行
-    obfuscate: bool,           // --obfuscate: 混淆字节码（仅对.cay有效）
-    obfuscate_level: String,   // --obfuscate-level: 混淆级别
-    link_libs: Vec<String>,    // -l: 链接的库
-    lib_paths: Vec<String>,    // -L: 库搜索路径
-    optimize: String,          // -O: 优化级别
-    features: Vec<String>,     // -F/--feature: 启用的语言特性
+    no_run: bool,                // --no-run: 只编译不运行
+    obfuscate: bool,             // --obfuscate: 混淆字节码（仅对.cay有效）
+    obfuscate_level: String,     // --obfuscate-level: 混淆级别
+    link_libs: Vec<String>,      // -l: 链接的库
+    lib_paths: Vec<String>,      // -L: 库搜索路径
+    optimize: String,            // -O: 优化级别
+    features: Vec<String>,       // -F/--feature: 启用的语言特性
 }
 
 impl Default for RunOptions {
@@ -129,7 +129,8 @@ fn parse_args(args: &[String]) -> Result<(RunOptions, String), String> {
                 "--obfuscate-level" => {
                     if i + 1 < args.len() {
                         options.obfuscate_level = args[i + 1].clone();
-                        if !["light", "normal", "deep"].contains(&options.obfuscate_level.as_str()) {
+                        if !["light", "normal", "deep"].contains(&options.obfuscate_level.as_str())
+                        {
                             return Err(format!("无效的混淆级别: {}", options.obfuscate_level));
                         }
                         i += 1;
@@ -230,7 +231,7 @@ fn generate_unique_filename(prefix: &str, ext: &str) -> PathBuf {
 /// 获取系统包含路径（caylibs目录）
 fn get_system_include_paths() -> Vec<PathBuf> {
     let mut paths = Vec::new();
-    
+
     // 1. 从可执行文件所在目录查找 caylibs
     if let Ok(exe_path) = env::current_exe() {
         if let Some(exe_dir) = exe_path.parent() {
@@ -240,40 +241,40 @@ fn get_system_include_paths() -> Vec<PathBuf> {
             }
         }
     }
-    
+
     // 2. 从当前工作目录查找 caylibs
     let cwd_caylibs = PathBuf::from("caylibs");
     if cwd_caylibs.exists() && !paths.contains(&cwd_caylibs) {
         paths.push(cwd_caylibs);
     }
-    
+
     paths
 }
 
 /// 编译Cay源码为IR
 fn compile_cay_to_ir(source_path: &str, options: &RunOptions) -> Result<String, cayError> {
-    let source = fs::read_to_string(source_path)
-        .map_err(|e| cayError::Io {
-            file: Some(source_path.to_string()),
-            message: format!("读取源文件失败: {}", e),
-        })?;
+    let source = fs::read_to_string(source_path).map_err(|e| cayError::Io {
+        file: Some(source_path.to_string()),
+        message: format!("读取源文件失败: {}", e),
+    })?;
 
     // 预处理
     let base_dir = Path::new(source_path)
         .parent()
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| PathBuf::from("."));
-    
+
     // 获取系统包含路径
     let system_paths = get_system_include_paths();
-    
+
     // 使用带系统路径的预处理器（带源映射）
     let base_dir_str = base_dir.to_str().unwrap_or(".");
     let preprocess_result = if system_paths.is_empty() {
         let mut pp = cavvy::preprocessor::Preprocessor::new(base_dir_str);
         pp.process_with_source_map(&source, source_path)
     } else {
-        let mut pp = cavvy::preprocessor::Preprocessor::with_include_paths(base_dir_str, system_paths);
+        let mut pp =
+            cavvy::preprocessor::Preprocessor::with_include_paths(base_dir_str, system_paths);
         pp.process_with_source_map(&source, source_path)
     }
     .map_err(|e| cayError::Preprocessor {
@@ -316,11 +317,10 @@ fn compile_cay_to_ir(source_path: &str, options: &RunOptions) -> Result<String, 
     })?;
     compiler.compile_with_source_map(&preprocess_result.code, source_map, temp_ir_str)?;
 
-    let ir = fs::read_to_string(&temp_ir_file)
-        .map_err(|e| cayError::Io {
-            file: temp_ir_file.to_str().map(|s| s.to_string()),
-            message: format!("读取IR文件失败: {}", e),
-        })?;
+    let ir = fs::read_to_string(&temp_ir_file).map_err(|e| cayError::Io {
+        file: temp_ir_file.to_str().map(|s| s.to_string()),
+        message: format!("读取IR文件失败: {}", e),
+    })?;
 
     if !options.keep_temp {
         let _ = fs::remove_file(&temp_ir_file);
@@ -330,21 +330,22 @@ fn compile_cay_to_ir(source_path: &str, options: &RunOptions) -> Result<String, 
 }
 
 /// 编译Cay源码为字节码
-fn compile_cay_to_bytecode(source_path: &str, options: &RunOptions) -> Result<cavvy::bytecode::BytecodeModule, String> {
-    let source = fs::read_to_string(source_path)
-        .map_err(|e| format!("读取源文件失败: {}", e))?;
+fn compile_cay_to_bytecode(
+    source_path: &str,
+    options: &RunOptions,
+) -> Result<cavvy::bytecode::BytecodeModule, String> {
+    let source = fs::read_to_string(source_path).map_err(|e| format!("读取源文件失败: {}", e))?;
 
     // 词法分析
-    let tokens = cavvy::lexer::lex(&source)
-        .map_err(|e| format!("词法分析错误: {:?}", e))?;
+    let tokens = cavvy::lexer::lex(&source).map_err(|e| format!("词法分析错误: {:?}", e))?;
 
     // 语法分析
-    let ast = cavvy::parser::parse(tokens)
-        .map_err(|e| format!("语法分析错误: {:?}", e))?;
+    let ast = cavvy::parser::parse(tokens).map_err(|e| format!("语法分析错误: {:?}", e))?;
 
     // 语义分析
     let mut analyzer = cavvy::semantic::SemanticAnalyzer::new();
-    analyzer.analyze(&ast)
+    analyzer
+        .analyze(&ast)
         .map_err(|e| format!("语义分析错误: {:?}", e))?;
 
     // 生成字节码模块
@@ -422,41 +423,45 @@ fn compile_bytecode_to_ir(bytecode_path: &str, options: &RunOptions) -> Result<S
     let compiler = jit::JitCompiler::new(jit_options);
 
     // 将字节码转换为IR字符串
-    compiler.bytecode_to_ir(&module)
+    compiler
+        .bytecode_to_ir(&module)
         .map_err(|e| format!("字节码转IR失败: {}", e))
 }
 
 /// 编译IR为可执行文件（使用ir2exe）
-fn compile_ir_to_executable(ir_code: &str, output_path: &str, options: &RunOptions) -> Result<(), String> {
+fn compile_ir_to_executable(
+    ir_code: &str,
+    output_path: &str,
+    options: &RunOptions,
+) -> Result<(), String> {
     // 创建临时IR文件
     let temp_ir_file = generate_unique_filename("cay", "ll");
-    fs::write(&temp_ir_file, ir_code)
-        .map_err(|e| format!("写入临时IR文件失败: {}", e))?;
+    fs::write(&temp_ir_file, ir_code).map_err(|e| format!("写入临时IR文件失败: {}", e))?;
 
     if options.verbose {
         println!("编译IR到可执行文件...");
     }
 
     // 获取可执行文件所在目录
-    let current_exe = env::current_exe()
-        .map_err(|e| format!("无法获取当前执行路径: {}", e))?;
-    let bin_dir = current_exe.parent()
-        .ok_or("无法获取执行目录")?;
+    let current_exe = env::current_exe().map_err(|e| format!("无法获取当前执行路径: {}", e))?;
+    let bin_dir = current_exe.parent().ok_or("无法获取执行目录")?;
 
     // 查找 ir2exe
-    let ir2exe_paths = [
-        bin_dir.join("ir2exe"),
-        bin_dir.join("ir2exe.exe")
-    ];
-    
-    let ir2exe_path = ir2exe_paths.iter()
+    let ir2exe_paths = [bin_dir.join("ir2exe"), bin_dir.join("ir2exe.exe")];
+
+    let ir2exe_path = ir2exe_paths
+        .iter()
         .find(|path| path.exists())
         .ok_or_else(|| {
-            let paths_str = ir2exe_paths.iter()
+            let paths_str = ir2exe_paths
+                .iter()
                 .map(|p| format!("  {:?}", p))
                 .collect::<Vec<_>>()
                 .join("\n");
-            format!("错误: 找不到 ir2exe 或 ir2exe.exe 在以下位置:\n{}", paths_str)
+            format!(
+                "错误: 找不到 ir2exe 或 ir2exe.exe 在以下位置:\n{}",
+                paths_str
+            )
         })?;
 
     // 构建 ir2exe 参数
@@ -471,7 +476,8 @@ fn compile_ir_to_executable(ir_code: &str, output_path: &str, options: &RunOptio
     }
 
     #[cfg(target_os = "windows")]
-    if ir_code.contains("WSAStartup") || ir_code.contains("socket(") || ir_code.contains("@socket(") {
+    if ir_code.contains("WSAStartup") || ir_code.contains("socket(") || ir_code.contains("@socket(")
+    {
         ir2exe_args.push("-lws2_32".to_string());
     }
 
@@ -530,8 +536,7 @@ fn run_executable(exe_path: &str, options: &RunOptions) -> Result<i32, String> {
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
 
-    let status = cmd.status()
-        .map_err(|e| format!("运行程序失败: {}", e))?;
+    let status = cmd.status().map_err(|e| format!("运行程序失败: {}", e))?;
 
     Ok(status.code().unwrap_or(1))
 }
@@ -545,7 +550,7 @@ fn main() {
             print_miette_error(
                 "cavvy::argument_error",
                 &e,
-                Some("请检查命令行参数是否正确")
+                Some("请检查命令行参数是否正确"),
             );
             print_usage();
             process::exit(1);
@@ -557,7 +562,7 @@ fn main() {
         print_miette_error(
             "cavvy::io_error",
             &format!("输入文件 '{}' 不存在", input_path),
-            Some("请检查文件路径是否正确")
+            Some("请检查文件路径是否正确"),
         );
         process::exit(1);
     }
@@ -569,7 +574,7 @@ fn main() {
             print_miette_error(
                 "cavvy::file_type_error",
                 &e,
-                Some("支持的文件类型: .cay, .caybc, .ll")
+                Some("支持的文件类型: .cay, .caybc, .ll"),
             );
             process::exit(1);
         }
@@ -607,39 +612,36 @@ fn main() {
                 if options.verbose {
                     println!("使用字节码混淆模式...");
                 }
-                let module = compile_cay_to_bytecode(&input_path, &options)
-                    .unwrap_or_else(|e| {
-                        print_tool_error("字节码编译器", &e, Some("请检查代码语法和语义"));
-                        process::exit(1);
-                    });
+                let module = compile_cay_to_bytecode(&input_path, &options).unwrap_or_else(|e| {
+                    print_tool_error("字节码编译器", &e, Some("请检查代码语法和语义"));
+                    process::exit(1);
+                });
 
                 // 保存字节码到临时文件
                 let temp_bc_file = generate_unique_filename("cay", "caybc");
                 let bytecode = serializer::serialize(&module);
-                fs::write(&temp_bc_file, bytecode)
-                    .unwrap_or_else(|e| {
-                        print_miette_error(
-                            "cavvy::io_error",
-                            &format!("写入字节码文件失败: {}", e),
-                            Some("请检查输出目录权限")
-                        );
-                        process::exit(1);
-                    });
+                fs::write(&temp_bc_file, bytecode).unwrap_or_else(|e| {
+                    print_miette_error(
+                        "cavvy::io_error",
+                        &format!("写入字节码文件失败: {}", e),
+                        Some("请检查输出目录权限"),
+                    );
+                    process::exit(1);
+                });
 
                 // 从字节码编译到IR
                 let bc_path = temp_bc_file.to_str().unwrap_or_else(|| {
                     print_miette_error(
                         "cavvy::io_error",
                         "字节码临时文件路径包含无效UTF-8字符",
-                        None
+                        None,
                     );
                     process::exit(1);
                 });
-                let ir = compile_bytecode_to_ir(bc_path, &options)
-                    .unwrap_or_else(|e| {
-                        print_tool_error("字节码转IR", &e, Some("请检查字节码文件是否正确"));
-                        process::exit(1);
-                    });
+                let ir = compile_bytecode_to_ir(bc_path, &options).unwrap_or_else(|e| {
+                    print_tool_error("字节码转IR", &e, Some("请检查字节码文件是否正确"));
+                    process::exit(1);
+                });
 
                 if !options.keep_temp {
                     let _ = fs::remove_file(&temp_bc_file);
@@ -661,25 +663,23 @@ fn main() {
             if options.verbose {
                 println!("[1/3] 编译字节码到IR...");
             }
-            compile_bytecode_to_ir(&input_path, &options)
-                .unwrap_or_else(|e| {
-                    print_tool_error("字节码编译器", &e, Some("请检查字节码文件是否正确"));
-                    process::exit(1);
-                })
+            compile_bytecode_to_ir(&input_path, &options).unwrap_or_else(|e| {
+                print_tool_error("字节码编译器", &e, Some("请检查字节码文件是否正确"));
+                process::exit(1);
+            })
         }
         FileType::LlvmIr => {
             if options.verbose {
                 println!("[1/3] 读取IR文件...");
             }
-            fs::read_to_string(&input_path)
-                .unwrap_or_else(|e| {
-                    print_miette_error(
-                        "cavvy::io_error",
-                        &format!("读取IR文件失败: {}", e),
-                        Some("请检查文件路径是否正确")
-                    );
-                    process::exit(1);
-                })
+            fs::read_to_string(&input_path).unwrap_or_else(|e| {
+                print_miette_error(
+                    "cavvy::io_error",
+                    &format!("读取IR文件失败: {}", e),
+                    Some("请检查文件路径是否正确"),
+                );
+                process::exit(1);
+            })
         }
     };
 
@@ -688,28 +688,33 @@ fn main() {
     }
 
     // 编译IR到可执行文件
-    compile_ir_to_executable(&ir_code, &output_exe, &options)
-        .unwrap_or_else(|e| {
-            print_tool_error("ir2exe", &e, Some("请检查 IR 代码是否正确"));
-            process::exit(1);
-        });
+    compile_ir_to_executable(&ir_code, &output_exe, &options).unwrap_or_else(|e| {
+        print_tool_error("ir2exe", &e, Some("请检查 IR 代码是否正确"));
+        process::exit(1);
+    });
 
     if options.verbose {
-        println!("[3/3] {}...", if options.no_run { "跳过运行" } else { "运行程序" });
+        println!(
+            "[3/3] {}...",
+            if options.no_run {
+                "跳过运行"
+            } else {
+                "运行程序"
+            }
+        );
         println!();
     }
 
     // 运行可执行文件
     if !options.no_run {
-        let exit_code = run_executable(&output_exe, &options)
-            .unwrap_or_else(|e| {
-                print_miette_error(
-                    "cavvy::runtime_error",
-                    &format!("运行失败: {}", e),
-                    Some("请检查程序是否正确编译")
-                );
-                process::exit(1);
-            });
+        let exit_code = run_executable(&output_exe, &options).unwrap_or_else(|e| {
+            print_miette_error(
+                "cavvy::runtime_error",
+                &format!("运行失败: {}", e),
+                Some("请检查程序是否正确编译"),
+            );
+            process::exit(1);
+        });
 
         if options.verbose {
             println!();

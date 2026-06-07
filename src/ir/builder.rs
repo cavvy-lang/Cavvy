@@ -3,19 +3,14 @@
 //! 这是 AST 到 IR 的主要转换入口。
 //! Builder 遍历 AST 并逐步构建 IrFunction 和 IrModule。
 
-use super::types::IrType;
-use super::value::{
-    IrValue, IrInstruction, IrTerminator,
-    IrBinaryOp, IrCastKind, IrCmpOp,
-};
 use super::block::IrBasicBlock;
 use super::function::{IrFunction, IrParam};
-use super::module::{
-    IrModule, IrExternDecl,
-};
+use super::module::{IrExternDecl, IrModule};
+use super::types::IrType;
+use super::value::{IrBinaryOp, IrCastKind, IrCmpOp, IrInstruction, IrTerminator, IrValue};
 use crate::ast::*;
+use crate::error::{SourceLocation, cayResult, codegen_error_at};
 use crate::types::{Type, TypeRegistry};
-use crate::error::{cayResult, codegen_error_at, SourceLocation};
 use std::collections::HashMap;
 
 /// 循环上下文（用于 break/continue）
@@ -81,7 +76,7 @@ impl ScopeManager {
     fn get_all_variables(&self) -> Vec<(String, IrValue)> {
         let mut result = Vec::new();
         let mut seen = std::collections::HashSet::new();
-        
+
         for scope in self.scopes.iter().rev() {
             for (name, value) in scope.iter() {
                 if seen.insert(name.clone()) {
@@ -89,7 +84,7 @@ impl ScopeManager {
                 }
             }
         }
-        
+
         result
     }
 }
@@ -171,7 +166,9 @@ impl IrBuilder {
     /// 计算所有类的实例布局
     fn compute_class_layouts(&mut self, program: &Program) {
         let mut computed = std::collections::HashSet::new();
-        let classes: HashMap<String, &ClassDecl> = program.classes.iter()
+        let classes: HashMap<String, &ClassDecl> = program
+            .classes
+            .iter()
             .map(|c| (c.name.clone(), c))
             .collect();
 
@@ -190,7 +187,14 @@ impl IrBuilder {
             // 先计算父类
             if let Some(ref parent_name) = class.parent {
                 if let Some(parent_class) = classes.get(parent_name) {
-                    compute_recursive(parent_class, classes, computed, layouts, sizes, type_registry);
+                    compute_recursive(
+                        parent_class,
+                        classes,
+                        computed,
+                        layouts,
+                        sizes,
+                        type_registry,
+                    );
                 }
             }
 
@@ -234,8 +238,11 @@ impl IrBuilder {
 
         for class in &program.classes {
             compute_recursive(
-                class, &classes, &mut computed,
-                &mut self.class_layouts, &mut self.class_sizes,
+                class,
+                &classes,
+                &mut computed,
+                &mut self.class_layouts,
+                &mut self.class_sizes,
                 &self.type_registry,
             );
         }
@@ -266,24 +273,36 @@ impl IrBuilder {
 
     /// 在当前基本块中添加指令
     fn emit(&mut self, inst: IrInstruction) -> cayResult<()> {
-        let block = self.current_block_mut()
-            .ok_or_else(|| crate::error::codegen_error_at(SourceLocation::default(), "No current block".to_string()))?;
+        let block = self.current_block_mut().ok_or_else(|| {
+            crate::error::codegen_error_at(
+                SourceLocation::default(),
+                "No current block".to_string(),
+            )
+        })?;
         block.push(inst);
         Ok(())
     }
 
     /// 设置当前块的终止指令
     fn set_terminator(&mut self, term: IrTerminator) -> cayResult<()> {
-        let block = self.current_block_mut()
-            .ok_or_else(|| crate::error::codegen_error_at(SourceLocation::default(), "No current block".to_string()))?;
+        let block = self.current_block_mut().ok_or_else(|| {
+            crate::error::codegen_error_at(
+                SourceLocation::default(),
+                "No current block".to_string(),
+            )
+        })?;
         block.set_terminator(term);
         Ok(())
     }
 
     /// 创建新基本块并设置为当前块
     fn new_block(&mut self, label: String) -> cayResult<()> {
-        let func = self.current_function.as_mut()
-            .ok_or_else(|| crate::error::codegen_error_at(SourceLocation::default(), "No current function".to_string()))?;
+        let func = self.current_function.as_mut().ok_or_else(|| {
+            crate::error::codegen_error_at(
+                SourceLocation::default(),
+                "No current function".to_string(),
+            )
+        })?;
         func.add_block(IrBasicBlock::new(label));
         Ok(())
     }
@@ -295,7 +314,9 @@ impl IrBuilder {
     fn build_extern_decl(&mut self, decl: &ExternDecl) {
         for func in &decl.functions {
             let return_type = IrType::from(&func.return_type);
-            let params: Vec<(String, IrType)> = func.params.iter()
+            let params: Vec<(String, IrType)> = func
+                .params
+                .iter()
                 .map(|p| (p.name.clone(), IrType::from(&p.param_type)))
                 .collect();
             self.module.add_extern(IrExternDecl {
@@ -315,7 +336,9 @@ impl IrBuilder {
     fn build_top_level_function(&mut self, func: &TopLevelFunction) -> cayResult<()> {
         let fn_name = format!("__toplevel_{}", func.name);
         let return_type = IrType::from(&func.return_type);
-        let params: Vec<IrParam> = func.params.iter()
+        let params: Vec<IrParam> = func
+            .params
+            .iter()
             .map(|p| IrParam {
                 name: p.name.clone(),
                 ty: IrType::from(&p.param_type),
@@ -344,7 +367,8 @@ impl IrBuilder {
                 ptr: alloca.clone(),
                 ty: ir_ty.clone(),
             })?;
-            self.scope_manager.declare(&param.name, alloca, param.param_type.clone());
+            self.scope_manager
+                .declare(&param.name, alloca, param.param_type.clone());
         }
 
         // 生成函数体
@@ -355,7 +379,9 @@ impl IrBuilder {
             self.set_terminator(IrTerminator::Return { value: None })?;
         }
 
-        let func_ir = self.current_function.take()
+        let func_ir = self
+            .current_function
+            .take()
             .expect("IR Builder: current_function 应在 build_top_level_function 中设置");
         self.module.add_function(func_ir);
         Ok(())
@@ -391,7 +417,10 @@ impl IrBuilder {
         }
 
         // 如果没有显式构造函数，生成默认构造函数
-        let has_ctor = class.members.iter().any(|m| matches!(m, ClassMember::Constructor(_)));
+        let has_ctor = class
+            .members
+            .iter()
+            .any(|m| matches!(m, ClassMember::Constructor(_)));
         if !has_ctor {
             self.build_default_constructor(&class.name)?;
         }
@@ -427,8 +456,10 @@ impl IrBuilder {
         }
 
         self.current_function = Some(IrFunction::new(fn_name, return_type, params));
-        self.current_function.as_mut()
-            .expect("IR Builder: current_function 应在 build_method 中设置").is_static = is_static;
+        self.current_function
+            .as_mut()
+            .expect("IR Builder: current_function 应在 build_method 中设置")
+            .is_static = is_static;
         self.scope_manager.reset();
         self.loop_stack.clear();
         self.temp_counter = 0;
@@ -436,19 +467,23 @@ impl IrBuilder {
 
         // 为参数创建 alloca
         if !is_static {
-            let alloca = self.new_temp(IrType::Pointer(Box::new(IrType::Pointer(Box::new(IrType::I8)))));
+            let alloca = self.new_temp(IrType::Pointer(Box::new(IrType::Pointer(Box::new(
+                IrType::I8,
+            )))));
             self.emit(IrInstruction::Alloca {
                 result: alloca.clone(),
                 ty: IrType::Pointer(Box::new(IrType::I8)),
                 align: 8,
             })?;
-            let this_val = IrValue::Param("this".to_string(), IrType::Pointer(Box::new(IrType::I8)));
+            let this_val =
+                IrValue::Param("this".to_string(), IrType::Pointer(Box::new(IrType::I8)));
             self.emit(IrInstruction::Store {
                 value: this_val,
                 ptr: alloca.clone(),
                 ty: IrType::Pointer(Box::new(IrType::I8)),
             })?;
-            self.scope_manager.declare("this", alloca, Type::Object(class_name.to_string()));
+            self.scope_manager
+                .declare("this", alloca, Type::Object(class_name.to_string()));
         }
 
         for param in &method.params {
@@ -469,7 +504,8 @@ impl IrBuilder {
                 ptr: alloca.clone(),
                 ty: ir_ty.clone(),
             })?;
-            self.scope_manager.declare(&param.name, alloca, param.param_type.clone());
+            self.scope_manager
+                .declare(&param.name, alloca, param.param_type.clone());
         }
 
         // 生成方法体
@@ -482,8 +518,10 @@ impl IrBuilder {
             self.set_terminator(IrTerminator::Return { value: None })?;
         }
 
-        let func_ir = self.current_function.take()
-                    .expect("IR Builder: current_function 应在方法构建前设置");
+        let func_ir = self
+            .current_function
+            .take()
+            .expect("IR Builder: current_function 应在方法构建前设置");
         self.module.add_function(func_ir);
         Ok(())
     }
@@ -491,9 +529,10 @@ impl IrBuilder {
     fn build_constructor(&mut self, class_name: &str, ctor: &ConstructorDecl) -> cayResult<()> {
         let fn_name = self.generate_constructor_name(class_name, ctor);
 
-        let mut params: Vec<IrParam> = vec![
-            IrParam { name: "this".to_string(), ty: IrType::Pointer(Box::new(IrType::I8)) }
-        ];
+        let mut params: Vec<IrParam> = vec![IrParam {
+            name: "this".to_string(),
+            ty: IrType::Pointer(Box::new(IrType::I8)),
+        }];
         for param in &ctor.params {
             params.push(IrParam {
                 name: param.name.clone(),
@@ -508,7 +547,9 @@ impl IrBuilder {
         self.label_counter = 0;
 
         // this 参数
-        let alloca = self.new_temp(IrType::Pointer(Box::new(IrType::Pointer(Box::new(IrType::I8)))));
+        let alloca = self.new_temp(IrType::Pointer(Box::new(IrType::Pointer(Box::new(
+            IrType::I8,
+        )))));
         self.emit(IrInstruction::Alloca {
             result: alloca.clone(),
             ty: IrType::Pointer(Box::new(IrType::I8)),
@@ -520,7 +561,8 @@ impl IrBuilder {
             ptr: alloca.clone(),
             ty: IrType::Pointer(Box::new(IrType::I8)),
         })?;
-        self.scope_manager.declare("this", alloca, Type::Object(class_name.to_string()));
+        self.scope_manager
+            .declare("this", alloca, Type::Object(class_name.to_string()));
 
         for param in &ctor.params {
             let ir_ty = IrType::from(&param.param_type);
@@ -536,7 +578,8 @@ impl IrBuilder {
                 ptr: alloca.clone(),
                 ty: ir_ty.clone(),
             })?;
-            self.scope_manager.declare(&param.name, alloca, param.param_type.clone());
+            self.scope_manager
+                .declare(&param.name, alloca, param.param_type.clone());
         }
 
         // 处理 constructor_call (this()/super())
@@ -548,13 +591,14 @@ impl IrBuilder {
                     let target_ctor_name = if args.is_empty() {
                         format!("{}.__ctor", qualified_class)
                     } else {
-                        let param_types: Vec<String> = args.iter()
+                        let param_types: Vec<String> = args
+                            .iter()
                             .filter_map(|arg| self.infer_expr_type(arg).ok())
                             .map(|ty| self.type_to_signature(&ty))
                             .collect();
                         format!("{}.__ctor_{}", qualified_class, param_types.join("_"))
                     };
-                    
+
                     // 构建参数：this + args
                     let mut call_args = Vec::new();
                     if let Some(this_val) = self.scope_manager.lookup("this").cloned() {
@@ -566,12 +610,12 @@ impl IrBuilder {
                         })?;
                         call_args.push(this_loaded);
                     }
-                    
+
                     for arg in args {
                         let arg_val = self.build_expression(arg)?;
                         call_args.push(arg_val);
                     }
-                    
+
                     self.emit(IrInstruction::Call {
                         result: None,
                         func_name: target_ctor_name,
@@ -588,17 +632,19 @@ impl IrBuilder {
                                 let parent_ctor_name = if args.is_empty() {
                                     format!("{}.__ctor", qualified_parent)
                                 } else {
-                                    let param_types: Vec<String> = args.iter()
+                                    let param_types: Vec<String> = args
+                                        .iter()
                                         .filter_map(|arg| self.infer_expr_type(arg).ok())
                                         .map(|ty| self.type_to_signature(&ty))
                                         .collect();
                                     format!("{}.__ctor_{}", qualified_parent, param_types.join("_"))
                                 };
-                                
+
                                 // 构建参数：this + args
                                 let mut call_args = Vec::new();
                                 if let Some(this_val) = self.scope_manager.lookup("this").cloned() {
-                                    let this_loaded = self.new_temp(IrType::Pointer(Box::new(IrType::I8)));
+                                    let this_loaded =
+                                        self.new_temp(IrType::Pointer(Box::new(IrType::I8)));
                                     self.emit(IrInstruction::Load {
                                         result: this_loaded.clone(),
                                         ptr: this_val,
@@ -606,12 +652,12 @@ impl IrBuilder {
                                     })?;
                                     call_args.push(this_loaded);
                                 }
-                                
+
                                 for arg in args {
                                     let arg_val = self.build_expression(arg)?;
                                     call_args.push(arg_val);
                                 }
-                                
+
                                 self.emit(IrInstruction::Call {
                                     result: None,
                                     func_name: parent_ctor_name,
@@ -628,8 +674,10 @@ impl IrBuilder {
         self.build_block(&ctor.body)?;
         self.set_terminator(IrTerminator::Return { value: None })?;
 
-        let func_ir = self.current_function.take()
-                    .expect("IR Builder: current_function 应在方法构建前设置");
+        let func_ir = self
+            .current_function
+            .take()
+            .expect("IR Builder: current_function 应在方法构建前设置");
         self.module.add_function(func_ir);
         Ok(())
     }
@@ -637,9 +685,10 @@ impl IrBuilder {
     fn build_destructor(&mut self, class_name: &str, dtor: &DestructorDecl) -> cayResult<()> {
         let fn_name = format!("{}.__dtor", class_name);
 
-        let params = vec![
-            IrParam { name: "this".to_string(), ty: IrType::Pointer(Box::new(IrType::I8)) }
-        ];
+        let params = vec![IrParam {
+            name: "this".to_string(),
+            ty: IrType::Pointer(Box::new(IrType::I8)),
+        }];
 
         self.current_function = Some(IrFunction::new(fn_name, IrType::Void, params));
         self.scope_manager.reset();
@@ -647,7 +696,9 @@ impl IrBuilder {
         self.temp_counter = 0;
         self.label_counter = 0;
 
-        let alloca = self.new_temp(IrType::Pointer(Box::new(IrType::Pointer(Box::new(IrType::I8)))));
+        let alloca = self.new_temp(IrType::Pointer(Box::new(IrType::Pointer(Box::new(
+            IrType::I8,
+        )))));
         self.emit(IrInstruction::Alloca {
             result: alloca.clone(),
             ty: IrType::Pointer(Box::new(IrType::I8)),
@@ -658,13 +709,16 @@ impl IrBuilder {
             ptr: alloca.clone(),
             ty: IrType::Pointer(Box::new(IrType::I8)),
         })?;
-        self.scope_manager.declare("this", alloca, Type::Object(class_name.to_string()));
+        self.scope_manager
+            .declare("this", alloca, Type::Object(class_name.to_string()));
 
         self.build_block(&dtor.body)?;
         self.set_terminator(IrTerminator::Return { value: None })?;
 
-        let func_ir = self.current_function.take()
-                    .expect("IR Builder: current_function 应在方法构建前设置");
+        let func_ir = self
+            .current_function
+            .take()
+            .expect("IR Builder: current_function 应在方法构建前设置");
         self.module.add_function(func_ir);
         Ok(())
     }
@@ -672,9 +726,10 @@ impl IrBuilder {
     fn build_default_constructor(&mut self, class_name: &str) -> cayResult<()> {
         let fn_name = format!("{}.__ctor", class_name);
 
-        let params = vec![
-            IrParam { name: "this".to_string(), ty: IrType::Pointer(Box::new(IrType::I8)) }
-        ];
+        let params = vec![IrParam {
+            name: "this".to_string(),
+            ty: IrType::Pointer(Box::new(IrType::I8)),
+        }];
 
         self.current_function = Some(IrFunction::new(fn_name, IrType::Void, params));
         self.scope_manager.reset();
@@ -682,7 +737,9 @@ impl IrBuilder {
         self.temp_counter = 0;
         self.label_counter = 0;
 
-        let alloca = self.new_temp(IrType::Pointer(Box::new(IrType::Pointer(Box::new(IrType::I8)))));
+        let alloca = self.new_temp(IrType::Pointer(Box::new(IrType::Pointer(Box::new(
+            IrType::I8,
+        )))));
         self.emit(IrInstruction::Alloca {
             result: alloca.clone(),
             ty: IrType::Pointer(Box::new(IrType::I8)),
@@ -693,12 +750,15 @@ impl IrBuilder {
             ptr: alloca.clone(),
             ty: IrType::Pointer(Box::new(IrType::I8)),
         })?;
-        self.scope_manager.declare("this", alloca, Type::Object(class_name.to_string()));
+        self.scope_manager
+            .declare("this", alloca, Type::Object(class_name.to_string()));
 
         self.set_terminator(IrTerminator::Return { value: None })?;
 
-        let func_ir = self.current_function.take()
-                    .expect("IR Builder: current_function 应在方法构建前设置");
+        let func_ir = self
+            .current_function
+            .take()
+            .expect("IR Builder: current_function 应在方法构建前设置");
         self.module.add_function(func_ir);
         Ok(())
     }
@@ -715,8 +775,10 @@ impl IrBuilder {
         self.build_block(block)?;
         self.set_terminator(IrTerminator::Return { value: None })?;
 
-        let func_ir = self.current_function.take()
-                    .expect("IR Builder: current_function 应在方法构建前设置");
+        let func_ir = self
+            .current_function
+            .take()
+            .expect("IR Builder: current_function 应在方法构建前设置");
         self.module.add_function(func_ir);
         Ok(())
     }
@@ -738,11 +800,16 @@ impl IrBuilder {
 
     fn build_statement(&mut self, stmt: &Stmt) -> cayResult<()> {
         match stmt {
-            Stmt::Expr(expr) => { self.build_expression(expr)?; }
+            Stmt::Expr(expr) => {
+                self.build_expression(expr)?;
+            }
             Stmt::VarDecl(var) => self.build_var_decl(var)?,
             Stmt::Return(expr) => self.build_return(expr)?,
             Stmt::Block(block) => {
-                let is_multi_var = block.statements.iter().all(|s| matches!(s, Stmt::VarDecl(_)));
+                let is_multi_var = block
+                    .statements
+                    .iter()
+                    .all(|s| matches!(s, Stmt::VarDecl(_)));
                 if is_multi_var {
                     for s in &block.statements {
                         if let Stmt::VarDecl(v) = s {
@@ -775,13 +842,13 @@ impl IrBuilder {
     /// 构建内联IR语句
     fn build_inline_ir(&mut self, inline_ir: &InlineIrStmt) -> cayResult<()> {
         use super::inline_ir::InlineIrParser;
-        
+
         // 调试：检查raw_lines
         // eprintln!("DEBUG: Inline IR raw_lines count: {}", inline_ir.raw_lines.len());
         for (i, line) in inline_ir.raw_lines.iter().enumerate() {
             // eprintln!("DEBUG: Line {}: '{}'", i, line);
         }
-        
+
         if inline_ir.raw_lines.is_empty() {
             return Err(crate::error::cayError::CodeGen {
                 code: "E5004".to_string(),
@@ -792,32 +859,34 @@ impl IrBuilder {
                 suggestion: "Check parser implementation".to_string(),
             });
         }
-        
+
         // 创建内联IR解析器
         let parser = InlineIrParser::new();
-        
+
         // 收集可用的输入变量
         let mut inputs = Vec::new();
         for (name, value) in self.scope_manager.get_all_variables() {
             inputs.push((name, value));
         }
-        
+
         // 解析IR文本
         let raw_text = inline_ir.raw_lines.join("\n");
-        let block = parser.parse(&raw_text, &inputs, &[])
-            .map_err(|e| crate::error::cayError::CodeGen { 
-                code: "E5004".to_string(),
-                file: None,
-                line: 0,
-                column: 0,
-                message: format!("Inline IR error: {}", e),
-                suggestion: "Check your inline IR syntax".to_string(),
-            })?;
-        
+        let block =
+            parser
+                .parse(&raw_text, &inputs, &[])
+                .map_err(|e| crate::error::cayError::CodeGen {
+                    code: "E5004".to_string(),
+                    file: None,
+                    line: 0,
+                    column: 0,
+                    message: format!("Inline IR error: {}", e),
+                    suggestion: "Check your inline IR syntax".to_string(),
+                })?;
+
         // 将内联IR块转换为IR指令
         let inst = parser.to_instruction(&block);
         self.emit(inst)?;
-        
+
         Ok(())
     }
 
@@ -893,18 +962,26 @@ impl IrBuilder {
         // 仅当块没有 terminator 时才添加分支
         let then_returns = self.current_block_is_complete();
         if !then_returns {
-            self.set_terminator(IrTerminator::Branch { target: merge_label.clone() })?;
+            self.set_terminator(IrTerminator::Branch {
+                target: merge_label.clone(),
+            })?;
         }
 
         // else 块
         let mut else_returns = false;
         if has_else {
             self.new_block(else_label)?;
-            self.build_statement(if_stmt.else_branch.as_ref()
-                .expect("IR Builder: has_else 为 true 时 else_branch 应为 Some"))?;
+            self.build_statement(
+                if_stmt
+                    .else_branch
+                    .as_ref()
+                    .expect("IR Builder: has_else 为 true 时 else_branch 应为 Some"),
+            )?;
             else_returns = self.current_block_is_complete();
             if !else_returns {
-                self.set_terminator(IrTerminator::Branch { target: merge_label.clone() })?;
+                self.set_terminator(IrTerminator::Branch {
+                    target: merge_label.clone(),
+                })?;
             }
         }
 
@@ -941,7 +1018,9 @@ impl IrBuilder {
             label: while_stmt.label.clone(),
         });
 
-        self.set_terminator(IrTerminator::Branch { target: cond_label.clone() })?;
+        self.set_terminator(IrTerminator::Branch {
+            target: cond_label.clone(),
+        })?;
 
         // 条件块
         self.new_block(cond_label.clone())?;
@@ -987,7 +1066,9 @@ impl IrBuilder {
             label: for_stmt.label.clone(),
         });
 
-        self.set_terminator(IrTerminator::Branch { target: cond_label.clone() })?;
+        self.set_terminator(IrTerminator::Branch {
+            target: cond_label.clone(),
+        })?;
 
         // 条件块
         self.new_block(cond_label.clone())?;
@@ -1006,13 +1087,17 @@ impl IrBuilder {
                 false_target: end_label.clone(),
             })?;
         } else {
-            self.set_terminator(IrTerminator::Branch { target: body_label.clone() })?;
+            self.set_terminator(IrTerminator::Branch {
+                target: body_label.clone(),
+            })?;
         }
 
         // 循环体
         self.new_block(body_label)?;
         self.build_statement(&for_stmt.body)?;
-        self.set_terminator(IrTerminator::Branch { target: update_label.clone() })?;
+        self.set_terminator(IrTerminator::Branch {
+            target: update_label.clone(),
+        })?;
 
         // 更新块
         self.new_block(update_label)?;
@@ -1038,12 +1123,16 @@ impl IrBuilder {
             label: do_while.label.clone(),
         });
 
-        self.set_terminator(IrTerminator::Branch { target: body_label.clone() })?;
+        self.set_terminator(IrTerminator::Branch {
+            target: body_label.clone(),
+        })?;
 
         // 循环体
         self.new_block(body_label.clone())?;
         self.build_statement(&do_while.body)?;
-        self.set_terminator(IrTerminator::Branch { target: cond_label.clone() })?;
+        self.set_terminator(IrTerminator::Branch {
+            target: cond_label.clone(),
+        })?;
 
         // 条件
         self.new_block(cond_label)?;
@@ -1070,7 +1159,10 @@ impl IrBuilder {
     fn resolve_case_value(&self, case: &Case) -> cayResult<i64> {
         match &case.value {
             CaseValue::Integer(v) => Ok(*v),
-            CaseValue::EnumVariant { enum_name, variant_name } => {
+            CaseValue::EnumVariant {
+                enum_name,
+                variant_name,
+            } => {
                 // 在类型注册表中查找 enum 定义
                 if let Some(ref registry) = self.type_registry {
                     if let Some(enum_info) = registry.get_enum(enum_name) {
@@ -1080,16 +1172,16 @@ impl IrBuilder {
                                 return Ok(idx as i64);
                             }
                         }
-                        return Err(codegen_error_at(case.loc.clone(), format!(
-                            "enum '{}' 中不存在 variant '{}'",
-                            enum_name, variant_name
-                        )));
+                        return Err(codegen_error_at(
+                            case.loc.clone(),
+                            format!("enum '{}' 中不存在 variant '{}'", enum_name, variant_name),
+                        ));
                     }
                 }
-                Err(codegen_error_at(case.loc.clone(), format!(
-                    "未知的 enum '{}' 在 case 标签中",
-                    enum_name
-                )))
+                Err(codegen_error_at(
+                    case.loc.clone(),
+                    format!("未知的 enum '{}' 在 case 标签中", enum_name),
+                ))
             }
         }
     }
@@ -1117,11 +1209,15 @@ impl IrBuilder {
         // 从第一个 case 开始，依次比较
         if case_labels.is_empty() {
             // 没有 case，直接跳转到 default
-            self.set_terminator(IrTerminator::Branch { target: default_label.clone() })?;
+            self.set_terminator(IrTerminator::Branch {
+                target: default_label.clone(),
+            })?;
         } else {
             // 创建第一个比较块
             let first_cmp_label = self.new_label("switch.cmp");
-            self.set_terminator(IrTerminator::Branch { target: first_cmp_label.clone() })?;
+            self.set_terminator(IrTerminator::Branch {
+                target: first_cmp_label.clone(),
+            })?;
             self.new_block(first_cmp_label.clone())?;
 
             // 生成比较链
@@ -1162,7 +1258,9 @@ impl IrBuilder {
             }
         }
         if !self.current_block_is_complete() {
-            self.set_terminator(IrTerminator::Branch { target: end_label.clone() })?;
+            self.set_terminator(IrTerminator::Branch {
+                target: end_label.clone(),
+            })?;
         }
 
         // 各 case 块
@@ -1173,7 +1271,9 @@ impl IrBuilder {
                 self.build_statement(stmt)?;
             }
             if !self.current_block_is_complete() {
-                self.set_terminator(IrTerminator::Branch { target: end_label.clone() })?;
+                self.set_terminator(IrTerminator::Branch {
+                    target: end_label.clone(),
+                })?;
             }
         }
 
@@ -1184,14 +1284,24 @@ impl IrBuilder {
 
     fn build_break(&mut self, label: &Option<String>, loc: &SourceLocation) -> cayResult<()> {
         let target = if let Some(l) = label {
-            self.loop_stack.iter().rev()
+            self.loop_stack
+                .iter()
+                .rev()
                 .find(|ctx| ctx.label.as_deref() == Some(l.as_str()))
                 .map(|ctx| ctx.end_label.clone())
-                .ok_or_else(|| crate::error::codegen_error_at(loc.clone(), format!("break label '{}' not found", l)))?
+                .ok_or_else(|| {
+                    crate::error::codegen_error_at(
+                        loc.clone(),
+                        format!("break label '{}' not found", l),
+                    )
+                })?
         } else {
-            self.loop_stack.last()
+            self.loop_stack
+                .last()
                 .map(|ctx| ctx.end_label.clone())
-                .ok_or_else(|| crate::error::codegen_error_at(loc.clone(), "break outside loop".to_string()))?
+                .ok_or_else(|| {
+                    crate::error::codegen_error_at(loc.clone(), "break outside loop".to_string())
+                })?
         };
         self.set_terminator(IrTerminator::Branch { target })?;
         Ok(())
@@ -1199,14 +1309,24 @@ impl IrBuilder {
 
     fn build_continue(&mut self, label: &Option<String>, loc: &SourceLocation) -> cayResult<()> {
         let target = if let Some(l) = label {
-            self.loop_stack.iter().rev()
+            self.loop_stack
+                .iter()
+                .rev()
                 .find(|ctx| ctx.label.as_deref() == Some(l.as_str()))
                 .map(|ctx| ctx.cond_label.clone())
-                .ok_or_else(|| crate::error::codegen_error_at(loc.clone(), format!("continue label '{}' not found", l)))?
+                .ok_or_else(|| {
+                    crate::error::codegen_error_at(
+                        loc.clone(),
+                        format!("continue label '{}' not found", l),
+                    )
+                })?
         } else {
-            self.loop_stack.last()
+            self.loop_stack
+                .last()
                 .map(|ctx| ctx.cond_label.clone())
-                .ok_or_else(|| crate::error::codegen_error_at(loc.clone(), "continue outside loop".to_string()))?
+                .ok_or_else(|| {
+                    crate::error::codegen_error_at(loc.clone(), "continue outside loop".to_string())
+                })?
         };
         self.set_terminator(IrTerminator::Branch { target })?;
         Ok(())
@@ -1241,8 +1361,9 @@ impl IrBuilder {
             Expr::ArrayCreation(arr) => self.build_array_creation(arr),
             Expr::ArrayAccess(arr) => self.build_array_access(arr),
             Expr::ArrayInit(init) => self.build_array_init(init),
-            _ => Err(crate::error::codegen_error_at(expr.location().clone(),
-                format!("Expression type not yet implemented in IR builder")
+            _ => Err(crate::error::codegen_error_at(
+                expr.location().clone(),
+                format!("Expression type not yet implemented in IR builder"),
             )),
         }
     }
@@ -1257,7 +1378,10 @@ impl IrBuilder {
             LiteralValue::Char(v) => Ok(IrValue::IntConst(*v as i64, IrType::I8)),
             LiteralValue::String(s) => {
                 let name = self.module.add_string(s);
-                Ok(IrValue::GlobalRef(name, IrType::Pointer(Box::new(IrType::I8))))
+                Ok(IrValue::GlobalRef(
+                    name,
+                    IrType::Pointer(Box::new(IrType::I8)),
+                ))
             }
             LiteralValue::Null => Ok(IrValue::NullConst(IrType::Pointer(Box::new(IrType::I8)))),
         }
@@ -1294,13 +1418,49 @@ impl IrBuilder {
         let result = self.new_temp(ty.clone());
 
         let op = match bin.op {
-            BinaryOp::Add => if ty.is_float() { IrBinaryOp::FAdd } else { IrBinaryOp::Add },
-            BinaryOp::Sub => if ty.is_float() { IrBinaryOp::FSub } else { IrBinaryOp::Sub },
-            BinaryOp::Mul => if ty.is_float() { IrBinaryOp::FMul } else { IrBinaryOp::Mul },
-            BinaryOp::Div => if ty.is_float() { IrBinaryOp::FDiv } else { IrBinaryOp::Div },
-            BinaryOp::Mod => if ty.is_float() { IrBinaryOp::FRem } else { IrBinaryOp::Mod },
-            BinaryOp::Eq | BinaryOp::Ne | BinaryOp::Lt | BinaryOp::Le |
-            BinaryOp::Gt | BinaryOp::Ge | BinaryOp::And | BinaryOp::Or => {
+            BinaryOp::Add => {
+                if ty.is_float() {
+                    IrBinaryOp::FAdd
+                } else {
+                    IrBinaryOp::Add
+                }
+            }
+            BinaryOp::Sub => {
+                if ty.is_float() {
+                    IrBinaryOp::FSub
+                } else {
+                    IrBinaryOp::Sub
+                }
+            }
+            BinaryOp::Mul => {
+                if ty.is_float() {
+                    IrBinaryOp::FMul
+                } else {
+                    IrBinaryOp::Mul
+                }
+            }
+            BinaryOp::Div => {
+                if ty.is_float() {
+                    IrBinaryOp::FDiv
+                } else {
+                    IrBinaryOp::Div
+                }
+            }
+            BinaryOp::Mod => {
+                if ty.is_float() {
+                    IrBinaryOp::FRem
+                } else {
+                    IrBinaryOp::Mod
+                }
+            }
+            BinaryOp::Eq
+            | BinaryOp::Ne
+            | BinaryOp::Lt
+            | BinaryOp::Le
+            | BinaryOp::Gt
+            | BinaryOp::Ge
+            | BinaryOp::And
+            | BinaryOp::Or => {
                 // 比较和逻辑运算在 build_compare 中处理
                 return self.build_compare(bin);
             }
@@ -1328,12 +1488,48 @@ impl IrBuilder {
         let is_float = ty.is_float();
 
         let cmp_op = match bin.op {
-            BinaryOp::Eq => if is_float { IrCmpOp::FEq } else { IrCmpOp::Eq },
-            BinaryOp::Ne => if is_float { IrCmpOp::FNe } else { IrCmpOp::Ne },
-            BinaryOp::Lt => if is_float { IrCmpOp::FLt } else { IrCmpOp::Slt },
-            BinaryOp::Le => if is_float { IrCmpOp::FLe } else { IrCmpOp::Sle },
-            BinaryOp::Gt => if is_float { IrCmpOp::FGt } else { IrCmpOp::Sgt },
-            BinaryOp::Ge => if is_float { IrCmpOp::FGe } else { IrCmpOp::Sge },
+            BinaryOp::Eq => {
+                if is_float {
+                    IrCmpOp::FEq
+                } else {
+                    IrCmpOp::Eq
+                }
+            }
+            BinaryOp::Ne => {
+                if is_float {
+                    IrCmpOp::FNe
+                } else {
+                    IrCmpOp::Ne
+                }
+            }
+            BinaryOp::Lt => {
+                if is_float {
+                    IrCmpOp::FLt
+                } else {
+                    IrCmpOp::Slt
+                }
+            }
+            BinaryOp::Le => {
+                if is_float {
+                    IrCmpOp::FLe
+                } else {
+                    IrCmpOp::Sle
+                }
+            }
+            BinaryOp::Gt => {
+                if is_float {
+                    IrCmpOp::FGt
+                } else {
+                    IrCmpOp::Sgt
+                }
+            }
+            BinaryOp::Ge => {
+                if is_float {
+                    IrCmpOp::FGe
+                } else {
+                    IrCmpOp::Sge
+                }
+            }
             BinaryOp::And | BinaryOp::Or => {
                 // 逻辑运算：先比较，然后 AND/OR
                 let left_cmp = self.new_temp(IrType::I1);
@@ -1351,7 +1547,11 @@ impl IrBuilder {
                     right: IrValue::IntConst(0, right.ir_type()),
                 })?;
                 let result = self.new_temp(IrType::I1);
-                let op = if bin.op == BinaryOp::And { IrBinaryOp::And } else { IrBinaryOp::Or };
+                let op = if bin.op == BinaryOp::And {
+                    IrBinaryOp::And
+                } else {
+                    IrBinaryOp::Or
+                };
                 self.emit(IrInstruction::BinaryOp {
                     result: result.clone(),
                     op,
@@ -1380,7 +1580,11 @@ impl IrBuilder {
 
         match unary.op {
             UnaryOp::Neg => {
-                let op = if ty.is_float() { IrBinaryOp::FSub } else { IrBinaryOp::Sub };
+                let op = if ty.is_float() {
+                    IrBinaryOp::FSub
+                } else {
+                    IrBinaryOp::Sub
+                };
                 let zero = if ty.is_float() {
                     IrValue::FloatConst(0.0, ty.clone())
                 } else {
@@ -1443,8 +1647,12 @@ impl IrBuilder {
                 }
             }
             _ => {
-                return Err(crate::error::codegen_error_at(unary.loc.clone(),
-                    format!("Unary operator {:?} not yet implemented in IR builder", unary.op)
+                return Err(crate::error::codegen_error_at(
+                    unary.loc.clone(),
+                    format!(
+                        "Unary operator {:?} not yet implemented in IR builder",
+                        unary.op
+                    ),
                 ));
             }
         }
@@ -1466,18 +1674,19 @@ impl IrBuilder {
                 }
                 Ok(())
             }
-            Expr::ArrayAccess(arr) => {
-                self.build_array_assignment(arr, value)
-            }
-            _ => {
-                Err(crate::error::codegen_error_at(target.location().clone(),
-                    "Complex assignment target not yet implemented in IR builder".to_string()
-                ))
-            }
+            Expr::ArrayAccess(arr) => self.build_array_assignment(arr, value),
+            _ => Err(crate::error::codegen_error_at(
+                target.location().clone(),
+                "Complex assignment target not yet implemented in IR builder".to_string(),
+            )),
         }
     }
 
-    fn build_array_assignment(&mut self, arr: &crate::ast::ArrayAccessExpr, value: IrValue) -> cayResult<()> {
+    fn build_array_assignment(
+        &mut self,
+        arr: &crate::ast::ArrayAccessExpr,
+        value: IrValue,
+    ) -> cayResult<()> {
         // 构建数组和索引
         let array_val = self.build_expression(&arr.array)?;
         let index_val = self.build_expression(&arr.index)?;
@@ -1529,22 +1738,28 @@ impl IrBuilder {
                         // 尝试查找类信息
                         // eprintln!("[DEBUG] Looking up class in registry: {}", class_name);
                         if let Some(class_info) = registry.get_class(class_name) {
-                            // eprintln!("[DEBUG] Found class: {}, type_params={:?}, methods={:?}", 
-                            //     class_name, class_info.type_params, 
+                            // eprintln!("[DEBUG] Found class: {}, type_params={:?}, methods={:?}",
+                            //     class_name, class_info.type_params,
                             //     class_info.methods.keys().collect::<Vec<_>>());
                             // 构建参数类型列表用于查找方法
-                            let arg_type_list: Vec<crate::types::Type> = call.args.iter()
+                            let arg_type_list: Vec<crate::types::Type> = call
+                                .args
+                                .iter()
                                 .map(|arg| self.infer_expr_type(arg))
                                 .filter_map(|ty| ty.ok())
                                 .collect();
                             // eprintln!("[DEBUG] Arg types: {:?}", arg_type_list);
 
                             // 查找匹配的方法
-                            if let Some(method_info) = class_info.find_method(method_name, &arg_type_list) {
-                                // eprintln!("[DEBUG] Found method: {}, params={:?}", method_name, 
+                            if let Some(method_info) =
+                                class_info.find_method(method_name, &arg_type_list)
+                            {
+                                // eprintln!("[DEBUG] Found method: {}, params={:?}", method_name,
                                 //     method_info.params.iter().map(|p| format!("{:?}", p.param_type)).collect::<Vec<_>>());
                                 // 使用方法定义时的参数类型生成函数名
-                                let param_types: Vec<String> = method_info.params.iter()
+                                let param_types: Vec<String> = method_info
+                                    .params
+                                    .iter()
                                     .map(|p| self.type_to_signature(&p.param_type))
                                     .collect();
                                 // eprintln!("[DEBUG] Param signatures: {:?}", param_types);
@@ -1552,43 +1767,60 @@ impl IrBuilder {
                                 if param_types.is_empty() {
                                     format!("{}.{}", qualified_class, method_name)
                                 } else {
-                                    format!("{}.__{}_{}", qualified_class, method_name, param_types.join("_"))
+                                    format!(
+                                        "{}.__{}_{}",
+                                        qualified_class,
+                                        method_name,
+                                        param_types.join("_")
+                                    )
                                 }
                             } else {
                                 // eprintln!("[DEBUG] Method not found: {} with args {:?}", method_name, arg_type_list);
                                 // 方法未找到，回退到简单处理
-                                let arg_types: Vec<String> = call.args.iter()
-                                    .map(|_| "x".to_string())
-                                    .collect();
+                                let arg_types: Vec<String> =
+                                    call.args.iter().map(|_| "x".to_string()).collect();
                                 if arg_types.is_empty() {
                                     format!("{}.{}", qualified_class, method_name)
                                 } else {
-                                    format!("{}.__{}_{}", qualified_class, method_name, arg_types.join("_"))
+                                    format!(
+                                        "{}.__{}_{}",
+                                        qualified_class,
+                                        method_name,
+                                        arg_types.join("_")
+                                    )
                                 }
                             }
                         } else {
                             // eprintln!("[DEBUG] Class not found in registry: {}", class_name);
                             // 类未找到，回退到简单处理
-                            let arg_types: Vec<String> = call.args.iter()
-                                .map(|_| "x".to_string())
-                                .collect();
+                            let arg_types: Vec<String> =
+                                call.args.iter().map(|_| "x".to_string()).collect();
                             if arg_types.is_empty() {
                                 format!("{}.{}", qualified_class, method_name)
                             } else {
-                                format!("{}.__{}_{}", qualified_class, method_name, arg_types.join("_"))
+                                format!(
+                                    "{}.__{}_{}",
+                                    qualified_class,
+                                    method_name,
+                                    arg_types.join("_")
+                                )
                             }
                         }
                     } else {
                         // eprintln!("[DEBUG] Type registry is None");
                         // 回退到简单处理：使用 "x" 作为泛型参数的签名
-                        let arg_types: Vec<String> = call.args.iter()
-                            .map(|_| "x".to_string())
-                            .collect();
+                        let arg_types: Vec<String> =
+                            call.args.iter().map(|_| "x".to_string()).collect();
 
                         if arg_types.is_empty() {
                             format!("{}.{}", qualified_class, method_name)
                         } else {
-                            format!("{}.__{}_{}", qualified_class, method_name, arg_types.join("_"))
+                            format!(
+                                "{}.__{}_{}",
+                                qualified_class,
+                                method_name,
+                                arg_types.join("_")
+                            )
                         }
                     };
                     // eprintln!("[DEBUG] Generated func_name: {}", func_name_result);
@@ -1598,7 +1830,12 @@ impl IrBuilder {
                     format!("{}.{}", self.current_class, member.member)
                 }
             }
-            _ => return Err(crate::error::codegen_error_at(call.loc.clone(), "Complex callee not yet supported in IR builder".to_string())),
+            _ => {
+                return Err(crate::error::codegen_error_at(
+                    call.loc.clone(),
+                    "Complex callee not yet supported in IR builder".to_string(),
+                ));
+            }
         };
 
         let mut args: Vec<IrValue> = Vec::new();
@@ -1617,7 +1854,11 @@ impl IrBuilder {
         };
 
         self.emit(IrInstruction::Call {
-            result: if return_ty == IrType::Void { None } else { Some(result.clone()) },
+            result: if return_ty == IrType::Void {
+                None
+            } else {
+                Some(result.clone())
+            },
             func_name,
             args,
             return_ty,
@@ -1679,8 +1920,9 @@ impl IrBuilder {
                 self.build_array_assignment(arr, final_value.clone())?;
             }
             _ => {
-                return Err(crate::error::codegen_error_at(assign.loc.clone(),
-                    "Complex assignment target not yet implemented in IR builder".to_string()
+                return Err(crate::error::codegen_error_at(
+                    assign.loc.clone(),
+                    "Complex assignment target not yet implemented in IR builder".to_string(),
                 ));
             }
         }
@@ -1688,7 +1930,12 @@ impl IrBuilder {
     }
 
     /// 构建复合赋值操作 (+=, -=, *=, /=, %=)
-    fn build_compound_op(&mut self, target: &Expr, op: &crate::ast::AssignOp, value: IrValue) -> cayResult<IrValue> {
+    fn build_compound_op(
+        &mut self,
+        target: &Expr,
+        op: &crate::ast::AssignOp,
+        value: IrValue,
+    ) -> cayResult<IrValue> {
         // 获取当前值
         let current_val = self.build_expression(target)?;
         let ty = current_val.ir_type();
@@ -1773,13 +2020,19 @@ impl IrBuilder {
 
         // 检查是否是静态字段
         let static_name = format!("@{}.{}_s", class_name, member.member);
-        if self.module.find_function(&static_name).is_some() || self.module.find_extern(&static_name).is_some() {
+        if self.module.find_function(&static_name).is_some()
+            || self.module.find_extern(&static_name).is_some()
+        {
             return Ok(IrValue::GlobalRef(static_name, IrType::I32));
         }
 
         // 如果找不到字段，返回错误
-        Err(crate::error::codegen_error_at(member.loc.clone(),
-            format!("Field '{}' not found in class '{}'", member.member, class_name)
+        Err(crate::error::codegen_error_at(
+            member.loc.clone(),
+            format!(
+                "Field '{}' not found in class '{}'",
+                member.member, class_name
+            ),
         ))
     }
 
@@ -1894,7 +2147,9 @@ impl IrBuilder {
 
     fn build_array_creation(&mut self, arr: &crate::ast::ArrayCreationExpr) -> cayResult<IrValue> {
         // 计算第一维数组大小（支持多维数组时取第一个）
-        let size_val = arr.sizes.first()
+        let size_val = arr
+            .sizes
+            .first()
             .map(|s| self.build_expression(s))
             .transpose()?;
 
@@ -2007,10 +2262,17 @@ impl IrBuilder {
     // 辅助方法
     // ============================================================
 
-    fn determine_cast_kind(&self, from: &IrType, to: &IrType, loc: SourceLocation) -> cayResult<IrCastKind> {
+    fn determine_cast_kind(
+        &self,
+        from: &IrType,
+        to: &IrType,
+        loc: SourceLocation,
+    ) -> cayResult<IrCastKind> {
         match (from, to) {
             // 整数扩展/截断
-            (IrType::I1, IrType::I8 | IrType::I16 | IrType::I32 | IrType::I64) => Ok(IrCastKind::ZeroExt),
+            (IrType::I1, IrType::I8 | IrType::I16 | IrType::I32 | IrType::I64) => {
+                Ok(IrCastKind::ZeroExt)
+            }
             (IrType::I8, IrType::I16 | IrType::I32 | IrType::I64) => Ok(IrCastKind::SignExt),
             (IrType::I16, IrType::I32 | IrType::I64) => Ok(IrCastKind::SignExt),
             (IrType::I32, IrType::I64) => Ok(IrCastKind::SignExt),
@@ -2031,8 +2293,13 @@ impl IrBuilder {
             (IrType::Pointer(_), _) if to.is_integer() => Ok(IrCastKind::PtrToInt),
             (_, IrType::Pointer(_)) if from.is_integer() => Ok(IrCastKind::IntToPtr),
 
-            _ => Err(crate::error::codegen_error_at(loc,
-                format!("Cannot cast from {} to {}", from.to_llvm_str(), to.to_llvm_str())
+            _ => Err(crate::error::codegen_error_at(
+                loc,
+                format!(
+                    "Cannot cast from {} to {}",
+                    from.to_llvm_str(),
+                    to.to_llvm_str()
+                ),
             )),
         }
     }
@@ -2055,7 +2322,7 @@ impl IrBuilder {
                 LiteralValue::Char(_) => Ok(Type::Char),
                 LiteralValue::String(_) => Ok(Type::String),
                 LiteralValue::Null => Ok(Type::Object("Object".to_string())),
-            }
+            },
             _ => Ok(Type::Int32), // 默认
         }
     }
@@ -2120,7 +2387,10 @@ impl IrBuilder {
         if processed_name.contains("::") {
             let parts: Vec<&str> = processed_name.split("::").collect();
             let simple_name = parts.last().unwrap_or(&"").to_string();
-            let namespace: Vec<String> = parts[..parts.len()-1].iter().map(|s| s.to_string()).collect();
+            let namespace: Vec<String> = parts[..parts.len() - 1]
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
             if namespace.is_empty() {
                 simple_name
             } else {
@@ -2175,10 +2445,17 @@ impl IrBuilder {
         if method.params.is_empty() {
             format!("{}.{}", qualified_class, method.name)
         } else {
-            let param_types: Vec<String> = method.params.iter()
+            let param_types: Vec<String> = method
+                .params
+                .iter()
                 .map(|p| self.type_to_signature(&p.param_type))
                 .collect();
-            format!("{}.__{}_{}", qualified_class, method.name, param_types.join("_"))
+            format!(
+                "{}.__{}_{}",
+                qualified_class,
+                method.name,
+                param_types.join("_")
+            )
         }
     }
 
@@ -2187,7 +2464,9 @@ impl IrBuilder {
         if ctor.params.is_empty() {
             format!("{}.__ctor", qualified_class)
         } else {
-            let param_types: Vec<String> = ctor.params.iter()
+            let param_types: Vec<String> = ctor
+                .params
+                .iter()
                 .map(|p| self.type_to_signature(&p.param_type))
                 .collect();
             format!("{}.__ctor_{}", qualified_class, param_types.join("_"))
@@ -2208,9 +2487,7 @@ impl IrBuilder {
             Type::GenericParam(name) => format!("g{}", name),
             Type::Array(inner) => format!("a{}", self.type_to_signature(inner)),
             Type::Generic(name, args) => {
-                let args_sig: String = args.iter()
-                    .map(|arg| self.type_to_signature(arg))
-                    .collect();
+                let args_sig: String = args.iter().map(|arg| self.type_to_signature(arg)).collect();
                 format!("G{}{}", name, args_sig)
             }
             _ => "x".to_string(),

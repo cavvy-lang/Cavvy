@@ -1,18 +1,21 @@
 //! 表达式类型推断
 
-use crate::ast::*;
-use crate::types::Type;
-use crate::error::{cayResult, semantic_error, semantic_error_with_file};
 use super::analyzer::SemanticAnalyzer;
 use super::symbol_table::SemanticSymbolInfo;
+use crate::ast::*;
+use crate::error::{cayResult, semantic_error, semantic_error_with_file};
+use crate::types::Type;
 
 /// 辅助函数：根据SourceLocation创建语义错误
-fn semantic_error_at_loc(loc: &crate::error::SourceLocation, message: impl Into<String>) -> crate::error::cayError {
+fn semantic_error_at_loc(
+    loc: &crate::error::SourceLocation,
+    message: impl Into<String>,
+) -> crate::error::cayError {
     semantic_error_with_file(loc.file.clone(), loc.line, loc.column, message)
 }
 
 /// 检查成员访问权限
-/// 
+///
 /// # Arguments
 /// * `member_name` - 成员名称
 /// * `is_public` - 成员是否公开
@@ -22,7 +25,7 @@ fn semantic_error_at_loc(loc: &crate::error::SourceLocation, message: impl Into<
 /// * `target_class` - 目标成员所属类名
 /// * `type_registry` - 类型注册表（用于检查继承关系）
 /// * `loc` - 源代码位置
-/// 
+///
 /// # Returns
 /// 如果访问被拒绝，返回 Err；否则返回 Ok(())
 fn check_member_access(
@@ -39,22 +42,24 @@ fn check_member_access(
     if is_public {
         return Ok(());
     }
-    
+
     // 获取当前类名
     let current_class_name = match current_class {
         Some(name) => name,
         None => {
             // 没有当前类上下文（如顶层函数），不能访问非公开成员
-            return Err(semantic_error_at_loc(loc, 
-                format!("{} has private access in {}", member_name, target_class)));
+            return Err(semantic_error_at_loc(
+                loc,
+                format!("{} has private access in {}", member_name, target_class),
+            ));
         }
     };
-    
+
     // 同一个类可以访问所有成员
     if current_class_name == target_class {
         return Ok(());
     }
-    
+
     // 如果是 protected，检查是否是子类
     if is_protected {
         // 检查当前类是否是目标类的子类
@@ -62,22 +67,31 @@ fn check_member_access(
             return Ok(());
         }
     }
-    
+
     // 私有或 protected 但不是子类
     let access_type = if is_private { "private" } else { "protected" };
-    Err(semantic_error_at_loc(loc, 
-        format!("{} has {} access in {}", member_name, access_type, target_class)))
+    Err(semantic_error_at_loc(
+        loc,
+        format!(
+            "{} has {} access in {}",
+            member_name, access_type, target_class
+        ),
+    ))
 }
 
 /// 检查 child_class 是否是 parent_class 的子类（包括直接和间接继承）
-fn is_subclass(child_class: &str, parent_class: &str, type_registry: &crate::types::TypeRegistry) -> bool {
+fn is_subclass(
+    child_class: &str,
+    parent_class: &str,
+    type_registry: &crate::types::TypeRegistry,
+) -> bool {
     let mut current = Some(child_class.to_string());
-    
+
     while let Some(class_name) = current {
         if class_name == parent_class {
             return true;
         }
-        
+
         // 获取父类
         if let Some(class_info) = type_registry.get_class(&class_name) {
             current = class_info.parent.clone();
@@ -85,7 +99,7 @@ fn is_subclass(child_class: &str, parent_class: &str, type_registry: &crate::typ
             break;
         }
     }
-    
+
     false
 }
 
@@ -99,9 +113,7 @@ fn edit_distance(a: &str, b: &str) -> usize {
         curr[0] = i + 1;
         for (j, b_ch) in b_chars.iter().enumerate() {
             let cost = if a_ch == b_ch { 0 } else { 1 };
-            curr[j + 1] = (prev[j + 1] + 1)
-                .min(curr[j] + 1)
-                .min(prev[j] + cost);
+            curr[j + 1] = (prev[j + 1] + 1).min(curr[j] + 1).min(prev[j] + cost);
         }
         std::mem::swap(&mut prev, &mut curr);
     }
@@ -120,7 +132,8 @@ impl SemanticAnalyzer {
                 if let Some((line, column)) = crate::error::get_error_location(&e) {
                     let message = crate::error::get_error_message(&e);
                     let file = crate::error::get_error_file(&e);
-                    self.errors.push(self.create_error_info_with_file(file, line, column, message));
+                    self.errors
+                        .push(self.create_error_info_with_file(file, line, column, message));
                 }
                 Type::Int32 // 返回默认类型继续分析
             }
@@ -139,7 +152,7 @@ impl SemanticAnalyzer {
                 LiteralValue::Bool(_) => Ok(Type::Bool),
                 LiteralValue::Char(_) => Ok(Type::Char),
                 LiteralValue::Null => Ok(Type::Object("Object".to_string())),
-            }
+            },
             Expr::Identifier(ident) => {
                 let name = &ident.name;
                 let loc = &ident.loc;
@@ -150,7 +163,8 @@ impl SemanticAnalyzer {
                     if self.current_method_is_static {
                         return Err(semantic_error_at_loc(
                             loc,
-                            "non-static variable this cannot be referenced from a static context".to_string()
+                            "non-static variable this cannot be referenced from a static context"
+                                .to_string(),
                         ));
                     }
                     // 返回当前类类型
@@ -159,7 +173,7 @@ impl SemanticAnalyzer {
                     }
                     return Err(semantic_error_at_loc(
                         loc,
-                        "this can only be used inside a class".to_string()
+                        "this can only be used inside a class".to_string(),
                     ));
                 }
 
@@ -169,7 +183,8 @@ impl SemanticAnalyzer {
                     if self.current_method_is_static {
                         return Err(semantic_error_at_loc(
                             loc,
-                            "non-static variable super cannot be referenced from a static context".to_string()
+                            "non-static variable super cannot be referenced from a static context"
+                                .to_string(),
                         ));
                     }
                     // 返回父类类型
@@ -182,15 +197,15 @@ impl SemanticAnalyzer {
                     }
                     return Err(semantic_error_at_loc(
                         loc,
-                        "super can only be used in a class that extends another class".to_string()
+                        "super can only be used in a class that extends another class".to_string(),
                     ));
                 }
-                
+
                 // 首先检查本地符号表（参数、局部变量优先于类字段）
                 if let Some(info) = self.symbol_table.lookup(name) {
                     return Ok(info.symbol_type.clone());
                 }
-                
+
                 // 检查是否是当前类的字段（包括静态和非静态）
                 if let Some(current_class_name) = &self.current_class {
                     if let Some(class_info) = self.type_registry.get_class(current_class_name) {
@@ -201,7 +216,10 @@ impl SemanticAnalyzer {
                                 // 静态方法中不能访问非静态字段
                                 return Err(semantic_error_at_loc(
                                     loc,
-                                    format!("non-static variable {} cannot be referenced from a static context", name)
+                                    format!(
+                                        "non-static variable {} cannot be referenced from a static context",
+                                        name
+                                    ),
                                 ));
                             }
                             // 非静态方法中返回字段类型
@@ -216,7 +234,10 @@ impl SemanticAnalyzer {
                                     } else if self.current_method_is_static {
                                         return Err(semantic_error_at_loc(
                                             loc,
-                                            format!("non-static variable {} cannot be referenced from a static context", name)
+                                            format!(
+                                                "non-static variable {} cannot be referenced from a static context",
+                                                name
+                                            ),
                                         ));
                                     }
                                     return Ok(field_info.field_type.clone());
@@ -225,15 +246,19 @@ impl SemanticAnalyzer {
                         }
                     }
                 }
-                
-                if self.type_registry.class_exists(name) 
+
+                if self.type_registry.class_exists(name)
                     || self.type_registry.get_struct(name).is_some()
-                    || self.type_registry.get_enum(name).is_some() {
+                    || self.type_registry.get_enum(name).is_some()
+                {
                     // 标识符是类名，返回类类型（用于静态成员访问）
                     Ok(Type::Object(name.clone()))
                 } else {
                     Err(crate::error::undefined_identifier_error_with_file(
-                        loc.file.clone(), loc.line, loc.column, name
+                        loc.file.clone(),
+                        loc.line,
+                        loc.column,
+                        name,
                     ))
                 }
             }
@@ -251,7 +276,7 @@ impl SemanticAnalyzer {
             Expr::Lambda(lambda) => self.infer_lambda_type(lambda),
             Expr::Ternary(ternary) => self.infer_ternary_type(ternary),
             Expr::InstanceOf(instanceof) => self.infer_instanceof_type(instanceof),
-            Expr::Alloc(_) => Ok(Type::Int64),  // 0.5.0.0: alloc 返回 long (指针)
+            Expr::Alloc(_) => Ok(Type::Int64), // 0.5.0.0: alloc 返回 long (指针)
             Expr::Dealloc(_) => Ok(Type::Void), // 0.5.0.0: dealloc 返回 void
             Expr::NamedArg(named) => self.infer_expr_type_internal(&named.value), // 命名参数返回其值的类型
         }
@@ -390,16 +415,22 @@ impl SemanticAnalyzer {
                         if call.args.len() != 1 {
                             return Err(semantic_error_at_loc(
                                 &call.loc,
-                                format!("Enum variant '{}.{}' with payload expects 1 argument, but got {}",
-                                    class_name, member.member, call.args.len())
+                                format!(
+                                    "Enum variant '{}.{}' with payload expects 1 argument, but got {}",
+                                    class_name,
+                                    member.member,
+                                    call.args.len()
+                                ),
                             ));
                         }
                         let arg_type = self.infer_expr_type_internal(&call.args[0])?;
                         if !self.types_compatible(&arg_type, expected_payload_type) {
                             return Err(semantic_error_at_loc(
                                 &call.loc,
-                                format!("Enum variant '{}.{}' payload type mismatch: expected {}, got {}",
-                                    class_name, member.member, expected_payload_type, arg_type)
+                                format!(
+                                    "Enum variant '{}.{}' payload type mismatch: expected {}, got {}",
+                                    class_name, member.member, expected_payload_type, arg_type
+                                ),
                             ));
                         }
                     }
@@ -407,8 +438,12 @@ impl SemanticAnalyzer {
                         if !call.args.is_empty() {
                             return Err(semantic_error_at_loc(
                                 &call.loc,
-                                format!("Enum variant '{}.{}' has no payload, but got {} argument(s)",
-                                    class_name, member.member, call.args.len())
+                                format!(
+                                    "Enum variant '{}.{}' has no payload, but got {} argument(s)",
+                                    class_name,
+                                    member.member,
+                                    call.args.len()
+                                ),
                             ));
                         }
                     }
@@ -418,11 +453,16 @@ impl SemanticAnalyzer {
 
             return Err(semantic_error_at_loc(
                 &call.loc,
-                format!("Unknown variant '{}' for enum {}", member.member, class_name)
+                format!(
+                    "Unknown variant '{}' for enum {}",
+                    member.member, class_name
+                ),
             ));
         }
 
-        let resolved_class_name = if let Some(class_info) = self.type_registry.get_class(&class_name) {
+        let resolved_class_name = if let Some(class_info) =
+            self.type_registry.get_class(&class_name)
+        {
             Some(class_info.name.clone())
         } else if let Some(qualified_name) = self.type_registry.find_qualified_class(&class_name) {
             Some(qualified_name)
@@ -465,7 +505,12 @@ impl SemanticAnalyzer {
 
         let mut mismatch_detail = None;
         for (owner_class, method_info) in &candidate_methods {
-            match self.check_arguments_compatible(&call.args, &method_info.params, call.loc.line, call.loc.column) {
+            match self.check_arguments_compatible(
+                &call.args,
+                &method_info.params,
+                call.loc.line,
+                call.loc.column,
+            ) {
                 Ok(()) => {
                     check_member_access(
                         &member.member,
@@ -494,7 +539,7 @@ impl SemanticAnalyzer {
                 format!(
                     "Method '{}' in class '{}' cannot be applied to given types: {}",
                     member.member, resolved_class_name, detail
-                )
+                ),
             ));
         }
 
@@ -504,13 +549,13 @@ impl SemanticAnalyzer {
                 format!(
                     "Non-static method '{}' in class '{}' cannot be referenced from a static context",
                     member.member, resolved_class_name
-                )
+                ),
             ));
         }
 
         Err(semantic_error_at_loc(
             &call.loc,
-            self.unknown_method_message(&member.member, &resolved_class_name)
+            self.unknown_method_message(&member.member, &resolved_class_name),
         ))
     }
 
@@ -518,18 +563,16 @@ impl SemanticAnalyzer {
     fn infer_binary_type(&mut self, bin: &BinaryExpr) -> cayResult<Type> {
         let left_type = self.infer_expr_type_internal(&bin.left)?;
         let right_type = self.infer_expr_type_internal(&bin.right)?;
-        
+
         match bin.op {
             BinaryOp::Add => {
                 // 字符串连接：支持 String + String 和 String + char
                 if left_type == Type::String && right_type == Type::String {
                     Ok(Type::String)
-                }
-                else if left_type == Type::String && right_type == Type::Char {
+                } else if left_type == Type::String && right_type == Type::Char {
                     // String + char = String
                     Ok(Type::String)
-                }
-                else if left_type == Type::Char && right_type == Type::String {
+                } else if left_type == Type::Char && right_type == Type::String {
                     // char + String = String
                     Ok(Type::String)
                 }
@@ -540,7 +583,10 @@ impl SemanticAnalyzer {
                 } else {
                     Err(semantic_error_at_loc(
                         &bin.loc,
-                        format!("Cannot add {} and {}: addition requires both operands to be numeric or both to be strings", left_type, right_type)
+                        format!(
+                            "Cannot add {} and {}: addition requires both operands to be numeric or both to be strings",
+                            left_type, right_type
+                        ),
                     ))
                 }
             }
@@ -552,13 +598,13 @@ impl SemanticAnalyzer {
                             if let LiteralValue::Int32(0) = lit_expr.value {
                                 return Err(semantic_error_at_loc(
                                     &bin.loc,
-                                    "/ by zero".to_string()
+                                    "/ by zero".to_string(),
                                 ));
                             }
                             if let LiteralValue::Int64(0) = lit_expr.value {
                                 return Err(semantic_error_at_loc(
                                     &bin.loc,
-                                    "/ by zero".to_string()
+                                    "/ by zero".to_string(),
                                 ));
                             }
                         }
@@ -568,20 +614,26 @@ impl SemanticAnalyzer {
                 } else {
                     Err(semantic_error_at_loc(
                         &bin.loc,
-                        format!("Cannot apply {:?} to {} and {}: operator requires numeric operands", bin.op, left_type, right_type)
+                        format!(
+                            "Cannot apply {:?} to {} and {}: operator requires numeric operands",
+                            bin.op, left_type, right_type
+                        ),
                     ))
                 }
             }
-            BinaryOp::Eq | BinaryOp::Ne | BinaryOp::Lt | BinaryOp::Le | BinaryOp::Gt | BinaryOp::Ge => {
-                Ok(Type::Bool)
-            }
+            BinaryOp::Eq
+            | BinaryOp::Ne
+            | BinaryOp::Lt
+            | BinaryOp::Le
+            | BinaryOp::Gt
+            | BinaryOp::Ge => Ok(Type::Bool),
             BinaryOp::And | BinaryOp::Or => {
                 if left_type == Type::Bool && right_type == Type::Bool {
                     Ok(Type::Bool)
                 } else {
                     Err(semantic_error_at_loc(
                         &bin.loc,
-                        "Logical operators require boolean operands"
+                        "Logical operators require boolean operands",
                     ))
                 }
             }
@@ -591,8 +643,10 @@ impl SemanticAnalyzer {
                 } else {
                     Err(semantic_error_at_loc(
                         &bin.loc,
-                        format!("Bitwise operator {:?} requires integer operands, got {} and {}",
-                               bin.op, left_type, right_type)
+                        format!(
+                            "Bitwise operator {:?} requires integer operands, got {} and {}",
+                            bin.op, left_type, right_type
+                        ),
                     ))
                 }
             }
@@ -603,8 +657,10 @@ impl SemanticAnalyzer {
                 } else {
                     Err(semantic_error_at_loc(
                         &bin.loc,
-                        format!("Shift operator {:?} requires integer operands, got {} and {}",
-                               bin.op, left_type, right_type)
+                        format!(
+                            "Shift operator {:?} requires integer operands, got {} and {}",
+                            bin.op, left_type, right_type
+                        ),
                     ))
                 }
             }
@@ -635,7 +691,7 @@ impl SemanticAnalyzer {
                 } else {
                     Err(semantic_error_at_loc(
                         &unary.loc,
-                        "Cannot apply '!' to non-boolean"
+                        "Cannot apply '!' to non-boolean",
                     ))
                 }
             }
@@ -661,7 +717,7 @@ impl SemanticAnalyzer {
                         // 对于其他类型，报错
                         Err(semantic_error_at_loc(
                             &unary.loc,
-                            format!("Cannot dereference non-pointer type '{}'", operand_type)
+                            format!("Cannot dereference non-pointer type '{}'", operand_type),
                         ))
                     }
                 }
@@ -696,28 +752,52 @@ impl SemanticAnalyzer {
                 "__cay_read_ptr" => {
                     // 检查参数数量
                     if call.args.len() != 1 {
-                        return Err(semantic_error_at_loc(&call.loc, format!("Function '__cay_read_ptr' requires 1 argument, but got {}", call.args.len())));
+                        return Err(semantic_error_at_loc(
+                            &call.loc,
+                            format!(
+                                "Function '__cay_read_ptr' requires 1 argument, but got {}",
+                                call.args.len()
+                            ),
+                        ));
                     }
                     return Ok(Type::Int64);
                 }
                 "__cay_ptr_to_string" => {
                     // 检查参数数量
                     if call.args.len() != 1 {
-                        return Err(semantic_error_at_loc(&call.loc, format!("Function '__cay_ptr_to_string' requires 1 argument, but got {}", call.args.len())));
+                        return Err(semantic_error_at_loc(
+                            &call.loc,
+                            format!(
+                                "Function '__cay_ptr_to_string' requires 1 argument, but got {}",
+                                call.args.len()
+                            ),
+                        ));
                     }
                     return Ok(Type::String);
                 }
                 "__cay_write_ptr" => {
                     // 检查参数数量
                     if call.args.len() != 2 {
-                        return Err(semantic_error_at_loc(&call.loc, format!("Function '__cay_write_ptr' requires 2 arguments, but got {}", call.args.len())));
+                        return Err(semantic_error_at_loc(
+                            &call.loc,
+                            format!(
+                                "Function '__cay_write_ptr' requires 2 arguments, but got {}",
+                                call.args.len()
+                            ),
+                        ));
                     }
                     return Ok(Type::Void);
                 }
                 "__cay_write_int" => {
                     // 检查参数数量
                     if call.args.len() != 2 {
-                        return Err(semantic_error_at_loc(&call.loc, format!("Function '__cay_write_int' requires 2 arguments, but got {}", call.args.len())));
+                        return Err(semantic_error_at_loc(
+                            &call.loc,
+                            format!(
+                                "Function '__cay_write_int' requires 2 arguments, but got {}",
+                                call.args.len()
+                            ),
+                        ));
                     }
                     return Ok(Type::Void);
                 }
@@ -735,31 +815,43 @@ impl SemanticAnalyzer {
                             Some(alias) => alias == name.as_ref(),
                             None => extern_func.name == name.as_ref(),
                         };
-                        
+
                         if is_match {
                             // 检查参数数量（不包括可变参数）
-                            let fixed_param_count = extern_func.params.iter()
-                                .filter(|p| !p.is_varargs)
-                                .count();
+                            let fixed_param_count =
+                                extern_func.params.iter().filter(|p| !p.is_varargs).count();
                             let has_varargs = extern_func.params.iter().any(|p| p.is_varargs);
-                            
+
                             if has_varargs {
                                 // 可变参数函数：参数数量 >= 固定参数数量
                                 if call.args.len() < fixed_param_count {
-                                    return Err(semantic_error_at_loc(&call.loc,
-                                        format!("Function '{}' requires at least {} arguments, but got {}",
-                                            name, fixed_param_count, call.args.len())));
+                                    return Err(semantic_error_at_loc(
+                                        &call.loc,
+                                        format!(
+                                            "Function '{}' requires at least {} arguments, but got {}",
+                                            name,
+                                            fixed_param_count,
+                                            call.args.len()
+                                        ),
+                                    ));
                                 }
                             } else {
                                 // 非可变参数函数：参数数量必须匹配
                                 if call.args.len() != extern_func.params.len() {
-                                    return Err(semantic_error_at_loc(&call.loc,
-                                        format!("Function '{}' requires {} arguments, but got {}",
-                                            name, extern_func.params.len(), call.args.len())));
+                                    return Err(semantic_error_at_loc(
+                                        &call.loc,
+                                        format!(
+                                            "Function '{}' requires {} arguments, but got {}",
+                                            name,
+                                            extern_func.params.len(),
+                                            call.args.len()
+                                        ),
+                                    ));
                                 }
                             }
-                            
-                            found_func = Some((extern_func.return_type.clone(), extern_func.params.clone()));
+
+                            found_func =
+                                Some((extern_func.return_type.clone(), extern_func.params.clone()));
                             break;
                         }
                     }
@@ -771,7 +863,7 @@ impl SemanticAnalyzer {
             } else {
                 None
             };
-            
+
             // 在可变借用self之前检查extern函数参数类型
             if let Some((return_type, params)) = extern_func_info {
                 // 检查参数类型兼容性
@@ -781,8 +873,14 @@ impl SemanticAnalyzer {
                     }
                     let arg_type = self.infer_expr_type_internal(arg)?;
                     if !self.types_compatible(&arg_type, &param.param_type) {
-                        return Err(semantic_error_at_loc(&call.loc, format!("Argument {} type mismatch: expected {}, got {}",
-                                i + 1, param.param_type, arg_type)
+                        return Err(semantic_error_at_loc(
+                            &call.loc,
+                            format!(
+                                "Argument {} type mismatch: expected {}, got {}",
+                                i + 1,
+                                param.param_type,
+                                arg_type
+                            ),
                         ));
                     }
                 }
@@ -792,7 +890,8 @@ impl SemanticAnalyzer {
             // 尝试查找当前类的方法（无对象调用）- 支持方法重载、命名参数和继承
             if let Some(ref current_class) = self.current_class.clone() {
                 // 收集当前类及其所有父类的候选方法
-                let mut candidate_methods: Vec<(Type, Vec<crate::types::ParameterInfo>, bool)> = Vec::new();
+                let mut candidate_methods: Vec<(Type, Vec<crate::types::ParameterInfo>, bool)> =
+                    Vec::new();
                 let mut class_to_check = Some(current_class.clone());
 
                 while let Some(class_name) = class_to_check {
@@ -803,7 +902,7 @@ impl SemanticAnalyzer {
                                 candidate_methods.push((
                                     method.return_type.clone(),
                                     method.params.clone(),
-                                    method.is_static
+                                    method.is_static,
                                 ));
                             }
                         }
@@ -831,7 +930,12 @@ impl SemanticAnalyzer {
                     if self.current_method_is_static && !is_static {
                         continue;
                     }
-                    if let Ok(()) = self.check_arguments_compatible(&call.args, params, call.loc.line, call.loc.column) {
+                    if let Ok(()) = self.check_arguments_compatible(
+                        &call.args,
+                        params,
+                        call.loc.line,
+                        call.loc.column,
+                    ) {
                         return Ok(return_type.clone());
                     }
                 }
@@ -840,7 +944,9 @@ impl SemanticAnalyzer {
             // 如果找不到任何合适的方法，尝试查找顶层函数
             // 先收集顶层函数信息，避免借用冲突
             let top_level_func_info = if let Some(program) = &self.program {
-                program.top_level_functions.iter()
+                program
+                    .top_level_functions
+                    .iter()
                     .find(|func| func.name == name.as_ref())
                     .map(|func| (func.params.clone(), func.return_type.clone()))
             } else {
@@ -849,7 +955,12 @@ impl SemanticAnalyzer {
 
             if let Some((params, return_type)) = top_level_func_info {
                 // 找到顶层函数，检查参数类型兼容性
-                if let Err(msg) = self.check_arguments_compatible(&call.args, &params, call.loc.line, call.loc.column) {
+                if let Err(msg) = self.check_arguments_compatible(
+                    &call.args,
+                    &params,
+                    call.loc.line,
+                    call.loc.column,
+                ) {
                     return Err(semantic_error_at_loc(&call.loc, msg));
                 }
                 return Ok(return_type);
@@ -867,7 +978,12 @@ impl SemanticAnalyzer {
 
             // 处理 String 类型方法调用
             if obj_type == Type::String {
-                return self.infer_string_method_call(&member.member, &call.args, call.loc.line, call.loc.column);
+                return self.infer_string_method_call(
+                    &member.member,
+                    &call.args,
+                    call.loc.line,
+                    call.loc.column,
+                );
             }
 
             // 处理数组类型的 length() 方法调用（作为 .length 属性的语法糖）
@@ -892,7 +1008,7 @@ impl SemanticAnalyzer {
                 Type::Generic(class_name, _) => Some(class_name.clone()),
                 _ => None,
             };
-            
+
             if let Some(class_name) = class_name_opt {
                 // 先推断所有参数类型
                 let mut arg_types = Vec::new();
@@ -910,15 +1026,30 @@ impl SemanticAnalyzer {
                             let params = func_type.params.clone();
                             // 检查参数数量
                             if call.args.len() != params.len() {
-                                return Err(semantic_error_at_loc(&call.loc, format!("Function pointer field '{}' requires {} arguments, but got {}",
-                                        member.member, params.len(), call.args.len())
+                                return Err(semantic_error_at_loc(
+                                    &call.loc,
+                                    format!(
+                                        "Function pointer field '{}' requires {} arguments, but got {}",
+                                        member.member,
+                                        params.len(),
+                                        call.args.len()
+                                    ),
                                 ));
                             }
                             // 检查参数类型兼容性（手动检查，因为params是Vec<Type>而不是Vec<ParameterInfo>）
-                            for (i, (arg, expected_type)) in call.args.iter().zip(params.iter()).enumerate() {
+                            for (i, (arg, expected_type)) in
+                                call.args.iter().zip(params.iter()).enumerate()
+                            {
                                 let arg_type = self.infer_expr_type_internal(arg)?;
                                 if !self.types_compatible(&arg_type, expected_type) {
-                                    return Err(semantic_error_at_loc(&call.loc, format!("Argument {} type mismatch: expected {}, got {}", i + 1, expected_type, arg_type)
+                                    return Err(semantic_error_at_loc(
+                                        &call.loc,
+                                        format!(
+                                            "Argument {} type mismatch: expected {}, got {}",
+                                            i + 1,
+                                            expected_type,
+                                            arg_type
+                                        ),
                                     ));
                                 }
                             }
@@ -929,18 +1060,28 @@ impl SemanticAnalyzer {
 
                 // 使用参数类型查找匹配的方法
                 // 首先尝试直接使用类名查找
-                let method_result = if let Some(method_info) = self.type_registry.find_method(&class_name, &member.member, &arg_types) {
-                    Some((method_info.clone(), method_info.return_type.clone(), method_info.params.clone()))
+                let method_result = if let Some(method_info) =
+                    self.type_registry
+                        .find_method(&class_name, &member.member, &arg_types)
+                {
+                    Some((
+                        method_info.clone(),
+                        method_info.return_type.clone(),
+                        method_info.params.clone(),
+                    ))
                 } else {
                     // 如果直接查找失败，尝试查找限定类名
-                    if let Some(qualified_name) = self.type_registry.find_qualified_class(&class_name) {
-                        self.type_registry.find_method(&qualified_name, &member.member, &arg_types)
+                    if let Some(qualified_name) =
+                        self.type_registry.find_qualified_class(&class_name)
+                    {
+                        self.type_registry
+                            .find_method(&qualified_name, &member.member, &arg_types)
                             .map(|m| (m.clone(), m.return_type.clone(), m.params.clone()))
                     } else {
                         None
                     }
                 };
-                
+
                 if let Some((method_info, return_type, params)) = method_result {
                     // 检查方法访问权限
                     check_member_access(
@@ -955,14 +1096,23 @@ impl SemanticAnalyzer {
                     )?;
                     // eprintln!("[DEBUG] Found method: {}.{}, params={:?}, return_type={:?}", class_name, member.member, params, return_type);
                     // 检查参数类型兼容性（支持可变参数）
-                    if let Err(msg) = self.check_arguments_compatible(&call.args, &params, call.loc.line, call.loc.column) {
+                    if let Err(msg) = self.check_arguments_compatible(
+                        &call.args,
+                        &params,
+                        call.loc.line,
+                        call.loc.column,
+                    ) {
                         return Err(semantic_error_at_loc(&call.loc, msg));
                     }
 
                     // 如果对象是泛型类型，替换返回类型中的泛型参数
                     let final_return_type = if let Type::Generic(_, type_args) = &obj_type {
                         if let Some(class_info) = self.type_registry.get_class(&class_name) {
-                            self.substitute_type_params(&return_type, &class_info.type_params, type_args)
+                            self.substitute_type_params(
+                                &return_type,
+                                &class_info.type_params,
+                                type_args,
+                            )
                         } else {
                             return_type
                         }
@@ -974,7 +1124,7 @@ impl SemanticAnalyzer {
                 } else {
                     return Err(semantic_error_at_loc(
                         &call.loc,
-                        self.unknown_method_message(&member.member, &class_name)
+                        self.unknown_method_message(&member.member, &class_name),
                     ));
                 }
             }
@@ -990,58 +1140,97 @@ impl SemanticAnalyzer {
                     None
                 }
             });
-            
+
             if let Some((params, return_type)) = func_ptr_info {
                 // 检查参数数量
                 let expected_args = params.len();
                 let actual_args = call.args.len();
                 if actual_args != expected_args {
-                    return Err(semantic_error_at_loc(&call.loc, format!("Function pointer call requires {} arguments, but got {}", expected_args, actual_args)
+                    return Err(semantic_error_at_loc(
+                        &call.loc,
+                        format!(
+                            "Function pointer call requires {} arguments, but got {}",
+                            expected_args, actual_args
+                        ),
                     ));
                 }
                 // 检查参数类型兼容性
                 for (i, (arg, expected_type)) in call.args.iter().zip(params.iter()).enumerate() {
                     let arg_type = self.infer_expr_type_internal(arg)?;
                     if !self.types_compatible(&arg_type, expected_type) {
-                        return Err(semantic_error_at_loc(&call.loc, format!("Argument {} type mismatch: expected {}, got {}", i + 1, expected_type, arg_type)
+                        return Err(semantic_error_at_loc(
+                            &call.loc,
+                            format!(
+                                "Argument {} type mismatch: expected {}, got {}",
+                                i + 1,
+                                expected_type,
+                                arg_type
+                            ),
                         ));
                     }
                 }
                 return Ok(return_type);
             }
-            
+
             // 检查 @FreeFunction 注册的自由函数
-            if let Some((_class_name, method_info, _loc)) = self.type_registry.free_functions.get(name.as_ref()).cloned() {
+            if let Some((_class_name, method_info, _loc)) = self
+                .type_registry
+                .free_functions
+                .get(name.as_ref())
+                .cloned()
+            {
                 // 验证参数（使用 check_arguments_compatible 以支持可变参数）
-                if let Err(msg) = self.check_arguments_compatible(&call.args, &method_info.params, call.loc.line, call.loc.column) {
-                    return Err(semantic_error_at_loc(&call.loc,
-                        format!("@FreeFunction '{}' {}", name, msg)));
+                if let Err(msg) = self.check_arguments_compatible(
+                    &call.args,
+                    &method_info.params,
+                    call.loc.line,
+                    call.loc.column,
+                ) {
+                    return Err(semantic_error_at_loc(
+                        &call.loc,
+                        format!("@FreeFunction '{}' {}", name, msg),
+                    ));
                 }
                 return Ok(method_info.return_type.clone());
             }
-            
+
             // 检查是否存在同名方法（参数不匹配）
             if let Some(ref current_class) = self.current_class {
                 if let Some(class_info) = self.type_registry.get_class(current_class) {
                     if class_info.methods.contains_key(name.as_ref()) {
-                        return Err(semantic_error_at_loc(&call.loc, format!("Method '{}' in class '{}' cannot be applied to given types: argument mismatch", name, current_class)
+                        return Err(semantic_error_at_loc(
+                            &call.loc,
+                            format!(
+                                "Method '{}' in class '{}' cannot be applied to given types: argument mismatch",
+                                name, current_class
+                            ),
                         ));
                     }
                 }
             }
             return Err(semantic_error_at_loc(
                 &call.loc,
-                format!("Cannot find method '{}'", name)
+                format!("Cannot find method '{}'", name),
             ));
         }
 
         if let Expr::MemberAccess(member) = call.callee.as_ref() {
             if let Expr::Identifier(class_name) = &*member.object {
-                return Err(semantic_error_at_loc(&call.loc, format!("Method '{}' in class '{}' cannot be applied to given types: argument mismatch", member.member, class_name)
+                return Err(semantic_error_at_loc(
+                    &call.loc,
+                    format!(
+                        "Method '{}' in class '{}' cannot be applied to given types: argument mismatch",
+                        member.member, class_name
+                    ),
                 ));
             }
             if let Type::Object(class_name) = self.infer_expr_type_internal(&member.object)? {
-                return Err(semantic_error_at_loc(&call.loc, format!("Method '{}' in class '{}' cannot be applied to given types: argument mismatch", member.member, class_name)
+                return Err(semantic_error_at_loc(
+                    &call.loc,
+                    format!(
+                        "Method '{}' in class '{}' cannot be applied to given types: argument mismatch",
+                        member.member, class_name
+                    ),
                 ));
             }
         }
@@ -1054,22 +1243,37 @@ impl SemanticAnalyzer {
             let expected_args = func_type.params.len();
             let actual_args = call.args.len();
             if actual_args != expected_args {
-                return Err(semantic_error_at_loc(&call.loc, format!("Function pointer call requires {} arguments, but got {}", expected_args, actual_args)
+                return Err(semantic_error_at_loc(
+                    &call.loc,
+                    format!(
+                        "Function pointer call requires {} arguments, but got {}",
+                        expected_args, actual_args
+                    ),
                 ));
             }
             // 检查参数类型兼容性
-            for (i, (arg, expected_type)) in call.args.iter().zip(func_type.params.iter()).enumerate() {
+            for (i, (arg, expected_type)) in
+                call.args.iter().zip(func_type.params.iter()).enumerate()
+            {
                 let arg_type = self.infer_expr_type_internal(arg)?;
                 if !self.types_compatible(&arg_type, expected_type) {
-                    return Err(semantic_error_at_loc(&call.loc, format!("Argument {} type mismatch: expected {}, got {}", i + 1, expected_type, arg_type)
+                    return Err(semantic_error_at_loc(
+                        &call.loc,
+                        format!(
+                            "Argument {} type mismatch: expected {}, got {}",
+                            i + 1,
+                            expected_type,
+                            arg_type
+                        ),
                     ));
                 }
             }
             return Ok(*func_type.return_type.clone());
         }
 
-        Err(semantic_error_at_loc(&call.loc,
-            "Cannot resolve method call".to_string()
+        Err(semantic_error_at_loc(
+            &call.loc,
+            "Cannot resolve method call".to_string(),
         ))
     }
 
@@ -1095,7 +1299,7 @@ impl SemanticAnalyzer {
                         return Ok(field_info.field_type.clone());
                     }
                 }
-                
+
                 // 检查静态方法 - 返回函数指针类型
                 // 由于支持方法重载，需要遍历所有同名方法
                 if let Some(methods) = class_info.methods.get(&member.member) {
@@ -1113,7 +1317,9 @@ impl SemanticAnalyzer {
                             &member.loc,
                         )?;
                         // 返回函数指针类型
-                        let param_types = method_info.params.iter()
+                        let param_types = method_info
+                            .params
+                            .iter()
                             .filter(|p| !p.is_varargs)
                             .map(|p| p.param_type.clone())
                             .collect();
@@ -1127,7 +1333,7 @@ impl SemanticAnalyzer {
                     }
                 }
             }
-            
+
             // 检查是否是 enum variant 访问: EnumName.VariantName
             if let Some(enum_info) = self.type_registry.get_enum(class_name.as_ref()) {
                 let variant_exists = enum_info.variants.iter().any(|v| v.name == member.member);
@@ -1136,7 +1342,10 @@ impl SemanticAnalyzer {
                 }
                 return Err(semantic_error_at_loc(
                     &member.loc,
-                    format!("Unknown variant '{}' for enum {}", member.member, class_name)
+                    format!(
+                        "Unknown variant '{}' for enum {}",
+                        member.member, class_name
+                    ),
                 ));
             }
         }
@@ -1147,7 +1356,7 @@ impl SemanticAnalyzer {
         // 特殊处理数组的 .length 属性
         if member.member == "length" {
             if let Type::Array(_) = obj_type {
-                return Ok(Type::Int32);  // length 返回 int
+                return Ok(Type::Int32); // length 返回 int
             }
         }
 
@@ -1166,7 +1375,10 @@ impl SemanticAnalyzer {
                 if name == "this" {
                     return Err(semantic_error_at_loc(
                         &member.loc,
-                        format!("non-static variable {} cannot be referenced from a static context", member.member)
+                        format!(
+                            "non-static variable {} cannot be referenced from a static context",
+                            member.member
+                        ),
                     ));
                 }
             }
@@ -1202,7 +1414,7 @@ impl SemanticAnalyzer {
                 // Type::Generic 直接返回类名和类型参数
                 (Some(class_name.as_str()), Some(args.clone()))
             }
-            _ => (None, None)
+            _ => (None, None),
         };
 
         if let Some(base_class_name) = base_class_name_opt {
@@ -1235,7 +1447,7 @@ impl SemanticAnalyzer {
                                     let substituted_type = self.substitute_type_params(
                                         &field_info.field_type,
                                         &ci.type_params,
-                                        type_args
+                                        type_args,
                                     );
                                     return Ok(substituted_type);
                                 }
@@ -1256,13 +1468,19 @@ impl SemanticAnalyzer {
             }
             return Err(semantic_error_at_loc(
                 &member.loc,
-                format!("Unknown member '{}' for class {}", member.member, base_class_name)
+                format!(
+                    "Unknown member '{}' for class {}",
+                    member.member, base_class_name
+                ),
             ));
         }
 
         Err(semantic_error_at_loc(
             &member.loc,
-            format!("Cannot access member '{}' on type {}", member.member, obj_type)
+            format!(
+                "Cannot access member '{}' on type {}",
+                member.member, obj_type
+            ),
         ))
     }
 
@@ -1285,7 +1503,14 @@ impl SemanticAnalyzer {
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
                 .collect();
-            (base.to_string(), if params.is_empty() { None } else { Some(params) })
+            (
+                base.to_string(),
+                if params.is_empty() {
+                    None
+                } else {
+                    Some(params)
+                },
+            )
         } else {
             (new_expr.class_name.clone(), None)
         };
@@ -1296,7 +1521,7 @@ impl SemanticAnalyzer {
             if class_info.is_abstract {
                 return Err(semantic_error_at_loc(
                     &new_expr.loc,
-                    format!("Cannot instantiate abstract class '{}'", base_class_name)
+                    format!("Cannot instantiate abstract class '{}'", base_class_name),
                 ));
             }
 
@@ -1308,12 +1533,18 @@ impl SemanticAnalyzer {
                         let is_valid_param = class_info.type_params.contains(param)
                             || self.type_registry.class_exists(param)
                             || self.type_registry.get_struct(param).is_some()
-                            || matches!(param.as_str(), "int" | "long" | "float" | "double" | "boolean" | "char" | "String");
+                            || matches!(
+                                param.as_str(),
+                                "int" | "long" | "float" | "double" | "boolean" | "char" | "String"
+                            );
 
                         if !is_valid_param {
                             return Err(semantic_error_at_loc(
                                 &new_expr.loc,
-                                format!("Unknown type parameter '{}' for class '{}'", param, base_class_name)
+                                format!(
+                                    "Unknown type parameter '{}' for class '{}'",
+                                    param, base_class_name
+                                ),
                             ));
                         }
                     }
@@ -1330,7 +1561,7 @@ impl SemanticAnalyzer {
         } else {
             Err(semantic_error_at_loc(
                 &new_expr.loc,
-                format!("Unknown class or struct: {}", base_class_name)
+                format!("Unknown class or struct: {}", base_class_name),
             ))
         }
     }
@@ -1343,7 +1574,7 @@ impl SemanticAnalyzer {
                 if info.is_final {
                     return Err(semantic_error_at_loc(
                         &assign.loc,
-                        format!("Cannot assign a value to final variable '{}'", name)
+                        format!("Cannot assign a value to final variable '{}'", name),
                     ));
                 }
             }
@@ -1359,7 +1590,7 @@ impl SemanticAnalyzer {
                 assign.loc.file.clone(),
                 assign.loc.line,
                 assign.loc.column,
-                format!("Cannot assign {} to {}", value_type, target_type)
+                format!("Cannot assign {} to {}", value_type, target_type),
             ))
         }
     }
@@ -1388,23 +1619,23 @@ impl SemanticAnalyzer {
     fn infer_cast_type(&mut self, cast: &CastExpr) -> cayResult<Type> {
         let source_type = self.infer_expr_type_internal(&cast.expr)?;
         let target_type = &cast.target_type;
-        
+
         // 相同类型，无需转换
         if source_type == *target_type {
             return Ok(target_type.clone());
         }
-        
+
         // 检查转换是否合法
         if self.is_valid_cast(&source_type, target_type) {
             Ok(target_type.clone())
         } else {
             Err(semantic_error_at_loc(
                 &cast.loc,
-                format!("Invalid cast from {} to {}", source_type, target_type)
+                format!("Invalid cast from {} to {}", source_type, target_type),
             ))
         }
     }
-    
+
     /// 检查类型转换是否合法
     ///
     /// # Arguments
@@ -1421,45 +1652,48 @@ impl SemanticAnalyzer {
             (a, b) if a == b => true,
 
             // 数值类型之间的转换（所有组合都允许，可能精度损失）
-            (Type::Int32, Type::Int64) |
-            (Type::Int32, Type::Float32) |
-            (Type::Int32, Type::Float64) |
-            (Type::Int64, Type::Int32) |
-            (Type::Int64, Type::Float32) |
-            (Type::Int64, Type::Float64) |
-            (Type::Float32, Type::Int32) |
-            (Type::Float32, Type::Int64) |
-            (Type::Float32, Type::Float64) |
-            (Type::Float64, Type::Int32) |
-            (Type::Float64, Type::Int64) |
-            (Type::Float64, Type::Float32) => true,
+            (Type::Int32, Type::Int64)
+            | (Type::Int32, Type::Float32)
+            | (Type::Int32, Type::Float64)
+            | (Type::Int64, Type::Int32)
+            | (Type::Int64, Type::Float32)
+            | (Type::Int64, Type::Float64)
+            | (Type::Float32, Type::Int32)
+            | (Type::Float32, Type::Int64)
+            | (Type::Float32, Type::Float64)
+            | (Type::Float64, Type::Int32)
+            | (Type::Float64, Type::Int64)
+            | (Type::Float64, Type::Float32) => true,
 
             // char 与数值类型之间的转换
-            (Type::Char, Type::Int32) |
-            (Type::Char, Type::Int64) |
-            (Type::Char, Type::CInt) |
-            (Type::Int32, Type::Char) |
-            (Type::Int64, Type::Char) |
-            (Type::CInt, Type::Char) => true,
+            (Type::Char, Type::Int32)
+            | (Type::Char, Type::Int64)
+            | (Type::Char, Type::CInt)
+            | (Type::Int32, Type::Char)
+            | (Type::Int64, Type::Char)
+            | (Type::CInt, Type::Char) => true,
 
             // 任何基本类型都可以转换为 string
-            (Type::Int32, Type::String) |
-            (Type::Int64, Type::String) |
-            (Type::Float32, Type::String) |
-            (Type::Float64, Type::String) |
-            (Type::Char, Type::String) |
-            (Type::Bool, Type::String) => true,
+            (Type::Int32, Type::String)
+            | (Type::Int64, Type::String)
+            | (Type::Float32, Type::String)
+            | (Type::Float64, Type::String)
+            | (Type::Char, Type::String)
+            | (Type::Bool, Type::String) => true,
 
             // String 与 c_string (c_char*) 之间的转换（两者在底层都是 i8*）
-            (Type::String, Type::CChar) |
-            (Type::CChar, Type::String) => true,
+            (Type::String, Type::CChar) | (Type::CChar, Type::String) => true,
             // String 与 c_char* (Pointer(CChar)) 之间的转换
             (Type::String, Type::Pointer(inner)) if matches!(inner.as_ref(), Type::CChar) => true,
             (Type::Pointer(inner), Type::String) if matches!(inner.as_ref(), Type::CChar) => true,
 
             // c_void* 与任意指针类型之间的转换（C风格）
-            (Type::Pointer(from_inner), Type::Pointer(to_inner)) 
-                if matches!(from_inner.as_ref(), Type::CVoid) || matches!(to_inner.as_ref(), Type::CVoid) => true,
+            (Type::Pointer(from_inner), Type::Pointer(to_inner))
+                if matches!(from_inner.as_ref(), Type::CVoid)
+                    || matches!(to_inner.as_ref(), Type::CVoid) =>
+            {
+                true
+            }
 
             // FFI 类型与基本类型之间的转换
             // c_int <-> int
@@ -1546,7 +1780,7 @@ impl SemanticAnalyzer {
             _ => false,
         }
     }
-    
+
     /// 检查两个类型是否存在继承关系（双向）
     ///
     /// 用于类型转换检查，允许向上转型（子类->父类）和向下转型（父类->子类）
@@ -1555,20 +1789,20 @@ impl SemanticAnalyzer {
         if type_a == type_b {
             return true;
         }
-        
+
         // 检查 type_a 是否是 type_b 的子类型
         if self.is_subtype_of_by_name(type_a, type_b) {
             return true;
         }
-        
+
         // 检查 type_b 是否是 type_a 的子类型
         if self.is_subtype_of_by_name(type_b, type_a) {
             return true;
         }
-        
+
         false
     }
-    
+
     /// 通过类型名称检查子类型关系
     ///
     /// 辅助函数，用于检查一个类型是否是另一个类型的子类型
@@ -1577,24 +1811,24 @@ impl SemanticAnalyzer {
         if subtype == supertype {
             return true;
         }
-        
+
         // 所有类都是 Object 的子类型
         if supertype == "Object" {
             return self.type_registry.class_exists(subtype)
                 || subtype == "String"
                 || subtype == "Function";
         }
-        
+
         // 迭代遍历继承链
         let mut current = subtype.to_string();
         let mut visited = std::collections::HashSet::new();
-        
+
         loop {
             // 防止循环继承导致的无限循环
             if !visited.insert(current.clone()) {
                 return false;
             }
-            
+
             if let Some(class_info) = self.type_registry.get_class(&current) {
                 match &class_info.parent {
                     Some(parent) => {
@@ -1623,12 +1857,16 @@ impl SemanticAnalyzer {
                     continue;
                 }
             }
-            
+
             let size_type = self.infer_expr_type_internal(size)?;
             if !size_type.is_integer() {
                 return Err(semantic_error_at_loc(
                     &arr.loc,
-                    format!("Array size at dimension {} must be integer, got {}", i + 1, size_type)
+                    format!(
+                        "Array size at dimension {} must be integer, got {}",
+                        i + 1,
+                        size_type
+                    ),
                 ));
             }
             // 检查负数数组大小（仅当大小是字面量或一元负号表达式时）
@@ -1638,7 +1876,7 @@ impl SemanticAnalyzer {
                     if n < 0 {
                         return Err(semantic_error_at_loc(
                             &arr.loc,
-                            format!("Array size cannot be negative: {}", n)
+                            format!("Array size cannot be negative: {}", n),
                         ));
                     }
                 }
@@ -1646,7 +1884,7 @@ impl SemanticAnalyzer {
                     if n < 0 {
                         return Err(semantic_error_at_loc(
                             &arr.loc,
-                            format!("Array size cannot be negative: {}", n)
+                            format!("Array size cannot be negative: {}", n),
                         ));
                     }
                 }
@@ -1658,13 +1896,13 @@ impl SemanticAnalyzer {
                         if let LiteralValue::Int32(n) = lit_expr.value {
                             return Err(semantic_error_at_loc(
                                 &arr.loc,
-                                format!("Array size cannot be negative: -{}", n)
+                                format!("Array size cannot be negative: -{}", n),
                             ));
                         }
                         if let LiteralValue::Int64(n) = lit_expr.value {
                             return Err(semantic_error_at_loc(
                                 &arr.loc,
-                                format!("Array size cannot be negative: -{}", n)
+                                format!("Array size cannot be negative: -{}", n),
                             ));
                         }
                     }
@@ -1682,7 +1920,7 @@ impl SemanticAnalyzer {
         if init.elements.is_empty() {
             return Err(semantic_error_at_loc(
                 &init.loc,
-                "Cannot infer type of empty array initializer".to_string()
+                "Cannot infer type of empty array initializer".to_string(),
             ));
         }
         // 推断第一个元素的类型作为数组元素类型
@@ -1699,7 +1937,7 @@ impl SemanticAnalyzer {
         if !index_type.is_integer() {
             return Err(semantic_error_at_loc(
                 &arr.loc,
-                format!("Array index must be integer, got {}", index_type)
+                format!("Array index must be integer, got {}", index_type),
             ));
         }
 
@@ -1707,7 +1945,7 @@ impl SemanticAnalyzer {
             Type::Array(element_type) => Ok(*element_type),
             _ => Err(semantic_error_at_loc(
                 &arr.loc,
-                format!("Cannot index non-array type {}", array_type)
+                format!("Cannot index non-array type {}", array_type),
             )),
         }
     }
@@ -1716,13 +1954,13 @@ impl SemanticAnalyzer {
     fn infer_method_ref_type(&mut self, method_ref: &MethodRefExpr) -> cayResult<Type> {
         // 方法引用: ClassName::methodName 或 obj::methodName
         // 返回函数类型，包含参数类型和返回类型信息
-        
+
         if let Some(ref class_name) = method_ref.class_name {
             // 检查类是否存在
             if !self.type_registry.class_exists(class_name) {
                 return Err(semantic_error_at_loc(
                     &method_ref.loc,
-                    format!("Unknown class: {}", class_name)
+                    format!("Unknown class: {}", class_name),
                 ));
             }
             // 获取方法信息
@@ -1730,11 +1968,13 @@ impl SemanticAnalyzer {
                 if let Some(methods) = class_info.methods.get(&method_ref.method_name) {
                     if let Some(method_info) = methods.first() {
                         // 构建函数类型
-                        let param_types: Vec<Type> = method_info.params.iter()
+                        let param_types: Vec<Type> = method_info
+                            .params
+                            .iter()
                             .map(|p| p.param_type.clone())
                             .collect();
                         let return_type = Box::new(method_info.return_type.clone());
-                        
+
                         return Ok(Type::Function(Box::new(crate::types::FunctionType {
                             params: param_types,
                             return_type,
@@ -1745,7 +1985,10 @@ impl SemanticAnalyzer {
                 } else {
                     return Err(semantic_error_at_loc(
                         &method_ref.loc,
-                        format!("Unknown method '{}' for class {}", method_ref.method_name, class_name)
+                        format!(
+                            "Unknown method '{}' for class {}",
+                            method_ref.method_name, class_name
+                        ),
                     ));
                 }
             }
@@ -1756,11 +1999,13 @@ impl SemanticAnalyzer {
                 if let Some(class_info) = self.type_registry.get_class(&class_name) {
                     if let Some(methods) = class_info.methods.get(&method_ref.method_name) {
                         if let Some(method_info) = methods.first() {
-                            let param_types: Vec<Type> = method_info.params.iter()
+                            let param_types: Vec<Type> = method_info
+                                .params
+                                .iter()
                                 .map(|p| p.param_type.clone())
                                 .collect();
                             let return_type = Box::new(method_info.return_type.clone());
-                            
+
                             return Ok(Type::Function(Box::new(crate::types::FunctionType {
                                 params: param_types,
                                 return_type,
@@ -1772,7 +2017,7 @@ impl SemanticAnalyzer {
                 }
             }
         }
-        
+
         // 无法确定具体函数类型，返回通用 Function 类型
         Ok(Type::Object("Function".to_string()))
     }
@@ -1795,7 +2040,7 @@ impl SemanticAnalyzer {
                     symbol_type: param_type,
                     is_final: false,
                     is_initialized: true,
-                }
+                },
             );
         }
 
@@ -1835,7 +2080,7 @@ impl SemanticAnalyzer {
             params: param_types,
             return_type,
             is_static: true,
-            is_closure: true,  // Lambda 总是使用闭包格式
+            is_closure: true, // Lambda 总是使用闭包格式
         })))
     }
 
@@ -1848,7 +2093,10 @@ impl SemanticAnalyzer {
         if cond_type != Type::Bool {
             return Err(semantic_error_at_loc(
                 &ternary.loc,
-                format!("Ternary operator condition must be boolean, got {}", cond_type)
+                format!(
+                    "Ternary operator condition must be boolean, got {}",
+                    cond_type
+                ),
             ));
         }
 
@@ -1859,13 +2107,18 @@ impl SemanticAnalyzer {
         // 两个分支类型必须兼容
         if true_type == false_type {
             Ok(true_type)
-        } else if Self::is_numeric_type_helper(&true_type) && Self::is_numeric_type_helper(&false_type) {
+        } else if Self::is_numeric_type_helper(&true_type)
+            && Self::is_numeric_type_helper(&false_type)
+        {
             // 数值类型进行类型提升
             Ok(self.promote_types(&true_type, &false_type))
         } else {
             Err(semantic_error_at_loc(
                 &ternary.loc,
-                format!("Ternary operator branches must have compatible types, got {} and {}", true_type, false_type)
+                format!(
+                    "Ternary operator branches must have compatible types, got {} and {}",
+                    true_type, false_type
+                ),
             ))
         }
     }
@@ -1878,10 +2131,12 @@ impl SemanticAnalyzer {
         // 检查目标类型是否存在（类或接口）
         match &instanceof.target_type {
             Type::Object(class_name) => {
-                if !self.type_registry.class_exists(class_name) && !self.type_registry.interface_exists(class_name) {
+                if !self.type_registry.class_exists(class_name)
+                    && !self.type_registry.interface_exists(class_name)
+                {
                     return Err(semantic_error_at_loc(
                         &instanceof.loc,
-                        format!("Unknown type in instanceof: {}", class_name)
+                        format!("Unknown type in instanceof: {}", class_name),
                     ));
                 }
             }
@@ -1889,7 +2144,10 @@ impl SemanticAnalyzer {
                 // instanceof 只能用于引用类型
                 return Err(semantic_error_at_loc(
                     &instanceof.loc,
-                    format!("instanceof can only be used with reference types, got {}", instanceof.target_type)
+                    format!(
+                        "instanceof can only be used with reference types, got {}",
+                        instanceof.target_type
+                    ),
                 ));
             }
         }
@@ -1900,7 +2158,8 @@ impl SemanticAnalyzer {
 
     /// 辅助方法：检查类型是否为数值类型
     fn is_numeric_type_helper(ty: &Type) -> bool {
-        matches!(ty, 
+        matches!(
+            ty,
             // 内置数值类型
             Type::Int32 | Type::Int64 | Type::Float32 | Type::Float64 | Type::Char |
             // FFI 数值类型
@@ -1912,9 +2171,14 @@ impl SemanticAnalyzer {
     }
 
     /// 替换类型中的泛型参数为实际类型
-    /// 
+    ///
     /// 例如：将 GenericParam("T") 替换为 Int32
-    fn substitute_type_params(&self, ty: &Type, type_params: &[String], type_args: &[Type]) -> Type {
+    fn substitute_type_params(
+        &self,
+        ty: &Type,
+        type_params: &[String],
+        type_args: &[Type],
+    ) -> Type {
         match ty {
             Type::GenericParam(name) => {
                 // 查找泛型参数在列表中的位置
@@ -1925,20 +2189,26 @@ impl SemanticAnalyzer {
                 }
                 ty.clone()
             }
-            Type::Array(elem) => {
-                Type::Array(Box::new(self.substitute_type_params(elem, type_params, type_args)))
-            }
+            Type::Array(elem) => Type::Array(Box::new(self.substitute_type_params(
+                elem,
+                type_params,
+                type_args,
+            ))),
             Type::Generic(name, args) => {
-                let new_args = args.iter()
+                let new_args = args
+                    .iter()
                     .map(|arg| self.substitute_type_params(arg, type_params, type_args))
                     .collect();
                 Type::Generic(name.clone(), new_args)
             }
             Type::Function(func_type) => {
-                let new_params = func_type.params.iter()
+                let new_params = func_type
+                    .params
+                    .iter()
                     .map(|p| self.substitute_type_params(p, type_params, type_args))
                     .collect();
-                let new_return = self.substitute_type_params(&func_type.return_type, type_params, type_args);
+                let new_return =
+                    self.substitute_type_params(&func_type.return_type, type_params, type_args);
                 Type::Function(Box::new(crate::types::FunctionType {
                     params: new_params,
                     return_type: Box::new(new_return),
@@ -1946,9 +2216,11 @@ impl SemanticAnalyzer {
                     is_closure: func_type.is_closure,
                 }))
             }
-            Type::Pointer(inner) => {
-                Type::Pointer(Box::new(self.substitute_type_params(inner, type_params, type_args)))
-            }
+            Type::Pointer(inner) => Type::Pointer(Box::new(self.substitute_type_params(
+                inner,
+                type_params,
+                type_args,
+            ))),
             _ => ty.clone(),
         }
     }
@@ -1967,7 +2239,9 @@ impl SemanticAnalyzer {
             "void" => Type::Void,
             // 检查是否是已注册的类或结构体
             name => {
-                if self.type_registry.class_exists(name) || self.type_registry.get_struct(name).is_some() {
+                if self.type_registry.class_exists(name)
+                    || self.type_registry.get_struct(name).is_some()
+                {
                     Type::Object(name.to_string())
                 } else {
                     // 未知类型，返回 Object 作为占位符

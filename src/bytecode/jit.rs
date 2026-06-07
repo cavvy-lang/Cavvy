@@ -1,6 +1,5 @@
 /// JIT/AOT 编译器
 /// 将Cavvy字节码编译为LLVM IR，然后编译为机器码
-
 use super::*;
 
 /// JIT编译错误
@@ -124,11 +123,14 @@ impl<'a> InstructionContext<'a> {
     /// 如果该位置已有标签则返回已有的，否则创建新标签。
     /// 用于跳转指令的目标标签映射。
     fn get_or_create_label(&mut self, position: usize) -> String {
-        self.position_labels.get(&position).cloned().unwrap_or_else(|| {
-            let label = self.next_label();
-            self.position_labels.insert(position, label.clone());
-            label
-        })
+        self.position_labels
+            .get(&position)
+            .cloned()
+            .unwrap_or_else(|| {
+                let label = self.next_label();
+                self.position_labels.insert(position, label.clone());
+                label
+            })
     }
 
     /// 从栈顶弹出一个值
@@ -148,7 +150,8 @@ impl<'a> InstructionContext<'a> {
 
     /// 获取局部变量名
     fn get_local(&self, index: u16) -> String {
-        self.local_vars.get(&index)
+        self.local_vars
+            .get(&index)
             .cloned()
             .unwrap_or_else(|| format!("%local{}", index))
     }
@@ -166,12 +169,19 @@ impl JitCompiler {
     }
 
     /// 编译字节码模块为可执行文件
-    pub fn compile_to_executable(&self, module: &BytecodeModule, output_path: &str) -> Result<(), JitError> {
+    pub fn compile_to_executable(
+        &self,
+        module: &BytecodeModule,
+        output_path: &str,
+    ) -> Result<(), JitError> {
         // 1. 将字节码转换为LLVM IR
         let ir_code = self.bytecode_to_ir(module)?;
 
         // 2. 确定输出目录
-        let output_dir = self.options.output_dir.as_ref()
+        let output_dir = self
+            .options
+            .output_dir
+            .as_ref()
             .map(|s| std::path::PathBuf::from(s))
             .unwrap_or_else(|| std::env::temp_dir().join("cavvy-jit"));
 
@@ -238,7 +248,12 @@ impl JitCompiler {
         for type_def in &module.type_definitions {
             for method in &type_def.methods {
                 if let Some(ref body) = method.body {
-                    ir.push_str(&self.generate_method(type_def, method, body, &module.constant_pool)?);
+                    ir.push_str(&self.generate_method(
+                        type_def,
+                        method,
+                        body,
+                        &module.constant_pool,
+                    )?);
                 }
             }
         }
@@ -319,13 +334,18 @@ declare void @cavvy_array_set(i8*, i32, i8*)
         let pool_size = module.constant_pool.size() as u16;
         for index in 1..pool_size {
             if let Some(s) = module.constant_pool.get_string(index) {
-                let escaped = s.replace("\\", "\\\\")
+                let escaped = s
+                    .replace("\\", "\\\\")
                     .replace("\"", "\\\"")
                     .replace("\n", "\\0A")
                     .replace("\r", "\\0D")
                     .replace("\t", "\\09");
-                ir.push_str(&format!("@str_{} = private unnamed_addr constant [{} x i8] c\"{}\\00\"\n",
-                    index, s.len() + 1, escaped));
+                ir.push_str(&format!(
+                    "@str_{} = private unnamed_addr constant [{} x i8] c\"{}\\00\"\n",
+                    index,
+                    s.len() + 1,
+                    escaped
+                ));
             }
         }
 
@@ -334,8 +354,13 @@ declare void @cavvy_array_set(i8*, i32, i8*)
     }
 
     /// 生成类型定义
-    fn generate_type_definition(&self, type_def: &TypeDefinition, pool: &ConstantPool) -> Result<String, JitError> {
-        let name = pool.get_string(type_def.name_index)
+    fn generate_type_definition(
+        &self,
+        type_def: &TypeDefinition,
+        pool: &ConstantPool,
+    ) -> Result<String, JitError> {
+        let name = pool
+            .get_string(type_def.name_index)
             .ok_or_else(|| JitError::InvalidBytecode("Invalid type name index".to_string()))?;
 
         let mut ir = format!("; Type definition: {}\n", name);
@@ -370,8 +395,13 @@ declare void @cavvy_array_set(i8*, i32, i8*)
     }
 
     /// 生成全局变量
-    fn generate_global_variable(&self, global: &GlobalVariable, pool: &ConstantPool) -> Result<String, JitError> {
-        let name = pool.get_string(global.name_index)
+    fn generate_global_variable(
+        &self,
+        global: &GlobalVariable,
+        pool: &ConstantPool,
+    ) -> Result<String, JitError> {
+        let name = pool
+            .get_string(global.name_index)
             .ok_or_else(|| JitError::InvalidBytecode("Invalid global name index".to_string()))?;
         let llvm_type = self.get_llvm_type_string(global.type_index, pool)?;
 
@@ -397,8 +427,13 @@ declare void @cavvy_array_set(i8*, i32, i8*)
     }
 
     /// 生成函数
-    fn generate_function(&self, func: &FunctionDefinition, pool: &ConstantPool) -> Result<String, JitError> {
-        let name = pool.get_string(func.name_index)
+    fn generate_function(
+        &self,
+        func: &FunctionDefinition,
+        pool: &ConstantPool,
+    ) -> Result<String, JitError> {
+        let name = pool
+            .get_string(func.name_index)
             .ok_or_else(|| JitError::InvalidBytecode("Invalid function name index".to_string()))?;
         let ret_type = self.get_llvm_type_string(func.return_type_index, pool)?;
 
@@ -432,10 +467,18 @@ declare void @cavvy_array_set(i8*, i32, i8*)
     }
 
     /// 生成方法
-    fn generate_method(&self, type_def: &TypeDefinition, method: &MethodDefinition, body: &CodeBody, pool: &ConstantPool) -> Result<String, JitError> {
-        let type_name = pool.get_string(type_def.name_index)
+    fn generate_method(
+        &self,
+        type_def: &TypeDefinition,
+        method: &MethodDefinition,
+        body: &CodeBody,
+        pool: &ConstantPool,
+    ) -> Result<String, JitError> {
+        let type_name = pool
+            .get_string(type_def.name_index)
             .ok_or_else(|| JitError::InvalidBytecode("Invalid type name index".to_string()))?;
-        let method_name = pool.get_string(method.name_index)
+        let method_name = pool
+            .get_string(method.name_index)
             .ok_or_else(|| JitError::InvalidBytecode("Invalid method name index".to_string()))?;
         let ret_type = self.get_llvm_type_string(method.return_type_index, pool)?;
 
@@ -477,17 +520,24 @@ declare void @cavvy_array_set(i8*, i32, i8*)
     }
 
     /// 生成代码体
-    fn generate_code_body(&self, body: &CodeBody, pool: &ConstantPool, ret_type: &str) -> Result<String, JitError> {
+    fn generate_code_body(
+        &self,
+        body: &CodeBody,
+        pool: &ConstantPool,
+        ret_type: &str,
+    ) -> Result<String, JitError> {
         let mut ir = String::new();
         ir.push_str("entry:\n");
 
         // 初始化上下文
         let mut temp_counter: u32 = 0;
-        let mut local_vars: std::collections::HashMap<u16, String> = std::collections::HashMap::new();
+        let mut local_vars: std::collections::HashMap<u16, String> =
+            std::collections::HashMap::new();
         let mut operand_stack: Vec<String> = Vec::new();
         let mut current_block = "entry".to_string();
         let mut label_counter: u32 = 0;
-        let mut position_labels: std::collections::HashMap<usize, String> = std::collections::HashMap::new();
+        let mut position_labels: std::collections::HashMap<usize, String> =
+            std::collections::HashMap::new();
 
         let mut ctx = InstructionContext {
             pool,
@@ -520,7 +570,11 @@ declare void @cavvy_array_set(i8*, i32, i8*)
     }
 
     /// 生成单条指令 - 完整实现所有指令
-    fn generate_instruction(&self, instr: &Instruction, ctx: &mut InstructionContext) -> Result<String, JitError> {
+    fn generate_instruction(
+        &self,
+        instr: &Instruction,
+        ctx: &mut InstructionContext,
+    ) -> Result<String, JitError> {
         use instructions::Opcode;
 
         let mut ir = String::new();
@@ -538,8 +592,13 @@ declare void @cavvy_array_set(i8*, i32, i8*)
                     ctx.push(temp);
                 } else if let Some(str_val) = ctx.pool.get_string(index) {
                     // 字符串常量 - 使用全局字符串
-                    ir.push_str(&format!("  {} = getelementptr [{} x i8], [{} x i8]* @str_{}, i64 0, i64 0\n",
-                        temp, str_val.len() + 1, str_val.len() + 1, index));
+                    ir.push_str(&format!(
+                        "  {} = getelementptr [{} x i8], [{} x i8]* @str_{}, i64 0, i64 0\n",
+                        temp,
+                        str_val.len() + 1,
+                        str_val.len() + 1,
+                        index
+                    ));
                     ctx.push(temp);
                 } else {
                     ir.push_str(&format!("  {} = add i32 {}, 0\n", temp, val));
@@ -556,8 +615,14 @@ declare void @cavvy_array_set(i8*, i32, i8*)
 
             Opcode::Lconst => {
                 let value = i64::from_le_bytes([
-                    instr.operands[0], instr.operands[1], instr.operands[2], instr.operands[3],
-                    instr.operands[4], instr.operands[5], instr.operands[6], instr.operands[7]
+                    instr.operands[0],
+                    instr.operands[1],
+                    instr.operands[2],
+                    instr.operands[3],
+                    instr.operands[4],
+                    instr.operands[5],
+                    instr.operands[6],
+                    instr.operands[7],
                 ]);
                 let temp = ctx.next_temp();
                 ir.push_str(&format!("  {} = add i64 {}, 0\n", temp, value));
@@ -566,7 +631,10 @@ declare void @cavvy_array_set(i8*, i32, i8*)
 
             Opcode::Fconst => {
                 let value = f32::from_le_bytes([
-                    instr.operands[0], instr.operands[1], instr.operands[2], instr.operands[3]
+                    instr.operands[0],
+                    instr.operands[1],
+                    instr.operands[2],
+                    instr.operands[3],
                 ]);
                 let temp = ctx.next_temp();
                 ir.push_str(&format!("  {} = fadd float {}, 0.0\n", temp, value));
@@ -575,8 +643,14 @@ declare void @cavvy_array_set(i8*, i32, i8*)
 
             Opcode::Dconst => {
                 let value = f64::from_le_bytes([
-                    instr.operands[0], instr.operands[1], instr.operands[2], instr.operands[3],
-                    instr.operands[4], instr.operands[5], instr.operands[6], instr.operands[7]
+                    instr.operands[0],
+                    instr.operands[1],
+                    instr.operands[2],
+                    instr.operands[3],
+                    instr.operands[4],
+                    instr.operands[5],
+                    instr.operands[6],
+                    instr.operands[7],
                 ]);
                 let temp = ctx.next_temp();
                 ir.push_str(&format!("  {} = fadd double {}, 0.0\n", temp, value));
@@ -917,7 +991,12 @@ declare void @cavvy_array_set(i8*, i32, i8*)
             }
 
             // ==================== 比较指令 ====================
-            Opcode::IfIcmpeq | Opcode::IfIcmpne | Opcode::IfIcmplt | Opcode::IfIcmpge | Opcode::IfIcmpgt | Opcode::IfIcmple => {
+            Opcode::IfIcmpeq
+            | Opcode::IfIcmpne
+            | Opcode::IfIcmplt
+            | Opcode::IfIcmpge
+            | Opcode::IfIcmpgt
+            | Opcode::IfIcmple => {
                 if let (Some(right), Some(left)) = (ctx.pop(), ctx.pop()) {
                     let temp = ctx.next_temp();
                     let pred = match instr.opcode {
@@ -929,7 +1008,10 @@ declare void @cavvy_array_set(i8*, i32, i8*)
                         Opcode::IfIcmple => "sle",
                         _ => "eq",
                     };
-                    ir.push_str(&format!("  {} = icmp {} i32 {}, {}\n", temp, pred, left, right));
+                    ir.push_str(&format!(
+                        "  {} = icmp {} i32 {}, {}\n",
+                        temp, pred, left, right
+                    ));
                     ctx.push(temp);
                 }
             }
@@ -943,7 +1025,10 @@ declare void @cavvy_array_set(i8*, i32, i8*)
                     let temp3 = ctx.next_temp();
                     ir.push_str(&format!("  {} = select i1 {}, i32 1, i32 0\n", temp3, temp));
                     let temp4 = ctx.next_temp();
-                    ir.push_str(&format!("  {} = select i1 {}, i32 -1, i32 {}\n", temp4, temp2, temp3));
+                    ir.push_str(&format!(
+                        "  {} = select i1 {}, i32 -1, i32 {}\n",
+                        temp4, temp2, temp3
+                    ));
                     ctx.push(temp4);
                 }
             }
@@ -955,11 +1040,14 @@ declare void @cavvy_array_set(i8*, i32, i8*)
                     // 生成条件分支：如果 val == 0，则跳转到目标位置
                     let label_true = ctx.next_label();
                     let label_false = ctx.next_label();
-                    
+
                     // 比较 val 与 0
                     let temp = ctx.next_temp();
                     ir.push_str(&format!("  {} = icmp eq i32 {}, 0\n", temp, val));
-                    ir.push_str(&format!("  br i1 {}, label %{}, label %{}\n", temp, label_true, label_false));
+                    ir.push_str(&format!(
+                        "  br i1 {}, label %{}, label %{}\n",
+                        temp, label_true, label_false
+                    ));
                     ir.push_str(&format!("{}:\n", label_false));
                 }
             }
@@ -970,10 +1058,13 @@ declare void @cavvy_array_set(i8*, i32, i8*)
                     // 生成条件分支：如果 val != 0，则跳转到目标位置
                     let label_true = ctx.next_label();
                     let label_false = ctx.next_label();
-                    
+
                     let temp = ctx.next_temp();
                     ir.push_str(&format!("  {} = icmp ne i32 {}, 0\n", temp, val));
-                    ir.push_str(&format!("  br i1 {}, label %{}, label %{}\n", temp, label_true, label_false));
+                    ir.push_str(&format!(
+                        "  br i1 {}, label %{}, label %{}\n",
+                        temp, label_true, label_false
+                    ));
                     ir.push_str(&format!("{}:\n", label_false));
                 }
             }
@@ -1102,7 +1193,10 @@ declare void @cavvy_array_set(i8*, i32, i8*)
             Opcode::Arraylength => {
                 if let Some(arr) = ctx.pop() {
                     let temp = ctx.next_temp();
-                    ir.push_str(&format!("  {} = call i32 @cavvy_array_length(i8* {})\n", temp, arr));
+                    ir.push_str(&format!(
+                        "  {} = call i32 @cavvy_array_length(i8* {})\n",
+                        temp, arr
+                    ));
                     ctx.push(temp);
                 }
             }
@@ -1111,7 +1205,10 @@ declare void @cavvy_array_set(i8*, i32, i8*)
                 let type_index = u16::from_le_bytes([instr.operands[0], instr.operands[1]]);
                 if let Some(len) = ctx.pop() {
                     let temp = ctx.next_temp();
-                    ir.push_str(&format!("  {} = call i8* @cavvy_array_new(i32 {}, i32 {})\n", temp, len, type_index));
+                    ir.push_str(&format!(
+                        "  {} = call i8* @cavvy_array_new(i32 {}, i32 {})\n",
+                        temp, len, type_index
+                    ));
                     ctx.push(temp);
                 }
             }
@@ -1137,7 +1234,11 @@ declare void @cavvy_array_set(i8*, i32, i8*)
     }
 
     /// 获取LLVM类型字符串
-    fn get_llvm_type_string(&self, type_index: ConstantIndex, pool: &ConstantPool) -> Result<String, JitError> {
+    fn get_llvm_type_string(
+        &self,
+        type_index: ConstantIndex,
+        pool: &ConstantPool,
+    ) -> Result<String, JitError> {
         if let Some(type_name) = pool.get_utf8(type_index) {
             match type_name {
                 "void" => Ok("void".to_string()),
@@ -1164,7 +1265,11 @@ declare void @cavvy_array_set(i8*, i32, i8*)
     }
 
     /// 获取方法签名
-    fn get_method_signature(&self, method: &MethodDefinition, pool: &ConstantPool) -> Result<String, JitError> {
+    fn get_method_signature(
+        &self,
+        method: &MethodDefinition,
+        pool: &ConstantPool,
+    ) -> Result<String, JitError> {
         let ret_type = self.get_llvm_type_string(method.return_type_index, pool)?;
         let mut sig = format!("{} (", ret_type);
 
@@ -1181,7 +1286,11 @@ declare void @cavvy_array_set(i8*, i32, i8*)
     }
 
     /// 获取常量值
-    fn get_constant_value(&self, index: ConstantIndex, pool: &ConstantPool) -> Result<String, JitError> {
+    fn get_constant_value(
+        &self,
+        index: ConstantIndex,
+        pool: &ConstantPool,
+    ) -> Result<String, JitError> {
         if let Some(val) = pool.get_integer(index) {
             Ok(val.to_string())
         } else if let Some(val) = pool.get_long(index) {
@@ -1191,7 +1300,8 @@ declare void @cavvy_array_set(i8*, i32, i8*)
         } else if let Some(val) = pool.get_double(index) {
             Ok(format!("0x{:x}", val.to_bits()))
         } else if let Some(val) = pool.get_string(index) {
-            let escaped = val.replace("\\", "\\\\")
+            let escaped = val
+                .replace("\\", "\\\\")
                 .replace("\"", "\\\"")
                 .replace("\n", "\\0A")
                 .replace("\r", "\\0D")
@@ -1205,7 +1315,11 @@ declare void @cavvy_array_set(i8*, i32, i8*)
     }
 
     /// 编译IR为对象文件
-    fn compile_ir_to_object(&self, ir_file: &std::path::Path, obj_file: &std::path::Path) -> Result<(), JitError> {
+    fn compile_ir_to_object(
+        &self,
+        ir_file: &std::path::Path,
+        obj_file: &std::path::Path,
+    ) -> Result<(), JitError> {
         let clang = find_clang()?;
 
         let mut cmd = std::process::Command::new(&clang);
@@ -1217,7 +1331,8 @@ declare void @cavvy_array_set(i8*, i32, i8*)
             .arg("-o")
             .arg(obj_file);
 
-        let output = cmd.output()
+        let output = cmd
+            .output()
             .map_err(|e| JitError::CompilationError(format!("Failed to run clang: {}", e)))?;
 
         if !output.status.success() {
@@ -1229,7 +1344,11 @@ declare void @cavvy_array_set(i8*, i32, i8*)
     }
 
     /// 链接可执行文件
-    fn link_executable(&self, obj_file: &std::path::Path, output_path: &str) -> Result<(), JitError> {
+    fn link_executable(
+        &self,
+        obj_file: &std::path::Path,
+        output_path: &str,
+    ) -> Result<(), JitError> {
         let clang = find_clang()?;
 
         let mut cmd = std::process::Command::new(&clang);
@@ -1256,7 +1375,8 @@ declare void @cavvy_array_set(i8*, i32, i8*)
             cmd.arg("-lm"); // 数学库
         }
 
-        let output = cmd.output()
+        let output = cmd
+            .output()
             .map_err(|e| JitError::LinkingError(format!("Failed to run linker: {}", e)))?;
 
         if !output.status.success() {
@@ -1277,7 +1397,10 @@ impl Default for JitCompiler {
 /// 查找clang编译器
 fn find_clang() -> Result<std::path::PathBuf, JitError> {
     // 1. 尝试系统PATH中的clang
-    if let Ok(output) = std::process::Command::new("clang").arg("--version").output() {
+    if let Ok(output) = std::process::Command::new("clang")
+        .arg("--version")
+        .output()
+    {
         if output.status.success() {
             return Ok(std::path::PathBuf::from("clang"));
         }
@@ -1294,7 +1417,7 @@ fn find_clang() -> Result<std::path::PathBuf, JitError> {
     }
 
     Err(JitError::CompilationError(
-        "找不到clang编译器。请确保clang已安装并在PATH中。".to_string()
+        "找不到clang编译器。请确保clang已安装并在PATH中。".to_string(),
     ))
 }
 

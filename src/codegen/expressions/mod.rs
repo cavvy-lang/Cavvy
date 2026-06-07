@@ -26,32 +26,32 @@
 mod utils;
 
 // 基础表达式
-mod main;
-mod literal;
 mod identifier;
+mod literal;
+mod main;
 
 // 运算符
 mod binary;
 mod unary;
 
 // 调用相关
-mod call;
 mod builtin;
+mod call;
 mod string_methods;
 
 // 数组
 mod array;
 
 // 类型相关
+mod assignment;
 mod cast;
 mod member;
-mod assignment;
 mod new;
 
 // 高级特性
+mod instanceof;
 mod lambda;
 mod ternary;
-mod instanceof;
 
 // 0.5.0.0: 内存分配器
 mod allocator;

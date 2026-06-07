@@ -1,14 +1,14 @@
 //! 类相关解析
 
-use crate::ast::*;
-use crate::types::{Type, ParameterInfo, InterfaceInfo};
-use crate::error::cayResult;
-use crate::lexer::Token;
-use crate::error::SourceLocation;
 use super::Parser;
-use super::types::{parse_type, is_type_token};
 use super::expressions::parse_expression;
 use super::statements::{parse_block, parse_statement};
+use super::types::{is_type_token, parse_type};
+use crate::ast::*;
+use crate::error::SourceLocation;
+use crate::error::cayResult;
+use crate::lexer::Token;
+use crate::types::{InterfaceInfo, ParameterInfo, Type};
 
 /// 解析类声明
 pub fn parse_class(parser: &mut Parser) -> cayResult<ClassDecl> {
@@ -17,19 +17,27 @@ pub fn parse_class(parser: &mut Parser) -> cayResult<ClassDecl> {
     // 解析所有修饰符（包括 @main 注解）
     let modifiers = parse_modifiers(parser)?;
 
-    parser.consume(&Token::Class, "期望关键字 'class'\n提示: 类声明应以 'class' 开头，例如: class MyClass { ... }")?;
+    parser.consume(
+        &Token::Class,
+        "期望关键字 'class'\n提示: 类声明应以 'class' 开头，例如: class MyClass { ... }",
+    )?;
 
-    let name = parser.consume_identifier("期望类名\n提示: 在 'class' 后应跟类名，例如: class MyClass { ... }")?;
+    let name = parser
+        .consume_identifier("期望类名\n提示: 在 'class' 后应跟类名，例如: class MyClass { ... }")?;
 
     // 解析泛型类型参数 <T, U, ...>
     let type_params = parse_generic_type_params(parser)?;
 
     // 支持 extends 关键字或 : 符号作为继承语法
     let parent = if parser.match_token(&Token::Extends) {
-        Some(parser.consume_identifier("期望父类名\n提示: 在 'extends' 后应跟父类名，例如: class Child extends Parent { ... }")?)
+        Some(parser.consume_identifier(
+            "期望父类名\n提示: 在 'extends' 后应跟父类名，例如: class Child extends Parent { ... }",
+        )?)
     } else if parser.match_token(&Token::Colon) {
         // 保留 : 符号作为兼容语法
-        Some(parser.consume_identifier("期望父类名\n提示: 在 ':' 后应跟父类名，例如: class Child : Parent { ... }")?)
+        Some(parser.consume_identifier(
+            "期望父类名\n提示: 在 ':' 后应跟父类名，例如: class Child : Parent { ... }",
+        )?)
     } else {
         None
     };
@@ -46,7 +54,10 @@ pub fn parse_class(parser: &mut Parser) -> cayResult<ClassDecl> {
         }
     }
 
-    parser.consume(&Token::LBrace, "期望 '{'\n提示: 类声明后应跟类体，使用 '{' 开始，例如: class MyClass { ... }")?;
+    parser.consume(
+        &Token::LBrace,
+        "期望 '{'\n提示: 类声明后应跟类体，使用 '{' 开始，例如: class MyClass { ... }",
+    )?;
 
     let mut members = Vec::new();
     while !parser.check(&Token::RBrace) && !parser.is_at_end() {
@@ -76,9 +87,14 @@ pub fn parse_interface(parser: &mut Parser) -> cayResult<InterfaceDecl> {
 
     parser.consume(&Token::Interface, "期望关键字 'interface'\n提示: 接口声明应以 'interface' 开头，例如: interface MyInterface { ... }")?;
 
-    let name = parser.consume_identifier("期望接口名\n提示: 在 'interface' 后应跟接口名，例如: interface MyInterface { ... }")?;
+    let name = parser.consume_identifier(
+        "期望接口名\n提示: 在 'interface' 后应跟接口名，例如: interface MyInterface { ... }",
+    )?;
 
-    parser.consume(&Token::LBrace, "期望 '{'\n提示: 接口声明后应跟接口体，使用 '{' 开始，例如: interface MyInterface { ... }")?;
+    parser.consume(
+        &Token::LBrace,
+        "期望 '{'\n提示: 接口声明后应跟接口体，使用 '{' 开始，例如: interface MyInterface { ... }",
+    )?;
 
     // 接口只能包含方法声明（没有方法体）
     let mut methods = Vec::new();
@@ -109,21 +125,29 @@ fn parse_interface_method(parser: &mut Parser) -> cayResult<MethodDecl> {
         parser.parse_type_or_fn_ptr()?
     };
 
-    let name = parser.consume_identifier("期望方法名\n提示: 在返回类型后应跟方法名，例如: int calculate() { ... }")?;
+    let name = parser.consume_identifier(
+        "期望方法名\n提示: 在返回类型后应跟方法名，例如: int calculate() { ... }",
+    )?;
 
-    parser.consume(&Token::LParen, "期望 '('\n提示: 方法名后应跟 '(' 开始参数列表，例如: int calculate() { ... }")?;
+    parser.consume(
+        &Token::LParen,
+        "期望 '('\n提示: 方法名后应跟 '(' 开始参数列表，例如: int calculate() { ... }",
+    )?;
     let params = parse_parameters(parser)?;
     parser.consume(&Token::RParen, "期望 ')'\n提示: 参数列表应以 ')' 结束")?;
 
     // 接口方法必须以分号结束，没有方法体
-    parser.consume(&Token::Semicolon, "期望 ';'\n提示: 接口方法声明应以 ';' 结束，例如: int calculate();")?;
+    parser.consume(
+        &Token::Semicolon,
+        "期望 ';'\n提示: 接口方法声明应以 ';' 结束，例如: int calculate();",
+    )?;
 
     Ok(MethodDecl {
         name,
         modifiers,
         return_type,
         params,
-        body: None,  // 接口方法没有方法体
+        body: None, // 接口方法没有方法体
         loc,
     })
 }
@@ -139,13 +163,17 @@ pub fn parse_class_member(parser: &mut Parser) -> cayResult<ClassMember> {
     // 检查是否是静态初始化块 static { ... }
     if modifiers.contains(&Modifier::Static) && parser.check(&Token::LBrace) {
         parser.pos = checkpoint;
-        return Ok(ClassMember::StaticInitializer(parse_static_initializer(parser)?));
+        return Ok(ClassMember::StaticInitializer(parse_static_initializer(
+            parser,
+        )?));
     }
 
     // 检查是否是初始化块 { ... }
     if parser.check(&Token::LBrace) {
         parser.pos = checkpoint;
-        return Ok(ClassMember::InstanceInitializer(parse_instance_initializer(parser)?));
+        return Ok(ClassMember::InstanceInitializer(
+            parse_instance_initializer(parser)?,
+        ));
     }
 
     // 检查是否是析构函数 ~ClassName() { ... }
@@ -153,37 +181,37 @@ pub fn parse_class_member(parser: &mut Parser) -> cayResult<ClassMember> {
         parser.pos = checkpoint;
         return Ok(ClassMember::Destructor(parse_destructor(parser)?));
     }
-    
+
     // 如果是void，一定是方法返回类型
     if parser.check(&Token::Void) {
         parser.pos = checkpoint;
         return Ok(ClassMember::Method(parse_method(parser)?));
     }
-    
+
     // 检查是否是构造函数：类名(...)
     // 构造函数的特征是：标识符后直接跟'('，且不是类型关键字（void, int等）
     if matches!(parser.current_token(), Token::Identifier(_)) {
         // 向前看：检查下一个token是否是 '('
         let current_pos = parser.pos;
         parser.advance(); // 跳过标识符
-        
+
         if parser.check(&Token::LParen) {
             // 是构造函数 - 回溯到checkpoint并解析
             parser.pos = checkpoint;
-            
+
             // 直接解析构造函数
             let loc = parser.current_loc();
             let ctor_modifiers = parse_modifiers(parser)?;
             let _ctor_name = parser.consume_identifier("Expected constructor name")?;
-            
+
             parser.consume(&Token::LParen, "Expected '(' after constructor name")?;
             let ctor_params = parse_parameters(parser)?;
             parser.consume(&Token::RParen, "Expected ')' after constructor parameters")?;
-            
+
             // 解析构造链调用 this() 或 super()
             let ctor_call_result = parse_constructor_call(parser)?;
             let constructor_call = ctor_call_result.call;
-            
+
             // 解析构造函数体
             // 如果 Java 风格的构造链调用已经消耗了 {，则不需要再解析 {
             let ctor_body = if ctor_call_result.consumed_lbrace {
@@ -193,11 +221,14 @@ pub fn parse_class_member(parser: &mut Parser) -> cayResult<ClassMember> {
                     statements.push(parse_statement(parser)?);
                 }
                 parser.consume(&Token::RBrace, "期望 '}'\n提示: 构造函数体应以 '}' 结束")?;
-                Block { statements, loc: parser.current_loc() }
+                Block {
+                    statements,
+                    loc: parser.current_loc(),
+                }
             } else {
                 parse_block(parser)?
             };
-            
+
             return Ok(ClassMember::Constructor(ConstructorDecl {
                 modifiers: ctor_modifiers,
                 params: ctor_params,
@@ -210,7 +241,7 @@ pub fn parse_class_member(parser: &mut Parser) -> cayResult<ClassMember> {
             parser.pos = current_pos;
         }
     }
-    
+
     // 检查是否是函数指针类型开头的方法: fn(...) -> ReturnType name(...)
     if parser.check(&Token::Fn) {
         parser.pos = checkpoint;
@@ -341,8 +372,11 @@ pub fn parse_field(parser: &mut Parser) -> cayResult<FieldDecl> {
         None
     };
 
-    parser.consume(&Token::Semicolon, "期望 ';'\n提示: 字段声明应以 ';' 结束，例如: int count;")?;
-    
+    parser.consume(
+        &Token::Semicolon,
+        "期望 ';'\n提示: 字段声明应以 ';' 结束，例如: int count;",
+    )?;
+
     Ok(FieldDecl {
         name,
         field_type,
@@ -356,17 +390,22 @@ pub fn parse_field(parser: &mut Parser) -> cayResult<FieldDecl> {
 pub fn parse_method(parser: &mut Parser) -> cayResult<MethodDecl> {
     let loc = parser.current_loc();
     let modifiers = parse_modifiers(parser)?;
-    
+
     let return_type = if parser.check(&Token::Void) {
         parser.advance();
         Type::Void
     } else {
         parser.parse_type_or_fn_ptr()?
     };
-    
-    let name = parser.consume_identifier("期望方法名\n提示: 返回类型后应跟方法名，例如: int calculate() { ... }")?;
 
-    parser.consume(&Token::LParen, "期望 '('\n提示: 方法名后应跟 '(' 开始参数列表，例如: int calculate() { ... }")?;
+    let name = parser.consume_identifier(
+        "期望方法名\n提示: 返回类型后应跟方法名，例如: int calculate() { ... }",
+    )?;
+
+    parser.consume(
+        &Token::LParen,
+        "期望 '('\n提示: 方法名后应跟 '(' 开始参数列表，例如: int calculate() { ... }",
+    )?;
     let params = parse_parameters(parser)?;
     parser.consume(&Token::RParen, "期望 ')'\n提示: 参数列表应以 ')' 结束")?;
 
@@ -375,12 +414,15 @@ pub fn parse_method(parser: &mut Parser) -> cayResult<MethodDecl> {
     let is_abstract = modifiers.contains(&Modifier::Abstract);
 
     let body = if is_native || is_abstract {
-        parser.consume(&Token::Semicolon, "期望 ';'\n提示: native/abstract 方法声明应以 ';' 结束，例如: native int foo();")?;
+        parser.consume(
+            &Token::Semicolon,
+            "期望 ';'\n提示: native/abstract 方法声明应以 ';' 结束，例如: native int foo();",
+        )?;
         None
     } else {
         Some(parse_block(parser)?)
     };
-    
+
     Ok(MethodDecl {
         name,
         modifiers,
@@ -398,18 +440,23 @@ pub fn parse_method(parser: &mut Parser) -> cayResult<MethodDecl> {
 pub fn parse_constructor(parser: &mut Parser) -> cayResult<ConstructorDecl> {
     let loc = parser.current_loc();
     let modifiers = parse_modifiers(parser)?;
-    
-    // 构造函数名（必须与类名相同）
-    let _name = parser.consume_identifier("期望构造函数名\n提示: 构造函数名应与类名相同，例如: class MyClass { MyClass() { ... } }")?;
 
-    parser.consume(&Token::LParen, "期望 '('\n提示: 构造函数名后应跟 '(' 开始参数列表，例如: MyClass() { ... }")?;
+    // 构造函数名（必须与类名相同）
+    let _name = parser.consume_identifier(
+        "期望构造函数名\n提示: 构造函数名应与类名相同，例如: class MyClass { MyClass() { ... } }",
+    )?;
+
+    parser.consume(
+        &Token::LParen,
+        "期望 '('\n提示: 构造函数名后应跟 '(' 开始参数列表，例如: MyClass() { ... }",
+    )?;
     let params = parse_parameters(parser)?;
     parser.consume(&Token::RParen, "期望 ')'\n提示: 参数列表应以 ')' 结束")?;
-    
+
     // 解析构造链调用 this() 或 super()
     let ctor_call_result = parse_constructor_call(parser)?;
     let constructor_call = ctor_call_result.call;
-    
+
     // 解析构造函数体
     // 如果 Java 风格的构造链调用已经消耗了 {，则不需要再解析 {
     let body = if ctor_call_result.consumed_lbrace {
@@ -419,11 +466,14 @@ pub fn parse_constructor(parser: &mut Parser) -> cayResult<ConstructorDecl> {
             statements.push(parse_statement(parser)?);
         }
         parser.consume(&Token::RBrace, "Expected '}' after constructor body")?;
-        Block { statements, loc: parser.current_loc() }
+        Block {
+            statements,
+            loc: parser.current_loc(),
+        }
     } else {
         parse_block(parser)?
     };
-    
+
     Ok(ConstructorDecl {
         modifiers,
         params,
@@ -449,7 +499,10 @@ fn parse_constructor_call(parser: &mut Parser) -> cayResult<ConstructorCallResul
     if parser.match_token(&Token::Colon) {
         // C++风格: : this(args) 或 : super(args)
         if parser.match_token(&Token::This) {
-            parser.consume(&Token::LParen, "期望 '('\n提示: 'this' 后应跟 '(' 开始参数列表，例如: : this(args)")?;
+            parser.consume(
+                &Token::LParen,
+                "期望 '('\n提示: 'this' 后应跟 '(' 开始参数列表，例如: : this(args)",
+            )?;
             let args = parse_constructor_call_args(parser)?;
             parser.consume(&Token::RParen, "期望 ')'\n提示: 参数列表应以 ')' 结束")?;
             return Ok(ConstructorCallResult {
@@ -457,7 +510,10 @@ fn parse_constructor_call(parser: &mut Parser) -> cayResult<ConstructorCallResul
                 consumed_lbrace: false,
             });
         } else if parser.match_token(&Token::Super) {
-            parser.consume(&Token::LParen, "期望 '('\n提示: 'super' 后应跟 '(' 开始参数列表，例如: : super(args)")?;
+            parser.consume(
+                &Token::LParen,
+                "期望 '('\n提示: 'super' 后应跟 '(' 开始参数列表，例如: : super(args)",
+            )?;
             let args = parse_constructor_call_args(parser)?;
             parser.consume(&Token::RParen, "期望 ')'\n提示: 参数列表应以 ')' 结束")?;
             return Ok(ConstructorCallResult {
@@ -474,21 +530,24 @@ fn parse_constructor_call(parser: &mut Parser) -> cayResult<ConstructorCallResul
             )));
         }
     }
-    
+
     // Java风格: 检查是否是 this(args) 或 super(args) 作为第一条语句
     // 向前看：{ this( 或 { super(
     if parser.check(&Token::LBrace) {
         // 保存当前位置
         let checkpoint = parser.pos;
         parser.advance(); // 跳过 {
-        
+
         // 检查是否是 this(
         if parser.match_token(&Token::This) {
             if parser.check(&Token::LParen) {
                 parser.advance(); // 跳过 (
                 let args = parse_constructor_call_args(parser)?;
                 parser.consume(&Token::RParen, "期望 ')'\n提示: 参数列表应以 ')' 结束")?;
-                parser.consume(&Token::Semicolon, "期望 ';'\n提示: this() 调用应以 ';' 结束")?;
+                parser.consume(
+                    &Token::Semicolon,
+                    "期望 ';'\n提示: this() 调用应以 ';' 结束",
+                )?;
                 return Ok(ConstructorCallResult {
                     call: Some(ConstructorCall::This(args)),
                     consumed_lbrace: true,
@@ -502,7 +561,10 @@ fn parse_constructor_call(parser: &mut Parser) -> cayResult<ConstructorCallResul
                 parser.advance(); // 跳过 (
                 let args = parse_constructor_call_args(parser)?;
                 parser.consume(&Token::RParen, "期望 ')'\n提示: 参数列表应以 ')' 结束")?;
-                parser.consume(&Token::Semicolon, "期望 ';'\n提示: super() 调用应以 ';' 结束")?;
+                parser.consume(
+                    &Token::Semicolon,
+                    "期望 ';'\n提示: super() 调用应以 ';' 结束",
+                )?;
                 return Ok(ConstructorCallResult {
                     call: Some(ConstructorCall::Super(args)),
                     consumed_lbrace: true,
@@ -516,7 +578,7 @@ fn parse_constructor_call(parser: &mut Parser) -> cayResult<ConstructorCallResul
             parser.pos = checkpoint;
         }
     }
-    
+
     Ok(ConstructorCallResult {
         call: None,
         consumed_lbrace: false,
@@ -526,7 +588,7 @@ fn parse_constructor_call(parser: &mut Parser) -> cayResult<ConstructorCallResul
 /// 解析构造函数调用参数
 fn parse_constructor_call_args(parser: &mut Parser) -> cayResult<Vec<Expr>> {
     let mut args = Vec::new();
-    
+
     if !parser.check(&Token::RParen) {
         loop {
             args.push(parse_expression(parser)?);
@@ -535,7 +597,7 @@ fn parse_constructor_call_args(parser: &mut Parser) -> cayResult<Vec<Expr>> {
             }
         }
     }
-    
+
     Ok(args)
 }
 
@@ -546,17 +608,25 @@ pub fn parse_destructor(parser: &mut Parser) -> cayResult<DestructorDecl> {
     let modifiers = parse_modifiers(parser)?;
 
     // 消耗 ~
-    parser.consume(&Token::Tilde, "期望 '~'\n提示: 析构函数以 '~' 开头，例如: ~MyClass() { ... }")?;
+    parser.consume(
+        &Token::Tilde,
+        "期望 '~'\n提示: 析构函数以 '~' 开头，例如: ~MyClass() { ... }",
+    )?;
 
     // 析构函数名（必须与类名相同）
-    let _name = parser.consume_identifier("期望析构函数名\n提示: 析构函数名应与类名相同，例如: ~MyClass() { ... }")?;
+    let _name = parser.consume_identifier(
+        "期望析构函数名\n提示: 析构函数名应与类名相同，例如: ~MyClass() { ... }",
+    )?;
 
-    parser.consume(&Token::LParen, "期望 '('\n提示: 析构函数名后应跟 '()'，例如: ~MyClass()")?;
+    parser.consume(
+        &Token::LParen,
+        "期望 '('\n提示: 析构函数名后应跟 '()'，例如: ~MyClass()",
+    )?;
     parser.consume(&Token::RParen, "期望 ')'\n提示: 析构函数不接受参数")?;
-    
+
     // 解析析构函数体
     let body = parse_block(parser)?;
-    
+
     Ok(DestructorDecl {
         modifiers,
         body,
@@ -580,7 +650,7 @@ pub fn parse_static_initializer(parser: &mut Parser) -> cayResult<Block> {
 /// 解析修饰符列表（包括注解）
 pub fn parse_modifiers(parser: &mut Parser) -> cayResult<Vec<Modifier>> {
     let mut modifiers = Vec::new();
-    
+
     loop {
         match parser.current_token() {
             Token::Public => {
@@ -630,7 +700,7 @@ pub fn parse_modifiers(parser: &mut Parser) -> cayResult<Vec<Modifier>> {
             _ => break,
         }
     }
-    
+
     Ok(modifiers)
 }
 
@@ -648,7 +718,9 @@ pub fn parse_parameters(parser: &mut Parser) -> cayResult<Vec<ParameterInfo>> {
                 params.push(ParameterInfo::new_varargs("...".to_string(), Type::CVoid));
                 // 可变参数必须是最后一个参数
                 if parser.check(&Token::Comma) {
-                    return Err(parser.error("可变参数必须是最后一个参数\n提示: 可变参数(...)必须放在参数列表的最后"));
+                    return Err(parser.error(
+                        "可变参数必须是最后一个参数\n提示: 可变参数(...)必须放在参数列表的最后",
+                    ));
                 }
                 break;
             }
@@ -663,7 +735,8 @@ pub fn parse_parameters(parser: &mut Parser) -> cayResult<Vec<ParameterInfo>> {
 
             if is_varargs {
                 // type... 形式的可变参数，需要一个名称
-                let name = parser.consume_identifier("期望参数名\n提示: 可变参数需要名称，例如: int... args")?;
+                let name = parser
+                    .consume_identifier("期望参数名\n提示: 可变参数需要名称，例如: int... args")?;
                 params.push(ParameterInfo::new_varargs(name, param_type));
                 // 可变参数之后可以有更多参数（通过命名参数指定）
                 if parser.match_token(&Token::Comma) {
@@ -671,7 +744,8 @@ pub fn parse_parameters(parser: &mut Parser) -> cayResult<Vec<ParameterInfo>> {
                 }
                 break;
             } else {
-                let name = parser.consume_identifier("期望参数名\n提示: 参数需要名称，例如: int count")?;
+                let name =
+                    parser.consume_identifier("期望参数名\n提示: 参数需要名称，例如: int count")?;
                 params.push(ParameterInfo::new(name, param_type));
             }
 
@@ -694,7 +768,9 @@ pub fn parse_struct(parser: &mut Parser) -> cayResult<StructDecl> {
 
     parser.consume(&Token::Struct, "期望关键字 'struct'\n提示: struct 声明应以 'struct' 开头，例如: struct Point { int x; int y; }")?;
 
-    let name = parser.consume_identifier("期望 struct 名\n提示: 在 'struct' 后应跟 struct 名，例如: struct Point { ... }")?;
+    let name = parser.consume_identifier(
+        "期望 struct 名\n提示: 在 'struct' 后应跟 struct 名，例如: struct Point { ... }",
+    )?;
 
     // 不支持泛型类型参数的说明：struct 暂不支持泛型，需要时可以添加
     // 跳过可能的 <T>，报错提示
@@ -702,7 +778,10 @@ pub fn parse_struct(parser: &mut Parser) -> cayResult<StructDecl> {
         return Err(parser.error("struct 暂不支持泛型类型参数\n提示: 当前版本 struct 不支持泛型语法，请移除 '<T>' 类型参数"));
     }
 
-    parser.consume(&Token::LBrace, "期望 '{'\n提示: struct 声明后应跟结构体，使用 '{' 开始，例如: struct Point { ... }")?;
+    parser.consume(
+        &Token::LBrace,
+        "期望 '{'\n提示: struct 声明后应跟结构体，使用 '{' 开始，例如: struct Point { ... }",
+    )?;
 
     let mut fields = Vec::new();
     let mut methods = Vec::new();
@@ -801,12 +880,15 @@ fn parse_struct_method(parser: &mut Parser, modifiers: &[Modifier]) -> cayResult
 }
 
 /// 在已有 modifiers 后继续解析方法
-fn parse_method_after_modifiers(parser: &mut Parser, modifiers: &[Modifier]) -> cayResult<MethodDecl> {
+fn parse_method_after_modifiers(
+    parser: &mut Parser,
+    modifiers: &[Modifier],
+) -> cayResult<MethodDecl> {
     let loc = parser.current_loc();
 
     // 检查是否是构造函数（struct 名后跟括号）
     let saved_pos = parser.pos;
-    
+
     let return_type = if parser.check(&Token::Void) {
         parser.advance();
         Type::Void
@@ -814,9 +896,14 @@ fn parse_method_after_modifiers(parser: &mut Parser, modifiers: &[Modifier]) -> 
         parser.parse_type_or_fn_ptr()?
     };
 
-    let name = parser.consume_identifier("期望方法名\n提示: 在返回类型后应跟方法名，例如: int calculate() { ... }")?;
+    let name = parser.consume_identifier(
+        "期望方法名\n提示: 在返回类型后应跟方法名，例如: int calculate() { ... }",
+    )?;
 
-    parser.consume(&Token::LParen, "期望 '('\n提示: 方法名后应跟 '(' 开始参数列表")?;
+    parser.consume(
+        &Token::LParen,
+        "期望 '('\n提示: 方法名后应跟 '(' 开始参数列表",
+    )?;
     let params = parse_parameters(parser)?;
     parser.consume(&Token::RParen, "期望 ')'\n提示: 参数列表应以 ')' 结束")?;
 
@@ -851,23 +938,33 @@ pub fn parse_enum(parser: &mut Parser) -> cayResult<EnumDecl> {
 
     parser.consume(&Token::Enum, "期望关键字 'enum'\n提示: enum 声明应以 'enum' 开头，例如: enum Option<T> { Some(T), None }")?;
 
-    let name = parser.consume_identifier("期望 enum 名\n提示: 在 'enum' 后应跟 enum 名，例如: enum Option<T> { ... }")?;
+    let name = parser.consume_identifier(
+        "期望 enum 名\n提示: 在 'enum' 后应跟 enum 名，例如: enum Option<T> { ... }",
+    )?;
 
     // 解析泛型类型参数 <T, U, ...>
     let type_params = parse_generic_type_params(parser)?;
 
-    parser.consume(&Token::LBrace, "期望 '{'\n提示: enum 声明后应跟枚举体，使用 '{' 开始，例如: enum Option<T> { ... }")?;
+    parser.consume(
+        &Token::LBrace,
+        "期望 '{'\n提示: enum 声明后应跟枚举体，使用 '{' 开始，例如: enum Option<T> { ... }",
+    )?;
 
     let mut variants = Vec::new();
     while !parser.check(&Token::RBrace) && !parser.is_at_end() {
         let variant_loc = parser.current_loc();
-        let variant_name = parser.consume_identifier("期望 variant 名\n提示: enum variant 应为标识符，例如: Some 或 None")?;
+        let variant_name = parser.consume_identifier(
+            "期望 variant 名\n提示: enum variant 应为标识符，例如: Some 或 None",
+        )?;
 
         // 检查是否携带 payload: Variant(Type)
         let payload_type = if parser.check(&Token::LParen) {
             parser.advance(); // 消费 (
             let ptype = super::types::parse_type(parser)?;
-            parser.consume(&Token::RParen, "期望 ')'\n提示: variant payload 参数列表应以 ')' 结束")?;
+            parser.consume(
+                &Token::RParen,
+                "期望 ')'\n提示: variant payload 参数列表应以 ')' 结束",
+            )?;
             Some(ptype)
         } else {
             None
@@ -900,19 +997,24 @@ pub fn parse_enum(parser: &mut Parser) -> cayResult<EnumDecl> {
 /// 解析泛型类型参数 <T, U, V, ...>
 pub fn parse_generic_type_params(parser: &mut Parser) -> cayResult<Vec<String>> {
     let mut params = Vec::new();
-    
+
     if parser.match_token(&Token::Lt) {
         loop {
-            let param_name = parser.consume_identifier("期望泛型类型参数名\n提示: 泛型类型参数应为标识符，例如: <T> 或 <T, U>")?;
+            let param_name = parser.consume_identifier(
+                "期望泛型类型参数名\n提示: 泛型类型参数应为标识符，例如: <T> 或 <T, U>",
+            )?;
             params.push(param_name);
-            
+
             if !parser.match_token(&Token::Comma) {
                 break;
             }
         }
-        parser.consume(&Token::Gt, "期望 '>' 结束泛型参数列表\n提示: 泛型类型参数应以 '>' 结束，例如: <T> 或 <K, V>")?;
+        parser.consume(
+            &Token::Gt,
+            "期望 '>' 结束泛型参数列表\n提示: 泛型类型参数应以 '>' 结束，例如: <T> 或 <K, V>",
+        )?;
     }
-    
+
     Ok(params)
 }
 

@@ -2,10 +2,10 @@
 //!
 //! 处理所有二元运算符表达式，包括逻辑、位运算、算术、比较等。
 
-use crate::ast::*;
-use crate::error::cayResult;
 use super::super::Parser;
 use super::unary::parse_unary;
+use crate::ast::*;
+use crate::error::cayResult;
 
 /// 解析逻辑或表达式
 pub fn parse_or(parser: &mut Parser) -> cayResult<Expr> {

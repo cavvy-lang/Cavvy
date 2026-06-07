@@ -1,9 +1,9 @@
 //! 类型工具函数
 
-use crate::ast::Expr;
-use crate::types::{Type, ParameterInfo};
-use crate::error::cayResult;
 use super::analyzer::SemanticAnalyzer;
+use crate::ast::Expr;
+use crate::error::cayResult;
+use crate::types::{ParameterInfo, Type};
 
 /// 命名参数解析结果
 pub struct ResolvedArgs {
@@ -18,7 +18,7 @@ pub struct ResolvedArgs {
 /// 命名参数按其名称匹配到对应形参。
 pub fn resolve_call_args(args: &[Expr], params: &[ParameterInfo]) -> Result<ResolvedArgs, String> {
     use std::collections::HashMap;
-    
+
     // 分离命名参数和位置参数
     let mut named: HashMap<String, &Expr> = HashMap::new();
     let mut positional: Vec<&Expr> = Vec::new();
@@ -71,7 +71,10 @@ pub fn resolve_call_args(args: &[Expr], params: &[ParameterInfo]) -> Result<Reso
             result.push(positional[pos_idx].clone());
             pos_idx += 1;
         } else {
-            return Err(format!("Missing argument for parameter '{}'", params[i].name));
+            return Err(format!(
+                "Missing argument for parameter '{}'",
+                params[i].name
+            ));
         }
     }
 
@@ -94,14 +97,20 @@ pub fn resolve_call_args(args: &[Expr], params: &[ParameterInfo]) -> Result<Reso
             if let Some(val) = named.get(&params[i].name) {
                 result.push((*val).clone());
             } else {
-                return Err(format!("Missing argument for parameter '{}' (after varargs, must use named argument)", params[i].name));
+                return Err(format!(
+                    "Missing argument for parameter '{}' (after varargs, must use named argument)",
+                    params[i].name
+                ));
             }
         }
     }
 
     // 检查未使用的位置参数
     if pos_idx < positional.len() {
-        return Err(format!("Too many positional arguments ({} extra)", positional.len() - pos_idx));
+        return Err(format!(
+            "Too many positional arguments ({} extra)",
+            positional.len() - pos_idx
+        ));
     }
 
     // 检查未匹配的命名参数
@@ -156,8 +165,8 @@ impl SemanticAnalyzer {
             (Type::Float32, Type::Float64) => true,
             (Type::Float64, Type::Float32) => true, // 允许double到float转换（可能有精度损失）
             // 泛型类型兼容性：Type::Generic 和 Type::Object 之间的兼容
-            (Type::Generic(from_name, _), Type::Object(to_name)) |
-            (Type::Object(to_name), Type::Generic(from_name, _)) => {
+            (Type::Generic(from_name, _), Type::Object(to_name))
+            | (Type::Object(to_name), Type::Generic(from_name, _)) => {
                 // 解析泛型类名: "Optional<T>" -> "Optional"
                 let from_base = if let Some(pos) = from_name.find('<') {
                     &from_name[..pos]
@@ -287,19 +296,22 @@ impl SemanticAnalyzer {
             // 顶层函数可以赋值给函数指针类型（当参数和返回类型匹配时）
             (Type::Function(from_fn), Type::Function(to_fn)) => {
                 // 检查返回类型是否兼容
-                let ret_compatible = Self::types_compatible(self, &from_fn.return_type, &to_fn.return_type);
+                let ret_compatible =
+                    Self::types_compatible(self, &from_fn.return_type, &to_fn.return_type);
                 // 检查参数数量是否相同
                 let params_count_match = from_fn.params.len() == to_fn.params.len();
                 // 检查每个参数类型是否兼容（允许协变/逆变）
-                let params_compatible = if params_count_match {
-                    from_fn.params.iter().zip(to_fn.params.iter())
-                        .all(|(from_param, to_param)| {
-                            Self::types_compatible(self, from_param, to_param) || 
-                            Self::types_compatible(self, to_param, from_param)
-                        })
-                } else {
-                    false
-                };
+                let params_compatible =
+                    if params_count_match {
+                        from_fn.params.iter().zip(to_fn.params.iter()).all(
+                            |(from_param, to_param)| {
+                                Self::types_compatible(self, from_param, to_param)
+                                    || Self::types_compatible(self, to_param, from_param)
+                            },
+                        )
+                    } else {
+                        false
+                    };
                 ret_compatible && params_count_match && params_compatible
             }
             _ => false,
@@ -324,7 +336,8 @@ impl SemanticAnalyzer {
     /// 检查类型是否为数值类型
     /// 时间复杂度: O(1)
     pub fn is_numeric_type(ty: &Type) -> bool {
-        matches!(ty, 
+        matches!(
+            ty,
             // 内置数值类型
             Type::Int32 | Type::Int64 | Type::Float32 | Type::Float64 | Type::Char |
             // FFI 数值类型
@@ -355,7 +368,7 @@ impl SemanticAnalyzer {
         if subtype == supertype {
             return true;
         }
-        
+
         // 特殊处理：所有类都是 Object 的子类型
         if supertype == "Object" {
             // 检查 subtype 是否是一个有效的类名（不是内置类型别名）
@@ -363,7 +376,7 @@ impl SemanticAnalyzer {
                 || subtype == "String"
                 || subtype == "Function";
         }
-        
+
         // 检查 subtype 是否实现了 supertype 接口
         if self.type_registry.interface_exists(supertype) {
             if let Some(class_info) = self.type_registry.get_class(subtype) {
@@ -372,17 +385,17 @@ impl SemanticAnalyzer {
                 }
             }
         }
-        
+
         // 迭代遍历继承链
         let mut current = subtype.to_string();
         let mut visited = std::collections::HashSet::new();
-        
+
         loop {
             // 防止循环继承导致的无限循环
             if !visited.insert(current.clone()) {
                 return false; // 检测到循环继承
             }
-            
+
             if let Some(class_info) = self.type_registry.get_class(&current) {
                 // 检查当前类是否实现了目标接口
                 if self.type_registry.interface_exists(supertype) {
@@ -425,8 +438,14 @@ impl SemanticAnalyzer {
         }
 
         // 提取简单类名（去掉命名空间前缀）
-        let simple1 = name1.rfind("::").map(|pos| &name1[pos + 2..]).unwrap_or(name1);
-        let simple2 = name2.rfind("::").map(|pos| &name2[pos + 2..]).unwrap_or(name2);
+        let simple1 = name1
+            .rfind("::")
+            .map(|pos| &name1[pos + 2..])
+            .unwrap_or(name1);
+        let simple2 = name2
+            .rfind("::")
+            .map(|pos| &name2[pos + 2..])
+            .unwrap_or(name2);
 
         // 如果简单类名不同，直接返回 false
         if simple1 != simple2 {
@@ -445,11 +464,19 @@ impl SemanticAnalyzer {
             (Some(c1), None) => {
                 // 只有 name1 找到了，检查 name2 是否是 name1 的简单名形式
                 // 例如 name1="json::JsonValue", name2="JsonValue"
-                c1.name.rfind("::").map(|pos| &c1.name[pos + 2..]).unwrap_or(&c1.name) == simple2
+                c1.name
+                    .rfind("::")
+                    .map(|pos| &c1.name[pos + 2..])
+                    .unwrap_or(&c1.name)
+                    == simple2
             }
             (None, Some(c2)) => {
                 // 只有 name2 找到了，检查 name1 是否是 name2 的简单名形式
-                c2.name.rfind("::").map(|pos| &c2.name[pos + 2..]).unwrap_or(&c2.name) == simple1
+                c2.name
+                    .rfind("::")
+                    .map(|pos| &c2.name[pos + 2..])
+                    .unwrap_or(&c2.name)
+                    == simple1
             }
             (None, None) => {
                 // 两个都没直接找到，说明这两个类名可能都不存在
@@ -489,9 +516,9 @@ impl SemanticAnalyzer {
         }
 
         // 第二遍：寻找兼容匹配（允许隐式转换）
-        methods.iter().find(|m| {
-            self.match_method_params_with_namespace(&m.params, arg_types)
-        })
+        methods
+            .iter()
+            .find(|m| self.match_method_params_with_namespace(&m.params, arg_types))
     }
 
     /// 精确匹配方法参数（考虑命名空间前缀）
@@ -503,9 +530,10 @@ impl SemanticAnalyzer {
         if params.len() != arg_types.len() {
             return false;
         }
-        params.iter().zip(arg_types.iter()).all(|(p, a)| {
-            self.types_compatible_with_namespace(&p.param_type, a)
-        })
+        params
+            .iter()
+            .zip(arg_types.iter())
+            .all(|(p, a)| self.types_compatible_with_namespace(&p.param_type, a))
     }
 
     /// 兼容匹配方法参数（考虑命名空间前缀）
@@ -530,7 +558,8 @@ impl SemanticAnalyzer {
     /// 检查两个类型是否兼容（考虑命名空间前缀）
     /// 这是 TypeRegistry::types_compatible_with_namespace 的包装
     fn types_compatible_with_namespace(&self, param_type: &Type, arg_type: &Type) -> bool {
-        self.type_registry.types_compatible_with_namespace(param_type, arg_type)
+        self.type_registry
+            .types_compatible_with_namespace(param_type, arg_type)
     }
 
     /// 整数类型提升
@@ -596,7 +625,13 @@ impl SemanticAnalyzer {
     }
 
     /// 检查参数是否与参数定义兼容（支持可变参数和命名参数 name=value）
-    pub fn check_arguments_compatible(&mut self, args: &[Expr], params: &[ParameterInfo], _line: usize, _column: usize) -> Result<(), String> {
+    pub fn check_arguments_compatible(
+        &mut self,
+        args: &[Expr],
+        params: &[ParameterInfo],
+        _line: usize,
+        _column: usize,
+    ) -> Result<(), String> {
         if params.is_empty() {
             if args.is_empty() {
                 return Ok(());
@@ -630,7 +665,11 @@ impl SemanticAnalyzer {
         }
 
         let last_idx = params.len() - 1;
-        let has_varargs = if !params.is_empty() { params.iter().any(|p| p.is_varargs) } else { false };
+        let has_varargs = if !params.is_empty() {
+            params.iter().any(|p| p.is_varargs)
+        } else {
+            false
+        };
 
         // 如果有命名参数，我们需要重新排列参数以匹配形参顺序
         if has_explicit_named {
@@ -668,8 +707,10 @@ impl SemanticAnalyzer {
                     // 命名参数传入整个数组
                     let arg_type = self.infer_expr_type_collect_errors(val);
                     if !self.types_compatible(&arg_type, &params[last_idx].param_type) {
-                        return Err(format!("Named argument '{}' type mismatch: expected {}, got {}",
-                            params[last_idx].name, params[last_idx].param_type, arg_type));
+                        return Err(format!(
+                            "Named argument '{}' type mismatch: expected {}, got {}",
+                            params[last_idx].name, params[last_idx].param_type, arg_type
+                        ));
                     }
                     arg_for_param[last_idx] = Some(val);
                 } else {
@@ -684,8 +725,10 @@ impl SemanticAnalyzer {
                         } else if let Some(ref elem_type) = varargs_elem_type {
                             // 单个元素
                             if !self.types_compatible(&arg_type, elem_type) {
-                                return Err(format!("Varargs argument type mismatch: expected {}, got {}",
-                                    elem_type, arg_type));
+                                return Err(format!(
+                                    "Varargs argument type mismatch: expected {}, got {}",
+                                    elem_type, arg_type
+                                ));
                             }
                             arg_for_param[last_idx] = Some(positional[pos_idx]);
                         }
@@ -695,8 +738,12 @@ impl SemanticAnalyzer {
                             for j in pos_idx..positional.len() {
                                 let arg_type = self.infer_expr_type_collect_errors(positional[j]);
                                 if !self.types_compatible(&arg_type, elem_type) {
-                                    return Err(format!("Varargs argument {} type mismatch: expected {}, got {}",
-                                        j + 1, elem_type, arg_type));
+                                    return Err(format!(
+                                        "Varargs argument {} type mismatch: expected {}, got {}",
+                                        j + 1,
+                                        elem_type,
+                                        arg_type
+                                    ));
                                 }
                             }
                         }
@@ -708,13 +755,20 @@ impl SemanticAnalyzer {
                 }
             } else if pos_idx < positional.len() {
                 // 非可变参数函数：有未使用的位置参数
-                return Err(format!("Expected {} arguments, got {}", params.len(), positional.len()));
+                return Err(format!(
+                    "Expected {} arguments, got {}",
+                    params.len(),
+                    positional.len()
+                ));
             }
 
             // 第三步：检查是否有必需的参数未提供
             for i in 0..fixed_count {
                 if arg_for_param[i].is_none() {
-                    return Err(format!("Missing argument for parameter '{}'", params[i].name));
+                    return Err(format!(
+                        "Missing argument for parameter '{}'",
+                        params[i].name
+                    ));
                 }
             }
 
@@ -727,8 +781,12 @@ impl SemanticAnalyzer {
                         continue;
                     }
                     if !self.types_compatible(&arg_type, &param.param_type) {
-                        return Err(format!("Argument {} type mismatch: expected {}, got {}",
-                            i + 1, param.param_type, arg_type));
+                        return Err(format!(
+                            "Argument {} type mismatch: expected {}, got {}",
+                            i + 1,
+                            param.param_type,
+                            arg_type
+                        ));
                     }
                 }
             }
@@ -742,15 +800,23 @@ impl SemanticAnalyzer {
         if has_varargs {
             // 可变参数：至少需要 params.len() - 1 个参数
             if args.len() < last_idx {
-                return Err(format!("Expected at least {} arguments, got {}", last_idx, args.len()));
+                return Err(format!(
+                    "Expected at least {} arguments, got {}",
+                    last_idx,
+                    args.len()
+                ));
             }
 
             // 检查固定参数
             for i in 0..last_idx {
                 let arg_type = self.infer_expr_type_collect_errors(&args[i]);
                 if !self.types_compatible(&arg_type, &params[i].param_type) {
-                    return Err(format!("Argument {} type mismatch: expected {}, got {}",
-                        i + 1, params[i].param_type, arg_type));
+                    return Err(format!(
+                        "Argument {} type mismatch: expected {}, got {}",
+                        i + 1,
+                        params[i].param_type,
+                        arg_type
+                    ));
                 }
             }
 
@@ -773,21 +839,33 @@ impl SemanticAnalyzer {
             for i in last_idx..args.len() {
                 let arg_type = self.infer_expr_type_collect_errors(&args[i]);
                 if !self.types_compatible(&arg_type, vararg_element_type) {
-                    return Err(format!("Varargs argument {} type mismatch: expected {}, got {}",
-                        i + 1, vararg_element_type, arg_type));
+                    return Err(format!(
+                        "Varargs argument {} type mismatch: expected {}, got {}",
+                        i + 1,
+                        vararg_element_type,
+                        arg_type
+                    ));
                 }
             }
         } else {
             // 非可变参数：参数数量必须完全匹配
             if params.len() != args.len() {
-                return Err(format!("Expected {} arguments, got {}", params.len(), args.len()));
+                return Err(format!(
+                    "Expected {} arguments, got {}",
+                    params.len(),
+                    args.len()
+                ));
             }
 
             for (i, (arg, param)) in args.iter().zip(params.iter()).enumerate() {
                 let arg_type = self.infer_expr_type_collect_errors(arg);
                 if !self.types_compatible(&arg_type, &param.param_type) {
-                    return Err(format!("Argument {} type mismatch: expected {}, got {}",
-                        i + 1, param.param_type, arg_type));
+                    return Err(format!(
+                        "Argument {} type mismatch: expected {}, got {}",
+                        i + 1,
+                        param.param_type,
+                        arg_type
+                    ));
                 }
             }
         }
@@ -796,166 +874,309 @@ impl SemanticAnalyzer {
     }
 
     /// 推断 String 方法调用的返回类型
-    pub fn infer_string_method_call(&mut self, method_name: &str, args: &[Expr], line: usize, column: usize) -> cayResult<Type> {
+    pub fn infer_string_method_call(
+        &mut self,
+        method_name: &str,
+        args: &[Expr],
+        line: usize,
+        column: usize,
+    ) -> cayResult<Type> {
         match method_name {
             "length" => {
                 if !args.is_empty() {
-                    return Err(self.report_error(line, column, "String.length() takes no arguments".to_string()));
+                    return Err(self.report_error(
+                        line,
+                        column,
+                        "String.length() takes no arguments".to_string(),
+                    ));
                 }
                 Ok(Type::Int32)
             }
             "substring" => {
                 if args.is_empty() || args.len() > 2 {
-                    return Err(self.report_error(line, column, "String.substring() takes 1 or 2 arguments".to_string()));
+                    return Err(self.report_error(
+                        line,
+                        column,
+                        "String.substring() takes 1 or 2 arguments".to_string(),
+                    ));
                 }
                 // 检查参数类型
                 for (i, arg) in args.iter().enumerate() {
                     let arg_type = self.infer_expr_type_collect_errors(arg);
                     if !arg_type.is_integer() {
-                        return Err(self.report_error(line, column, format!("Argument {} of substring() must be integer, got {}", i + 1, arg_type)));
+                        return Err(self.report_error(
+                            line,
+                            column,
+                            format!(
+                                "Argument {} of substring() must be integer, got {}",
+                                i + 1,
+                                arg_type
+                            ),
+                        ));
                     }
                 }
                 Ok(Type::String)
             }
             "indexOf" => {
                 if args.len() < 1 || args.len() > 2 {
-                    return Err(self.report_error(line, column, "String.indexOf() takes 1 or 2 arguments".to_string()));
+                    return Err(self.report_error(
+                        line,
+                        column,
+                        "String.indexOf() takes 1 or 2 arguments".to_string(),
+                    ));
                 }
                 let arg_type = self.infer_expr_type_collect_errors(&args[0]);
                 if arg_type != Type::String {
-                    return Err(self.report_error(line, column, format!("First argument of indexOf() must be string, got {}", arg_type)));
+                    return Err(self.report_error(
+                        line,
+                        column,
+                        format!(
+                            "First argument of indexOf() must be string, got {}",
+                            arg_type
+                        ),
+                    ));
                 }
                 if args.len() == 2 {
                     let start_type = self.infer_expr_type_collect_errors(&args[1]);
                     if !start_type.is_integer() {
-                        return Err(self.report_error(line, column, format!("Second argument of indexOf() must be integer, got {}", start_type)));
+                        return Err(self.report_error(
+                            line,
+                            column,
+                            format!(
+                                "Second argument of indexOf() must be integer, got {}",
+                                start_type
+                            ),
+                        ));
                     }
                 }
                 Ok(Type::Int32)
             }
             "lastIndexOf" => {
                 if args.len() != 1 {
-                    return Err(self.report_error(line, column, "String.lastIndexOf() takes 1 argument".to_string()));
+                    return Err(self.report_error(
+                        line,
+                        column,
+                        "String.lastIndexOf() takes 1 argument".to_string(),
+                    ));
                 }
                 let arg_type = self.infer_expr_type_collect_errors(&args[0]);
                 if arg_type != Type::String {
-                    return Err(self.report_error(line, column, format!("Argument of lastIndexOf() must be string, got {}", arg_type)));
+                    return Err(self.report_error(
+                        line,
+                        column,
+                        format!("Argument of lastIndexOf() must be string, got {}", arg_type),
+                    ));
                 }
                 Ok(Type::Int32)
             }
             "charAt" => {
                 if args.len() != 1 {
-                    return Err(self.report_error(line, column, "String.charAt() takes 1 argument".to_string()));
+                    return Err(self.report_error(
+                        line,
+                        column,
+                        "String.charAt() takes 1 argument".to_string(),
+                    ));
                 }
                 let arg_type = self.infer_expr_type_collect_errors(&args[0]);
                 if !arg_type.is_integer() {
-                    return Err(self.report_error(line, column, format!("Argument of charAt() must be integer, got {}", arg_type)));
+                    return Err(self.report_error(
+                        line,
+                        column,
+                        format!("Argument of charAt() must be integer, got {}", arg_type),
+                    ));
                 }
                 Ok(Type::Char)
             }
             "replace" => {
                 if args.len() != 2 {
-                    return Err(self.report_error(line, column, "String.replace() takes 2 arguments".to_string()));
+                    return Err(self.report_error(
+                        line,
+                        column,
+                        "String.replace() takes 2 arguments".to_string(),
+                    ));
                 }
                 for (i, arg) in args.iter().enumerate() {
                     let arg_type = self.infer_expr_type_collect_errors(arg);
                     if arg_type != Type::String {
-                        return Err(self.report_error(line, column, format!("Argument {} of replace() must be string, got {}", i + 1, arg_type)));
+                        return Err(self.report_error(
+                            line,
+                            column,
+                            format!(
+                                "Argument {} of replace() must be string, got {}",
+                                i + 1,
+                                arg_type
+                            ),
+                        ));
                     }
                 }
                 Ok(Type::String)
             }
             "isEmpty" => {
                 if !args.is_empty() {
-                    return Err(self.report_error(line, column, "String.isEmpty() takes no arguments".to_string()));
+                    return Err(self.report_error(
+                        line,
+                        column,
+                        "String.isEmpty() takes no arguments".to_string(),
+                    ));
                 }
                 Ok(Type::Bool)
             }
             "equals" => {
                 if args.len() != 1 {
-                    return Err(self.report_error(line, column, "String.equals() takes 1 argument".to_string()));
+                    return Err(self.report_error(
+                        line,
+                        column,
+                        "String.equals() takes 1 argument".to_string(),
+                    ));
                 }
                 let arg_type = self.infer_expr_type_collect_errors(&args[0]);
                 if arg_type != Type::String {
-                    return Err(self.report_error(line, column, format!("Argument of equals() must be string, got {}", arg_type)));
+                    return Err(self.report_error(
+                        line,
+                        column,
+                        format!("Argument of equals() must be string, got {}", arg_type),
+                    ));
                 }
                 Ok(Type::Bool)
             }
             "equalsIgnoreCase" => {
                 if args.len() != 1 {
-                    return Err(self.report_error(line, column, "String.equalsIgnoreCase() takes 1 argument".to_string()));
+                    return Err(self.report_error(
+                        line,
+                        column,
+                        "String.equalsIgnoreCase() takes 1 argument".to_string(),
+                    ));
                 }
                 let arg_type = self.infer_expr_type_collect_errors(&args[0]);
                 if arg_type != Type::String {
-                    return Err(self.report_error(line, column, format!("Argument of equalsIgnoreCase() must be string, got {}", arg_type)));
+                    return Err(self.report_error(
+                        line,
+                        column,
+                        format!(
+                            "Argument of equalsIgnoreCase() must be string, got {}",
+                            arg_type
+                        ),
+                    ));
                 }
                 Ok(Type::Bool)
             }
             "c_str" => {
                 if !args.is_empty() {
-                    return Err(self.report_error(line, column, "String.c_str() takes no arguments".to_string()));
+                    return Err(self.report_error(
+                        line,
+                        column,
+                        "String.c_str() takes no arguments".to_string(),
+                    ));
                 }
-                Ok(Type::Pointer(Box::new(Type::CChar)))  // 返回 c_char* 指针类型，与 codegen 中的 i8* 一致
+                Ok(Type::Pointer(Box::new(Type::CChar))) // 返回 c_char* 指针类型，与 codegen 中的 i8* 一致
             }
             "startsWith" => {
                 if args.len() != 1 {
-                    return Err(self.report_error(line, column, "String.startsWith() takes 1 argument".to_string()));
+                    return Err(self.report_error(
+                        line,
+                        column,
+                        "String.startsWith() takes 1 argument".to_string(),
+                    ));
                 }
                 let arg_type = self.infer_expr_type_collect_errors(&args[0]);
                 if arg_type != Type::String {
-                    return Err(self.report_error(line, column, format!("Argument of startsWith() must be string, got {}", arg_type)));
+                    return Err(self.report_error(
+                        line,
+                        column,
+                        format!("Argument of startsWith() must be string, got {}", arg_type),
+                    ));
                 }
                 Ok(Type::Bool)
             }
             "endsWith" => {
                 if args.len() != 1 {
-                    return Err(self.report_error(line, column, "String.endsWith() takes 1 argument".to_string()));
+                    return Err(self.report_error(
+                        line,
+                        column,
+                        "String.endsWith() takes 1 argument".to_string(),
+                    ));
                 }
                 let arg_type = self.infer_expr_type_collect_errors(&args[0]);
                 if arg_type != Type::String {
-                    return Err(self.report_error(line, column, format!("Argument of endsWith() must be string, got {}", arg_type)));
+                    return Err(self.report_error(
+                        line,
+                        column,
+                        format!("Argument of endsWith() must be string, got {}", arg_type),
+                    ));
                 }
                 Ok(Type::Bool)
             }
             "trim" => {
                 if !args.is_empty() {
-                    return Err(self.report_error(line, column, "String.trim() takes no arguments".to_string()));
+                    return Err(self.report_error(
+                        line,
+                        column,
+                        "String.trim() takes no arguments".to_string(),
+                    ));
                 }
                 Ok(Type::String)
             }
             "toLowerCase" => {
                 if !args.is_empty() {
-                    return Err(self.report_error(line, column, "String.toLowerCase() takes no arguments".to_string()));
+                    return Err(self.report_error(
+                        line,
+                        column,
+                        "String.toLowerCase() takes no arguments".to_string(),
+                    ));
                 }
                 Ok(Type::String)
             }
             "toUpperCase" => {
                 if !args.is_empty() {
-                    return Err(self.report_error(line, column, "String.toUpperCase() takes no arguments".to_string()));
+                    return Err(self.report_error(
+                        line,
+                        column,
+                        "String.toUpperCase() takes no arguments".to_string(),
+                    ));
                 }
                 Ok(Type::String)
             }
             "contains" => {
                 if args.len() != 1 {
-                    return Err(self.report_error(line, column, "String.contains() takes 1 argument".to_string()));
+                    return Err(self.report_error(
+                        line,
+                        column,
+                        "String.contains() takes 1 argument".to_string(),
+                    ));
                 }
                 let arg_type = self.infer_expr_type_collect_errors(&args[0]);
                 if arg_type != Type::String {
-                    return Err(self.report_error(line, column, format!("Argument of contains() must be string, got {}", arg_type)));
+                    return Err(self.report_error(
+                        line,
+                        column,
+                        format!("Argument of contains() must be string, got {}", arg_type),
+                    ));
                 }
                 Ok(Type::Bool)
             }
             "compareTo" => {
                 if args.len() != 1 {
-                    return Err(self.report_error(line, column, "String.compareTo() takes 1 argument".to_string()));
+                    return Err(self.report_error(
+                        line,
+                        column,
+                        "String.compareTo() takes 1 argument".to_string(),
+                    ));
                 }
                 let arg_type = self.infer_expr_type_collect_errors(&args[0]);
                 if arg_type != Type::String {
-                    return Err(self.report_error(line, column, format!("Argument of compareTo() must be string, got {}", arg_type)));
+                    return Err(self.report_error(
+                        line,
+                        column,
+                        format!("Argument of compareTo() must be string, got {}", arg_type),
+                    ));
                 }
                 Ok(Type::Int32)
             }
-            _ => Err(self.report_error(line, column, format!("Unknown String method '{}'", method_name))),
+            _ => Err(self.report_error(
+                line,
+                column,
+                format!("Unknown String method '{}'", method_name),
+            )),
         }
     }
 }

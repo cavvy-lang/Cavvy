@@ -1,13 +1,13 @@
 // cay-dt: Cavvy Debugger - Token PreViewer
 // Token 预览工具 - 显示源代码的词法分析结果
 
+use cavvy::diagnostic::DiagnosticCollector;
+use cavvy::lexer::{TokenWithLocation, lex_with_diagnostics};
+use cavvy::preprocessor::preprocess;
 use std::env;
 use std::fs;
 use std::path::Path;
 use std::process;
-use cavvy::lexer::{lex_with_diagnostics, TokenWithLocation};
-use cavvy::diagnostic::DiagnosticCollector;
-use cavvy::preprocessor::preprocess;
 
 const VERSION: &str = env!("CAY_DT_VERSION");
 
@@ -110,7 +110,7 @@ fn main() {
             .parent()
             .map(|p| p.to_str().unwrap_or("."))
             .unwrap_or(".");
-        
+
         match preprocess(&source, &file_path, base_dir) {
             Ok(processed) => processed,
             Err(e) => {
@@ -147,9 +147,18 @@ fn print_tokens_pretty(
     let error_color = if options.no_color { "" } else { "\x1b[1;31m" };
     let warning_color = if options.no_color { "" } else { "\x1b[1;33m" };
 
-    println!("{}╔══════════════════════════════════════════════════════════════╗{}", header_color, reset);
-    println!("{}║         Cavvy Debugger - Token PreViewer v{}              ║{}", header_color, VERSION, reset);
-    println!("{}╚══════════════════════════════════════════════════════════════╝{}", header_color, reset);
+    println!(
+        "{}╔══════════════════════════════════════════════════════════════╗{}",
+        header_color, reset
+    );
+    println!(
+        "{}║         Cavvy Debugger - Token PreViewer v{}              ║{}",
+        header_color, VERSION, reset
+    );
+    println!(
+        "{}╚══════════════════════════════════════════════════════════════╝{}",
+        header_color, reset
+    );
     println!();
     println!("源文件: {}", file_path);
     println!("Token 数量: {}", tokens.len());
@@ -158,11 +167,25 @@ fn print_tokens_pretty(
     if diagnostics.has_errors() || diagnostics.warning_count() > 0 {
         println!("{}诊断信息:{}", header_color, reset);
         for diag in diagnostics.diagnostics() {
-            let color = if is_error(&diag.severity) { error_color } else { warning_color };
-            let severity = if is_error(&diag.severity) { "错误" } else { "警告" };
-            println!("  {}{}[{}]{} {} (行 {}, 列 {})", 
-                color, severity, diag.code, reset,
-                diag.message, diag.location.line, diag.location.column
+            let color = if is_error(&diag.severity) {
+                error_color
+            } else {
+                warning_color
+            };
+            let severity = if is_error(&diag.severity) {
+                "错误"
+            } else {
+                "警告"
+            };
+            println!(
+                "  {}{}[{}]{} {} (行 {}, 列 {})",
+                color,
+                severity,
+                diag.code,
+                reset,
+                diag.message,
+                diag.location.line,
+                diag.location.column
             );
         }
         println!();
@@ -176,8 +199,9 @@ fn print_tokens_pretty(
         let token_name = format!("{:?}", token.token);
         let token_value = get_token_value(&token.token);
         let location = if options.show_location {
-            format!("行 {}, 列 {} (源: {:?})", 
-                token.loc.line, 
+            format!(
+                "行 {}, 列 {} (源: {:?})",
+                token.loc.line,
                 token.loc.column,
                 token.source_file.as_deref().unwrap_or("N/A")
             )
@@ -186,18 +210,23 @@ fn print_tokens_pretty(
         };
 
         if token_value.is_empty() {
-            println!("{:<5} {}{}{} {:20} {}{}{}",
-                i,
-                token_color, token_name, reset,
-                "",
-                loc_color, location, reset
+            println!(
+                "{:<5} {}{}{} {:20} {}{}{}",
+                i, token_color, token_name, reset, "", loc_color, location, reset
             );
         } else {
-            println!("{:<5} {}{:<25}{} {}{:<20}{} {}{}{}",
+            println!(
+                "{:<5} {}{:<25}{} {}{:<20}{} {}{}{}",
                 i,
-                token_color, token_name, reset,
-                value_color, token_value, reset,
-                loc_color, location, reset
+                token_color,
+                token_name,
+                reset,
+                value_color,
+                token_value,
+                reset,
+                loc_color,
+                location,
+                reset
             );
         }
     }
@@ -205,16 +234,22 @@ fn print_tokens_pretty(
 
 fn print_tokens_json(tokens: &[TokenWithLocation], diagnostics: &DiagnosticCollector) {
     use std::io::Write;
-    
+
     let mut output = String::new();
     output.push_str("{\n");
     output.push_str("  \"tokens\": [\n");
-    
+
     for (i, token) in tokens.iter().enumerate() {
         output.push_str("    {\n");
         output.push_str(&format!("      \"index\": {},\n", i));
-        output.push_str(&format!("      \"type\": {:?},\n", format!("{:?}", token.token)));
-        output.push_str(&format!("      \"value\": {:?},\n", get_token_value(&token.token)));
+        output.push_str(&format!(
+            "      \"type\": {:?},\n",
+            format!("{:?}", token.token)
+        ));
+        output.push_str(&format!(
+            "      \"value\": {:?},\n",
+            get_token_value(&token.token)
+        ));
         output.push_str(&format!("      \"line\": {},\n", token.loc.line));
         output.push_str(&format!("      \"column\": {},\n", token.loc.column));
         if let Some(ref file) = token.source_file {
@@ -229,14 +264,17 @@ fn print_tokens_json(tokens: &[TokenWithLocation], diagnostics: &DiagnosticColle
         }
         output.push('\n');
     }
-    
+
     output.push_str("  ],\n");
     output.push_str("  \"diagnostics\": [\n");
-    
+
     let diags: Vec<_> = diagnostics.diagnostics().iter().collect();
     for (i, diag) in diags.iter().enumerate() {
         output.push_str("    {\n");
-        output.push_str(&format!("      \"severity\": {:?},\n", format!("{:?}", diag.severity)));
+        output.push_str(&format!(
+            "      \"severity\": {:?},\n",
+            format!("{:?}", diag.severity)
+        ));
         output.push_str(&format!("      \"code\": {:?},\n", diag.code));
         output.push_str(&format!("      \"message\": {:?},\n", diag.message));
         output.push_str(&format!("      \"line\": {},\n", diag.location.line));
@@ -247,10 +285,10 @@ fn print_tokens_json(tokens: &[TokenWithLocation], diagnostics: &DiagnosticColle
         }
         output.push('\n');
     }
-    
+
     output.push_str("  ]\n");
     output.push_str("}\n");
-    
+
     if let Err(e) = std::io::stdout().write_all(output.as_bytes()) {
         eprintln!("写入stdout失败: {}", e);
     }
@@ -258,7 +296,7 @@ fn print_tokens_json(tokens: &[TokenWithLocation], diagnostics: &DiagnosticColle
 
 fn get_token_value(token: &cavvy::lexer::Token) -> String {
     use cavvy::lexer::Token;
-    
+
     match token {
         Token::Identifier(s) => s.clone(),
         Token::StringLiteral(Some(s)) => format!("\"{}\"", s),
@@ -274,5 +312,8 @@ fn get_token_value(token: &cavvy::lexer::Token) -> String {
 }
 
 fn is_error(severity: &cavvy::diagnostic::Severity) -> bool {
-    matches!(severity, cavvy::diagnostic::Severity::Error | cavvy::diagnostic::Severity::Fatal)
+    matches!(
+        severity,
+        cavvy::diagnostic::Severity::Error | cavvy::diagnostic::Severity::Fatal
+    )
 }

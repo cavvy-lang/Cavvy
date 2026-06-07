@@ -32,7 +32,9 @@ impl IRGenerator {
         self.emit_raw("  br i1 %prefix_too_long, label %return_false, label %compare");
         self.emit_raw("");
         self.emit_raw("compare:");
-        self.emit_raw("  %cmp_result = call i32 @__cay_strncmp(i8* %str, i8* %prefix, i64 %prefix_len)");
+        self.emit_raw(
+            "  %cmp_result = call i32 @__cay_strncmp(i8* %str, i8* %prefix, i64 %prefix_len)",
+        );
         self.emit_raw("  %equal = icmp eq i32 %cmp_result, 0");
         self.emit_raw("  ret i1 %equal");
         self.emit_raw("}");

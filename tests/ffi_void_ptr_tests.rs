@@ -32,19 +32,25 @@ public int main() {
     return 0;
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_void_basic_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("void* allocated"), 
-                "Should allocate void*, got: {}", output);
-            assert!(output.contains("void* freed successfully"), 
-                "Should free void*, got: {}", output);
+            assert!(
+                output.contains("void* allocated"),
+                "Should allocate void*, got: {}",
+                output
+            );
+            assert!(
+                output.contains("void* freed successfully"),
+                "Should free void*, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);
@@ -88,17 +94,20 @@ public int main() {
     return 0;
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_void_mem_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("void* memset/memcpy test passed"), 
-                "void* memset/memcpy test should pass, got: {}", output);
+            assert!(
+                output.contains("void* memset/memcpy test passed"),
+                "void* memset/memcpy test should pass, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);
@@ -145,19 +154,25 @@ public int main() {
     return 0;
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_void_param_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("Processing buffer"), 
-                "Should process buffer, got: {}", output);
-            assert!(output.contains("void* as param and return test passed"), 
-                "Test should pass, got: {}", output);
+            assert!(
+                output.contains("Processing buffer"),
+                "Should process buffer, got: {}",
+                output
+            );
+            assert!(
+                output.contains("void* as param and return test passed"),
+                "Test should pass, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);
@@ -195,19 +210,25 @@ public int main() {
     return 0;
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_void_alias_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("Allocated using VoidPtr alias"), 
-                "VoidPtr alias should work, got: {}", output);
-            assert!(output.contains("void* type alias test passed"), 
-                "Test should pass, got: {}", output);
+            assert!(
+                output.contains("Allocated using VoidPtr alias"),
+                "VoidPtr alias should work, got: {}",
+                output
+            );
+            assert!(
+                output.contains("void* type alias test passed"),
+                "Test should pass, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);
@@ -262,19 +283,25 @@ public int main() {
     return 0;
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_void_callback_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("Iterating 4 elements"), 
-                "Should iterate elements, got: {}", output);
-            assert!(output.contains("void* with callback test passed"), 
-                "Test should pass, got: {}", output);
+            assert!(
+                output.contains("Iterating 4 elements"),
+                "Should iterate elements, got: {}",
+                output
+            );
+            assert!(
+                output.contains("void* with callback test passed"),
+                "Test should pass, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);
@@ -315,19 +342,25 @@ public int main() {
     return 0;
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_void_array_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("void* array allocated"), 
-                "void* array should be allocated, got: {}", output);
-            assert!(output.contains("void* array test passed"), 
-                "Test should pass, got: {}", output);
+            assert!(
+                output.contains("void* array allocated"),
+                "void* array should be allocated, got: {}",
+                output
+            );
+            assert!(
+                output.contains("void* array test passed"),
+                "Test should pass, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);
@@ -371,21 +404,30 @@ public int main() {
     return 0;
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_void_null_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("p1 is null (correct)"), 
-                "Should detect p1 as null, got: {}", output);
-            assert!(output.contains("p2 is not null (correct)"), 
-                "Should detect p2 as not null, got: {}", output);
-            assert!(output.contains("void* null check test passed"), 
-                "Test should pass, got: {}", output);
+            assert!(
+                output.contains("p1 is null (correct)"),
+                "Should detect p1 as null, got: {}",
+                output
+            );
+            assert!(
+                output.contains("p2 is not null (correct)"),
+                "Should detect p2 as not null, got: {}",
+                output
+            );
+            assert!(
+                output.contains("void* null check test passed"),
+                "Test should pass, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);
@@ -427,19 +469,25 @@ public int main() {
     return 0;
 }
 "#;
-    
+
     let temp_path = format!("tests/temp_void_realloc_{}.cay", std::process::id());
     std::fs::write(&temp_path, code).expect("Failed to write temp file");
-    
+
     let result = compile_and_run_eol(&temp_path);
     let _ = std::fs::remove_file(&temp_path);
-    
+
     match result {
         Ok(output) => {
-            assert!(output.contains("Initial buffer:"), 
-                "Should show initial buffer, got: {}", output);
-            assert!(output.contains("void* realloc pattern test passed"), 
-                "Test should pass, got: {}", output);
+            assert!(
+                output.contains("Initial buffer:"),
+                "Should show initial buffer, got: {}",
+                output
+            );
+            assert!(
+                output.contains("void* realloc pattern test passed"),
+                "Test should pass, got: {}",
+                output
+            );
         }
         Err(e) => {
             panic!("Test failed with error: {}", e);

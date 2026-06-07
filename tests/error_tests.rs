@@ -3,7 +3,7 @@
 //! 测试编译时错误和运行时错误
 
 mod common;
-use common::{compile_eol_expect_error, compile_and_run_expect_error};
+use common::{compile_and_run_expect_error, compile_eol_expect_error};
 
 // ==================== 错误测试 ====================
 
@@ -34,8 +34,11 @@ fn test_error_type_mismatch_assign() {
     let error = compile_eol_expect_error("examples/errors/error_type_mismatch_assign.cay")
         .expect("type mismatch assignment should fail to compile");
     assert!(
-        error.contains("type mismatch") || error.contains("Type") || error.contains("expected")
-            || error.contains("Cannot assign") || error.contains("类型"),
+        error.contains("type mismatch")
+            || error.contains("Type")
+            || error.contains("expected")
+            || error.contains("Cannot assign")
+            || error.contains("类型"),
         "Should report type mismatch error, got: {}",
         error
     );
@@ -57,7 +60,9 @@ fn test_error_redefined_variable() {
     let error = compile_eol_expect_error("examples/errors/error_redefined_variable.cay")
         .expect("redefined variable should fail to compile");
     assert!(
-        error.contains("already defined") || error.contains("redefined") || error.contains("Duplicate"),
+        error.contains("already defined")
+            || error.contains("redefined")
+            || error.contains("Duplicate"),
         "Should report redefined variable error, got: {}",
         error
     );
@@ -112,8 +117,11 @@ fn test_error_missing_main() {
     let error = compile_eol_expect_error("examples/errors/error_missing_main.cay")
         .expect("missing main should fail to compile");
     assert!(
-        error.contains("main") || error.contains("entry point") || error.contains("not found")
-            || error.contains("WinMain") || error.contains("undefined symbol"),
+        error.contains("main")
+            || error.contains("entry point")
+            || error.contains("not found")
+            || error.contains("WinMain")
+            || error.contains("undefined symbol"),
         "Should report missing main error, got: {}",
         error
     );
@@ -124,7 +132,10 @@ fn test_error_invalid_cast_string_to_int() {
     let error = compile_eol_expect_error("examples/errors/error_invalid_cast_string_to_int.cay")
         .expect("string to int cast should fail to compile");
     assert!(
-        error.contains("cast") || error.contains("Cast") || error.contains("unsupported") || error.contains("Unsupported"),
+        error.contains("cast")
+            || error.contains("Cast")
+            || error.contains("unsupported")
+            || error.contains("Unsupported"),
         "Should report invalid cast error for string to int, got: {}",
         error
     );
@@ -135,7 +146,10 @@ fn test_error_invalid_cast_array_to_int() {
     let error = compile_eol_expect_error("examples/errors/error_invalid_cast_array_to_int.cay")
         .expect("array to int cast should fail to compile");
     assert!(
-        error.contains("cast") || error.contains("Cast") || error.contains("unsupported") || error.contains("Unsupported"),
+        error.contains("cast")
+            || error.contains("Cast")
+            || error.contains("unsupported")
+            || error.contains("Unsupported"),
         "Should report invalid cast error for array to int, got: {}",
         error
     );
@@ -302,7 +316,9 @@ fn test_error_incompatible_types() {
     let error = compile_eol_expect_error("examples/errors/error_incompatible_types.cay")
         .expect("incompatible types should fail to compile");
     assert!(
-        error.contains("type") || error.contains("incompatible") || error.contains("mismatch")
+        error.contains("type")
+            || error.contains("incompatible")
+            || error.contains("mismatch")
             || error.contains("Cannot assign"),
         "Should report incompatible types error, got: {}",
         error

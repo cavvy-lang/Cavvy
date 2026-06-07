@@ -11,32 +11,32 @@ impl IRGenerator {
         self.emit_raw("; String.equals() 运行时函数");
         self.emit_raw("define i1 @__cay_string_equals(i8* %str1, i8* %str2) {");
         self.emit_raw("entry:");
-        
+
         // 处理 null 情况
         self.emit_raw("  %str1_is_null = icmp eq i8* %str1, null");
         self.emit_raw("  %str2_is_null = icmp eq i8* %str2, null");
         self.emit_raw("  br i1 %str1_is_null, label %str1_null_case, label %str1_not_null");
-        
+
         // str1 是 null 的情况
         self.emit_raw("str1_null_case:");
         self.emit_raw("  ; 如果 str1 是 null，只有当 str2 也是 null 时才相等");
         self.emit_raw("  %both_null = icmp eq i1 %str1_is_null, %str2_is_null");
         self.emit_raw("  ret i1 %both_null");
-        
+
         // str1 不是 null 的情况
         self.emit_raw("str1_not_null:");
         self.emit_raw("  br i1 %str2_is_null, label %str2_null_case, label %both_not_null");
-        
+
         // str2 是 null 但 str1 不是 null
         self.emit_raw("str2_null_case:");
         self.emit_raw("  ret i1 0");
-        
+
         // 两者都不是 null，使用 strcmp 比较
         self.emit_raw("both_not_null:");
         self.emit_raw("  %cmp_result = call i32 @strcmp(i8* %str1, i8* %str2)");
         self.emit_raw("  %is_equal = icmp eq i32 %cmp_result, 0");
         self.emit_raw("  ret i1 %is_equal");
-        
+
         self.emit_raw("}");
         self.emit_raw("");
 
@@ -95,7 +95,7 @@ impl IRGenerator {
         self.emit_raw("  ret i1 0");
         self.emit_raw("}");
         self.emit_raw("");
-        
+
         // 辅助函数：将字符转换为小写
         self.emit_raw("; 辅助函数：字符转小写");
         self.emit_raw("define internal i8 @__cay_to_lower(i8 %c) {");
@@ -113,7 +113,7 @@ impl IRGenerator {
         self.emit_raw("  ret i8 %c");
         self.emit_raw("}");
         self.emit_raw("");
-        
+
         // trim 运行时函数：去除首尾空白字符
         self.emit_raw("; String.trim() 运行时函数");
         self.emit_raw("define i8* @__cay_string_trim(i8* %str) {");
@@ -173,7 +173,7 @@ impl IRGenerator {
         self.emit_raw("  ret i8* %result");
         self.emit_raw("}");
         self.emit_raw("");
-        
+
         // 辅助函数：判断是否为空白字符
         self.emit_raw("define internal i1 @__cay_is_whitespace(i8 %c) {");
         self.emit_raw("entry:");

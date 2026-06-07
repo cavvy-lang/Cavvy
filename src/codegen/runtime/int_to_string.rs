@@ -15,7 +15,9 @@ impl IRGenerator {
         self.emit_raw("  br i1 %is_null, label %fail, label %do_fmt");
         self.emit_raw("");
         self.emit_raw("fail:");
-        self.emit_raw("  ret i8* getelementptr ([1 x i8], [1 x i8]* @.cay_empty_str, i64 0, i64 0)");
+        self.emit_raw(
+            "  ret i8* getelementptr ([1 x i8], [1 x i8]* @.cay_empty_str, i64 0, i64 0)",
+        );
         self.emit_raw("");
         self.emit_raw("do_fmt:");
         self.emit_raw("  ; 使用 %d 格式打印整数");
@@ -34,7 +36,9 @@ impl IRGenerator {
         self.emit_raw("  br i1 %is_null, label %fail, label %do_fmt");
         self.emit_raw("");
         self.emit_raw("fail:");
-        self.emit_raw("  ret i8* getelementptr ([1 x i8], [1 x i8]* @.cay_empty_str, i64 0, i64 0)");
+        self.emit_raw(
+            "  ret i8* getelementptr ([1 x i8], [1 x i8]* @.cay_empty_str, i64 0, i64 0)",
+        );
         self.emit_raw("");
         self.emit_raw("do_fmt:");
         self.emit_raw("  ; 使用 %lld 格式打印长整数");

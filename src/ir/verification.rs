@@ -7,10 +7,10 @@
 //! - 类型一致性
 //! - 无孤立基本块（可选）
 
-use super::module::IrModule;
 use super::function::{IrFunction, IrLinkage};
-use super::value::{IrInstruction, IrTerminator, IrValue};
+use super::module::IrModule;
 use super::types::IrType;
+use super::value::{IrInstruction, IrTerminator, IrValue};
 use std::collections::HashSet;
 
 /// IR 验证器
@@ -96,14 +96,14 @@ impl IrVerifier {
         }
 
         // 收集所有块标签
-        let block_labels: HashSet<&str> = func.blocks.iter()
-            .map(|b| b.label.as_str())
-            .collect();
+        let block_labels: HashSet<&str> = func.blocks.iter().map(|b| b.label.as_str()).collect();
 
         // 验证入口块
         if !func.blocks[0].is_entry {
-            self.error(&format!("{}: first block '{}' is not marked as entry",
-                ctx, func.blocks[0].label));
+            self.error(&format!(
+                "{}: first block '{}' is not marked as entry",
+                ctx, func.blocks[0].label
+            ));
         }
 
         // 收集所有定义的 SSA 值
@@ -149,7 +149,9 @@ impl IrVerifier {
         // 检查是否有不可达的块（除了入口块）
         if block_labels.len() > 1 {
             let reachable = self.compute_reachable_blocks(func);
-            let unreachable_blocks: Vec<String> = func.blocks.iter()
+            let unreachable_blocks: Vec<String> = func
+                .blocks
+                .iter()
                 .filter(|b| !b.is_entry && !reachable.contains(&b.label.as_str()))
                 .map(|b| format!("{}: block '{}' is unreachable", ctx, b.label))
                 .collect();
@@ -175,21 +177,13 @@ impl IrVerifier {
                 continue;
             }
             if name.starts_with('%') && !defined.contains(&name) {
-                self.error(&format!(
-                    "{}: use of undefined value '{}'",
-                    ctx, name
-                ));
+                self.error(&format!("{}: use of undefined value '{}'", ctx, name));
             }
         }
     }
 
     /// 验证终止指令
-    fn verify_terminator(
-        &mut self,
-        term: &IrTerminator,
-        ctx: &str,
-        block_labels: &HashSet<&str>,
-    ) {
+    fn verify_terminator(&mut self, term: &IrTerminator, ctx: &str, block_labels: &HashSet<&str>) {
         match term {
             IrTerminator::Return { value } => {
                 if let Some(val) = value {
@@ -205,22 +199,42 @@ impl IrVerifier {
                 }
             }
 
-            IrTerminator::ConditionalBranch { condition: _, true_target, false_target } => {
+            IrTerminator::ConditionalBranch {
+                condition: _,
+                true_target,
+                false_target,
+            } => {
                 if !block_labels.contains(true_target.as_str()) {
-                    self.error(&format!("{}: branch to unknown true target '{}'", ctx, true_target));
+                    self.error(&format!(
+                        "{}: branch to unknown true target '{}'",
+                        ctx, true_target
+                    ));
                 }
                 if !block_labels.contains(false_target.as_str()) {
-                    self.error(&format!("{}: branch to unknown false target '{}'", ctx, false_target));
+                    self.error(&format!(
+                        "{}: branch to unknown false target '{}'",
+                        ctx, false_target
+                    ));
                 }
             }
 
-            IrTerminator::Switch { default_target, cases, .. } => {
+            IrTerminator::Switch {
+                default_target,
+                cases,
+                ..
+            } => {
                 if !block_labels.contains(default_target.as_str()) {
-                    self.error(&format!("{}: switch to unknown default target '{}'", ctx, default_target));
+                    self.error(&format!(
+                        "{}: switch to unknown default target '{}'",
+                        ctx, default_target
+                    ));
                 }
                 for (_, case_target) in cases {
                     if !block_labels.contains(case_target.as_str()) {
-                        self.error(&format!("{}: switch to unknown case target '{}'", ctx, case_target));
+                        self.error(&format!(
+                            "{}: switch to unknown case target '{}'",
+                            ctx, case_target
+                        ));
                     }
                 }
             }
@@ -298,7 +312,12 @@ mod tests {
 
         let result = IrVerifier::new().verify(&module);
         assert!(!result.is_valid);
-        assert!(result.errors.iter().any(|e| e.contains("missing terminator")));
+        assert!(
+            result
+                .errors
+                .iter()
+                .any(|e| e.contains("missing terminator"))
+        );
     }
 
     #[test]

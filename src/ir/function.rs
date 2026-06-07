@@ -185,9 +185,12 @@ impl IrFunction {
 
     /// 获取函数签名（用于类型匹配）
     pub fn signature(&self) -> String {
-        let param_strs: Vec<String> = self.params.iter()
-            .map(|p| p.ty.to_llvm_str())
-            .collect();
-        format!("{}({})->{}", self.name, param_strs.join(","), self.return_type.to_llvm_str())
+        let param_strs: Vec<String> = self.params.iter().map(|p| p.ty.to_llvm_str()).collect();
+        format!(
+            "{}({})->{}",
+            self.name,
+            param_strs.join(","),
+            self.return_type.to_llvm_str()
+        )
     }
 }

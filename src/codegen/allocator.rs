@@ -51,13 +51,13 @@ pub struct AllocatorMethods;
 
 impl AllocatorMethods {
     /// 生成 Allocator.allocate 方法声明
-    /// 
+    ///
     /// # Arguments
     /// * `allocator_type` - 分配器类型
     /// * `return_ptr` - 返回值指针
     /// * `size` - 分配大小
     /// * `align` - 对齐要求
-    /// 
+    ///
     /// # Returns
     /// LLVM IR 代码字符串
     pub fn generate_allocate(
@@ -95,10 +95,7 @@ impl AllocatorMethods {
     }
 
     /// 生成 Allocator.deallocate 方法声明
-    pub fn generate_deallocate(
-        allocator_type: &AllocatorType,
-        ptr: &str,
-    ) -> String {
+    pub fn generate_deallocate(allocator_type: &AllocatorType, ptr: &str) -> String {
         match allocator_type {
             AllocatorType::GlobalAlloc => {
                 // 使用 free 释放堆内存
@@ -135,10 +132,7 @@ impl AllocatorMethods {
     }
 
     /// 生成 Arena 初始化代码
-    pub fn generate_arena_init(
-        arena_ptr: &str,
-        capacity: usize,
-    ) -> String {
+    pub fn generate_arena_init(arena_ptr: &str, capacity: usize) -> String {
         format!(
             "  ; Arena 初始化\n\
            {} = call %ArenaAllocator* @__cay_arena_new(i64 {})\n",
@@ -301,7 +295,7 @@ declare void @__cay_arena_free(%ArenaAllocator*)
     /// 生成完整的分配器类型定义（运行时函数本体在 libcayrt.a 中）
     pub fn generate_full_allocator_support() -> String {
         let mut result = String::new();
-        
+
         // 仅输出类型定义（函数定义已移入 libcayrt.a）
         result.push_str("; ==================== 分配器类型定义 ====================\n\n");
         result.push_str(AllocatorType::GlobalAlloc.llvm_struct_def());
@@ -310,7 +304,7 @@ declare void @__cay_arena_free(%ArenaAllocator*)
         result.push_str("\n");
         result.push_str(AllocatorType::Stack.llvm_struct_def());
         result.push_str("\n\n");
-        
+
         result
     }
 }
@@ -319,13 +313,13 @@ declare void @__cay_arena_free(%ArenaAllocator*)
 pub trait AllocatorCodegen {
     /// 生成分配器类型定义
     fn emit_allocator_types(&mut self);
-    
+
     /// 生成 GlobalAlloc 单例访问
     fn emit_global_alloc_get(&mut self) -> String;
-    
+
     /// 生成 Arena 分配器创建
     fn emit_arena_create(&mut self, capacity: usize) -> String;
-    
+
     /// 生成使用指定分配器的内存分配
     fn emit_alloc_with_allocator(
         &mut self,
@@ -348,18 +342,11 @@ mod tests {
 
     #[test]
     fn test_allocator_methods_generate() {
-        let code = AllocatorMethods::generate_allocate(
-            &AllocatorType::GlobalAlloc,
-            "%ptr",
-            "1024",
-            "8",
-        );
+        let code =
+            AllocatorMethods::generate_allocate(&AllocatorType::GlobalAlloc, "%ptr", "1024", "8");
         assert!(code.contains("malloc"));
-        
-        let code = AllocatorMethods::generate_deallocate(
-            &AllocatorType::GlobalAlloc,
-            "%ptr",
-        );
+
+        let code = AllocatorMethods::generate_deallocate(&AllocatorType::GlobalAlloc, "%ptr");
         assert!(code.contains("free"));
     }
 

@@ -65,10 +65,18 @@ impl IrBasicBlock {
         match &self.terminator {
             Some(IrTerminator::Return { .. }) => vec![],
             Some(IrTerminator::Branch { target }) => vec![target.as_str()],
-            Some(IrTerminator::ConditionalBranch { true_target, false_target, .. }) => {
+            Some(IrTerminator::ConditionalBranch {
+                true_target,
+                false_target,
+                ..
+            }) => {
                 vec![true_target.as_str(), false_target.as_str()]
             }
-            Some(IrTerminator::Switch { default_target, cases, .. }) => {
+            Some(IrTerminator::Switch {
+                default_target,
+                cases,
+                ..
+            }) => {
                 let mut targets: Vec<&str> = cases.iter().map(|(_, t)| t.as_str()).collect();
                 targets.push(default_target.as_str());
                 targets

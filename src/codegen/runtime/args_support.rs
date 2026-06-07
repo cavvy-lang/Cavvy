@@ -53,7 +53,9 @@ impl IRGenerator {
         self.emit_raw("  br i1 %is_null, label %null_case, label %normal_case");
         self.emit_raw("");
         self.emit_raw("null_case:");
-        self.emit_raw("  ret i8* getelementptr ([1 x i8], [1 x i8]* @.cay_empty_str, i64 0, i64 0)");
+        self.emit_raw(
+            "  ret i8* getelementptr ([1 x i8], [1 x i8]* @.cay_empty_str, i64 0, i64 0)",
+        );
         self.emit_raw("");
         self.emit_raw("normal_case:");
         // 计算字符串长度

@@ -64,11 +64,19 @@ impl IrValue {
                 } else if v.is_infinite() {
                     match ty {
                         IrType::F32 => {
-                            let bits = if *v > 0.0 { f32::INFINITY.to_bits() } else { f32::NEG_INFINITY.to_bits() };
+                            let bits = if *v > 0.0 {
+                                f32::INFINITY.to_bits()
+                            } else {
+                                f32::NEG_INFINITY.to_bits()
+                            };
                             format!("float 0x{:08X}", bits)
                         }
                         IrType::F64 => {
-                            let bits = if *v > 0.0 { f64::INFINITY.to_bits() } else { f64::NEG_INFINITY.to_bits() };
+                            let bits = if *v > 0.0 {
+                                f64::INFINITY.to_bits()
+                            } else {
+                                f64::NEG_INFINITY.to_bits()
+                            };
                             format!("double 0x{:016X}", bits)
                         }
                         _ => format!("{} {}", ty.to_llvm_str(), v),
@@ -79,7 +87,8 @@ impl IrValue {
             }
             IrValue::BoolConst(v) => format!("i1 {}", if *v { 1 } else { 0 }),
             IrValue::StringConst(s) => {
-                let escaped = s.replace("\\", "\\\\")
+                let escaped = s
+                    .replace("\\", "\\\\")
                     .replace("\"", "\\\"")
                     .replace("\n", "\\0A")
                     .replace("\r", "\\0D")
@@ -108,11 +117,19 @@ impl IrValue {
                 } else if v.is_infinite() {
                     match ty {
                         IrType::F32 => {
-                            let bits = if *v > 0.0 { f32::INFINITY.to_bits() } else { f32::NEG_INFINITY.to_bits() };
+                            let bits = if *v > 0.0 {
+                                f32::INFINITY.to_bits()
+                            } else {
+                                f32::NEG_INFINITY.to_bits()
+                            };
                             format!("0x{:08X}", bits)
                         }
                         IrType::F64 => {
-                            let bits = if *v > 0.0 { f64::INFINITY.to_bits() } else { f64::NEG_INFINITY.to_bits() };
+                            let bits = if *v > 0.0 {
+                                f64::INFINITY.to_bits()
+                            } else {
+                                f64::NEG_INFINITY.to_bits()
+                            };
                             format!("0x{:016X}", bits)
                         }
                         _ => format!("{:.6e}", v),
@@ -121,7 +138,13 @@ impl IrValue {
                     format!("{:.6e}", v)
                 }
             }
-            IrValue::BoolConst(v) => if *v { "1".to_string() } else { "0".to_string() },
+            IrValue::BoolConst(v) => {
+                if *v {
+                    "1".to_string()
+                } else {
+                    "0".to_string()
+                }
+            }
             IrValue::StringConst(s) => format!("@.str.{}", s.len()), // 返回字符串常量名称
             IrValue::NullConst(_) => "null".to_string(),
             IrValue::Register(name, _) => name.clone(),
@@ -138,13 +161,14 @@ impl IrValue {
 
     /// 是否是常量
     pub fn is_const(&self) -> bool {
-        matches!(self,
+        matches!(
+            self,
             IrValue::IntConst(_, _)
-            | IrValue::FloatConst(_, _)
-            | IrValue::BoolConst(_)
-            | IrValue::StringConst(_)
-            | IrValue::NullConst(_)
-            | IrValue::Undef(_)
+                | IrValue::FloatConst(_, _)
+                | IrValue::BoolConst(_)
+                | IrValue::StringConst(_)
+                | IrValue::NullConst(_)
+                | IrValue::Undef(_)
         )
     }
 }
@@ -158,10 +182,22 @@ impl fmt::Display for IrValue {
 /// 二元运算操作符
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IrBinaryOp {
-    Add, Sub, Mul, Div, Mod,
-    And, Or, Xor,
-    Shl, Shr, LShr,
-    FAdd, FSub, FMul, FDiv, FRem,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    And,
+    Or,
+    Xor,
+    Shl,
+    Shr,
+    LShr,
+    FAdd,
+    FSub,
+    FMul,
+    FDiv,
+    FRem,
 }
 
 impl IrBinaryOp {
@@ -232,10 +268,22 @@ impl IrCastKind {
 /// 比较操作符
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IrCmpOp {
-    Eq, Ne,
-    Slt, Sle, Sgt, Sge,
-    Ult, Ule, Ugt, Uge,
-    FEq, FNe, FLt, FLe, FGt, FGe,
+    Eq,
+    Ne,
+    Slt,
+    Sle,
+    Sgt,
+    Sge,
+    Ult,
+    Ule,
+    Ugt,
+    Uge,
+    FEq,
+    FNe,
+    FLt,
+    FLe,
+    FGt,
+    FGe,
 }
 
 impl IrCmpOp {
@@ -251,12 +299,48 @@ impl IrCmpOp {
             IrCmpOp::Ule => "ule",
             IrCmpOp::Ugt => "ugt",
             IrCmpOp::Uge => "uge",
-            IrCmpOp::FEq => if is_float { "oeq" } else { "eq" },
-            IrCmpOp::FNe => if is_float { "one" } else { "ne" },
-            IrCmpOp::FLt => if is_float { "olt" } else { "slt" },
-            IrCmpOp::FLe => if is_float { "ole" } else { "sle" },
-            IrCmpOp::FGt => if is_float { "ogt" } else { "sgt" },
-            IrCmpOp::FGe => if is_float { "oge" } else { "sge" },
+            IrCmpOp::FEq => {
+                if is_float {
+                    "oeq"
+                } else {
+                    "eq"
+                }
+            }
+            IrCmpOp::FNe => {
+                if is_float {
+                    "one"
+                } else {
+                    "ne"
+                }
+            }
+            IrCmpOp::FLt => {
+                if is_float {
+                    "olt"
+                } else {
+                    "slt"
+                }
+            }
+            IrCmpOp::FLe => {
+                if is_float {
+                    "ole"
+                } else {
+                    "sle"
+                }
+            }
+            IrCmpOp::FGt => {
+                if is_float {
+                    "ogt"
+                } else {
+                    "sgt"
+                }
+            }
+            IrCmpOp::FGe => {
+                if is_float {
+                    "oge"
+                } else {
+                    "sge"
+                }
+            }
         }
     }
 }
@@ -359,15 +443,10 @@ pub enum IrInstruction {
     },
 
     /// 注释（仅用于调试，不产生代码）
-    Comment {
-        text: String,
-    },
+    Comment { text: String },
 
     /// 源位置信息（用于调试）
-    SourceLocation {
-        line: u32,
-        column: u32,
-    },
+    SourceLocation { line: u32, column: u32 },
 
     /// 变量声明标记（用于作用域管理）
     VarDecl {
@@ -416,7 +495,12 @@ impl IrInstruction {
             }
             IrInstruction::BitCast { value, .. } => vec![value],
             IrInstruction::Phi { incoming, .. } => incoming.iter().map(|(v, _)| v).collect(),
-            IrInstruction::Select { condition, true_val, false_val, .. } => vec![condition, true_val, false_val],
+            IrInstruction::Select {
+                condition,
+                true_val,
+                false_val,
+                ..
+            } => vec![condition, true_val, false_val],
             IrInstruction::InlineIr { inputs, .. } => inputs.iter().collect(),
             IrInstruction::Comment { .. } => vec![],
             IrInstruction::SourceLocation { .. } => vec![],
@@ -429,14 +513,10 @@ impl IrInstruction {
 #[derive(Debug, Clone)]
 pub enum IrTerminator {
     /// ret void 或 ret <value>
-    Return {
-        value: Option<IrValue>,
-    },
+    Return { value: Option<IrValue> },
 
     /// 无条件跳转
-    Branch {
-        target: String,
-    },
+    Branch { target: String },
 
     /// 条件跳转
     ConditionalBranch {

@@ -6,8 +6,8 @@
 
 mod common;
 
-use common::compile_and_run_eol;
 use common::assert_output_contains;
+use common::compile_and_run_eol;
 
 /// Bug 1: #include path deduplication
 ///
@@ -61,7 +61,7 @@ fn test_bug3_constructor_mangling() {
 /// constructor with matching parameter count. When multiple constructors had the
 /// same arg count but different types (e.g., Token(int, long, SourceLocation) vs
 /// Token(int, String, SourceLocation)), the wrong overload was selected.
-/// 
+///
 /// After fix: a scoring system matches constructor parameter types against the
 /// inferred argument types, preferring integer-family matches over String mismatches.
 #[test]
@@ -89,7 +89,11 @@ fn test_bug4_constructor_overload_resolution() {
 fn test_bug5_overload_abi() {
     let output = compile_and_run_eol("examples/bug5_overload_abi.cay")
         .expect("Bug 5: compilation and linking should succeed");
-    assert_output_contains(&output, &["OK: bug5_overload_abi"], "test_bug5_overload_abi");
+    assert_output_contains(
+        &output,
+        &["OK: bug5_overload_abi"],
+        "test_bug5_overload_abi",
+    );
 }
 
 /// Bug 6: method chain get(0).asNumber() drops this pointer + wrong return type

@@ -3,21 +3,21 @@
 //! 用于调试预处理器和查看预处理后的代码
 //! 支持输出带源映射的预处理结果
 
+use cavvy::error::print_miette_error;
+use cavvy::preprocessor::{Preprocessor, SourceMap};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process;
-use cavvy::preprocessor::{Preprocessor, SourceMap};
-use cavvy::error::print_miette_error;
 
 const VERSION: &str = env!("CAY_PRE_VERSION");
 
 /// 预处理器选项
 struct PreprocessOptions {
-    output_file: Option<String>,    // -o: 输出文件
-    verbose: bool,                  // --verbose: 详细输出
-    show_source_map: bool,          // --source-map: 显示源映射
-    system_paths: Vec<PathBuf>,     // -I: 系统包含路径
+    output_file: Option<String>, // -o: 输出文件
+    verbose: bool,               // --verbose: 详细输出
+    show_source_map: bool,       // --source-map: 显示源映射
+    system_paths: Vec<PathBuf>,  // -I: 系统包含路径
 }
 
 impl Default for PreprocessOptions {
@@ -146,9 +146,7 @@ fn main() {
     }
 
     // 获取文件所在目录作为基础目录
-    let base_dir = Path::new(&input_file)
-        .parent()
-        .unwrap_or(Path::new("."));
+    let base_dir = Path::new(&input_file).parent().unwrap_or(Path::new("."));
 
     // 创建预处理器
     let mut preprocessor = if options.system_paths.is_empty() {

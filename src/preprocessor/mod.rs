@@ -13,9 +13,9 @@
 //! - 预处理在词法分析之前执行，生成纯源代码
 //! - 生成 #source <file> <line> 标记以支持源映射
 
+use crate::error::{cayError, cayResult};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use crate::error::{cayResult, cayError};
 
 /// 源位置信息
 #[derive(Debug, Clone)]
@@ -55,7 +55,8 @@ impl SourceMap {
 
     /// 序列化为字符串（用于嵌入到预处理后的代码中）
     pub fn serialize(&self) -> String {
-        self.mappings.iter()
+        self.mappings
+            .iter()
             .map(|pos| format!("#source {} {}", pos.file, pos.line))
             .collect::<Vec<_>>()
             .join("\n")
@@ -136,10 +137,10 @@ enum DirectiveResult {
 
 impl Preprocessor {
     /// 创建新的预处理器实例
-    /// 
+    ///
     /// # Arguments
     /// * `base_dir` - 源代码基础目录，用于解析相对路径
-    /// 
+    ///
     /// # Returns
     /// 初始化后的预处理器
     pub fn new(base_dir: impl AsRef<Path>) -> Self {
@@ -147,11 +148,11 @@ impl Preprocessor {
     }
 
     /// 创建带有额外包含路径的预处理器实例
-    /// 
+    ///
     /// # Arguments
     /// * `base_dir` - 源代码基础目录
     /// * `include_paths` - 额外的包含路径列表（供 #include 搜索）
-    /// 
+    ///
     /// # Returns
     /// 初始化后的预处理器
     pub fn with_include_paths(base_dir: impl AsRef<Path>, include_paths: Vec<PathBuf>) -> Self {
@@ -182,7 +183,7 @@ impl Preprocessor {
         }
     }
 
-        /// 预处理源文件，返回处理后的源代码（带源映射）
+    /// 预处理源文件，返回处理后的源代码（带源映射）
     ///
     /// # Arguments
     /// * `source` - 原始源代码
@@ -193,14 +194,18 @@ impl Preprocessor {
     ///
     /// # Errors
     /// 当遇到预处理错误时返回错误
-    pub fn process_with_source_map(&mut self, source: &str, file_path: &str) -> cayResult<PreprocessResult> {
+    pub fn process_with_source_map(
+        &mut self,
+        source: &str,
+        file_path: &str,
+    ) -> cayResult<PreprocessResult> {
         let mut output_lines = Vec::new();
         let mut source_map = SourceMap::new();
         let lines: Vec<&str> = source.lines().collect();
 
         for (line_number, line) in lines.iter().enumerate() {
             let line_number = line_number + 1; // 转换为1-based
-            
+
             // 检查是否是预处理指令行（以 # 开头，可以有前导空白）
             let trimmed = line.trim_start();
             if trimmed.starts_with('#') {
@@ -212,7 +217,10 @@ impl Preprocessor {
                                 source_map.add_mapping(file_path.to_string(), line_number);
                                 output_lines.push(processed_line.unwrap_or_default());
                             }
-                            DirectiveResult::Multi { code, source_map: included_source_map } => {
+                            DirectiveResult::Multi {
+                                code,
+                                source_map: included_source_map,
+                            } => {
                                 // 包含文件返回多行，需要合并源映射
                                 // 记录当前输出行数，用于正确对齐包含文件的源映射
                                 let current_line_count = output_lines.len();
@@ -274,29 +282,34 @@ impl Preprocessor {
     }
 
     /// 解析单行预处理指令
-    /// 
+    ///
     /// # Arguments
     /// * `line` - 已去除前导空白的行内容
     /// * `line_num` - 行号（用于错误报告）
     /// * `file_path` - 文件路径（用于错误报告）
-    /// 
+    ///
     /// # Returns
     /// 解析出的指令或 None
-    fn parse_directive(&self, line: &str, line_num: usize, file_path: &str) -> cayResult<Option<Directive>> {
+    fn parse_directive(
+        &self,
+        line: &str,
+        line_num: usize,
+        file_path: &str,
+    ) -> cayResult<Option<Directive>> {
         // 去除 # 后面的空白
         let content = line[1..].trim_start();
-        
+
         if content.is_empty() {
             return Ok(None);
         }
-        
+
         // 提取指令名和参数（移除块注释）
         let mut parts = content.splitn(2, |c: char| c.is_whitespace());
         let directive_name = parts.next().unwrap_or("");
         let args_raw = parts.next().unwrap_or("");
         let args_cleaned = Self::remove_block_comments(args_raw);
         let args = args_cleaned.trim();
-        
+
         match directive_name {
             "include" => {
                 // 解析 #include "path" 或 #include <path>
@@ -365,7 +378,7 @@ impl Preprocessor {
     fn remove_block_comments(s: &str) -> String {
         let mut result = String::with_capacity(s.len());
         let mut chars = s.chars().peekable();
-        
+
         while let Some(c) = chars.next() {
             if c == '/' && chars.peek() == Some(&'*') {
                 // 找到注释开始 /*
@@ -381,7 +394,7 @@ impl Preprocessor {
                 result.push(c);
             }
         }
-        
+
         result
     }
 
@@ -390,41 +403,47 @@ impl Preprocessor {
     /// # Returns
     /// - Ok(DirectiveResult::Single(line)) - 生成单行输出
     /// - Ok(DirectiveResult::Multi{code, source_map}) - 生成多行输出（包含文件）
-    fn process_directive(&mut self, directive: Directive, file_path: &str, line_num: usize) -> cayResult<DirectiveResult> {
+    fn process_directive(
+        &mut self,
+        directive: Directive,
+        file_path: &str,
+        line_num: usize,
+    ) -> cayResult<DirectiveResult> {
         match directive {
             Directive::Include(path, is_system) => {
                 if self.skipping {
                     return Ok(DirectiveResult::Single(None));
                 }
-                
+
                 // 读取包含文件
                 match self.read_include_file(&path, is_system, file_path)? {
                     Some((include_content, full_path)) => {
                         // 添加到包含栈（用于循环检测）- 使用完整路径
                         self.include_stack.push(full_path.clone());
-                        
+
                         // 保存当前条件编译状态
                         let saved_conditional_stack = self.conditional_stack.clone();
                         let saved_skipping = self.skipping;
-                        
+
                         // 重置条件编译状态用于包含文件
                         self.conditional_stack = Vec::new();
                         self.skipping = false;
-                        
+
                         // 递归处理包含的文件 - 使用完整路径
-                        let included_result = self.process_with_source_map(&include_content, &full_path)?;
-                        
+                        let included_result =
+                            self.process_with_source_map(&include_content, &full_path)?;
+
                         // 恢复条件编译状态
                         self.conditional_stack = saved_conditional_stack;
                         self.skipping = saved_skipping;
-                        
+
                         // 处理完成后从栈中移除
                         self.include_stack.pop();
-                        
+
                         // 返回处理后的内容和源映射
-                        Ok(DirectiveResult::Multi { 
-                            code: included_result.code, 
-                            source_map: included_result.source_map 
+                        Ok(DirectiveResult::Multi {
+                            code: included_result.code,
+                            source_map: included_result.source_map,
                         })
                     }
                     None => {
@@ -512,17 +531,17 @@ impl Preprocessor {
         if trimmed.is_empty() {
             return false;
         }
-        
+
         // 简单快速路径：检查是否是已定义的宏
         if self.defines.contains_key(trimmed) {
             return true;
         }
-        
+
         // 简单快速路径：尝试解析为数字
         if let Ok(num) = parse_preprocessor_number(trimmed) {
             return num != 0;
         }
-        
+
         // 使用递归下降解析器评估完整表达式
         let mut parser = ConditionParser::new(trimmed, &self.defines);
         match parser.parse_expression() {
@@ -532,9 +551,14 @@ impl Preprocessor {
     }
 
     /// 解析 #include 路径
-    fn parse_include_path(&self, args: &str, line_num: usize, file_path: &str) -> cayResult<(String, bool)> {
+    fn parse_include_path(
+        &self,
+        args: &str,
+        line_num: usize,
+        file_path: &str,
+    ) -> cayResult<(String, bool)> {
         let trimmed = args.trim();
-        
+
         if trimmed.is_empty() {
             return Err(cayError::Preprocessor {
                 file: Some(file_path.to_string()),
@@ -544,15 +568,15 @@ impl Preprocessor {
                 suggestion: "使用 #include \"path\" 或 #include <path>".to_string(),
             });
         }
-        
+
         // 检查是系统路径 <path> 还是用户路径 "path"
         if trimmed.starts_with('<') && trimmed.ends_with('>') {
             // 系统路径
-            let path = &trimmed[1..trimmed.len()-1];
+            let path = &trimmed[1..trimmed.len() - 1];
             Ok((path.to_string(), true))
         } else if trimmed.starts_with('"') && trimmed.ends_with('"') {
             // 用户路径
-            let path = &trimmed[1..trimmed.len()-1];
+            let path = &trimmed[1..trimmed.len() - 1];
             Ok((path.to_string(), false))
         } else {
             Err(cayError::Preprocessor {
@@ -566,16 +590,21 @@ impl Preprocessor {
     }
 
     /// 读取包含文件
-    fn read_include_file(&mut self, path: &str, is_system: bool, current_file: &str) -> cayResult<Option<(String, String)>> {
+    fn read_include_file(
+        &mut self,
+        path: &str,
+        is_system: bool,
+        current_file: &str,
+    ) -> cayResult<Option<(String, String)>> {
         // 解析完整路径
         let full_path = self.resolve_include_path(path, is_system, current_file)?;
-        
+
         // 规范化路径：将相对路径转换为绝对路径，消除 .. 和符号链接
         // 确保不同路径字符串引用同一文件时被正确去重
         let full_path = std::fs::canonicalize(&full_path)
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or(full_path);
-        
+
         // 首先检测循环包含（基于当前处理链）- 使用完整路径
         if self.include_stack.contains(&full_path) {
             return Err(cayError::Preprocessor {
@@ -586,30 +615,34 @@ impl Preprocessor {
                 suggestion: "检查头文件之间的循环依赖".to_string(),
             });
         }
-        
+
         // 然后检查是否已经包含过（#pragma once 语义）
         if self.included_files.contains(&full_path) {
-            return Ok(None);  // 已经包含过，返回 None 表示跳过
+            return Ok(None); // 已经包含过，返回 None 表示跳过
         }
-        
+
         // 读取文件内容
-        let content = std::fs::read_to_string(&full_path)
-            .map_err(|e| cayError::Preprocessor {
-                file: Some(current_file.to_string()),
-                line: 1,
-                column: 1,
-                message: format!("无法读取包含文件 '{}': {}", full_path, e),
-                suggestion: "检查文件路径是否正确".to_string(),
-            })?;
-        
+        let content = std::fs::read_to_string(&full_path).map_err(|e| cayError::Preprocessor {
+            file: Some(current_file.to_string()),
+            line: 1,
+            column: 1,
+            message: format!("无法读取包含文件 '{}': {}", full_path, e),
+            suggestion: "检查文件路径是否正确".to_string(),
+        })?;
+
         // 添加到已包含集合
         self.included_files.insert(full_path.clone());
-        
+
         Ok(Some((content, full_path)))
     }
 
     /// 解析包含文件的完整路径
-    fn resolve_include_path(&self, path: &str, is_system: bool, current_file: &str) -> cayResult<String> {
+    fn resolve_include_path(
+        &self,
+        path: &str,
+        is_system: bool,
+        current_file: &str,
+    ) -> cayResult<String> {
         if is_system {
             for sys_path in &self.system_include_paths {
                 let sys_include_path = sys_path.join(path);
@@ -617,7 +650,7 @@ impl Preprocessor {
                     return Ok(sys_include_path.to_string_lossy().to_string());
                 }
             }
-            
+
             // 2. 可执行文件所在目录下的 caylibs
             if let Ok(exe_path) = std::env::current_exe() {
                 if let Some(exe_dir) = exe_path.parent() {
@@ -627,7 +660,7 @@ impl Preprocessor {
                     }
                 }
             }
-            
+
             // 3. 当前工作目录下的 caylibs
             let cwd_caylibs = std::env::current_dir()
                 .map(|d| d.join("caylibs").join(path))
@@ -635,7 +668,7 @@ impl Preprocessor {
             if cwd_caylibs.exists() {
                 return Ok(cwd_caylibs.to_string_lossy().to_string());
             }
-            
+
             Err(cayError::Preprocessor {
                 file: Some(current_file.to_string()),
                 line: 1,
@@ -645,7 +678,8 @@ impl Preprocessor {
             })
         } else {
             // 4. 相对于当前文件目录
-            let current_dir = Path::new(current_file).parent()
+            let current_dir = Path::new(current_file)
+                .parent()
                 .unwrap_or_else(|| Path::new("."));
             let relative_path = current_dir.join(path);
             if relative_path.exists() {
@@ -666,7 +700,7 @@ impl Preprocessor {
                 }
             }
 
-                        Err(cayError::Preprocessor {
+            Err(cayError::Preprocessor {
                 file: Some(current_file.to_string()),
                 line: 1,
                 column: 1,
@@ -677,9 +711,14 @@ impl Preprocessor {
     }
 
     /// 解析 #define 参数
-    fn parse_define_args(&self, args: &str, line_num: usize, file_path: &str) -> cayResult<(String, String)> {
+    fn parse_define_args(
+        &self,
+        args: &str,
+        line_num: usize,
+        file_path: &str,
+    ) -> cayResult<(String, String)> {
         let trimmed = args.trim();
-        
+
         if trimmed.is_empty() {
             return Err(cayError::Preprocessor {
                 file: Some(file_path.to_string()),
@@ -689,15 +728,15 @@ impl Preprocessor {
                 suggestion: "使用 #define NAME value".to_string(),
             });
         }
-        
+
         // 移除行尾注释 (// 和 /* */ 风格)
         let without_comments = Self::remove_line_comments(trimmed);
-        
+
         // 分割名称和值
         let mut parts = without_comments.splitn(2, |c: char| c.is_whitespace());
         let name = parts.next().unwrap_or("").to_string();
         let value = parts.next().unwrap_or("").trim().to_string();
-        
+
         if name.is_empty() {
             return Err(cayError::Preprocessor {
                 file: Some(file_path.to_string()),
@@ -707,17 +746,17 @@ impl Preprocessor {
                 suggestion: "使用 #define NAME value".to_string(),
             });
         }
-        
+
         Ok((name, value))
     }
-    
+
     /// 移除行内注释（// 和 /* */ 风格）
     fn remove_line_comments(line: &str) -> String {
         // 处理 // 风格注释
         if let Some(pos) = line.find("//") {
             return line[..pos].trim_end().to_string();
         }
-        
+
         // 处理 /* */ 风格注释（单行情况）
         if let Some(start) = line.find("/*") {
             if let Some(end) = line[start..].find("*/") {
@@ -726,14 +765,14 @@ impl Preprocessor {
                 return Self::remove_line_comments(&(before.to_string() + after));
             }
         }
-        
+
         line.to_string()
     }
 
     /// 解析标识符
     fn parse_identifier(&self, args: &str, line_num: usize, file_path: &str) -> cayResult<String> {
         let trimmed = args.trim();
-        
+
         if trimmed.is_empty() {
             return Err(cayError::Preprocessor {
                 file: Some(file_path.to_string()),
@@ -743,10 +782,10 @@ impl Preprocessor {
                 suggestion: "提供标识符名称".to_string(),
             });
         }
-        
+
         // 标识符只能包含字母、数字和下划线，且不能以数字开头
         let name = trimmed.split_whitespace().next().unwrap_or("").to_string();
-        
+
         if name.is_empty() {
             return Err(cayError::Preprocessor {
                 file: Some(file_path.to_string()),
@@ -756,22 +795,28 @@ impl Preprocessor {
                 suggestion: "提供有效的标识符名称".to_string(),
             });
         }
-        
+
         Ok(name)
     }
 
     /// 解析字符串字面量
-    fn parse_string_literal(&self, args: &str, line_num: usize, file_path: &str) -> cayResult<String> {
+    fn parse_string_literal(
+        &self,
+        args: &str,
+        line_num: usize,
+        file_path: &str,
+    ) -> cayResult<String> {
         let trimmed = args.trim();
-        
+
         if trimmed.is_empty() {
             return Ok(String::new());
         }
-        
+
         // 去除引号
-        if (trimmed.starts_with('"') && trimmed.ends_with('"')) ||
-           (trimmed.starts_with('\'') && trimmed.ends_with('\'')) {
-            let content = &trimmed[1..trimmed.len()-1];
+        if (trimmed.starts_with('"') && trimmed.ends_with('"'))
+            || (trimmed.starts_with('\'') && trimmed.ends_with('\''))
+        {
+            let content = &trimmed[1..trimmed.len() - 1];
             Ok(content.to_string())
         } else {
             Ok(trimmed.to_string())
@@ -785,16 +830,16 @@ impl Preprocessor {
         let mut result = String::with_capacity(line.len());
         let mut i = 0;
         let chars: Vec<char> = line.chars().collect();
-        
+
         while i < chars.len() {
             // 尝试匹配最长的宏名称
             let mut matched = false;
-            
+
             // 按长度降序排序宏定义，确保优先匹配更长的名称
             // 例如 FILE_MODE_READPLUS 应该在 FILE_MODE_READ 之前被检查
             let mut defines_sorted: Vec<_> = self.defines.iter().collect();
             defines_sorted.sort_by(|(a, _), (b, _)| b.len().cmp(&a.len()));
-            
+
             for (name, value) in &defines_sorted {
                 let name_len = name.len();
                 if i + name_len <= chars.len() {
@@ -803,8 +848,9 @@ impl Preprocessor {
                         // 检查前后是否是标识符边界
                         let before_is_boundary = i == 0 || !self.is_identifier_char(chars[i - 1]);
                         let after_pos = i + name_len;
-                        let after_is_boundary = after_pos >= chars.len() || !self.is_identifier_char(chars[after_pos]);
-                        
+                        let after_is_boundary =
+                            after_pos >= chars.len() || !self.is_identifier_char(chars[after_pos]);
+
                         if before_is_boundary && after_is_boundary {
                             result.push_str(value);
                             i += name_len;
@@ -814,16 +860,16 @@ impl Preprocessor {
                     }
                 }
             }
-            
+
             if !matched {
                 result.push(chars[i]);
                 i += 1;
             }
         }
-        
+
         result
     }
-    
+
     /// 检查字符是否是标识符字符（字母、数字、下划线）
     /// 时间复杂度: O(1)
     fn is_identifier_char(&self, c: char) -> bool {
@@ -906,10 +952,13 @@ impl Preprocessor {
                 suggestion: "确保每个 #endif 都有对应的 #ifdef 或 #ifndef".to_string(),
             });
         }
-        
+
         // 更新 skipping 状态
-        self.skipping = self.conditional_stack.iter().any(|&state| state != ConditionalState::Active);
-        
+        self.skipping = self
+            .conditional_stack
+            .iter()
+            .any(|&state| state != ConditionalState::Active);
+
         Ok(())
     }
 
@@ -943,7 +992,7 @@ fn parse_preprocessor_number(s: &str) -> Result<i64, ()> {
     if trimmed.is_empty() {
         return Err(());
     }
-    
+
     // 处理负号
     let (negative, num_str) = if trimmed.starts_with('-') {
         (true, &trimmed[1..])
@@ -952,7 +1001,7 @@ fn parse_preprocessor_number(s: &str) -> Result<i64, ()> {
     } else {
         (false, trimmed)
     };
-    
+
     let value = if num_str.starts_with("0x") || num_str.starts_with("0X") {
         // 十六进制
         i64::from_str_radix(&num_str[2..], 16).map_err(|_| ())?
@@ -966,7 +1015,7 @@ fn parse_preprocessor_number(s: &str) -> Result<i64, ()> {
         // 十进制
         num_str.parse::<i64>().map_err(|_| ())?
     };
-    
+
     Ok(if negative { -value } else { value })
 }
 
@@ -981,21 +1030,25 @@ struct ConditionParser<'a> {
 
 impl<'a> ConditionParser<'a> {
     fn new(input: &'a str, defines: &'a std::collections::HashMap<String, String>) -> Self {
-        Self { input, pos: 0, defines }
+        Self {
+            input,
+            pos: 0,
+            defines,
+        }
     }
-    
+
     /// 跳过空白字符
     fn skip_whitespace(&mut self) {
         while self.pos < self.input.len() && self.input.as_bytes()[self.pos].is_ascii_whitespace() {
             self.pos += 1;
         }
     }
-    
+
     /// 查看当前字符
     fn peek(&self) -> Option<char> {
         self.input[self.pos..].chars().next()
     }
-    
+
     /// 消费指定字符
     fn consume_char(&mut self, expected: char) -> bool {
         self.skip_whitespace();
@@ -1006,21 +1059,24 @@ impl<'a> ConditionParser<'a> {
             false
         }
     }
-    
+
     /// 消费关键字（后面不能跟字母数字）
     fn consume_keyword(&mut self, keyword: &str) -> bool {
         self.skip_whitespace();
         let remaining = &self.input[self.pos..];
         if remaining.starts_with(keyword) {
             let after = self.pos + keyword.len();
-            if after >= self.input.len() || !self.input.as_bytes()[after].is_ascii_alphanumeric() && self.input.as_bytes()[after] != b'_' {
+            if after >= self.input.len()
+                || !self.input.as_bytes()[after].is_ascii_alphanumeric()
+                    && self.input.as_bytes()[after] != b'_'
+            {
                 self.pos = after;
                 return true;
             }
         }
         false
     }
-    
+
     /// 读取标识符
     fn read_identifier(&mut self) -> Option<String> {
         self.skip_whitespace();
@@ -1039,17 +1095,19 @@ impl<'a> ConditionParser<'a> {
             Some(self.input[start..self.pos].to_string())
         }
     }
-    
+
     /// 读取数字
     fn read_number(&mut self) -> Option<i64> {
         self.skip_whitespace();
         let start = self.pos;
-        
+
         // 处理符号
-        if self.pos < self.input.len() && (self.input.as_bytes()[self.pos] == b'+' || self.input.as_bytes()[self.pos] == b'-') {
+        if self.pos < self.input.len()
+            && (self.input.as_bytes()[self.pos] == b'+' || self.input.as_bytes()[self.pos] == b'-')
+        {
             self.pos += 1;
         }
-        
+
         // 处理前缀
         if self.pos + 1 < self.input.len() {
             let prefix = &self.input[self.pos..self.pos + 2];
@@ -1057,24 +1115,24 @@ impl<'a> ConditionParser<'a> {
                 self.pos += 2;
             }
         }
-        
+
         // 读取数字部分
         while self.pos < self.input.len() && self.input.as_bytes()[self.pos].is_ascii_hexdigit() {
             self.pos += 1;
         }
-        
+
         if start == self.pos {
             None
         } else {
             parse_preprocessor_number(&self.input[start..self.pos]).ok()
         }
     }
-    
+
     /// 读取操作符
     fn read_operator(&mut self) -> Option<&str> {
         self.skip_whitespace();
         let remaining = &self.input[self.pos..];
-        
+
         // 两字符操作符优先
         for op in &["==", "!=", "<=", ">=", "&&", "||"] {
             if remaining.starts_with(op) {
@@ -1082,7 +1140,7 @@ impl<'a> ConditionParser<'a> {
                 return Some(op);
             }
         }
-        
+
         // 单字符操作符
         if let Some(ch) = remaining.chars().next() {
             match ch {
@@ -1093,14 +1151,14 @@ impl<'a> ConditionParser<'a> {
                 _ => {}
             }
         }
-        
+
         None
     }
-    
+
     /// 解析主表达式（处理 ||）
     fn parse_expression(&mut self) -> Result<i64, ()> {
         let mut result = self.parse_and_expr()?;
-        
+
         loop {
             self.skip_whitespace();
             if self.consume_keyword("||") {
@@ -1110,14 +1168,14 @@ impl<'a> ConditionParser<'a> {
                 break;
             }
         }
-        
+
         Ok(result)
     }
-    
+
     /// 解析 AND 表达式（处理 &&）
     fn parse_and_expr(&mut self) -> Result<i64, ()> {
         let mut result = self.parse_comparison()?;
-        
+
         loop {
             self.skip_whitespace();
             if self.consume_keyword("&&") {
@@ -1127,17 +1185,17 @@ impl<'a> ConditionParser<'a> {
                 break;
             }
         }
-        
+
         Ok(result)
     }
-    
+
     /// 解析比较表达式
     fn parse_comparison(&mut self) -> Result<i64, ()> {
         let mut result = self.parse_additive()?;
-        
+
         self.skip_whitespace();
         let remaining = &self.input[self.pos..];
-        
+
         for op in &["==", "!=", "<=", ">=", "<", ">"] {
             if remaining.starts_with(op) {
                 self.pos += op.len();
@@ -1154,18 +1212,18 @@ impl<'a> ConditionParser<'a> {
                 return Ok(if cmp { 1 } else { 0 });
             }
         }
-        
+
         Ok(result)
     }
-    
+
     /// 解析加减表达式
     fn parse_additive(&mut self) -> Result<i64, ()> {
         let mut result = self.parse_multiplicative()?;
-        
+
         loop {
             self.skip_whitespace();
             let remaining = &self.input[self.pos..];
-            
+
             if remaining.starts_with('+') {
                 self.pos += 1;
                 let right = self.parse_multiplicative()?;
@@ -1178,18 +1236,18 @@ impl<'a> ConditionParser<'a> {
                 break;
             }
         }
-        
+
         Ok(result)
     }
-    
+
     /// 解析乘除表达式
     fn parse_multiplicative(&mut self) -> Result<i64, ()> {
         let mut result = self.parse_unary()?;
-        
+
         loop {
             self.skip_whitespace();
             let remaining = &self.input[self.pos..];
-            
+
             if remaining.starts_with('*') {
                 self.pos += 1;
                 let right = self.parse_unary()?;
@@ -1212,51 +1270,51 @@ impl<'a> ConditionParser<'a> {
                 break;
             }
         }
-        
+
         Ok(result)
     }
-    
+
     /// 解析一元表达式
     fn parse_unary(&mut self) -> Result<i64, ()> {
         self.skip_whitespace();
-        
+
         // 逻辑非
         if self.consume_keyword("!") {
             let val = self.parse_primary()?;
             return Ok(if val == 0 { 1 } else { 0 });
         }
-        
+
         // 按位取反
         if self.consume_keyword("~") {
             let val = self.parse_primary()?;
             return Ok(!val);
         }
-        
+
         // 正号
         if self.consume_keyword("+") {
             return self.parse_primary();
         }
-        
+
         // 负号
         if self.consume_keyword("-") {
             let val = self.parse_primary()?;
             return Ok(-val);
         }
-        
+
         self.parse_primary()
     }
-    
+
     /// 解析基本表达式（数字、标识符、括号、defined）
     fn parse_primary(&mut self) -> Result<i64, ()> {
         self.skip_whitespace();
-        
+
         // 括号分组
         if self.consume_char('(') {
             let result = self.parse_expression()?;
             self.consume_char(')');
             return Ok(result);
         }
-        
+
         // defined(MACRO) 或 defined MACRO
         if self.consume_keyword("defined") {
             self.skip_whitespace();
@@ -1264,20 +1322,28 @@ impl<'a> ConditionParser<'a> {
                 // defined(MACRO) 形式
                 if let Some(name) = self.read_identifier() {
                     self.consume_char(')');
-                    return Ok(if self.defines.contains_key(&name) { 1 } else { 0 });
+                    return Ok(if self.defines.contains_key(&name) {
+                        1
+                    } else {
+                        0
+                    });
                 }
             } else if let Some(name) = self.read_identifier() {
                 // defined MACRO 形式
-                return Ok(if self.defines.contains_key(&name) { 1 } else { 0 });
+                return Ok(if self.defines.contains_key(&name) {
+                    1
+                } else {
+                    0
+                });
             }
             return Ok(0);
         }
-        
+
         // 数字常量
         if let Some(num) = self.read_number() {
             return Ok(num);
         }
-        
+
         // 标识符（宏名）- 查找其值
         if let Some(name) = self.read_identifier() {
             if let Some(value_str) = self.defines.get(&name) {
@@ -1292,7 +1358,7 @@ impl<'a> ConditionParser<'a> {
             }
             return Ok(0); // 未定义的宏视为 0
         }
-        
+
         Err(())
     }
 }
@@ -1304,37 +1370,42 @@ mod tests {
     #[test]
     fn test_basic_define() {
         let mut pp = Preprocessor::new(".");
-        let result = pp.process("#define PI 3.14\nconst double pi = PI;", "test.c").unwrap();
+        let result = pp
+            .process("#define PI 3.14\nconst double pi = PI;", "test.c")
+            .unwrap();
         assert!(result.contains("const double pi = 3.14"));
     }
 
     #[test]
     fn test_conditional_compilation() {
         let mut pp = Preprocessor::new(".");
-        let result = pp.process(
-            "#define DEBUG\n#ifdef DEBUG\nint debug = 1;\n#endif",
-            "test.c"
-        ).unwrap();
+        let result = pp
+            .process(
+                "#define DEBUG\n#ifdef DEBUG\nint debug = 1;\n#endif",
+                "test.c",
+            )
+            .unwrap();
         assert!(result.contains("int debug = 1"));
     }
 
     #[test]
     fn test_ifndef() {
         let mut pp = Preprocessor::new(".");
-        let result = pp.process(
-            "#ifndef UNDEFINED\nint x = 1;\n#endif",
-            "test.c"
-        ).unwrap();
+        let result = pp
+            .process("#ifndef UNDEFINED\nint x = 1;\n#endif", "test.c")
+            .unwrap();
         assert!(result.contains("int x = 1"));
     }
 
     #[test]
     fn test_else() {
         let mut pp = Preprocessor::new(".");
-        let result = pp.process(
-            "#define RELEASE\n#ifdef DEBUG\nint mode = 0;\n#else\nint mode = 1;\n#endif",
-            "test.c"
-        ).unwrap();
+        let result = pp
+            .process(
+                "#define RELEASE\n#ifdef DEBUG\nint mode = 0;\n#else\nint mode = 1;\n#endif",
+                "test.c",
+            )
+            .unwrap();
         assert!(result.contains("int mode = 1"));
     }
 
@@ -1342,10 +1413,12 @@ mod tests {
     fn test_endif_with_comment() {
         // 测试 #endif 后面带注释的情况
         let mut pp = Preprocessor::new(".");
-        let result = pp.process(
-            "#define TEST\n#ifdef TEST\nint x = 1;\n#endif /* TEST */",
-            "test.c"
-        ).unwrap();
+        let result = pp
+            .process(
+                "#define TEST\n#ifdef TEST\nint x = 1;\n#endif /* TEST */",
+                "test.c",
+            )
+            .unwrap();
         assert!(result.contains("int x = 1"));
     }
 }

@@ -1,9 +1,9 @@
-use std::env;
-use std::fs;
-use std::process;
-use std::path::{Path, PathBuf};
 use cavvy::Compiler;
 use cavvy::error::{print_error_with_context, print_miette_error, print_tool_error, print_warning};
+use std::env;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process;
 
 /// 查找 clang 可执行文件
 /// 1. 首先尝试直接调用 "clang"（系统 PATH 中）
@@ -16,7 +16,7 @@ fn find_clang() -> Result<PathBuf, String> {
             return Ok(PathBuf::from("clang"));
         }
     }
-    
+
     // 2. 尝试编译器所在目录下的 llvm-minimal
     if let Ok(exe_path) = env::current_exe() {
         if let Some(exe_dir) = exe_path.parent() {
@@ -26,7 +26,7 @@ fn find_clang() -> Result<PathBuf, String> {
             }
         }
     }
-    
+
     // 3. 都找不到，返回错误
     Err("找不到 clang 编译器。请确保 clang 已安装并在 PATH 中，或将 llvm-minimal 放在编译器同目录下。".to_string())
 }
@@ -34,16 +34,16 @@ fn find_clang() -> Result<PathBuf, String> {
 const VERSION: &str = env!("CAY-IR_VERSION");
 
 struct CompileOptions {
-    optimization: String,    // -O0, -O1, -O2, -O3, -Os, -Oz
-    optimize_ir: bool,       // --opt-ir: 使用 clang 优化 IR
-    emit_optimized: bool,    // --emit-optimized: 输出发优化后的 IR
-    debug: bool,             // -g: 生成 DWARF 调试信息
-    target_os: String,       // --target: 目标操作系统
-    features: Vec<String>,   // -f:XX 或 --feature:XX 开启特性
-    no_features: Vec<String>, // -No:XX 关闭特性
-    defines: Vec<String>,    // -D:XX 定义宏
-    undefines: Vec<String>,  // -U:XX 取消定义宏
-    obfuscate: bool,         // --obfuscate 混淆 IR 代码
+    optimization: String,       // -O0, -O1, -O2, -O3, -Os, -Oz
+    optimize_ir: bool,          // --opt-ir: 使用 clang 优化 IR
+    emit_optimized: bool,       // --emit-optimized: 输出发优化后的 IR
+    debug: bool,                // -g: 生成 DWARF 调试信息
+    target_os: String,          // --target: 目标操作系统
+    features: Vec<String>,      // -f:XX 或 --feature:XX 开启特性
+    no_features: Vec<String>,   // -No:XX 关闭特性
+    defines: Vec<String>,       // -D:XX 定义宏
+    undefines: Vec<String>,     // -U:XX 取消定义宏
+    obfuscate: bool,            // --obfuscate 混淆 IR 代码
     include_paths: Vec<String>, // -I:XX 包含路径
 }
 
@@ -212,7 +212,8 @@ fn optimize_ir(ir_file: &str, opt_level: &str) -> Result<String, String> {
         .arg("-o")
         .arg(&optimized_file);
 
-    let output = cmd.output()
+    let output = cmd
+        .output()
         .map_err(|e| format!("执行 clang 优化失败: {}", e))?;
 
     if !output.status.success() {
@@ -232,7 +233,7 @@ fn main() {
             print_miette_error(
                 "cavvy::argument_error",
                 &e,
-                Some("请检查命令行参数是否正确")
+                Some("请检查命令行参数是否正确"),
             );
             print_usage();
             process::exit(1);
@@ -246,7 +247,7 @@ fn main() {
             print_miette_error(
                 "cavvy::io_error",
                 &format!("无法读取源文件 '{}': {}", source_path, e),
-                Some("请检查文件路径是否正确，文件是否存在")
+                Some("请检查文件路径是否正确，文件是否存在"),
             );
             process::exit(1);
         }
@@ -326,7 +327,7 @@ fn main() {
                 print_miette_error(
                     "cavvy::io_error",
                     &format!("无法创建输出文件 '{}': {} / {}", final_output, e, e2),
-                    Some("请检查输出目录是否有写入权限")
+                    Some("请检查输出目录是否有写入权限"),
                 );
                 let _ = fs::remove_file(&final_ir_file);
                 process::exit(1);

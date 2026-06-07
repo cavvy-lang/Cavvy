@@ -1,13 +1,13 @@
 //! cay-rcpl - Cavvy Rust Playground Loop
-//! 
+//!
 //! RCPL 是 Cavvy 的交互式解释器，提供：
 //! - 持久化变量定义和赋值
 //! - 表达式自动打印
 //! - 多行输入支持
 //! - 上下文查看和管理
 
-use std::env;
 use cavvy::error::print_miette_error;
+use std::env;
 
 const VERSION: &str = env!("CAY_RCPL_VERSION");
 
@@ -31,7 +31,7 @@ fn print_usage() {
 fn main() {
     // 解析命令行参数
     let args: Vec<String> = env::args().collect();
-    
+
     for arg in &args[1..] {
         match arg.as_str() {
             "-h" | "--help" => {
@@ -45,7 +45,7 @@ fn main() {
             _ => {}
         }
     }
-    
+
     // 运行 RCPL
     match cavvy::rcpl::Rcpl::new() {
         Ok(mut rcpl) => {
@@ -53,7 +53,7 @@ fn main() {
                 print_miette_error(
                     "cavvy::rcpl_error",
                     &format!("RCPL 错误: {}", e),
-                    Some("请检查 RCPL 环境配置")
+                    Some("请检查 RCPL 环境配置"),
                 );
                 std::process::exit(1);
             }
@@ -62,7 +62,7 @@ fn main() {
             print_miette_error(
                 "cavvy::init_error",
                 &format!("初始化失败: {}", e),
-                Some("请检查编译器是否正确安装")
+                Some("请检查编译器是否正确安装"),
             );
             std::process::exit(1);
         }

@@ -47,34 +47,30 @@
 //! let llvm_ir = backend.emit(&module)?;
 //! ```
 
-pub mod types;
-pub mod value;
 pub mod block;
-pub mod function;
-pub mod module;
 pub mod builder;
-pub mod llvm_backend;
+pub mod function;
 pub mod inline_ir;
 pub mod inliner;
+pub mod llvm_backend;
+pub mod module;
+pub mod types;
+pub mod value;
 pub mod verification;
 
 #[cfg(test)]
 mod integration_tests;
 
 // 核心类型重导出
-pub use types::IrType;
-pub use value::{
-    IrValue, IrInstruction, IrTerminator,
-    IrBinaryOp, IrCastKind, IrCmpOp,
-};
 pub use block::IrBasicBlock;
-pub use function::{IrFunction, IrParam, IrLinkage};
-pub use module::{
-    IrModule, IrGlobal, IrGlobalLinkage,
-    IrStringConstant, IrExternDecl, IrTypeDecl, IrModuleStats,
-};
 pub use builder::IrBuilder;
-pub use llvm_backend::LlvmBackend;
-pub use inline_ir::{InlineIrParser, InlineIrBlock};
+pub use function::{IrFunction, IrLinkage, IrParam};
+pub use inline_ir::{InlineIrBlock, InlineIrParser};
 pub use inliner::{Inliner, InlinerConfig};
+pub use llvm_backend::LlvmBackend;
+pub use module::{
+    IrExternDecl, IrGlobal, IrGlobalLinkage, IrModule, IrModuleStats, IrStringConstant, IrTypeDecl,
+};
+pub use types::IrType;
+pub use value::{IrBinaryOp, IrCastKind, IrCmpOp, IrInstruction, IrTerminator, IrValue};
 pub use verification::IrVerifier;

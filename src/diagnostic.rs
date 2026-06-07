@@ -3,8 +3,8 @@
 //! 提供全面的错误、警告和提示信息管理系统。
 //! 支持多错误收集、错误代码、详细的上下文信息和修复建议。
 
-use std::fmt;
 use std::collections::HashMap;
+use std::fmt;
 
 /// 错误严重程度
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -204,7 +204,11 @@ impl Diagnostic {
     }
 
     /// 添加相关信息
-    pub fn with_related_info(mut self, message: impl Into<String>, location: SourceLocation) -> Self {
+    pub fn with_related_info(
+        mut self,
+        message: impl Into<String>,
+        location: SourceLocation,
+    ) -> Self {
         self.related_info.push(RelatedInfo {
             message: message.into(),
             location,
@@ -261,7 +265,9 @@ impl DiagnosticCollector {
 
     /// 检查是否有致命错误
     pub fn has_fatal_errors(&self) -> bool {
-        self.diagnostics.iter().any(|d| d.severity == Severity::Fatal)
+        self.diagnostics
+            .iter()
+            .any(|d| d.severity == Severity::Fatal)
     }
 
     /// 检查是否达到最大错误数
@@ -477,7 +483,9 @@ pub fn format_diagnostic(diagnostic: &Diagnostic, source: &str, filename: &str) 
     // 标题
     output.push_str(&format!(
         "\n[{}] {} ({})",
-        diagnostic.severity, diagnostic.code, ErrorCodes::get_description(&diagnostic.code)
+        diagnostic.severity,
+        diagnostic.code,
+        ErrorCodes::get_description(&diagnostic.code)
     ));
     output.push_str(&format!("\n文件: {}", filename));
     output.push_str(&format!(
@@ -535,7 +543,11 @@ pub fn format_diagnostic(diagnostic: &Diagnostic, source: &str, filename: &str) 
 }
 
 /// 格式化所有诊断信息
-pub fn format_all_diagnostics(collector: &DiagnosticCollector, source: &str, filename: &str) -> String {
+pub fn format_all_diagnostics(
+    collector: &DiagnosticCollector,
+    source: &str,
+    filename: &str,
+) -> String {
     let mut output = String::new();
 
     for diagnostic in collector.diagnostics() {
@@ -558,7 +570,7 @@ pub fn format_all_diagnostics(collector: &DiagnosticCollector, source: &str, fil
 // 统一诊断输出函数（基于 miette 的漂亮终端展示）
 // ============================================================
 
-use miette::{Report, GraphicalReportHandler, NamedSource, LabeledSpan, SourceSpan as MietteSpan};
+use miette::{GraphicalReportHandler, LabeledSpan, NamedSource, Report, SourceSpan as MietteSpan};
 
 /// 用于 miette 展示的临时诊断包装结构体
 /// 结合了 Diagnostic 数据和源代码，以正确计算字节偏移量
@@ -597,7 +609,9 @@ impl miette::Diagnostic for DisplayDiagnostic {
     }
 
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-        self.help.as_ref().map(|h| Box::new(h.as_str()) as Box<dyn std::fmt::Display>)
+        self.help
+            .as_ref()
+            .map(|h| Box::new(h.as_str()) as Box<dyn std::fmt::Display>)
     }
 
     fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
@@ -620,7 +634,10 @@ impl miette::Diagnostic for DisplayDiagnostic {
         } else {
             // 取当前位置到下一个空白/行尾的长度
             let rest = &self.source[offset..];
-            rest.chars().take_while(|c| !c.is_whitespace()).count().max(1)
+            rest.chars()
+                .take_while(|c| !c.is_whitespace())
+                .count()
+                .max(1)
         };
 
         // 防止 span_len 超出源码边界（比如 token 名较长但源码已结束）
@@ -673,9 +690,15 @@ pub fn print_diagnostics(collector: &DiagnosticCollector, source: &str, filename
 
     let src = NamedSource::new(filename, source.to_string());
     let diagnostics = collector.diagnostics();
-    
-    let error_count = diagnostics.iter().filter(|d| d.severity == Severity::Error || d.severity == Severity::Fatal).count();
-    let warning_count = diagnostics.iter().filter(|d| d.severity == Severity::Warning).count();
+
+    let error_count = diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error || d.severity == Severity::Fatal)
+        .count();
+    let warning_count = diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Warning)
+        .count();
 
     eprintln!();
 
@@ -685,13 +708,13 @@ pub fn print_diagnostics(collector: &DiagnosticCollector, source: &str, filename
         if diag.location.line == 0 || diag.location.line > line_count {
             use std::io::Write;
             use std::time::SystemTime;
-            
+
             let timestamp = SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .map(|d| d.as_secs())
                 .unwrap_or(0);
             let debug_filename = format!("debug_{}.txt", timestamp);
-            
+
             let line_count = source.lines().count();
             let invalid_reason = if diag.location.line == 0 {
                 "行号为0"
@@ -700,8 +723,9 @@ pub fn print_diagnostics(collector: &DiagnosticCollector, source: &str, filename
             } else {
                 "未知原因"
             };
-            
-            let debug_content = format!(r#"Cavvy Bug Report
+
+            let debug_content = format!(
+                r#"Cavvy Bug Report
 ================
 版本: {}
 错误代码: {}
@@ -727,14 +751,19 @@ pub fn print_diagnostics(collector: &DiagnosticCollector, source: &str, filename
                 line_count,
                 source
             );
-            
+
             if let Ok(mut file) = std::fs::File::create(&debug_filename) {
                 let _ = file.write_all(debug_content.as_bytes());
             }
-            
-            eprintln!("\n  [!] 检测到Cavvy报错系统出现严重问题，请立刻向 https://github.com/cavvy-lang/cavvy/issues 提出Bug报告，以下是版本信息：");
+
+            eprintln!(
+                "\n  [!] 检测到Cavvy报错系统出现严重问题，请立刻向 https://github.com/cavvy-lang/cavvy/issues 提出Bug报告，以下是版本信息："
+            );
             eprintln!("      Cavvy v{} ", env!("CARGO_PKG_VERSION"));
-            eprintln!("      报错文件的源代码、Token解析、Parser解析已保存：{}\n", debug_filename);
+            eprintln!(
+                "      报错文件的源代码、Token解析、Parser解析已保存：{}\n",
+                debug_filename
+            );
         }
 
         let severity = match diag.severity {
@@ -829,11 +858,12 @@ mod tests {
             CompilationPhase::Semantic,
             "类型不匹配: 期望 int, 实际 String",
             SourceLocation::new(None, 3, 8),
-        ).with_suggestion(FixSuggestion::new("请使用 Integer.parseInt() 转换"));
+        )
+        .with_suggestion(FixSuggestion::new("请使用 Integer.parseInt() 转换"));
         collector.add(diag);
 
         let source = "int x = \"hello\";\nint y = 42;\n";
-        
+
         // print_diagnostics 直接输出到 stderr，验证不崩溃
         print_diagnostics(&collector, source, "test.cay");
         assert!(collector.has_errors());
@@ -845,10 +875,20 @@ mod tests {
         let mut collector = DiagnosticCollector::new();
         let loc1 = SourceLocation::new(None, 1, 1);
         let loc2 = SourceLocation::new(None, 2, 1);
-        
-        collector.add(Diagnostic::error("E4001", CompilationPhase::Semantic, "未定义变量 'x'", loc1));
-        collector.add(Diagnostic::error("E4002", CompilationPhase::Semantic, "重复定义 'y'", loc2));
-        
+
+        collector.add(Diagnostic::error(
+            "E4001",
+            CompilationPhase::Semantic,
+            "未定义变量 'x'",
+            loc1,
+        ));
+        collector.add(Diagnostic::error(
+            "E4002",
+            CompilationPhase::Semantic,
+            "重复定义 'y'",
+            loc2,
+        ));
+
         assert_eq!(collector.error_count(), 2);
         assert_eq!(collector.diagnostics().len(), 2);
     }
@@ -865,9 +905,14 @@ mod tests {
     fn test_print_diagnostics_with_warnings() {
         let mut collector = DiagnosticCollector::new();
         let loc = SourceLocation::new(None, 1, 1);
-        
-        collector.add(Diagnostic::warning("W4001", CompilationPhase::Semantic, "未使用的变量", loc));
-        
+
+        collector.add(Diagnostic::warning(
+            "W4001",
+            CompilationPhase::Semantic,
+            "未使用的变量",
+            loc,
+        ));
+
         assert!(!collector.has_errors());
         assert_eq!(collector.warning_count(), 1);
     }
@@ -902,11 +947,16 @@ mod tests {
 
     #[test]
     fn test_diagnostic_builder_chain() {
-        let diag = Diagnostic::error("E4001", CompilationPhase::Semantic, "错误", SourceLocation::default())
-            .with_details("详细说明")
-            .with_suggestion(FixSuggestion::new("建议1"))
-            .with_suggestion(FixSuggestion::new("建议2"))
-            .with_span(SourceSpan::single(1, 5));
+        let diag = Diagnostic::error(
+            "E4001",
+            CompilationPhase::Semantic,
+            "错误",
+            SourceLocation::default(),
+        )
+        .with_details("详细说明")
+        .with_suggestion(FixSuggestion::new("建议1"))
+        .with_suggestion(FixSuggestion::new("建议2"))
+        .with_span(SourceSpan::single(1, 5));
 
         assert_eq!(diag.code, "E4001");
         assert_eq!(diag.severity, Severity::Error);
@@ -917,9 +967,14 @@ mod tests {
 
     #[test]
     fn test_diagnostic_related_info() {
-        let diag = Diagnostic::error("E4001", CompilationPhase::Semantic, "主错误", SourceLocation::new(None, 5, 1))
-            .with_related_info("在这里定义", SourceLocation::new(None, 2, 1))
-            .with_related_info("这里使用", SourceLocation::new(None, 5, 1));
+        let diag = Diagnostic::error(
+            "E4001",
+            CompilationPhase::Semantic,
+            "主错误",
+            SourceLocation::new(None, 5, 1),
+        )
+        .with_related_info("在这里定义", SourceLocation::new(None, 2, 1))
+        .with_related_info("这里使用", SourceLocation::new(None, 5, 1));
 
         assert_eq!(diag.related_info.len(), 2);
     }

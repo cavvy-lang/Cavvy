@@ -14,7 +14,9 @@ impl IRGenerator {
         self.emit_raw("  ret i8* getelementptr ([5 x i8], [5 x i8]* @.str.true_str, i64 0, i64 0)");
         self.emit_raw("");
         self.emit_raw("false_case:");
-        self.emit_raw("  ret i8* getelementptr ([6 x i8], [6 x i8]* @.str.false_str, i64 0, i64 0)");
+        self.emit_raw(
+            "  ret i8* getelementptr ([6 x i8], [6 x i8]* @.str.false_str, i64 0, i64 0)",
+        );
         self.emit_raw("}");
         self.emit_raw("");
     }

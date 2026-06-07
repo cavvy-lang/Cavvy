@@ -2,8 +2,8 @@
 //!
 //! 处理条件表达式 ? :
 
-use crate::codegen::context::IRGenerator;
 use crate::ast::*;
+use crate::codegen::context::IRGenerator;
 use crate::error::cayResult;
 
 impl IRGenerator {
@@ -27,11 +27,17 @@ impl IRGenerator {
             self.emit_line(&format!("  {} = icmp ne i1 {}, 0", cond_reg, cond_val));
         } else {
             // 对于整数类型，先与 0 比较
-            self.emit_line(&format!("  {} = icmp ne {} {}, 0", cond_reg, cond_type, cond_val));
+            self.emit_line(&format!(
+                "  {} = icmp ne {} {}, 0",
+                cond_reg, cond_type, cond_val
+            ));
         }
 
         // 条件分支
-        self.emit_line(&format!("  br i1 {}, label %{}, label %{}", cond_reg, then_label, else_label));
+        self.emit_line(&format!(
+            "  br i1 {}, label %{}, label %{}",
+            cond_reg, then_label, else_label
+        ));
 
         // then 分支
         self.emit_line(&format!("\n{}:", then_label));
@@ -48,8 +54,10 @@ impl IRGenerator {
         // 合并点 - 使用原始值而不是通过add指令
         self.emit_line(&format!("\n{}:", end_label));
         let result_temp = self.new_temp();
-        self.emit_line(&format!("  {} = phi {} [ {}, %{} ], [ {}, %{} ]",
-            result_temp, then_type, then_val, then_label, else_val, else_label));
+        self.emit_line(&format!(
+            "  {} = phi {} [ {}, %{} ], [ {}, %{} ]",
+            result_temp, then_type, then_val, then_label, else_val, else_label
+        ));
 
         Ok(format!("{} {}", then_type, result_temp))
     }

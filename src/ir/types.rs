@@ -46,7 +46,10 @@ pub enum IrType {
 impl IrType {
     /// 是否是整数类型
     pub fn is_integer(&self) -> bool {
-        matches!(self, IrType::I1 | IrType::I8 | IrType::I16 | IrType::I32 | IrType::I64)
+        matches!(
+            self,
+            IrType::I1 | IrType::I8 | IrType::I16 | IrType::I32 | IrType::I64
+        )
     }
 
     /// 是否是浮点类型
@@ -126,7 +129,10 @@ impl IrType {
             IrType::Pointer(inner) => format!("{}*", inner.to_llvm_str()),
             IrType::Array(inner, count) => format!("[{} x {}]", count, inner.to_llvm_str()),
             IrType::Struct { name, .. } => format!("%{}", name),
-            IrType::Function { params, return_type } => {
+            IrType::Function {
+                params,
+                return_type,
+            } => {
                 let param_strs: Vec<String> = params.iter().map(|p| p.to_llvm_str()).collect();
                 format!("{} ({})*", return_type.to_llvm_str(), param_strs.join(", "))
             }
@@ -167,7 +173,12 @@ impl From<&crate::types::Type> for IrType {
             Type::Auto => IrType::I32, // 默认回退
             // FFI 类型
             Type::CInt | Type::CUInt => IrType::I32,
-            Type::CLong | Type::CULong | Type::SizeT | Type::SSizeT | Type::UIntPtr | Type::IntPtr => IrType::I64,
+            Type::CLong
+            | Type::CULong
+            | Type::SizeT
+            | Type::SSizeT
+            | Type::UIntPtr
+            | Type::IntPtr => IrType::I64,
             Type::CShort | Type::CUShort => IrType::I16,
             Type::CChar | Type::CUChar | Type::CBool => IrType::I8,
             Type::CFloat => IrType::F32,

@@ -1,5 +1,5 @@
-use std::fmt;
 use std::collections::HashMap;
+use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type {
@@ -14,31 +14,31 @@ pub enum Type {
     Object(String),
     Array(Box<Type>),
     Function(Box<FunctionType>),
-    Auto,  // 自动类型推断占位符
+    Auto, // 自动类型推断占位符
     // 泛型支持
-    GenericParam(String),                   // 泛型类型参数: T
-    Generic(String, Vec<Type>),             // 泛型特化: Optional<Int32>, ArrayList<Int32>
+    GenericParam(String),       // 泛型类型参数: T
+    Generic(String, Vec<Type>), // 泛型特化: Optional<Int32>, ArrayList<Int32>
     // FFI 类型
-    CInt,       // C int (通常为 i32)
-    CUInt,      // C unsigned int (通常为 u32)
-    CLong,      // C long (平台相关: Windows i32, Linux/macOS i64)
-    CULong,     // C unsigned long (平台相关)
-    CShort,     // C short (i16)
-    CUShort,    // C unsigned short (u16)
-    CChar,      // C char (i8)
-    CUChar,     // C unsigned char (u8)
-    CFloat,     // C float (f32)
-    CDouble,    // C double (f64)
-    SizeT,      // size_t (usize, 平台相关)
-    SSizeT,     // ssize_t (isize, 平台相关)
-    UIntPtr,    // uintptr_t (usize)
-    IntPtr,     // intptr_t (isize)
-    CVoid,      // C void (用于指针)
-    CBool,      // C bool (i8, 0 或 1)
+    CInt,    // C int (通常为 i32)
+    CUInt,   // C unsigned int (通常为 u32)
+    CLong,   // C long (平台相关: Windows i32, Linux/macOS i64)
+    CULong,  // C unsigned long (平台相关)
+    CShort,  // C short (i16)
+    CUShort, // C unsigned short (u16)
+    CChar,   // C char (i8)
+    CUChar,  // C unsigned char (u8)
+    CFloat,  // C float (f32)
+    CDouble, // C double (f64)
+    SizeT,   // size_t (usize, 平台相关)
+    SSizeT,  // ssize_t (isize, 平台相关)
+    UIntPtr, // uintptr_t (usize)
+    IntPtr,  // intptr_t (isize)
+    CVoid,   // C void (用于指针)
+    CBool,   // C bool (i8, 0 或 1)
     // FFI 指针类型
-    Pointer(Box<Type>),  // 通用指针类型: Pointer(CVoid) = void*
+    Pointer(Box<Type>), // 通用指针类型: Pointer(CVoid) = void*
     // FFI 结构体类型
-    Struct(String),      // 命名结构体: Struct("SDL_Window")
+    Struct(String), // 命名结构体: Struct("SDL_Window")
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -46,22 +46,22 @@ pub struct FunctionType {
     pub params: Vec<Type>,
     pub return_type: Box<Type>,
     pub is_static: bool,
-    pub is_closure: bool,  // 是否是闭包（有捕获变量）
+    pub is_closure: bool, // 是否是闭包（有捕获变量）
 }
 
 #[derive(Debug, Clone)]
 pub struct ClassInfo {
     pub name: String,
-    pub type_params: Vec<String>,                    // 泛型类型参数: <T, U, ...>
-    pub methods: HashMap<String, Vec<MethodInfo>>,  // 支持方法重载：同名方法可以有多个
+    pub type_params: Vec<String>, // 泛型类型参数: <T, U, ...>
+    pub methods: HashMap<String, Vec<MethodInfo>>, // 支持方法重载：同名方法可以有多个
     pub fields: HashMap<String, FieldInfo>,
-    pub constructors: Vec<ConstructorInfo>,  // 构造函数列表
-    pub has_destructor: bool,  // 是否有析构函数
+    pub constructors: Vec<ConstructorInfo>, // 构造函数列表
+    pub has_destructor: bool,               // 是否有析构函数
     pub parent: Option<String>,
-    pub interfaces: Vec<String>,  // 实现的接口列表
-    pub is_abstract: bool,  // 是否是抽象类
-    pub is_final: bool,  // 是否是final类（禁止继承）
-    pub vtable_layout: Option<VTableLayout>,  // vtable 布局信息
+    pub interfaces: Vec<String>,             // 实现的接口列表
+    pub is_abstract: bool,                   // 是否是抽象类
+    pub is_final: bool,                      // 是否是final类（禁止继承）
+    pub vtable_layout: Option<VTableLayout>, // vtable 布局信息
 }
 
 /// 构造函数信息
@@ -84,7 +84,7 @@ pub struct InterfaceInfo {
 pub struct StructInfo {
     pub name: String,
     pub fields: HashMap<String, FieldInfo>,
-    pub methods: HashMap<String, Vec<MethodInfo>>,  // 支持方法重载
+    pub methods: HashMap<String, Vec<MethodInfo>>, // 支持方法重载
     pub is_public: bool,
 }
 
@@ -93,27 +93,27 @@ impl StructInfo {
     /// 时间复杂度: O(n)，n 为同名方法数量
     pub fn find_method(&self, name: &str, arg_types: &[Type]) -> Option<&MethodInfo> {
         let methods = self.methods.get(name)?;
-        
+
         // 第一遍：寻找精确匹配
         for m in methods.iter() {
             if Self::match_method_params_exact(&m.params, arg_types) {
                 return Some(m);
             }
         }
-        
+
         // 第二遍：寻找兼容匹配（允许隐式转换）
-        methods.iter().find(|m| {
-            Self::match_method_params(&m.params, arg_types)
-        })
+        methods
+            .iter()
+            .find(|m| Self::match_method_params(&m.params, arg_types))
     }
-    
+
     /// 检查类型是否精确匹配（支持泛型参数）
     fn types_match_exact(param_type: &Type, arg_type: &Type) -> bool {
         // 泛型参数类型可以匹配任何类型
         if matches!(param_type, Type::GenericParam(_)) {
             return true;
         }
-        
+
         // 处理泛型类型匹配：Generic("Wrapper", [GenericParam("T")]) 应该匹配 Generic("Wrapper", [Int32])
         match (param_type, arg_type) {
             (Type::Generic(param_name, param_args), Type::Generic(arg_name, arg_args)) => {
@@ -121,9 +121,10 @@ impl StructInfo {
                     return false;
                 }
                 // 逐个比较类型参数
-                param_args.iter().zip(arg_args.iter()).all(|(p, a)| {
-                    Self::types_match_exact(p, a)
-                })
+                param_args
+                    .iter()
+                    .zip(arg_args.iter())
+                    .all(|(p, a)| Self::types_match_exact(p, a))
             }
             (Type::Generic(param_name, param_args), Type::Object(arg_name)) => {
                 // 解析对象类型名中的泛型参数: "Wrapper<int>" -> ("Wrapper", ["int"])
@@ -157,10 +158,10 @@ impl StructInfo {
 
         // 找到可变参数的位置（如果有）
         let varargs_idx = params.iter().position(|p| p.is_varargs);
-        
+
         if let Some(vi) = varargs_idx {
-            let fixed_before = vi;                    // 可变参数之前的固定参数
-            let fixed_after = params.len() - vi - 1;  // 可变参数之后的固定参数
+            let fixed_before = vi; // 可变参数之前的固定参数
+            let fixed_after = params.len() - vi - 1; // 可变参数之后的固定参数
             let min_args = fixed_before + fixed_after;
             if arg_types.len() < min_args {
                 return false;
@@ -182,7 +183,9 @@ impl StructInfo {
             let varargs_end = fixed_before + varargs_len;
 
             // 如果恰好一个数组参数且类型匹配，直接接受
-            if varargs_len == 1 && Self::types_match_exact(&params[vi].param_type, &arg_types[fixed_before]) {
+            if varargs_len == 1
+                && Self::types_match_exact(&params[vi].param_type, &arg_types[fixed_before])
+            {
                 // 直接传递数组给可变参数
             } else {
                 for i in fixed_before..varargs_end {
@@ -194,7 +197,10 @@ impl StructInfo {
 
             // 检查可变参数之后的固定参数（精确匹配，支持泛型参数）
             for i in 0..fixed_after {
-                if !Self::types_match_exact(&params[vi + 1 + i].param_type, &arg_types[varargs_end + i]) {
+                if !Self::types_match_exact(
+                    &params[vi + 1 + i].param_type,
+                    &arg_types[varargs_end + i],
+                ) {
                     return false;
                 }
             }
@@ -204,7 +210,10 @@ impl StructInfo {
             if params.len() != arg_types.len() {
                 return false;
             }
-            params.iter().zip(arg_types.iter()).all(|(p, a)| Self::types_match_exact(&p.param_type, a))
+            params
+                .iter()
+                .zip(arg_types.iter())
+                .all(|(p, a)| Self::types_match_exact(&p.param_type, a))
         }
     }
 
@@ -216,12 +225,12 @@ impl StructInfo {
 
         // 找到可变参数的位置（如果有）
         let varargs_idx = params.iter().position(|p| p.is_varargs);
-        
+
         if let Some(vi) = varargs_idx {
             let fixed_before = vi;
             let fixed_after = params.len() - vi - 1;
             let min_args = fixed_before + fixed_after;
-            
+
             if arg_types.len() < min_args {
                 return false;
             }
@@ -241,7 +250,9 @@ impl StructInfo {
             let varargs_len = arg_types.len() - min_args;
             let varargs_end = fixed_before + varargs_len;
 
-            if varargs_len == 1 && Self::types_compatible(&params[vi].param_type, &arg_types[fixed_before]) {
+            if varargs_len == 1
+                && Self::types_compatible(&params[vi].param_type, &arg_types[fixed_before])
+            {
                 // 直接传递数组给可变参数
             } else {
                 for i in fixed_before..varargs_end {
@@ -253,7 +264,10 @@ impl StructInfo {
 
             // 检查可变参数之后的固定参数
             for i in 0..fixed_after {
-                if !Self::types_compatible(&params[vi + 1 + i].param_type, &arg_types[varargs_end + i]) {
+                if !Self::types_compatible(
+                    &params[vi + 1 + i].param_type,
+                    &arg_types[varargs_end + i],
+                ) {
                     return false;
                 }
             }
@@ -262,7 +276,10 @@ impl StructInfo {
             if params.len() != arg_types.len() {
                 return false;
             }
-            params.iter().zip(arg_types.iter()).all(|(p, a)| Self::types_compatible(&p.param_type, a))
+            params
+                .iter()
+                .zip(arg_types.iter())
+                .all(|(p, a)| Self::types_compatible(&p.param_type, a))
         }
     }
 
@@ -292,9 +309,9 @@ impl StructInfo {
 #[derive(Debug, Clone)]
 pub struct EnumInfo {
     pub name: String,
-    pub type_params: Vec<String>,                    // 泛型类型参数
+    pub type_params: Vec<String>, // 泛型类型参数
     pub variants: Vec<EnumVariantInfo>,
-    pub methods: HashMap<String, Vec<MethodInfo>>,   // 支持方法重载
+    pub methods: HashMap<String, Vec<MethodInfo>>, // 支持方法重载
     pub is_public: bool,
 }
 
@@ -302,7 +319,7 @@ pub struct EnumInfo {
 #[derive(Debug, Clone)]
 pub struct EnumVariantInfo {
     pub name: String,
-    pub payload_type: Option<Type>,   // variant 携带的数据类型
+    pub payload_type: Option<Type>, // variant 携带的数据类型
 }
 
 impl ClassInfo {
@@ -317,27 +334,27 @@ impl ClassInfo {
     /// 根据方法名和参数类型查找方法（支持可变参数）
     pub fn find_method(&self, name: &str, arg_types: &[Type]) -> Option<&MethodInfo> {
         let methods = self.methods.get(name)?;
-        
+
         // 第一遍：寻找精确匹配
         for m in methods.iter() {
             if Self::match_method_params_exact(&m.params, arg_types) {
                 return Some(m);
             }
         }
-        
+
         // 第二遍：寻找兼容匹配（允许隐式转换）
-        methods.iter().find(|m| {
-            Self::match_method_params(&m.params, arg_types)
-        })
+        methods
+            .iter()
+            .find(|m| Self::match_method_params(&m.params, arg_types))
     }
-    
+
     /// 检查类型是否精确匹配（支持泛型参数）
     fn types_match_exact(param_type: &Type, arg_type: &Type) -> bool {
         // 泛型参数类型可以匹配任何类型
         if matches!(param_type, Type::GenericParam(_)) {
             return true;
         }
-        
+
         // 处理泛型类型匹配：Generic("Wrapper", [GenericParam("T")]) 应该匹配 Object("Wrapper<int>")
         match (param_type, arg_type) {
             (Type::Generic(param_name, param_args), Type::Generic(arg_name, arg_args)) => {
@@ -345,9 +362,10 @@ impl ClassInfo {
                     return false;
                 }
                 // 逐个比较类型参数
-                param_args.iter().zip(arg_args.iter()).all(|(p, a)| {
-                    Self::types_match_exact(p, a)
-                })
+                param_args
+                    .iter()
+                    .zip(arg_args.iter())
+                    .all(|(p, a)| Self::types_match_exact(p, a))
             }
             (Type::Generic(param_name, param_args), Type::Object(arg_name)) => {
                 // 解析对象类型名中的泛型参数: "Wrapper<int>" -> ("Wrapper", ["int"])
@@ -381,10 +399,10 @@ impl ClassInfo {
 
         // 找到可变参数的位置（如果有）
         let varargs_idx = params.iter().position(|p| p.is_varargs);
-        
+
         if let Some(vi) = varargs_idx {
-            let fixed_before = vi;                    // 可变参数之前的固定参数
-            let fixed_after = params.len() - vi - 1;  // 可变参数之后的固定参数
+            let fixed_before = vi; // 可变参数之前的固定参数
+            let fixed_after = params.len() - vi - 1; // 可变参数之后的固定参数
             let min_args = fixed_before + fixed_after;
             if arg_types.len() < min_args {
                 return false;
@@ -406,7 +424,9 @@ impl ClassInfo {
             let varargs_end = fixed_before + varargs_len;
 
             // 如果恰好一个数组参数且类型匹配，直接接受
-            if varargs_len == 1 && Self::types_match_exact(&params[vi].param_type, &arg_types[fixed_before]) {
+            if varargs_len == 1
+                && Self::types_match_exact(&params[vi].param_type, &arg_types[fixed_before])
+            {
                 // 直接传递数组给可变参数
             } else {
                 for i in fixed_before..varargs_end {
@@ -418,7 +438,10 @@ impl ClassInfo {
 
             // 检查可变参数之后的固定参数（精确匹配，支持泛型参数）
             for i in 0..fixed_after {
-                if !Self::types_match_exact(&params[vi + 1 + i].param_type, &arg_types[varargs_end + i]) {
+                if !Self::types_match_exact(
+                    &params[vi + 1 + i].param_type,
+                    &arg_types[varargs_end + i],
+                ) {
                     return false;
                 }
             }
@@ -428,7 +451,10 @@ impl ClassInfo {
             if params.len() != arg_types.len() {
                 return false;
             }
-            params.iter().zip(arg_types.iter()).all(|(p, a)| Self::types_match_exact(&p.param_type, a))
+            params
+                .iter()
+                .zip(arg_types.iter())
+                .all(|(p, a)| Self::types_match_exact(&p.param_type, a))
         }
     }
 
@@ -439,7 +465,7 @@ impl ClassInfo {
         }
 
         let varargs_idx = params.iter().position(|p| p.is_varargs);
-        
+
         if let Some(vi) = varargs_idx {
             let fixed_before = vi;
             let fixed_after = params.len() - vi - 1;
@@ -464,7 +490,9 @@ impl ClassInfo {
             let varargs_end = fixed_before + varargs_len;
 
             // 如果恰好一个数组参数且类型匹配，直接接受
-            if varargs_len == 1 && Self::types_match(&params[vi].param_type, &arg_types[fixed_before]) {
+            if varargs_len == 1
+                && Self::types_match(&params[vi].param_type, &arg_types[fixed_before])
+            {
                 // 直接传递数组给可变参数
             } else {
                 for i in fixed_before..varargs_end {
@@ -485,9 +513,10 @@ impl ClassInfo {
             if params.len() != arg_types.len() {
                 return false;
             }
-            params.iter().zip(arg_types.iter()).all(|(p, a)| {
-                Self::types_match(&p.param_type, a)
-            })
+            params
+                .iter()
+                .zip(arg_types.iter())
+                .all(|(p, a)| Self::types_match(&p.param_type, a))
         }
     }
 
@@ -513,7 +542,7 @@ impl ClassInfo {
             (Type::Float64, Type::Int32) => true,
             (Type::Float64, Type::Int64) => true,
             (Type::Float64, Type::Float32) => true,
-            (Type::Float32, Type::Float64) => true,  // double -> float 截断转换
+            (Type::Float32, Type::Float64) => true, // double -> float 截断转换
             // FFI 类型与内置类型的匹配
             (Type::CInt, Type::Int32) | (Type::Int32, Type::CInt) => true,
             (Type::CUInt, Type::Int32) | (Type::Int32, Type::CUInt) => true,
@@ -543,9 +572,11 @@ impl ClassInfo {
                 if expected.params.len() != actual.params.len() {
                     return false;
                 }
-                expected.params.iter().zip(actual.params.iter()).all(|(e, a)| {
-                    Self::types_match(e, a)
-                })
+                expected
+                    .params
+                    .iter()
+                    .zip(actual.params.iter())
+                    .all(|(e, a)| Self::types_match(e, a))
             }
             _ => false,
         }
@@ -563,11 +594,11 @@ pub struct MethodInfo {
     pub is_protected: bool,
     pub is_static: bool,
     pub is_native: bool,
-    pub is_abstract: bool,  // 是否是抽象方法（无实现）
-    pub is_override: bool,  // 标记是否是重写方法
-    pub is_final: bool,  // 是否是final方法（禁止重写）
-    pub is_test: bool,   // 是否被 @Test 注解标记
-    pub vtable_slot: Option<usize>,  // 在 vtable 中的槽位编号（仅虚方法有值）
+    pub is_abstract: bool,          // 是否是抽象方法（无实现）
+    pub is_override: bool,          // 标记是否是重写方法
+    pub is_final: bool,             // 是否是final方法（禁止重写）
+    pub is_test: bool,              // 是否被 @Test 注解标记
+    pub vtable_slot: Option<usize>, // 在 vtable 中的槽位编号（仅虚方法有值）
 }
 
 /// VTable 布局信息
@@ -589,15 +620,15 @@ pub struct FieldInfo {
     pub is_private: bool,
     pub is_protected: bool,
     pub is_static: bool,
-    pub is_final: bool,  // 是否是final字段（编译期常量）
-    pub is_const_expr: bool,  // 是否是编译期常量（static final且初始化值为常量）
+    pub is_final: bool,      // 是否是final字段（编译期常量）
+    pub is_const_expr: bool, // 是否是编译期常量（static final且初始化值为常量）
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParameterInfo {
     pub name: String,
     pub param_type: Type,
-    pub is_varargs: bool,  // 是否为可变参数
+    pub is_varargs: bool, // 是否为可变参数
 }
 
 impl ParameterInfo {
@@ -629,31 +660,33 @@ impl Type {
             Type::Float64 => 8,
             Type::Bool => 1,
             Type::Char => 1,
-            Type::String => 8, // 指针大小
-            Type::Object(_) => 8, // 引用类型
-            Type::Array(_) => 8, // 指针大小
+            Type::String => 8,      // 指针大小
+            Type::Object(_) => 8,   // 引用类型
+            Type::Array(_) => 8,    // 指针大小
             Type::Function(_) => 8, // 函数指针
-            Type::Auto => unreachable!("Cannot get size of auto type - type inference not completed"),
+            Type::Auto => {
+                unreachable!("Cannot get size of auto type - type inference not completed")
+            }
             // 泛型类型 — 大小取决于具体实例化，运行时由单态化版本决定
-            Type::GenericParam(_) => 8,  // 泛型参数默认指针大小
-            Type::Generic(_, _) => 8,    // 泛型对象默认指针大小（引用语义）
+            Type::GenericParam(_) => 8, // 泛型参数默认指针大小
+            Type::Generic(_, _) => 8,   // 泛型对象默认指针大小（引用语义）
             // FFI 类型大小 (平台相关，这里使用常见值)
-            Type::CInt => 4,       // C int 通常为 4 字节
-            Type::CUInt => 4,      // C unsigned int 通常为 4 字节
-            Type::CLong => 8,      // C long: Windows 4, Linux/macOS 8，使用 8 作为保守值
-            Type::CULong => 8,     // C unsigned long，与 CLong 同大小
-            Type::CShort => 2,     // C short 为 2 字节
-            Type::CUShort => 2,    // C unsigned short 为 2 字节
-            Type::CChar => 1,      // C char 为 1 字节
-            Type::CUChar => 1,     // C unsigned char 为 1 字节
-            Type::CFloat => 4,     // C float 为 4 字节
-            Type::CDouble => 8,    // C double 为 8 字节
-            Type::SizeT => 8,      // size_t 为指针大小 (64位系统)
-            Type::SSizeT => 8,     // ssize_t 为指针大小 (64位系统)
-            Type::UIntPtr => 8,    // uintptr_t 为指针大小
-            Type::IntPtr => 8,     // intptr_t 为指针大小
-            Type::CVoid => 0,      // void 无大小
-            Type::CBool => 1,      // C bool 通常为 1 字节
+            Type::CInt => 4,    // C int 通常为 4 字节
+            Type::CUInt => 4,   // C unsigned int 通常为 4 字节
+            Type::CLong => 8,   // C long: Windows 4, Linux/macOS 8，使用 8 作为保守值
+            Type::CULong => 8,  // C unsigned long，与 CLong 同大小
+            Type::CShort => 2,  // C short 为 2 字节
+            Type::CUShort => 2, // C unsigned short 为 2 字节
+            Type::CChar => 1,   // C char 为 1 字节
+            Type::CUChar => 1,  // C unsigned char 为 1 字节
+            Type::CFloat => 4,  // C float 为 4 字节
+            Type::CDouble => 8, // C double 为 8 字节
+            Type::SizeT => 8,   // size_t 为指针大小 (64位系统)
+            Type::SSizeT => 8,  // ssize_t 为指针大小 (64位系统)
+            Type::UIntPtr => 8, // uintptr_t 为指针大小
+            Type::IntPtr => 8,  // intptr_t 为指针大小
+            Type::CVoid => 0,   // void 无大小
+            Type::CBool => 1,   // C bool 通常为 1 字节
             // FFI 指针和结构体
             Type::Pointer(_) => 8, // 指针大小 (64位系统)
             Type::Struct(_) => 8,  // 结构体作为指针传递，实际大小由编译器决定
@@ -663,13 +696,14 @@ impl Type {
     /// 检查是否为原始类型（包括内置数值类型和FFI类型）
     /// 时间复杂度: O(1)
     pub fn is_primitive(&self) -> bool {
-        matches!(self, 
+        matches!(
+            self,
             // 内置数值类型
-            Type::Int32 | 
-            Type::Int64 | 
-            Type::Float32 | 
-            Type::Float64 | 
-            Type::Bool | 
+            Type::Int32 |
+            Type::Int64 |
+            Type::Float32 |
+            Type::Float64 |
+            Type::Bool |
             Type::Char |
             // FFI 数值类型
             Type::CInt | Type::CUInt | Type::CLong | Type::CULong |
@@ -680,7 +714,10 @@ impl Type {
     }
 
     pub fn is_reference_type(&self) -> bool {
-        matches!(self, Type::String | Type::Object(_) | Type::Array(_) | Type::Generic(_, _))
+        matches!(
+            self,
+            Type::String | Type::Object(_) | Type::Array(_) | Type::Generic(_, _)
+        )
     }
 
     pub fn is_integer(&self) -> bool {
@@ -722,7 +759,9 @@ impl fmt::Display for Type {
             Type::Generic(name, args) => {
                 write!(f, "{}<", name)?;
                 for (i, arg) in args.iter().enumerate() {
-                    if i > 0 { write!(f, ", ")?; }
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
                     write!(f, "{}", arg)?;
                 }
                 write!(f, ">")
@@ -803,7 +842,7 @@ impl TypeRegistry {
             parent: None,
             interfaces: Vec::new(),
             is_abstract: false,
-            is_final: true,  // String 是 final 类，不能被继承
+            is_final: true, // String 是 final 类，不能被继承
             vtable_layout: None,
         };
 
@@ -979,7 +1018,7 @@ impl TypeRegistry {
             parent: None,
             interfaces: Vec::new(),
             is_abstract: false,
-            is_final: true,  // Integer 是 final 类，不能被继承
+            is_final: true, // Integer 是 final 类，不能被继承
             vtable_layout: None,
         };
 
@@ -1009,7 +1048,13 @@ impl TypeRegistry {
         self.classes.insert("Integer".to_string(), integer_class);
     }
 
-    pub fn register_class(&mut self, class_info: ClassInfo, file: Option<String>, line: usize, column: usize) -> crate::error::cayResult<()> {
+    pub fn register_class(
+        &mut self,
+        class_info: ClassInfo,
+        file: Option<String>,
+        line: usize,
+        column: usize,
+    ) -> crate::error::cayResult<()> {
         let name = class_info.name.clone();
         if self.classes.contains_key(&name) {
             return Err(crate::error::cayError::DuplicateDefinition {
@@ -1024,7 +1069,13 @@ impl TypeRegistry {
         Ok(())
     }
 
-    pub fn register_interface(&mut self, interface_info: InterfaceInfo, file: Option<String>, line: usize, column: usize) -> crate::error::cayResult<()> {
+    pub fn register_interface(
+        &mut self,
+        interface_info: InterfaceInfo,
+        file: Option<String>,
+        line: usize,
+        column: usize,
+    ) -> crate::error::cayResult<()> {
         let name = interface_info.name.clone();
         if self.interfaces.contains_key(&name) {
             return Err(crate::error::cayError::DuplicateDefinition {
@@ -1040,7 +1091,13 @@ impl TypeRegistry {
     }
 
     /// 注册 struct（值类型）
-    pub fn register_struct(&mut self, struct_info: StructInfo, file: Option<String>, line: usize, column: usize) -> crate::error::cayResult<()> {
+    pub fn register_struct(
+        &mut self,
+        struct_info: StructInfo,
+        file: Option<String>,
+        line: usize,
+        column: usize,
+    ) -> crate::error::cayResult<()> {
         let name = struct_info.name.clone();
         if self.structs.contains_key(&name) || self.classes.contains_key(&name) {
             return Err(crate::error::cayError::DuplicateDefinition {
@@ -1056,9 +1113,18 @@ impl TypeRegistry {
     }
 
     /// 注册 enum（tagged union / ADT）
-    pub fn register_enum(&mut self, enum_info: EnumInfo, file: Option<String>, line: usize, column: usize) -> crate::error::cayResult<()> {
+    pub fn register_enum(
+        &mut self,
+        enum_info: EnumInfo,
+        file: Option<String>,
+        line: usize,
+        column: usize,
+    ) -> crate::error::cayResult<()> {
         let name = enum_info.name.clone();
-        if self.enums.contains_key(&name) || self.classes.contains_key(&name) || self.structs.contains_key(&name) {
+        if self.enums.contains_key(&name)
+            || self.classes.contains_key(&name)
+            || self.structs.contains_key(&name)
+        {
             return Err(crate::error::cayError::DuplicateDefinition {
                 file,
                 line,
@@ -1099,12 +1165,19 @@ impl TypeRegistry {
                     name: func_name.to_string(),
                     suggestion: format!(
                         "@FreeFunction 函数 '{}' 已在类 '{}' ({}:{}) 中定义，类 '{}' 中的同名 @FreeFunction 方法冲突。请使用不同的函数名。",
-                        func_name, existing_class, existing_loc.line, existing_loc.column, class_name
+                        func_name,
+                        existing_class,
+                        existing_loc.line,
+                        existing_loc.column,
+                        class_name
                     ),
                 });
             }
         }
-        self.free_functions.insert(func_name.to_string(), (class_name.to_string(), method_info, loc));
+        self.free_functions.insert(
+            func_name.to_string(),
+            (class_name.to_string(), method_info, loc),
+        );
         Ok(())
     }
 
@@ -1157,7 +1230,8 @@ impl TypeRegistry {
 
     /// 记录类的命名空间路径
     pub fn set_class_namespace(&mut self, qualified_name: &str, namespace_path: Vec<String>) {
-        self.class_namespace_paths.insert(qualified_name.to_string(), namespace_path);
+        self.class_namespace_paths
+            .insert(qualified_name.to_string(), namespace_path);
     }
 
     /// 在命名空间上下文中解析类名
@@ -1191,7 +1265,11 @@ impl TypeRegistry {
     }
 
     /// 获取类的可变引用（带命名空间上下文）
-    pub fn resolve_class_mut(&mut self, name: &str, context_ns: &[String]) -> Option<&mut ClassInfo> {
+    pub fn resolve_class_mut(
+        &mut self,
+        name: &str,
+        context_ns: &[String],
+    ) -> Option<&mut ClassInfo> {
         // 1. using 别名
         if let Some(qualified) = self.namespace_aliases.get(name).cloned() {
             if self.classes.contains_key(&qualified) {
@@ -1234,7 +1312,12 @@ impl TypeRegistry {
 
     /// 根据类名、方法名和参数类型查找方法（支持重载、继承和接口）
     /// 支持泛型类名，如 "Wrapper<int>" 会被解析为 "Wrapper"
-    pub fn find_method(&self, class_name: &str, method_name: &str, arg_types: &[Type]) -> Option<&MethodInfo> {
+    pub fn find_method(
+        &self,
+        class_name: &str,
+        method_name: &str,
+        arg_types: &[Type],
+    ) -> Option<&MethodInfo> {
         // 解析泛型类名: "Wrapper<int>" -> "Wrapper"
         // 支持多类型参数: "Pair<int, String>" -> "Pair"
         let base_class_name = if let Some(pos) = class_name.find('<') {
@@ -1242,7 +1325,7 @@ impl TypeRegistry {
         } else {
             class_name
         };
-        
+
         // 首先在当前类中查找
         if let Some(class_info) = self.get_class(base_class_name) {
             if let Some(method) = class_info.find_method(method_name, arg_types) {
@@ -1269,7 +1352,12 @@ impl TypeRegistry {
     }
 
     /// 根据类名、方法名和参数类型查找方法，只在当前类中查找（不递归父类）
-    pub fn find_method_in_class(&self, class_name: &str, method_name: &str, arg_types: &[Type]) -> Option<&MethodInfo> {
+    pub fn find_method_in_class(
+        &self,
+        class_name: &str,
+        method_name: &str,
+        arg_types: &[Type],
+    ) -> Option<&MethodInfo> {
         self.get_class(class_name)
             .and_then(|c| c.find_method(method_name, arg_types))
     }
@@ -1285,7 +1373,7 @@ impl TypeRegistry {
             // 尝试通过类注册表解析两个类名
             let param_class = self.get_class(param_name);
             let arg_class = self.get_class(arg_name);
-            
+
             match (param_class, arg_class) {
                 (Some(p), Some(a)) => {
                     // 两个类都找到了，检查它们是否是同一个类
@@ -1293,18 +1381,32 @@ impl TypeRegistry {
                 }
                 (Some(p), None) => {
                     // 只有参数类型找到了，检查实参类型是否是它的简单名形式
-                    let p_simple = p.name.rfind("::").map(|pos| &p.name[pos + 2..]).unwrap_or(&p.name);
+                    let p_simple = p
+                        .name
+                        .rfind("::")
+                        .map(|pos| &p.name[pos + 2..])
+                        .unwrap_or(&p.name);
                     return p_simple == arg_name.as_str();
                 }
                 (None, Some(a)) => {
                     // 只有实参类型找到了，检查形参类型是否是它的简单名形式
-                    let a_simple = a.name.rfind("::").map(|pos| &a.name[pos + 2..]).unwrap_or(&a.name);
+                    let a_simple = a
+                        .name
+                        .rfind("::")
+                        .map(|pos| &a.name[pos + 2..])
+                        .unwrap_or(&a.name);
                     return a_simple == param_name.as_str();
                 }
                 (None, None) => {
                     // 两个都没找到，比较简单类名
-                    let param_simple = param_name.rfind("::").map(|pos| &param_name[pos + 2..]).unwrap_or(param_name);
-                    let arg_simple = arg_name.rfind("::").map(|pos| &arg_name[pos + 2..]).unwrap_or(arg_name);
+                    let param_simple = param_name
+                        .rfind("::")
+                        .map(|pos| &param_name[pos + 2..])
+                        .unwrap_or(param_name);
+                    let arg_simple = arg_name
+                        .rfind("::")
+                        .map(|pos| &arg_name[pos + 2..])
+                        .unwrap_or(arg_name);
                     return param_simple == arg_simple;
                 }
             }
@@ -1337,7 +1439,11 @@ impl TypeRegistry {
 
     /// 查找实现指定接口且拥有指定方法的类
     /// 用于代码生成阶段：当变量类型是接口时，找到实际实现该方法的类
-    pub fn find_implementing_class_for_method(&self, interface_name: &str, method_name: &str) -> Option<&ClassInfo> {
+    pub fn find_implementing_class_for_method(
+        &self,
+        interface_name: &str,
+        method_name: &str,
+    ) -> Option<&ClassInfo> {
         // 首先确认这是一个接口
         if !self.interfaces.contains_key(interface_name) {
             return None;

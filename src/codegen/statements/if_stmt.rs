@@ -2,8 +2,8 @@
 //!
 //! 处理if-else语句的代码生成。
 
-use crate::codegen::context::IRGenerator;
 use crate::ast::*;
+use crate::codegen::context::IRGenerator;
 use crate::error::cayResult;
 
 impl IRGenerator {
@@ -16,23 +16,30 @@ impl IRGenerator {
         let cond = self.generate_expression(&if_stmt.condition)?;
         let (cond_type, cond_val) = self.parse_typed_value(&cond);
         let cond_reg = self.new_temp();
-        
+
         // 将条件转换为 i1 类型
         if cond_type == "i1" {
             self.emit_line(&format!("  {} = icmp ne i1 {}, 0", cond_reg, cond_val));
         } else {
             // 对于整数类型，先与 0 比较
-            self.emit_line(&format!("  {} = icmp ne {} {}, 0", cond_reg, cond_type, cond_val));
+            self.emit_line(&format!(
+                "  {} = icmp ne {} {}, 0",
+                cond_reg, cond_type, cond_val
+            ));
         }
 
         let has_else = if_stmt.else_branch.is_some();
 
         if has_else {
-            self.emit_line(&format!("  br i1 {}, label %{}, label %{}",
-                cond_reg, then_label, else_label));
+            self.emit_line(&format!(
+                "  br i1 {}, label %{}, label %{}",
+                cond_reg, then_label, else_label
+            ));
         } else {
-            self.emit_line(&format!("  br i1 {}, label %{}, label %{}",
-                cond_reg, then_label, merge_label));
+            self.emit_line(&format!(
+                "  br i1 {}, label %{}, label %{}",
+                cond_reg, then_label, merge_label
+            ));
         }
 
         // then块
@@ -48,7 +55,11 @@ impl IRGenerator {
             let then_lines: Vec<&str> = then_code.trim().lines().collect();
             if let Some(last_line) = then_lines.last() {
                 let trimmed = last_line.trim();
-                if trimmed.starts_with("ret") || trimmed.starts_with("br") || trimmed.starts_with("switch") || trimmed.starts_with("unreachable") {
+                if trimmed.starts_with("ret")
+                    || trimmed.starts_with("br")
+                    || trimmed.starts_with("switch")
+                    || trimmed.starts_with("unreachable")
+                {
                     then_terminates = true;
                 } else {
                     self.emit_line(&format!("  br label %{}", merge_label));
@@ -74,7 +85,11 @@ impl IRGenerator {
                 let else_lines: Vec<&str> = else_code.trim().lines().collect();
                 if let Some(last_line) = else_lines.last() {
                     let trimmed = last_line.trim();
-                    if trimmed.starts_with("ret") || trimmed.starts_with("br") || trimmed.starts_with("switch") || trimmed.starts_with("unreachable") {
+                    if trimmed.starts_with("ret")
+                        || trimmed.starts_with("br")
+                        || trimmed.starts_with("switch")
+                        || trimmed.starts_with("unreachable")
+                    {
                         else_terminates = true;
                     } else {
                         self.emit_line(&format!("  br label %{}", merge_label));
@@ -95,7 +110,7 @@ impl IRGenerator {
         let merge_is_unreachable = if has_else {
             then_terminates && else_terminates
         } else {
-            false  // 无 else 时，merge 总是可达的
+            false // 无 else 时，merge 总是可达的
         };
 
         if merge_is_unreachable {

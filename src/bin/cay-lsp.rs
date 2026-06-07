@@ -16,7 +16,6 @@ use cavvy::semantic;
 
 const VERSION: &str = env!("CAY_LSP_VERSION");
 
-
 /// 文档状态
 #[derive(Debug, Clone)]
 struct DocumentState {
@@ -31,7 +30,6 @@ struct CavvyLanguageServer {
     client: Client,
     documents: Arc<DashMap<String, DocumentState>>,
 }
-
 
 /// 补全符号信息
 #[derive(Debug, Clone)]
@@ -56,7 +54,10 @@ struct HoverInfo {
 impl LanguageServer for CavvyLanguageServer {
     async fn initialize(&self, _params: InitializeParams) -> Result<InitializeResult> {
         self.client
-            .log_message(MessageType::INFO, format!("Cavvy LSP v{} 初始化中...", VERSION))
+            .log_message(
+                MessageType::INFO,
+                format!("Cavvy LSP v{} 初始化中...", VERSION),
+            )
             .await;
 
         let capabilities = ServerCapabilities {
@@ -73,23 +74,17 @@ impl LanguageServer for CavvyLanguageServer {
             )),
             hover_provider: Some(HoverProviderCapability::Simple(true)),
             document_symbol_provider: Some(OneOf::Left(true)),
-            diagnostic_provider: Some(DiagnosticServerCapabilities::Options(
-                DiagnosticOptions {
-                    identifier: Some("cavvy".to_string()),
-                    inter_file_dependencies: true,
-                    workspace_diagnostics: false,
-                    work_done_progress_options: WorkDoneProgressOptions {
-                        work_done_progress: None,
-                    },
+            diagnostic_provider: Some(DiagnosticServerCapabilities::Options(DiagnosticOptions {
+                identifier: Some("cavvy".to_string()),
+                inter_file_dependencies: true,
+                workspace_diagnostics: false,
+                work_done_progress_options: WorkDoneProgressOptions {
+                    work_done_progress: None,
                 },
-            )),
+            })),
             completion_provider: Some(CompletionOptions {
                 resolve_provider: Some(false),
-                trigger_characters: Some(vec![
-                    ".".to_string(),
-                    "::".to_string(),
-                    " ".to_string(),
-                ]),
+                trigger_characters: Some(vec![".".to_string(), "::".to_string(), " ".to_string()]),
                 ..Default::default()
             }),
             ..Default::default()
@@ -139,7 +134,7 @@ impl LanguageServer for CavvyLanguageServer {
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         let uri = params.text_document.uri.to_string();
-        
+
         // 获取最新的内容（FULL sync 模式下只有最后一个变化）
         if let Some(change) = params.content_changes.last() {
             let content = change.text.clone();
@@ -165,7 +160,7 @@ impl LanguageServer for CavvyLanguageServer {
 
     async fn did_save(&self, params: DidSaveTextDocumentParams) {
         let uri = params.text_document.uri.to_string();
-        
+
         self.client
             .log_message(MessageType::INFO, format!("文档保存: {}", uri))
             .await;
@@ -180,7 +175,7 @@ impl LanguageServer for CavvyLanguageServer {
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
         let uri = params.text_document.uri.to_string();
-        
+
         self.client
             .log_message(MessageType::INFO, format!("文档关闭: {}", uri))
             .await;
@@ -189,28 +184,32 @@ impl LanguageServer for CavvyLanguageServer {
     }
 
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
-        let uri = params.text_document_position_params.text_document.uri.to_string();
+        let uri = params
+            .text_document_position_params
+            .text_document
+            .uri
+            .to_string();
         let position = params.text_document_position_params.position;
 
         if let Some(state) = self.documents.get(&uri) {
             let content = &state.content;
             let file_path = uri.strip_prefix("file://").unwrap_or(&uri);
-            
+
             // 获取当前行的内容
             let lines: Vec<&str> = content.lines().collect();
             if let Some(line) = lines.get(position.line as usize) {
                 // 提取当前位置的单词
                 let word = extract_word_at_position(line, position.character as usize);
-                
+
                 if !word.is_empty() {
                     // 尝试从文档和 include 文件获取详细的 hover 信息
                     let hover_info = self.get_hover_info(content, file_path, &word).await;
-                    
+
                     let contents = HoverContents::Markup(MarkupContent {
                         kind: MarkupKind::Markdown,
                         value: hover_info,
                     });
-                    
+
                     return Ok(Some(Hover {
                         contents,
                         range: None,
@@ -230,7 +229,7 @@ impl LanguageServer for CavvyLanguageServer {
 
         if let Some(state) = self.documents.get(&uri) {
             let content = &state.content;
-            
+
             // 解析文档获取符号
             match self.parse_symbols(content, &uri).await {
                 Ok(symbols) => {
@@ -254,15 +253,16 @@ impl LanguageServer for CavvyLanguageServer {
         if let Some(state) = self.documents.get(&uri) {
             let content = &state.content;
             let file_path = uri.strip_prefix("file://").unwrap_or(&uri);
-            
+
             // 获取当前行的内容
             let lines: Vec<&str> = content.lines().collect();
             if let Some(line) = lines.get(position.line as usize) {
-                let line_before_cursor = &line[..position.character.min(line.len() as u32) as usize];
-                
+                let line_before_cursor =
+                    &line[..position.character.min(line.len() as u32) as usize];
+
                 // 简单的关键字补全
                 let mut items = Vec::new();
-                
+
                 // Cavvy 关键字
                 let keywords = vec![
                     ("class", "定义类"),
@@ -314,7 +314,7 @@ impl LanguageServer for CavvyLanguageServer {
                     ("import", "导入包"),
                     ("package", "声明包"),
                 ];
-                
+
                 for (keyword, desc) in keywords {
                     items.push(CompletionItem {
                         label: keyword.to_string(),
@@ -324,7 +324,7 @@ impl LanguageServer for CavvyLanguageServer {
                         ..Default::default()
                     });
                 }
-                
+
                 // 内置函数
                 let builtins = vec![
                     ("println", "println($1)", "输出并换行"),
@@ -339,7 +339,7 @@ impl LanguageServer for CavvyLanguageServer {
                     ("parseInt", "parseInt($1)", "字符串转整数"),
                     ("parseFloat", "parseFloat($1)", "字符串转浮点数"),
                 ];
-                
+
                 for (name, insert, desc) in builtins {
                     items.push(CompletionItem {
                         label: name.to_string(),
@@ -350,7 +350,7 @@ impl LanguageServer for CavvyLanguageServer {
                         ..Default::default()
                     });
                 }
-                
+
                 // 从当前文档和 include 文件提取符号
                 let symbols = self.extract_completion_symbols_sync(content, file_path);
                 for symbol in symbols {
@@ -363,7 +363,7 @@ impl LanguageServer for CavvyLanguageServer {
                         "namespace" => CompletionItemKind::MODULE,
                         _ => CompletionItemKind::TEXT,
                     };
-                    
+
                     items.push(CompletionItem {
                         label: symbol.name,
                         kind: Some(kind),
@@ -373,7 +373,7 @@ impl LanguageServer for CavvyLanguageServer {
                         ..Default::default()
                     });
                 }
-                
+
                 return Ok(Some(CompletionResponse::Array(items)));
             }
         }
@@ -428,7 +428,10 @@ impl CavvyLanguageServer {
         let file_path = uri.strip_prefix("file://").unwrap_or(uri);
 
         // 1. 预处理（带源映射）
-        let (processed_content, source_map) = match self.preprocess_content_with_source_map(content, file_path).await {
+        let (processed_content, source_map) = match self
+            .preprocess_content_with_source_map(content, file_path)
+            .await
+        {
             Ok(result) => result,
             Err(e) => {
                 if let Some(diagnostic) = error_to_diagnostic(&e, content) {
@@ -442,7 +445,9 @@ impl CavvyLanguageServer {
         let tokens = match lexer::lex(&processed_content) {
             Ok(tokens) => tokens,
             Err(e) => {
-                if let Some(diagnostic) = error_to_diagnostic_with_source_map(&e, content, &source_map, file_path) {
+                if let Some(diagnostic) =
+                    error_to_diagnostic_with_source_map(&e, content, &source_map, file_path)
+                {
                     diagnostics.push(diagnostic);
                 }
                 return diagnostics;
@@ -453,7 +458,9 @@ impl CavvyLanguageServer {
         let ast = match parser::parse(tokens) {
             Ok(ast) => ast,
             Err(e) => {
-                if let Some(diagnostic) = error_to_diagnostic_with_source_map(&e, content, &source_map, file_path) {
+                if let Some(diagnostic) =
+                    error_to_diagnostic_with_source_map(&e, content, &source_map, file_path)
+                {
                     diagnostics.push(diagnostic);
                 }
                 return diagnostics;
@@ -463,7 +470,9 @@ impl CavvyLanguageServer {
         // 4. 语义分析
         let mut analyzer = semantic::SemanticAnalyzer::new();
         if let Err(e) = analyzer.analyze(&ast) {
-            if let Some(diagnostic) = error_to_diagnostic_with_source_map(&e, content, &source_map, file_path) {
+            if let Some(diagnostic) =
+                error_to_diagnostic_with_source_map(&e, content, &source_map, file_path)
+            {
                 diagnostics.push(diagnostic);
             }
         }
@@ -472,12 +481,17 @@ impl CavvyLanguageServer {
     }
 
     /// 预处理文档内容（带源映射）
-    async fn preprocess_content_with_source_map(&self, content: &str, file_path: &str)
-        -> std::result::Result<(String, preprocessor::SourceMap), cavvy::error::cayError> {
+    async fn preprocess_content_with_source_map(
+        &self,
+        content: &str,
+        file_path: &str,
+    ) -> std::result::Result<(String, preprocessor::SourceMap), cavvy::error::cayError> {
         let base_dir = Path::new(file_path)
             .parent()
             .map(|p| p.to_path_buf())
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| Path::new(".").to_path_buf()));
+            .unwrap_or_else(|| {
+                std::env::current_dir().unwrap_or_else(|_| Path::new(".").to_path_buf())
+            });
 
         let mut pp = preprocessor::Preprocessor::new(base_dir.to_str().unwrap_or("."));
         let result = pp.process_with_source_map(content, file_path)?;
@@ -485,12 +499,21 @@ impl CavvyLanguageServer {
     }
 
     /// 提取补全符号（从当前文档和 include 文件）
-    fn extract_completion_symbols_sync(&self, content: &str, file_path: &str) -> Vec<CompletionSymbol> {
+    fn extract_completion_symbols_sync(
+        &self,
+        content: &str,
+        file_path: &str,
+    ) -> Vec<CompletionSymbol> {
         let mut symbols = Vec::new();
         let mut processed_files = std::collections::HashSet::new();
 
         // 提取当前文档的符号
-        self.extract_symbols_from_content_sync(content, file_path, &mut symbols, &mut processed_files);
+        self.extract_symbols_from_content_sync(
+            content,
+            file_path,
+            &mut symbols,
+            &mut processed_files,
+        );
 
         symbols
     }
@@ -501,7 +524,7 @@ impl CavvyLanguageServer {
         content: &str,
         file_path: &str,
         symbols: &mut Vec<CompletionSymbol>,
-        processed_files: &mut std::collections::HashSet<String>
+        processed_files: &mut std::collections::HashSet<String>,
     ) {
         if processed_files.contains(file_path) {
             return;
@@ -512,8 +535,10 @@ impl CavvyLanguageServer {
         let base_dir = Path::new(file_path)
             .parent()
             .map(|p| p.to_path_buf())
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| Path::new(".").to_path_buf()));
-        
+            .unwrap_or_else(|| {
+                std::env::current_dir().unwrap_or_else(|_| Path::new(".").to_path_buf())
+            });
+
         let mut pp = preprocessor::Preprocessor::new(base_dir.to_str().unwrap_or("."));
         let (processed, _) = match pp.process_with_source_map(content, file_path) {
             Ok(r) => (r.code, r.source_map),
@@ -534,10 +559,10 @@ impl CavvyLanguageServer {
 
         // 使用语义分析器获取完整的类型信息（包括 include 文件中的符号）
         let mut analyzer = semantic::SemanticAnalyzer::new();
-        
+
         // 运行语义分析（忽略错误，我们只关心 type_registry 中的符号）
         let _ = analyzer.analyze(&ast);
-        
+
         // 从 TypeRegistry 提取类和方法
         for (class_name, class_info) in analyzer.type_registry().classes.iter() {
             // 添加类名
@@ -550,16 +575,23 @@ impl CavvyLanguageServer {
                     insert_text: class_name.clone(),
                 });
             }
-            
+
             // 添加类的方法
             for (method_name, methods) in class_info.methods.iter() {
                 for method in methods.iter() {
                     if !symbols.iter().any(|s| s.name == *method_name) {
-                        let params: Vec<String> = method.params.iter()
+                        let params: Vec<String> = method
+                            .params
+                            .iter()
                             .map(|p| format!("{} {}", p.param_type, p.name))
                             .collect();
-                        let signature = format!("{} {}({})", method.return_type, method.name, params.join(", "));
-                        
+                        let signature = format!(
+                            "{} {}({})",
+                            method.return_type,
+                            method.name,
+                            params.join(", ")
+                        );
+
                         symbols.push(CompletionSymbol {
                             name: method_name.clone(),
                             kind: "method".to_string(),
@@ -570,7 +602,7 @@ impl CavvyLanguageServer {
                     }
                 }
             }
-            
+
             // 添加类的字段
             for (field_name, field_info) in class_info.fields.iter() {
                 if !symbols.iter().any(|s| s.name == *field_name) {
@@ -584,7 +616,7 @@ impl CavvyLanguageServer {
                 }
             }
         }
-        
+
         // 从 TypeRegistry 提取接口
         for (interface_name, _interface_info) in analyzer.type_registry().interfaces.iter() {
             if !symbols.iter().any(|s| s.name == *interface_name) {
@@ -597,7 +629,7 @@ impl CavvyLanguageServer {
                 });
             }
         }
-        
+
         // 从 TypeRegistry 提取 struct
         for (struct_name, _struct_info) in analyzer.type_registry().structs.iter() {
             if !symbols.iter().any(|s| s.name == *struct_name) {
@@ -610,7 +642,7 @@ impl CavvyLanguageServer {
                 });
             }
         }
-        
+
         // 从 TypeRegistry 提取 enum
         for (enum_name, enum_info) in analyzer.type_registry().enums.iter() {
             if !symbols.iter().any(|s| s.name == *enum_name) {
@@ -622,7 +654,7 @@ impl CavvyLanguageServer {
                     insert_text: enum_name.clone(),
                 });
             }
-            
+
             // 添加枚举变体
             for variant in enum_info.variants.iter() {
                 let variant_name = format!("{}::{}", enum_name, variant.name);
@@ -637,7 +669,7 @@ impl CavvyLanguageServer {
                 }
             }
         }
-        
+
         // 提取 namespace 别名（来自 using 声明）
         for (alias, qualified) in analyzer.type_registry().namespace_aliases.iter() {
             if !symbols.iter().any(|s| s.name == *alias) {
@@ -650,7 +682,7 @@ impl CavvyLanguageServer {
                 });
             }
         }
-        
+
         // 提取 namespace 路径信息
         for (_qualified_name, ns_path) in analyzer.type_registry().class_namespace_paths.iter() {
             if !ns_path.is_empty() {
@@ -668,8 +700,8 @@ impl CavvyLanguageServer {
         }
 
         // 处理 include 的文件（递归提取）
-        let include_pattern = regex::Regex::new(r#"#include\s+["<]([^">]+)[">]"#)
-            .expect("正则表达式应始终有效");
+        let include_pattern =
+            regex::Regex::new(r#"#include\s+["<]([^">]+)[">]"#).expect("正则表达式应始终有效");
         for cap in include_pattern.captures_iter(content) {
             if let Some(include_file) = cap.get(1) {
                 let include_path = include_file.as_str();
@@ -681,7 +713,7 @@ impl CavvyLanguageServer {
                         &include_content,
                         full_path.to_str().unwrap_or(include_path),
                         symbols,
-                        processed_files
+                        processed_files,
                     );
                 }
             }
@@ -724,7 +756,10 @@ impl CavvyLanguageServer {
             ("null", "空值"),
             ("true", "布尔真值"),
             ("false", "布尔假值"),
-        ].iter().cloned().collect();
+        ]
+        .iter()
+        .cloned()
+        .collect();
 
         if let Some(doc) = keyword_docs.get(word) {
             return format!("**`{}`**\n\n{}", word, doc);
@@ -734,16 +769,28 @@ impl CavvyLanguageServer {
         let builtin_docs: std::collections::HashMap<&str, &str> = [
             ("println", "**`println(value)`**\n\n输出值到控制台并换行"),
             ("print", "**`print(value)`**\n\n输出值到控制台不换行"),
-            ("printf", "**`printf(format, ...)`**\n\n格式化输出，类似 C 语言 printf"),
+            (
+                "printf",
+                "**`printf(format, ...)`**\n\n格式化输出，类似 C 语言 printf",
+            ),
             ("readInt", "**`readInt()`**\n\n从标准输入读取一个整数"),
             ("readLong", "**`readLong()`**\n\n从标准输入读取一个长整数"),
             ("readFloat", "**`readFloat()`**\n\n从标准输入读取一个浮点数"),
-            ("readDouble", "**`readDouble()`**\n\n从标准输入读取一个双精度浮点数"),
+            (
+                "readDouble",
+                "**`readDouble()`**\n\n从标准输入读取一个双精度浮点数",
+            ),
             ("readLine", "**`readLine()`**\n\n从标准输入读取一行字符串"),
             ("readChar", "**`readChar()`**\n\n从标准输入读取一个字符"),
             ("parseInt", "**`parseInt(string)`**\n\n将字符串转换为整数"),
-            ("parseFloat", "**`parseFloat(string)`**\n\n将字符串转换为浮点数"),
-        ].iter().cloned().collect();
+            (
+                "parseFloat",
+                "**`parseFloat(string)`**\n\n将字符串转换为浮点数",
+            ),
+        ]
+        .iter()
+        .cloned()
+        .collect();
 
         if let Some(doc) = builtin_docs.get(word) {
             return doc.to_string();
@@ -751,8 +798,10 @@ impl CavvyLanguageServer {
 
         // 尝试从文档和 include 文件查找符号
         if let Some(info) = self.find_symbol_info(content, file_path, word).await {
-            return format!("**`{}`** *{}*\n\n```cavvy\n{}\n```\n\n{}",
-                info.name, info.kind, info.signature, info.documentation);
+            return format!(
+                "**`{}`** *{}*\n\n```cavvy\n{}\n```\n\n{}",
+                info.name, info.kind, info.signature, info.documentation
+            );
         }
 
         // 默认返回
@@ -760,9 +809,17 @@ impl CavvyLanguageServer {
     }
 
     /// 查找符号信息
-    async fn find_symbol_info(&self, content: &str, file_path: &str, word: &str) -> Option<HoverInfo> {
+    async fn find_symbol_info(
+        &self,
+        content: &str,
+        file_path: &str,
+        word: &str,
+    ) -> Option<HoverInfo> {
         // 预处理
-        let (processed, _) = match self.preprocess_content_with_source_map(content, file_path).await {
+        let (processed, _) = match self
+            .preprocess_content_with_source_map(content, file_path)
+            .await
+        {
             Ok(p) => p,
             Err(_) => return None,
         };
@@ -795,13 +852,20 @@ impl CavvyLanguageServer {
             for member in &class.members {
                 match member {
                     ClassMember::Method(method) if method.name == word => {
-                        let params: Vec<String> = method.params.iter()
+                        let params: Vec<String> = method
+                            .params
+                            .iter()
                             .map(|p| format!("{:?} {}", p.param_type, p.name))
                             .collect();
                         return Some(HoverInfo {
                             name: method.name.clone(),
                             kind: "method".to_string(),
-                            signature: format!("{:?} {}({})", method.return_type, method.name, params.join(", ")),
+                            signature: format!(
+                                "{:?} {}({})",
+                                method.return_type,
+                                method.name,
+                                params.join(", ")
+                            ),
                             documentation: "类方法".to_string(),
                         });
                     }
@@ -834,29 +898,36 @@ impl CavvyLanguageServer {
     }
 
     /// 解析文档符号
-    async fn parse_symbols(&self, content: &str, uri: &str) -> std::result::Result<Vec<DocumentSymbol>, String> {
+    async fn parse_symbols(
+        &self,
+        content: &str,
+        uri: &str,
+    ) -> std::result::Result<Vec<DocumentSymbol>, String> {
         let file_path = uri.strip_prefix("file://").unwrap_or(uri);
-        
+
         // 预处理
-        let (processed, _) = match self.preprocess_content_with_source_map(content, file_path).await {
+        let (processed, _) = match self
+            .preprocess_content_with_source_map(content, file_path)
+            .await
+        {
             Ok(p) => p,
             Err(e) => return Err(format!("预处理失败: {:?}", e)),
         };
-        
+
         // 词法分析
         let tokens = match lexer::lex(&processed) {
             Ok(t) => t,
             Err(e) => return Err(format!("词法分析失败: {:?}", e)),
         };
-        
+
         // 语法分析
         let ast = match parser::parse(tokens) {
             Ok(a) => a,
             Err(e) => return Err(format!("语法分析失败: {:?}", e)),
         };
-        
+
         let mut symbols = Vec::new();
-        
+
         // 提取类定义
         for class in &ast.classes {
             let class_symbol = DocumentSymbol {
@@ -877,10 +948,10 @@ impl CavvyLanguageServer {
             };
             symbols.push(class_symbol);
         }
-        
+
         // 提取顶层函数（如果有的话）
         // TODO: 当 AST 支持顶层函数时添加
-        
+
         Ok(symbols)
     }
 }
@@ -890,18 +961,30 @@ fn error_to_diagnostic(error: &cavvy::error::cayError, source: &str) -> Option<D
     use cavvy::error::cayError;
 
     let (message, line, column) = match error {
-        cayError::Lexer { message, line, column, .. } => {
-            (message.clone(), *line, *column)
-        }
-        cayError::Parser { message, line, column, .. } => {
-            (message.clone(), *line, *column)
-        }
-        cayError::Semantic { message, line, column, .. } => {
-            (message.clone(), *line, *column)
-        }
-        cayError::Preprocessor { message, line, column, .. } => {
-            (message.clone(), *line, *column)
-        }
+        cayError::Lexer {
+            message,
+            line,
+            column,
+            ..
+        } => (message.clone(), *line, *column),
+        cayError::Parser {
+            message,
+            line,
+            column,
+            ..
+        } => (message.clone(), *line, *column),
+        cayError::Semantic {
+            message,
+            line,
+            column,
+            ..
+        } => (message.clone(), *line, *column),
+        cayError::Preprocessor {
+            message,
+            line,
+            column,
+            ..
+        } => (message.clone(), *line, *column),
         cayError::Io { file: _, message } => {
             return Some(Diagnostic {
                 range: Range {
@@ -938,11 +1021,17 @@ fn error_to_diagnostic(error: &cavvy::error::cayError, source: &str) -> Option<D
 
     // 计算行的长度
     let lines: Vec<&str> = source.lines().collect();
-    let line_len = lines.get(line.saturating_sub(1)).map(|l| l.len()).unwrap_or(0) as u32;
+    let line_len = lines
+        .get(line.saturating_sub(1))
+        .map(|l| l.len())
+        .unwrap_or(0) as u32;
 
     Some(Diagnostic {
         range: Range {
-            start: Position::new(line.saturating_sub(1) as u32, column.saturating_sub(1) as u32),
+            start: Position::new(
+                line.saturating_sub(1) as u32,
+                column.saturating_sub(1) as u32,
+            ),
             end: Position::new(line.saturating_sub(1) as u32, line_len),
         },
         severity: Some(DiagnosticSeverity::ERROR),
@@ -966,22 +1055,39 @@ fn error_to_diagnostic_with_source_map(
     use cavvy::error::cayError;
 
     let (message, line, column) = match error {
-        cayError::Lexer { message, line, column, .. } => {
-            (message.clone(), *line, *column)
-        }
-        cayError::Parser { message, line, column, .. } => {
-            (message.clone(), *line, *column)
-        }
-        cayError::Semantic { message, line, column, .. } => {
-            (message.clone(), *line, *column)
-        }
-        cayError::Preprocessor { message, line, column, .. } => {
-            (message.clone(), *line, *column)
-        }
+        cayError::Lexer {
+            message,
+            line,
+            column,
+            ..
+        } => (message.clone(), *line, *column),
+        cayError::Parser {
+            message,
+            line,
+            column,
+            ..
+        } => (message.clone(), *line, *column),
+        cayError::Semantic {
+            message,
+            line,
+            column,
+            ..
+        } => (message.clone(), *line, *column),
+        cayError::Preprocessor {
+            message,
+            line,
+            column,
+            ..
+        } => (message.clone(), *line, *column),
         cayError::MultipleErrors { errors } => {
             // 对于 MultipleErrors，我们只返回第一个错误的诊断
             if let Some(first_error) = errors.first() {
-                return error_to_diagnostic_with_source_map(first_error, _source, source_map, default_file);
+                return error_to_diagnostic_with_source_map(
+                    first_error,
+                    _source,
+                    source_map,
+                    default_file,
+                );
             }
             return None;
         }
@@ -1020,17 +1126,21 @@ fn error_to_diagnostic_with_source_map(
     };
 
     // 使用源映射查找原始位置
-    let (orig_file, orig_line, orig_column) = if let Some(pos) = source_map.get_source_position(line) {
-        // 如果源映射指向不同的文件，创建相关诊断信息
-        (pos.file.clone(), pos.line, column)
-    } else {
-        (default_file.to_string(), line, column)
-    };
+    let (orig_file, orig_line, orig_column) =
+        if let Some(pos) = source_map.get_source_position(line) {
+            // 如果源映射指向不同的文件，创建相关诊断信息
+            (pos.file.clone(), pos.line, column)
+        } else {
+            (default_file.to_string(), line, column)
+        };
 
     // 尝试读取原始源文件以获取行长度
     let line_len = if let Ok(file_content) = std::fs::read_to_string(&orig_file) {
         let lines: Vec<&str> = file_content.lines().collect();
-        lines.get(orig_line.saturating_sub(1)).map(|l| l.len()).unwrap_or(0) as u32
+        lines
+            .get(orig_line.saturating_sub(1))
+            .map(|l| l.len())
+            .unwrap_or(0) as u32
     } else {
         0u32
     };
@@ -1039,9 +1149,13 @@ fn error_to_diagnostic_with_source_map(
     let related_info = if orig_file != default_file {
         Some(vec![DiagnosticRelatedInformation {
             location: Location {
-                uri: Url::from_file_path(&orig_file).unwrap_or_else(|_| Url::parse("file:///").expect("file:/// 是有效URL")),
+                uri: Url::from_file_path(&orig_file)
+                    .unwrap_or_else(|_| Url::parse("file:///").expect("file:/// 是有效URL")),
                 range: Range {
-                    start: Position::new(orig_line.saturating_sub(1) as u32, orig_column.saturating_sub(1) as u32),
+                    start: Position::new(
+                        orig_line.saturating_sub(1) as u32,
+                        orig_column.saturating_sub(1) as u32,
+                    ),
                     end: Position::new(orig_line.saturating_sub(1) as u32, line_len),
                 },
             },
@@ -1053,7 +1167,10 @@ fn error_to_diagnostic_with_source_map(
 
     Some(Diagnostic {
         range: Range {
-            start: Position::new(orig_line.saturating_sub(1) as u32, orig_column.saturating_sub(1) as u32),
+            start: Position::new(
+                orig_line.saturating_sub(1) as u32,
+                orig_column.saturating_sub(1) as u32,
+            ),
             end: Position::new(orig_line.saturating_sub(1) as u32, line_len),
         },
         severity: Some(DiagnosticSeverity::ERROR),
@@ -1174,13 +1291,13 @@ async fn main() {
 
     // 处理命令行参数
     let args: Vec<String> = env::args().collect();
-    
+
     // 处理 --version 参数
     if args.len() > 1 && (args[1] == "--version" || args[1] == "-v") {
         println!("cay-lsp {}", VERSION);
         return;
     }
-    
+
     // 处理 --help 参数
     if args.len() > 1 && (args[1] == "--help" || args[1] == "-h") {
         println!("Cavvy Language Server Protocol (LSP) implementation");

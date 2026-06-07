@@ -31,7 +31,9 @@ impl IRGenerator {
         self.emit_raw("  br i1 %copy_null, label %copy_fail, label %do_copy");
         self.emit_raw("");
         self.emit_raw("copy_fail:");
-        self.emit_raw("  ret i8* getelementptr ([1 x i8], [1 x i8]* @.cay_empty_str, i64 0, i64 0)");
+        self.emit_raw(
+            "  ret i8* getelementptr ([1 x i8], [1 x i8]* @.cay_empty_str, i64 0, i64 0)",
+        );
         self.emit_raw("");
         self.emit_raw("do_copy:");
         self.emit_raw("  call void @llvm.memcpy.p0i8.p0i8.i64(i8* %copy, i8* %str, i64 %str_len_copy, i1 false)");
@@ -69,8 +71,12 @@ impl IRGenerator {
         self.emit_raw("  br label %count_continue");
         self.emit_raw("");
         self.emit_raw("count_continue:");
-        self.emit_raw("  %count_next = phi i32 [%count_inc, %count_found], [%count_same, %count_not_found]");
-        self.emit_raw("  %pos_next = phi i64 [%pos_inc, %count_found], [%pos_same, %count_not_found]");
+        self.emit_raw(
+            "  %count_next = phi i32 [%count_inc, %count_found], [%count_same, %count_not_found]",
+        );
+        self.emit_raw(
+            "  %pos_next = phi i64 [%pos_inc, %count_found], [%pos_same, %count_not_found]",
+        );
         self.emit_raw("  br label %count_loop");
         self.emit_raw("");
         self.emit_raw("allocate_result:");
@@ -86,11 +92,17 @@ impl IRGenerator {
         self.emit_raw("  br i1 %result_null, label %result_fail, label %build_loop");
         self.emit_raw("");
         self.emit_raw("result_fail:");
-        self.emit_raw("  ret i8* getelementptr ([1 x i8], [1 x i8]* @.cay_empty_str, i64 0, i64 0)");
+        self.emit_raw(
+            "  ret i8* getelementptr ([1 x i8], [1 x i8]* @.cay_empty_str, i64 0, i64 0)",
+        );
         self.emit_raw("");
         self.emit_raw("build_loop:");
-        self.emit_raw("  %src_pos = phi i64 [0, %allocate_result], [%src_pos_next, %build_continue]");
-        self.emit_raw("  %dst_pos = phi i64 [0, %allocate_result], [%dst_pos_next, %build_continue]");
+        self.emit_raw(
+            "  %src_pos = phi i64 [0, %allocate_result], [%src_pos_next, %build_continue]",
+        );
+        self.emit_raw(
+            "  %dst_pos = phi i64 [0, %allocate_result], [%dst_pos_next, %build_continue]",
+        );
         self.emit_raw("  %can_search2 = icmp sle i64 %src_pos, %max_count_pos");
         self.emit_raw("  br i1 %can_search2, label %build_check, label %copy_remainder");
         self.emit_raw("");

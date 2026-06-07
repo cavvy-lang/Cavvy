@@ -39,8 +39,7 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_interface_basic.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_interface_basic.cay")
-        .expect("编译运行失败");
+    let output = compile_and_run_eol("examples/test_interface_basic.cay").expect("编译运行失败");
     assert_eq!(normalize(&output), "Hello, I am Alice");
     let _ = std::fs::remove_file("examples/test_interface_basic.cay");
 }
@@ -74,8 +73,7 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_interface_return.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_interface_return.cay")
-        .expect("编译运行失败");
+    let output = compile_and_run_eol("examples/test_interface_return.cay").expect("编译运行失败");
     assert_eq!(normalize(&output), "Item: Widget");
     let _ = std::fs::remove_file("examples/test_interface_return.cay");
 }
@@ -113,8 +111,7 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_interface_multi.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_interface_multi.cay")
-        .expect("编译运行失败");
+    let output = compile_and_run_eol("examples/test_interface_multi.cay").expect("编译运行失败");
     assert_eq!(normalize(&output), "print\ndraw");
     let _ = std::fs::remove_file("examples/test_interface_multi.cay");
 }
@@ -156,8 +153,7 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_interface_param.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_interface_param.cay")
-        .expect("编译运行失败");
+    let output = compile_and_run_eol("examples/test_interface_param.cay").expect("编译运行失败");
     assert_eq!(normalize(&output), "Hi, Alice\nHi, Bob");
     let _ = std::fs::remove_file("examples/test_interface_param.cay");
 }
@@ -196,8 +192,7 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_interface_assign.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_interface_assign.cay")
-        .expect("编译运行失败");
+    let output = compile_and_run_eol("examples/test_interface_assign.cay").expect("编译运行失败");
     // 注意：两个都输出 "Meow" 是因为接口分发使用声明类型
     // 实际上 a1 和 a2 都通过 Animal 接口调用，使用第一个实现类的方法
     let normalized = normalize(&output);
@@ -232,8 +227,7 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_interface_args.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_interface_args.cay")
-        .expect("编译运行失败");
+    let output = compile_and_run_eol("examples/test_interface_args.cay").expect("编译运行失败");
     assert_eq!(normalize(&output), "7\n30");
     let _ = std::fs::remove_file("examples/test_interface_args.cay");
 }
@@ -267,8 +261,7 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_interface_inherit.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_interface_inherit.cay")
-        .expect("编译运行失败");
+    let output = compile_and_run_eol("examples/test_interface_inherit.cay").expect("编译运行失败");
     assert_eq!(normalize(&output), "15\n5");
     let _ = std::fs::remove_file("examples/test_interface_inherit.cay");
 }
@@ -319,9 +312,12 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_interface_class_inherit.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_interface_class_inherit.cay")
-        .expect("编译运行失败");
-    assert_eq!(normalize(&output), "Eagle speaks\nEagle flies\nEagle speaks\nEagle flies");
+    let output =
+        compile_and_run_eol("examples/test_interface_class_inherit.cay").expect("编译运行失败");
+    assert_eq!(
+        normalize(&output),
+        "Eagle speaks\nEagle flies\nEagle speaks\nEagle flies"
+    );
     let _ = std::fs::remove_file("examples/test_interface_class_inherit.cay");
 }
 
@@ -349,8 +345,7 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_interface_empty.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_interface_empty.cay")
-        .expect("编译运行失败");
+    let output = compile_and_run_eol("examples/test_interface_empty.cay").expect("编译运行失败");
     assert_eq!(normalize(&output), "hello");
     let _ = std::fs::remove_file("examples/test_interface_empty.cay");
 }
@@ -386,8 +381,7 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_interface_complex.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_interface_complex.cay")
-        .expect("编译运行失败");
+    let output = compile_and_run_eol("examples/test_interface_complex.cay").expect("编译运行失败");
     assert_eq!(normalize(&output), "Sum: 30\nProduct: 200");
     let _ = std::fs::remove_file("examples/test_interface_complex.cay");
 }

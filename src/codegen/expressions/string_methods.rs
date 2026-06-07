@@ -2,8 +2,8 @@
 //!
 //! 处理 String 类型的方法调用（length, substring, indexOf, charAt, replace）。
 
-use crate::codegen::context::IRGenerator;
 use crate::ast::*;
+use crate::codegen::context::IRGenerator;
 use crate::error::{cayResult, codegen_error_at};
 
 impl IRGenerator {
@@ -13,7 +13,11 @@ impl IRGenerator {
     /// # Arguments
     /// * `member` - 成员访问表达式
     /// * `args` - 参数列表
-    pub fn try_generate_string_method_call(&mut self, member: &MemberAccessExpr, args: &[Expr]) -> cayResult<Option<String>> {
+    pub fn try_generate_string_method_call(
+        &mut self,
+        member: &MemberAccessExpr,
+        args: &[Expr],
+    ) -> cayResult<Option<String>> {
         // 生成对象表达式
         let obj_result = self.generate_expression(&member.object)?;
         let (obj_type, obj_val) = self.parse_typed_value(&obj_result);
@@ -35,16 +39,24 @@ impl IRGenerator {
             "length" => {
                 // length() - 无参数，返回 i32
                 if !args.is_empty() {
-                    return Err(codegen_error_at(member.loc.clone(), "String.length() takes no arguments".to_string()));
+                    return Err(codegen_error_at(
+                        member.loc.clone(),
+                        "String.length() takes no arguments".to_string(),
+                    ));
                 }
-                self.emit_line(&format!("  {} = call i32 @__cay_string_length(i8* {})",
-                    temp, obj_val));
+                self.emit_line(&format!(
+                    "  {} = call i32 @__cay_string_length(i8* {})",
+                    temp, obj_val
+                ));
                 Ok(Some(format!("i32 {}", temp)))
             }
             "substring" => {
                 // substring(beginIndex) 或 substring(beginIndex, endIndex)
                 if args.is_empty() || args.len() > 2 {
-                    return Err(codegen_error_at(member.loc.clone(), "String.substring() takes 1 or 2 arguments".to_string()));
+                    return Err(codegen_error_at(
+                        member.loc.clone(),
+                        "String.substring() takes 1 or 2 arguments".to_string(),
+                    ));
                 }
 
                 // 生成 beginIndex 参数
@@ -54,7 +66,10 @@ impl IRGenerator {
                     begin_val.to_string()
                 } else {
                     let t = self.new_temp();
-                    self.emit_line(&format!("  {} = trunc {} {} to i32", t, begin_type, begin_val));
+                    self.emit_line(&format!(
+                        "  {} = trunc {} {} to i32",
+                        t, begin_type, begin_val
+                    ));
                     t
                 };
 
@@ -72,26 +87,36 @@ impl IRGenerator {
                 } else {
                     // substring(beginIndex) - 使用字符串长度作为 endIndex
                     let len_temp = self.new_temp();
-                    self.emit_line(&format!("  {} = call i32 @__cay_string_length(i8* {})",
-                        len_temp, obj_val));
+                    self.emit_line(&format!(
+                        "  {} = call i32 @__cay_string_length(i8* {})",
+                        len_temp, obj_val
+                    ));
                     len_temp
                 };
 
-                self.emit_line(&format!("  {} = call i8* @__cay_string_substring(i8* {}, i32 {}, i32 {})",
-                    temp, obj_val, begin_i32, end_i32));
+                self.emit_line(&format!(
+                    "  {} = call i8* @__cay_string_substring(i8* {}, i32 {}, i32 {})",
+                    temp, obj_val, begin_i32, end_i32
+                ));
                 Ok(Some(format!("i8* {}", temp)))
             }
             "indexOf" => {
                 // indexOf(substr) 或 indexOf(substr, startIndex)
                 if args.len() < 1 || args.len() > 2 {
-                    return Err(codegen_error_at(member.loc.clone(), "String.indexOf() takes 1 or 2 arguments".to_string()));
+                    return Err(codegen_error_at(
+                        member.loc.clone(),
+                        "String.indexOf() takes 1 or 2 arguments".to_string(),
+                    ));
                 }
 
                 let substr_result = self.generate_expression(&args[0])?;
                 let (substr_type, substr_val) = self.parse_typed_value(&substr_result);
 
                 if substr_type != "i8*" {
-                    return Err(codegen_error_at(member.loc.clone(), "String.indexOf() argument must be a string".to_string()));
+                    return Err(codegen_error_at(
+                        member.loc.clone(),
+                        "String.indexOf() argument must be a string".to_string(),
+                    ));
                 }
 
                 if args.len() == 2 {
@@ -99,37 +124,55 @@ impl IRGenerator {
                     let start_result = self.generate_expression(&args[1])?;
                     let (start_type, start_val) = self.parse_typed_value(&start_result);
                     if start_type != "i32" {
-                        return Err(codegen_error_at(member.loc.clone(), "String.indexOf() second argument must be int".to_string()));
+                        return Err(codegen_error_at(
+                            member.loc.clone(),
+                            "String.indexOf() second argument must be int".to_string(),
+                        ));
                     }
-                    self.emit_line(&format!("  {} = call i32 @__cay_string_indexof_from(i8* {}, i8* {}, i32 {})",
-                        temp, obj_val, substr_val, start_val));
+                    self.emit_line(&format!(
+                        "  {} = call i32 @__cay_string_indexof_from(i8* {}, i8* {}, i32 {})",
+                        temp, obj_val, substr_val, start_val
+                    ));
                 } else {
-                    self.emit_line(&format!("  {} = call i32 @__cay_string_indexof(i8* {}, i8* {})",
-                        temp, obj_val, substr_val));
+                    self.emit_line(&format!(
+                        "  {} = call i32 @__cay_string_indexof(i8* {}, i8* {})",
+                        temp, obj_val, substr_val
+                    ));
                 }
                 Ok(Some(format!("i32 {}", temp)))
             }
             "lastIndexOf" => {
                 // lastIndexOf(substr) - 返回子串最后一次出现的位置
                 if args.len() != 1 {
-                    return Err(codegen_error_at(member.loc.clone(), "String.lastIndexOf() takes 1 argument".to_string()));
+                    return Err(codegen_error_at(
+                        member.loc.clone(),
+                        "String.lastIndexOf() takes 1 argument".to_string(),
+                    ));
                 }
 
                 let substr_result = self.generate_expression(&args[0])?;
                 let (substr_type, substr_val) = self.parse_typed_value(&substr_result);
 
                 if substr_type != "i8*" {
-                    return Err(codegen_error_at(member.loc.clone(), "String.lastIndexOf() argument must be a string".to_string()));
+                    return Err(codegen_error_at(
+                        member.loc.clone(),
+                        "String.lastIndexOf() argument must be a string".to_string(),
+                    ));
                 }
 
-                self.emit_line(&format!("  {} = call i32 @__cay_string_lastindexof(i8* {}, i8* {})",
-                    temp, obj_val, substr_val));
+                self.emit_line(&format!(
+                    "  {} = call i32 @__cay_string_lastindexof(i8* {}, i8* {})",
+                    temp, obj_val, substr_val
+                ));
                 Ok(Some(format!("i32 {}", temp)))
             }
             "charAt" => {
                 // charAt(index) - 返回指定位置的字符
                 if args.len() != 1 {
-                    return Err(codegen_error_at(member.loc.clone(), "String.charAt() takes 1 argument".to_string()));
+                    return Err(codegen_error_at(
+                        member.loc.clone(),
+                        "String.charAt() takes 1 argument".to_string(),
+                    ));
                 }
 
                 let index_result = self.generate_expression(&args[0])?;
@@ -138,18 +181,26 @@ impl IRGenerator {
                     index_val.to_string()
                 } else {
                     let t = self.new_temp();
-                    self.emit_line(&format!("  {} = trunc {} {} to i32", t, index_type, index_val));
+                    self.emit_line(&format!(
+                        "  {} = trunc {} {} to i32",
+                        t, index_type, index_val
+                    ));
                     t
                 };
 
-                self.emit_line(&format!("  {} = call i8 @__cay_string_charat(i8* {}, i32 {})",
-                    temp, obj_val, index_i32));
+                self.emit_line(&format!(
+                    "  {} = call i8 @__cay_string_charat(i8* {}, i32 {})",
+                    temp, obj_val, index_i32
+                ));
                 Ok(Some(format!("i8 {}", temp)))
             }
             "replace" => {
                 // replace(oldStr, newStr) - 替换所有出现的子串
                 if args.len() != 2 {
-                    return Err(codegen_error_at(member.loc.clone(), "String.replace() takes 2 arguments".to_string()));
+                    return Err(codegen_error_at(
+                        member.loc.clone(),
+                        "String.replace() takes 2 arguments".to_string(),
+                    ));
                 }
 
                 let old_result = self.generate_expression(&args[0])?;
@@ -158,61 +209,90 @@ impl IRGenerator {
                 let (new_type, new_val) = self.parse_typed_value(&new_result);
 
                 if old_type != "i8*" || new_type != "i8*" {
-                    return Err(codegen_error_at(member.loc.clone(), "String.replace() arguments must be strings".to_string()));
+                    return Err(codegen_error_at(
+                        member.loc.clone(),
+                        "String.replace() arguments must be strings".to_string(),
+                    ));
                 }
 
-                self.emit_line(&format!("  {} = call i8* @__cay_string_replace(i8* {}, i8* {}, i8* {})",
-                    temp, obj_val, old_val, new_val));
+                self.emit_line(&format!(
+                    "  {} = call i8* @__cay_string_replace(i8* {}, i8* {}, i8* {})",
+                    temp, obj_val, old_val, new_val
+                ));
                 Ok(Some(format!("i8* {}", temp)))
             }
             "isEmpty" => {
                 // isEmpty() - 无参数，返回 boolean (i1)
                 if !args.is_empty() {
-                    return Err(codegen_error_at(member.loc.clone(), "String.isEmpty() takes no arguments".to_string()));
+                    return Err(codegen_error_at(
+                        member.loc.clone(),
+                        "String.isEmpty() takes no arguments".to_string(),
+                    ));
                 }
-                self.emit_line(&format!("  {} = call i1 @__cay_string_isempty(i8* {})",
-                    temp, obj_val));
+                self.emit_line(&format!(
+                    "  {} = call i1 @__cay_string_isempty(i8* {})",
+                    temp, obj_val
+                ));
                 Ok(Some(format!("i1 {}", temp)))
             }
             "equals" => {
                 // equals(other) - 比较两个字符串是否相等，返回 boolean (i1)
                 if args.len() != 1 {
-                    return Err(codegen_error_at(member.loc.clone(), "String.equals() takes 1 argument".to_string()));
+                    return Err(codegen_error_at(
+                        member.loc.clone(),
+                        "String.equals() takes 1 argument".to_string(),
+                    ));
                 }
 
                 let other_result = self.generate_expression(&args[0])?;
                 let (other_type, other_val) = self.parse_typed_value(&other_result);
 
                 if other_type != "i8*" {
-                    return Err(codegen_error_at(member.loc.clone(), "String.equals() argument must be a string".to_string()));
+                    return Err(codegen_error_at(
+                        member.loc.clone(),
+                        "String.equals() argument must be a string".to_string(),
+                    ));
                 }
 
-                self.emit_line(&format!("  {} = call i1 @__cay_string_equals(i8* {}, i8* {})",
-                    temp, obj_val, other_val));
+                self.emit_line(&format!(
+                    "  {} = call i1 @__cay_string_equals(i8* {}, i8* {})",
+                    temp, obj_val, other_val
+                ));
                 Ok(Some(format!("i1 {}", temp)))
             }
             "equalsIgnoreCase" => {
                 // equalsIgnoreCase(other) - 忽略大小写比较两个字符串，返回 boolean (i1)
                 if args.len() != 1 {
-                    return Err(codegen_error_at(member.loc.clone(), "String.equalsIgnoreCase() takes 1 argument".to_string()));
+                    return Err(codegen_error_at(
+                        member.loc.clone(),
+                        "String.equalsIgnoreCase() takes 1 argument".to_string(),
+                    ));
                 }
 
                 let other_result = self.generate_expression(&args[0])?;
                 let (other_type, other_val) = self.parse_typed_value(&other_result);
 
                 if other_type != "i8*" {
-                    return Err(codegen_error_at(member.loc.clone(), "String.equalsIgnoreCase() argument must be a string".to_string()));
+                    return Err(codegen_error_at(
+                        member.loc.clone(),
+                        "String.equalsIgnoreCase() argument must be a string".to_string(),
+                    ));
                 }
 
-                self.emit_line(&format!("  {} = call i1 @__cay_string_equals_ignorecase(i8* {}, i8* {})",
-                    temp, obj_val, other_val));
+                self.emit_line(&format!(
+                    "  {} = call i1 @__cay_string_equals_ignorecase(i8* {}, i8* {})",
+                    temp, obj_val, other_val
+                ));
                 Ok(Some(format!("i1 {}", temp)))
             }
             "c_str" => {
                 // c_str() - 返回C字符串指针 (i8*)
                 // 在Cavvy中，String本身就是i8*，所以直接返回
                 if !args.is_empty() {
-                    return Err(codegen_error_at(member.loc.clone(), "String.c_str() takes no arguments".to_string()));
+                    return Err(codegen_error_at(
+                        member.loc.clone(),
+                        "String.c_str() takes no arguments".to_string(),
+                    ));
                 }
                 // String在Cavvy内部就是i8*，直接返回对象值
                 Ok(Some(format!("i8* {}", obj_val)))
@@ -220,87 +300,134 @@ impl IRGenerator {
             "startsWith" => {
                 // startsWith(prefix) - 检查字符串是否以指定前缀开头
                 if args.len() != 1 {
-                    return Err(codegen_error_at(member.loc.clone(), "String.startsWith() takes 1 argument".to_string()));
+                    return Err(codegen_error_at(
+                        member.loc.clone(),
+                        "String.startsWith() takes 1 argument".to_string(),
+                    ));
                 }
 
                 let prefix_result = self.generate_expression(&args[0])?;
                 let (prefix_type, prefix_val) = self.parse_typed_value(&prefix_result);
 
                 if prefix_type != "i8*" {
-                    return Err(codegen_error_at(member.loc.clone(), "String.startsWith() argument must be a string".to_string()));
+                    return Err(codegen_error_at(
+                        member.loc.clone(),
+                        "String.startsWith() argument must be a string".to_string(),
+                    ));
                 }
 
-                self.emit_line(&format!("  {} = call i1 @__cay_string_startswith(i8* {}, i8* {})",
-                    temp, obj_val, prefix_val));
+                self.emit_line(&format!(
+                    "  {} = call i1 @__cay_string_startswith(i8* {}, i8* {})",
+                    temp, obj_val, prefix_val
+                ));
                 Ok(Some(format!("i1 {}", temp)))
             }
             "endsWith" => {
                 // endsWith(suffix) - 检查字符串是否以指定后缀结尾
                 if args.len() != 1 {
-                    return Err(codegen_error_at(member.loc.clone(), "String.endsWith() takes 1 argument".to_string()));
+                    return Err(codegen_error_at(
+                        member.loc.clone(),
+                        "String.endsWith() takes 1 argument".to_string(),
+                    ));
                 }
 
                 let suffix_result = self.generate_expression(&args[0])?;
                 let (suffix_type, suffix_val) = self.parse_typed_value(&suffix_result);
 
                 if suffix_type != "i8*" {
-                    return Err(codegen_error_at(member.loc.clone(), "String.endsWith() argument must be a string".to_string()));
+                    return Err(codegen_error_at(
+                        member.loc.clone(),
+                        "String.endsWith() argument must be a string".to_string(),
+                    ));
                 }
 
-                self.emit_line(&format!("  {} = call i1 @__cay_string_endswith(i8* {}, i8* {})",
-                    temp, obj_val, suffix_val));
+                self.emit_line(&format!(
+                    "  {} = call i1 @__cay_string_endswith(i8* {}, i8* {})",
+                    temp, obj_val, suffix_val
+                ));
                 Ok(Some(format!("i1 {}", temp)))
             }
             "trim" => {
                 if !args.is_empty() {
-                    return Err(codegen_error_at(member.loc.clone(), "String.trim() takes no arguments".to_string()));
+                    return Err(codegen_error_at(
+                        member.loc.clone(),
+                        "String.trim() takes no arguments".to_string(),
+                    ));
                 }
-                self.emit_line(&format!("  {} = call i8* @__cay_string_trim(i8* {})",
-                    temp, obj_val));
+                self.emit_line(&format!(
+                    "  {} = call i8* @__cay_string_trim(i8* {})",
+                    temp, obj_val
+                ));
                 Ok(Some(format!("i8* {}", temp)))
             }
             "toLowerCase" => {
                 if !args.is_empty() {
-                    return Err(codegen_error_at(member.loc.clone(), "String.toLowerCase() takes no arguments".to_string()));
+                    return Err(codegen_error_at(
+                        member.loc.clone(),
+                        "String.toLowerCase() takes no arguments".to_string(),
+                    ));
                 }
-                self.emit_line(&format!("  {} = call i8* @__cay_string_to_lower(i8* {})",
-                    temp, obj_val));
+                self.emit_line(&format!(
+                    "  {} = call i8* @__cay_string_to_lower(i8* {})",
+                    temp, obj_val
+                ));
                 Ok(Some(format!("i8* {}", temp)))
             }
             "toUpperCase" => {
                 if !args.is_empty() {
-                    return Err(codegen_error_at(member.loc.clone(), "String.toUpperCase() takes no arguments".to_string()));
+                    return Err(codegen_error_at(
+                        member.loc.clone(),
+                        "String.toUpperCase() takes no arguments".to_string(),
+                    ));
                 }
-                self.emit_line(&format!("  {} = call i8* @__cay_string_to_upper(i8* {})",
-                    temp, obj_val));
+                self.emit_line(&format!(
+                    "  {} = call i8* @__cay_string_to_upper(i8* {})",
+                    temp, obj_val
+                ));
                 Ok(Some(format!("i8* {}", temp)))
             }
             "contains" => {
                 // contains(substr) - 检查字符串是否包含子串，返回 boolean (i1)
                 if args.len() != 1 {
-                    return Err(codegen_error_at(member.loc.clone(), "String.contains() takes 1 argument".to_string()));
+                    return Err(codegen_error_at(
+                        member.loc.clone(),
+                        "String.contains() takes 1 argument".to_string(),
+                    ));
                 }
                 let sub_result = self.generate_expression(&args[0])?;
                 let (sub_type, sub_val) = self.parse_typed_value(&sub_result);
                 if sub_type != "i8*" {
-                    return Err(codegen_error_at(member.loc.clone(), "String.contains() argument must be a string".to_string()));
+                    return Err(codegen_error_at(
+                        member.loc.clone(),
+                        "String.contains() argument must be a string".to_string(),
+                    ));
                 }
-                self.emit_line(&format!("  {} = call i1 @__cay_string_contains(i8* {}, i8* {})",
-                    temp, obj_val, sub_val));
+                self.emit_line(&format!(
+                    "  {} = call i1 @__cay_string_contains(i8* {}, i8* {})",
+                    temp, obj_val, sub_val
+                ));
                 Ok(Some(format!("i1 {}", temp)))
             }
             "compareTo" => {
                 // compareTo(other) - 比较两个字符串，返回 i32 (-1, 0, 1)
                 if args.len() != 1 {
-                    return Err(codegen_error_at(member.loc.clone(), "String.compareTo() takes 1 argument".to_string()));
+                    return Err(codegen_error_at(
+                        member.loc.clone(),
+                        "String.compareTo() takes 1 argument".to_string(),
+                    ));
                 }
                 let other_result = self.generate_expression(&args[0])?;
                 let (other_type, other_val) = self.parse_typed_value(&other_result);
                 if other_type != "i8*" {
-                    return Err(codegen_error_at(member.loc.clone(), "String.compareTo() argument must be a string".to_string()));
+                    return Err(codegen_error_at(
+                        member.loc.clone(),
+                        "String.compareTo() argument must be a string".to_string(),
+                    ));
                 }
-                self.emit_line(&format!("  {} = call i32 @__cay_string_compareto(i8* {}, i8* {})",
-                    temp, obj_val, other_val));
+                self.emit_line(&format!(
+                    "  {} = call i32 @__cay_string_compareto(i8* {}, i8* {})",
+                    temp, obj_val, other_val
+                ));
                 Ok(Some(format!("i32 {}", temp)))
             }
             _ => Ok(None), // 不是已知的 String 方法

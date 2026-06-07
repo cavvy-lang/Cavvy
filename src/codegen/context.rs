@@ -1,7 +1,7 @@
 //! IR生成上下文和状态管理
-use std::collections::{HashMap, HashSet};
-use crate::types::TypeRegistry;
 use crate::codegen::platform::PlatformConfig;
+use crate::types::TypeRegistry;
+use std::collections::{HashMap, HashSet};
 
 fn normalize_source_file_path(path: &str) -> String {
     path.strip_prefix("\\\\?\\").unwrap_or(path).to_string()
@@ -10,39 +10,39 @@ fn normalize_source_file_path(path: &str) -> String {
 /// 循环上下文，用于支持 break/continue
 #[derive(Debug, Clone)]
 pub struct LoopContext {
-    pub cond_label: String,  // continue 跳转的目标（条件检查）
-    pub end_label: String,   // break 跳转的目标（循环结束）
-    pub label: Option<String>,  // 循环标签（用于带标签的 break/continue）
+    pub cond_label: String,    // continue 跳转的目标（条件检查）
+    pub end_label: String,     // break 跳转的目标（循环结束）
+    pub label: Option<String>, // 循环标签（用于带标签的 break/continue）
 }
 
 /// 静态字段信息
 #[derive(Debug, Clone)]
 pub struct StaticFieldInfo {
-    pub name: String,           // 完整名称: @ClassName.fieldName
-    pub llvm_type: String,      // LLVM 类型
-    pub size: usize,            // 大小（字节）
-    pub field_type: crate::types::Type,  // 原始类型
-    pub initializer: Option<crate::ast::Expr>,  // 初始化器
-    pub class_name: String,     // 类名
-    pub field_name: String,     // 字段名
+    pub name: String,                          // 完整名称: @ClassName.fieldName
+    pub llvm_type: String,                     // LLVM 类型
+    pub size: usize,                           // 大小（字节）
+    pub field_type: crate::types::Type,        // 原始类型
+    pub initializer: Option<crate::ast::Expr>, // 初始化器
+    pub class_name: String,                    // 类名
+    pub field_name: String,                    // 字段名
 }
 
 /// 实例字段信息
 #[derive(Debug, Clone)]
 pub struct InstanceFieldInfo {
-    pub name: String,           // 字段名
-    pub llvm_type: String,      // LLVM 类型
-    pub field_type: crate::types::Type,  // 原始类型
-    pub offset: usize,          // 在对象中的偏移量（字节）
-    pub size: usize,            // 大小（字节）
+    pub name: String,                   // 字段名
+    pub llvm_type: String,              // LLVM 类型
+    pub field_type: crate::types::Type, // 原始类型
+    pub offset: usize,                  // 在对象中的偏移量（字节）
+    pub size: usize,                    // 大小（字节）
 }
 
 /// 类实例布局信息
 #[derive(Debug, Clone)]
 pub struct ClassLayoutInfo {
     pub class_name: String,
-    pub total_size: usize,      // 对象总大小（字节）
-    pub fields: HashMap<String, InstanceFieldInfo>,  // 字段名 -> 字段信息
+    pub total_size: usize,                          // 对象总大小（字节）
+    pub fields: HashMap<String, InstanceFieldInfo>, // 字段名 -> 字段信息
 }
 
 impl ClassLayoutInfo {
@@ -55,22 +55,22 @@ impl ClassLayoutInfo {
 /// 变量作用域信息
 #[derive(Debug, Clone)]
 pub struct VarScope {
-    pub name: String,           // 原始变量名
-    pub llvm_name: String,      // LLVM 中的唯一名称（带作用域后缀）
-    pub var_type: String,       // 变量类型
-    pub is_parameter: bool,     // 是否是参数（参数存储的是值，局部变量存储的是对象指针）
+    pub name: String,       // 原始变量名
+    pub llvm_name: String,  // LLVM 中的唯一名称（带作用域后缀）
+    pub var_type: String,   // 变量类型
+    pub is_parameter: bool, // 是否是参数（参数存储的是值，局部变量存储的是对象指针）
 }
 
 /// 作用域栈管理
 pub struct ScopeManager {
-    scopes: Vec<HashMap<String, VarScope>>,  // 作用域栈
-    scope_counter: usize,                     // 作用域计数器（用于生成唯一名称）
+    scopes: Vec<HashMap<String, VarScope>>, // 作用域栈
+    scope_counter: usize,                   // 作用域计数器（用于生成唯一名称）
 }
 
 impl ScopeManager {
     pub fn new() -> Self {
         Self {
-            scopes: vec![HashMap::new()],  // 全局作用域
+            scopes: vec![HashMap::new()], // 全局作用域
             scope_counter: 0,
         }
     }
@@ -92,9 +92,14 @@ impl ScopeManager {
     pub fn declare_var(&mut self, name: &str, var_type: &str) -> String {
         self.declare_var_with_flag(name, var_type, false)
     }
-    
+
     /// 声明变量（带参数标志）
-    pub fn declare_var_with_flag(&mut self, name: &str, var_type: &str, is_parameter: bool) -> String {
+    pub fn declare_var_with_flag(
+        &mut self,
+        name: &str,
+        var_type: &str,
+        is_parameter: bool,
+    ) -> String {
         let llvm_name = if self.scopes.len() == 1 {
             // 全局作用域，使用原始名称
             name.to_string()
@@ -136,10 +141,12 @@ impl ScopeManager {
     pub fn get_llvm_name(&self, name: &str) -> Option<String> {
         self.lookup_var(name).map(|v| v.llvm_name.clone())
     }
-    
+
     /// 检查变量是否是参数
     pub fn is_parameter(&self, name: &str) -> bool {
-        self.lookup_var(name).map(|v| v.is_parameter).unwrap_or(false)
+        self.lookup_var(name)
+            .map(|v| v.is_parameter)
+            .unwrap_or(false)
     }
 
     /// 检查变量是否在当前作用域中声明
@@ -179,7 +186,7 @@ pub struct TypeIdInfo {
     pub class_name: String,
     pub parent_type_id: Option<String>,
     pub interfaces: Vec<String>,
-    pub type_id_value: i32,  // 唯一的整数标识符
+    pub type_id_value: i32, // 唯一的整数标识符
 }
 
 /// IR生成器核心上下文
@@ -194,7 +201,7 @@ pub struct IRGenerator {
     pub current_class: String,
     pub current_return_type: String,
     pub var_types: HashMap<String, String>,
-    pub var_cay_types: HashMap<String, crate::types::Type>,  // 变量名到Cavvy类型的映射
+    pub var_cay_types: HashMap<String, crate::types::Type>, // 变量名到Cavvy类型的映射
     pub var_class_map: HashMap<String, String>,
     pub loop_stack: Vec<LoopContext>,
     pub target_triple: String,
@@ -207,15 +214,15 @@ pub struct IRGenerator {
     pub method_declarations: Vec<String>,
     pub type_id_map: HashMap<String, TypeIdInfo>,
     pub type_id_counter: usize,
-    pub class_layouts: HashMap<String, ClassLayoutInfo>,  // 类实例布局信息
+    pub class_layouts: HashMap<String, ClassLayoutInfo>, // 类实例布局信息
     pub platform_config: Option<PlatformConfig>,
-    pub extern_declarations: Vec<crate::ast::ExternDecl>,  // FFI extern 声明
-    pub extern_function_map: HashMap<String, usize>,  // 函数名 -> extern_declarations索引
-    pub emitted_externs: HashSet<String>,  // 已生成的extern声明（函数名 -> 签名）
-    pub top_level_functions: Vec<crate::ast::TopLevelFunction>,  // 顶层函数列表
-    pub current_param_order: Vec<String>,  // 当前函数参数顺序（用于内联IR）
-    pub type_aliases: HashMap<String, crate::types::Type>,  // 类型别名映射
-    pub class_namespaces: HashMap<String, Vec<String>>,     // 类名 -> 命名空间路径 映射
+    pub extern_declarations: Vec<crate::ast::ExternDecl>, // FFI extern 声明
+    pub extern_function_map: HashMap<String, usize>,      // 函数名 -> extern_declarations索引
+    pub emitted_externs: HashSet<String>,                 // 已生成的extern声明（函数名 -> 签名）
+    pub top_level_functions: Vec<crate::ast::TopLevelFunction>, // 顶层函数列表
+    pub current_param_order: Vec<String>,                 // 当前函数参数顺序（用于内联IR）
+    pub type_aliases: HashMap<String, crate::types::Type>, // 类型别名映射
+    pub class_namespaces: HashMap<String, Vec<String>>,   // 类名 -> 命名空间路径 映射
     // 源映射相关
     pub current_ir_line: usize,  // 当前IR行号
     pub source_file: String,     // 当前源文件
@@ -225,28 +232,28 @@ pub struct IRGenerator {
     pub preprocessor_source_map: Option<std::collections::HashMap<usize, (String, usize)>>, // 预处理器源映射 (输出行 -> (文件, 源行))
     pub reverse_source_map: Option<std::collections::HashMap<(String, usize), usize>>, // 反向映射 ((文件, 源行) -> 输出行)
     // DWARF 调试信息
-    pub debug_info: bool,                     // 是否生成 DWARF 调试信息
-    debug_node_counter: usize,                // 调试元数据节点计数器
-    debug_file_node: usize,                   // DIFile 节点编号
-    debug_empty_node: usize,                   // 空元组节点编号
-    debug_subprograms: Vec<DebugSubprogram>,   // 记录所有子程序元数据
+    pub debug_info: bool,                    // 是否生成 DWARF 调试信息
+    debug_node_counter: usize,               // 调试元数据节点计数器
+    debug_file_node: usize,                  // DIFile 节点编号
+    debug_empty_node: usize,                 // 空元组节点编号
+    debug_subprograms: Vec<DebugSubprogram>, // 记录所有子程序元数据
     // 测试模式
-    pub test_mode: bool,                      // 是否生成测试入口
-    pub test_methods: Vec<(String, String)>,  // (类名, 方法名) 列表
-    pub field_initializers: HashMap<String, Vec<crate::ast::FieldDecl>>,  // 类名 -> 有初始化器的字段列表
-    pub lambda_captures: HashMap<String, Vec<(String, crate::types::Type)>>,  // lambda函数名 -> 捕获变量列表 [(变量名, 类型)]
-    pub lambda_envs: HashMap<String, String>,  // lambda变量名 -> 环境指针临时变量名
-    pub lambda_counter: usize,  // Lambda函数名计数器，确保唯一性
+    pub test_mode: bool,                     // 是否生成测试入口
+    pub test_methods: Vec<(String, String)>, // (类名, 方法名) 列表
+    pub field_initializers: HashMap<String, Vec<crate::ast::FieldDecl>>, // 类名 -> 有初始化器的字段列表
+    pub lambda_captures: HashMap<String, Vec<(String, crate::types::Type)>>, // lambda函数名 -> 捕获变量列表 [(变量名, 类型)]
+    pub lambda_envs: HashMap<String, String>, // lambda变量名 -> 环境指针临时变量名
+    pub lambda_counter: usize,                // Lambda函数名计数器，确保唯一性
 }
 
 /// DWARF 子程序元数据
 #[derive(Debug, Clone)]
 struct DebugSubprogram {
-    func_name: String,    // 函数名（LLVM 中的名称）
-    source_file: String,  // 源文件路径
-    source_line: usize,   // 源行号
-    node_id: usize,       // DISubprogram 节点编号
-    type_node_id: usize,  // DISubroutineType 节点编号
+    func_name: String,   // 函数名（LLVM 中的名称）
+    source_file: String, // 源文件路径
+    source_line: usize,  // 源行号
+    node_id: usize,      // DISubprogram 节点编号
+    type_node_id: usize, // DISubroutineType 节点编号
 }
 
 impl IRGenerator {
@@ -298,7 +305,7 @@ impl IRGenerator {
             reverse_source_map: None,
             // DWARF 调试信息初始化
             debug_info: false,
-            debug_node_counter: 5,         // 0=DICompileUnit, 1=DebugInfoVersion, 2=DwarfVersion, 3=DIFile, 4=empty tuple
+            debug_node_counter: 5, // 0=DICompileUnit, 1=DebugInfoVersion, 2=DwarfVersion, 3=DIFile, 4=empty tuple
             debug_file_node: 3,
             debug_empty_node: 4,
             debug_subprograms: Vec::new(),
@@ -317,7 +324,10 @@ impl IRGenerator {
     }
 
     /// 设置预处理器源映射（用于多文件include场景）
-    pub fn set_preprocessor_source_map(&mut self, source_map: std::collections::HashMap<usize, (String, usize)>) {
+    pub fn set_preprocessor_source_map(
+        &mut self,
+        source_map: std::collections::HashMap<usize, (String, usize)>,
+    ) {
         // 创建反向映射：(文件, 源行) -> 输出行
         let mut reverse_map = std::collections::HashMap::new();
         for (output_line, (file, source_line)) in &source_map {
@@ -350,17 +360,17 @@ impl IRGenerator {
     /// 获取 extern 函数的信息（使用HashMap O(1)查找）
     /// 注意：如果extern函数有别名，只能通过别名获取
     pub fn get_extern_function(&self, func_name: &str) -> Option<&crate::ast::ExternFunction> {
-        self.extern_function_map.get(func_name).and_then(|&decl_idx| {
-            self.extern_declarations.get(decl_idx).and_then(|decl| {
-                // 查找匹配的函数：有别名的按别名匹配，没别名的按原名匹配
-                decl.functions.iter().find(|f| {
-                    match &f.alias {
+        self.extern_function_map
+            .get(func_name)
+            .and_then(|&decl_idx| {
+                self.extern_declarations.get(decl_idx).and_then(|decl| {
+                    // 查找匹配的函数：有别名的按别名匹配，没别名的按原名匹配
+                    decl.functions.iter().find(|f| match &f.alias {
                         Some(alias) => alias == func_name,
                         None => f.name == func_name,
-                    }
+                    })
                 })
             })
-        })
     }
 
     /// 获取extern函数的LLVM调用名（实际C函数名）
@@ -377,7 +387,11 @@ impl IRGenerator {
     /// 获取顶层函数的类型
     /// 时间复杂度: O(n)，n为顶层函数数量
     pub fn get_top_level_function_type(&self, func_name: &str) -> crate::types::Type {
-        if let Some(func) = self.top_level_functions.iter().find(|f| f.name == func_name) {
+        if let Some(func) = self
+            .top_level_functions
+            .iter()
+            .find(|f| f.name == func_name)
+        {
             crate::types::Type::Function(Box::new(crate::types::FunctionType {
                 params: func.params.iter().map(|p| p.param_type.clone()).collect(),
                 return_type: Box::new(func.return_type.clone()),
@@ -444,7 +458,11 @@ impl IRGenerator {
     /// 复杂度: O(1) 直接返回当前设置的源位置
     /// 注意：现在source_file已经通过set_source_from_loc从loc.file获取了正确的文件路径
     fn get_current_source_position(&self) -> (String, usize, usize) {
-        (self.source_file.clone(), self.source_line, self.source_column)
+        (
+            self.source_file.clone(),
+            self.source_line,
+            self.source_column,
+        )
     }
 
     /// 发射一行代码到当前代码缓冲区
@@ -453,12 +471,14 @@ impl IRGenerator {
         if self.enable_source_map && !line.trim().starts_with(';') && !line.trim().is_empty() {
             let (source_file, source_line, source_column) = self.get_current_source_position();
             if !source_file.is_empty() {
-                self.code.push_str(&format!("; !source {}:{}:{}\n", 
-                    source_file, source_line, source_column));
+                self.code.push_str(&format!(
+                    "; !source {}:{}:{}\n",
+                    source_file, source_line, source_column
+                ));
                 self.current_ir_line += 1;
             }
         }
-        
+
         // DWARF 调试信息: 为 define 行注入 !dbg 注解
         let actual_line = if self.debug_info && line.trim_start().starts_with("define ") {
             let trimmed = line.trim_start();
@@ -469,17 +489,13 @@ impl IRGenerator {
                 } else {
                     after_at.to_string()
                 };
-                
+
                 let has_source = !self.source_file.is_empty();
                 if has_source {
                     let sf = self.source_file.clone();
                     let sl = self.source_line;
-                    let node_id = self.allocate_debug_subprogram(
-                        &func_name,
-                        &sf,
-                        sl,
-                    );
-                    
+                    let node_id = self.allocate_debug_subprogram(&func_name, &sf, sl);
+
                     if let Some(brace_pos) = line.rfind('{') {
                         let before_brace = &line[..brace_pos];
                         let after_brace = &line[brace_pos..];
@@ -496,7 +512,7 @@ impl IRGenerator {
         } else {
             line.to_string()
         };
-        
+
         if !actual_line.is_empty() {
             self.code.push_str(&"  ".repeat(self.indent));
         }
@@ -511,12 +527,14 @@ impl IRGenerator {
         if self.enable_source_map && !line.trim().starts_with(';') && !line.trim().is_empty() {
             let (source_file, source_line, source_column) = self.get_current_source_position();
             if !source_file.is_empty() {
-                self.output.push_str(&format!("; !source {}:{}:{}\n", 
-                    source_file, source_line, source_column));
+                self.output.push_str(&format!(
+                    "; !source {}:{}:{}\n",
+                    source_file, source_line, source_column
+                ));
                 self.current_ir_line += 1;
             }
         }
-        
+
         // DWARF 调试信息: 为 define 行注入 !dbg 注解
         if self.debug_info && line.trim_start().starts_with("define ") {
             // 提取函数名: "define <type> @<name>(...)" -> "<name>"
@@ -528,44 +546,43 @@ impl IRGenerator {
                 } else {
                     after_at.to_string()
                 };
-                
+
                 // 查找该函数是否已分配子程序节点
                 // 检查是否来自运行时（没有源文件位置），跳过
                 let has_source = !self.source_file.is_empty();
-                
+
                 if has_source {
                     let sf = self.source_file.clone();
                     let sl = self.source_line;
-                    let node_id = self.allocate_debug_subprogram(
-                        &func_name,
-                        &sf,
-                        sl,
-                    );
-                    
+                    let node_id = self.allocate_debug_subprogram(&func_name, &sf, sl);
+
                     // 在 { 之前注入 !dbg !N
                     if let Some(brace_pos) = line.rfind('{') {
                         let before_brace = &line[..brace_pos];
                         let after_brace = &line[brace_pos..];
-                        self.output.push_str(&format!("{}!dbg !{} {}\n", before_brace, node_id, after_brace));
+                        self.output.push_str(&format!(
+                            "{}!dbg !{} {}\n",
+                            before_brace, node_id, after_brace
+                        ));
                         self.current_ir_line += 1;
                         return;
                     }
                 }
             }
         }
-        
+
         self.output.push_str(line);
         self.output.push('\n');
         self.current_ir_line += 1;
     }
-    
+
     /// 设置当前源位置
     pub fn set_source_position(&mut self, file: impl Into<String>, line: usize, column: usize) {
         self.source_file = file.into();
         self.source_line = line;
         self.source_column = column;
     }
-    
+
     /// 从SourceLocation设置源位置
     /// 优先使用loc中的file字段，如果为None则使用传入的file参数
     /// 只有loc未携带原始文件时才回退到预处理器源映射
@@ -591,16 +608,15 @@ impl IRGenerator {
         self.source_column = loc.column;
     }
 
-
     /// 获取类型的 LLVM 对齐字节数
     pub fn get_type_align(&self, llvm_type: &str) -> u32 {
         match llvm_type {
             "i1" | "i8" => 1,
             "i16" => 2,
-            "i32" | "float" => 4,  // float 是 4 字节对齐！
+            "i32" | "float" => 4, // float 是 4 字节对齐！
             "i64" | "double" => 8,
-            t if t.ends_with("*") => 8,  // 所有指针都是 8 字节（64位系统）
-            _ => 8, // 默认 8 字节
+            t if t.ends_with("*") => 8, // 所有指针都是 8 字节（64位系统）
+            _ => 8,                     // 默认 8 字节
         }
     }
 
@@ -613,7 +629,7 @@ impl IRGenerator {
             "i64" => 8,
             "float" => 4,
             "double" => 8,
-            t if t.ends_with("*") => 8,  // 所有指针都是 8 字节（64位系统）
+            t if t.ends_with("*") => 8, // 所有指针都是 8 字节（64位系统）
             _ => 8,
         }
     }
@@ -634,7 +650,11 @@ impl IRGenerator {
 
     /// 进入循环上下文
     pub fn enter_loop(&mut self, cond_label: String, end_label: String, label: Option<String>) {
-        self.loop_stack.push(LoopContext { cond_label, end_label, label });
+        self.loop_stack.push(LoopContext {
+            cond_label,
+            end_label,
+            label,
+        });
     }
 
     /// 退出循环上下文
@@ -649,7 +669,10 @@ impl IRGenerator {
 
     /// 根据标签获取循环上下文（用于带标签的 break/continue）
     pub fn get_loop_by_label(&self, label: &str) -> Option<&LoopContext> {
-        self.loop_stack.iter().rev().find(|ctx| ctx.label.as_deref() == Some(label))
+        self.loop_stack
+            .iter()
+            .rev()
+            .find(|ctx| ctx.label.as_deref() == Some(label))
     }
 
     /// 获取表达式的类型
@@ -680,57 +703,66 @@ impl IRGenerator {
                 } else {
                     None
                 }
-            },
+            }
             Expr::MemberAccess(member) => {
                 // 对于成员访问，尝试获取对象的类型
-                self.get_expression_type(&member.object).and_then(|obj_type| {
-                    match obj_type {
-                        Type::Array(_) if member.member == "length" => Some(Type::Int32),
-                        Type::String if member.member == "length" => Some(Type::Int32),
-                        Type::Object(class_name) => {
-                            // 对于对象类型，从类型注册表查找字段类型
-                            if let Some(ref registry) = self.type_registry {
-                                if let Some(class_info) = registry.get_class(&class_name) {
-                                    // 查找字段
-                                    if let Some(field_info) = class_info.fields.get(&member.member) {
-                                        return Some(field_info.field_type.clone());
+                self.get_expression_type(&member.object)
+                    .and_then(|obj_type| {
+                        match obj_type {
+                            Type::Array(_) if member.member == "length" => Some(Type::Int32),
+                            Type::String if member.member == "length" => Some(Type::Int32),
+                            Type::Object(class_name) => {
+                                // 对于对象类型，从类型注册表查找字段类型
+                                if let Some(ref registry) = self.type_registry {
+                                    if let Some(class_info) = registry.get_class(&class_name) {
+                                        // 查找字段
+                                        if let Some(field_info) =
+                                            class_info.fields.get(&member.member)
+                                        {
+                                            return Some(field_info.field_type.clone());
+                                        }
+                                    }
+                                }
+                                None
+                            }
+                            _ => None,
+                        }
+                    })
+                    .or_else(|| {
+                        // 如果无法从对象类型推断，尝试从当前类的字段信息获取
+                        // 这用于处理 this.field 的情况
+                        if let Expr::Identifier(obj_name) = member.object.as_ref() {
+                            let obj_name_str = obj_name.as_ref();
+                            // 检查是否是 this 或当前类实例
+                            if obj_name_str == "this"
+                                || (obj_name_str == self.current_class.as_str())
+                            {
+                                // 从类型注册表获取当前类的字段信息
+                                if let Some(ref registry) = self.type_registry {
+                                    if let Some(class_info) =
+                                        registry.get_class(&self.current_class)
+                                    {
+                                        // 查找字段 (HashMap<String, FieldInfo>)
+                                        if let Some(field_info) =
+                                            class_info.fields.get(&member.member)
+                                        {
+                                            return Some(field_info.field_type.clone());
+                                        }
                                     }
                                 }
                             }
-                            None
                         }
-                        _ => None,
-                    }
-                }).or_else(|| {
-                    // 如果无法从对象类型推断，尝试从当前类的字段信息获取
-                    // 这用于处理 this.field 的情况
-                    if let Expr::Identifier(obj_name) = member.object.as_ref() {
-                        let obj_name_str = obj_name.as_ref();
-                        // 检查是否是 this 或当前类实例
-                        if obj_name_str == "this" || (obj_name_str == self.current_class.as_str()) {
-                            // 从类型注册表获取当前类的字段信息
-                            if let Some(ref registry) = self.type_registry {
-                                if let Some(class_info) = registry.get_class(&self.current_class) {
-                                    // 查找字段 (HashMap<String, FieldInfo>)
-                                    if let Some(field_info) = class_info.fields.get(&member.member) {
-                                        return Some(field_info.field_type.clone());
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    None
-                })
-            },
+                        None
+                    })
+            }
             Expr::ArrayAccess(arr) => {
                 // 数组访问返回元素类型
-                self.get_expression_type(&arr.array).map(|arr_type| {
-                    match arr_type {
+                self.get_expression_type(&arr.array)
+                    .map(|arr_type| match arr_type {
                         Type::Array(elem) => (*elem).clone(),
                         _ => Type::Int32,
-                    }
-                })
-            },
+                    })
+            }
             Expr::New(new_expr) => {
                 // New 表达式返回对象类型
                 Some(Type::Object(new_expr.class_name.clone()))
@@ -761,7 +793,7 @@ impl IRGenerator {
                 } else {
                     Some(Type::Object(t.trim_end_matches('*').to_string()))
                 }
-            },
+            }
             _ => None,
         }
     }
@@ -776,7 +808,8 @@ impl IRGenerator {
         self.global_counter += 1;
 
         // 转义字符串
-        let escaped = s.replace("\\", "\\\\")
+        let escaped = s
+            .replace("\\", "\\\\")
             .replace("\"", "\\\"")
             .replace("\n", "\\0A")
             .replace("\r", "\\0D")
@@ -794,10 +827,11 @@ impl IRGenerator {
         for (s, name) in &self.global_strings {
             // 计算实际字节数：使用UTF-8字节长度
             let actual_len = s.as_bytes().len();
-            
+
             // 转义特殊字符用于LLVM IR输出
             // 在LLVM IR中，特殊字符使用十六进制转义序列
-            let escaped = s.replace("\\", "\\5C")
+            let escaped = s
+                .replace("\\", "\\5C")
                 .replace("\"", "\\22")
                 .replace("\n", "\\0A")
                 .replace("\r", "\\0D")
@@ -828,7 +862,7 @@ impl IRGenerator {
         } else {
             class_name
         };
-        
+
         // 检查是否是泛型类
         let processed_name = if let Some(ref registry) = self.type_registry {
             if let Some(class_info) = registry.get_class(base_name) {
@@ -872,12 +906,15 @@ impl IRGenerator {
                 class_name.to_string()
             }
         };
-        
+
         // 如果 processed_name 已经包含 ::，直接从中提取命名空间和简单名
         if processed_name.contains("::") {
             let parts: Vec<&str> = processed_name.split("::").collect();
             let simple_name = parts.last().unwrap_or(&"").to_string();
-            let namespace: Vec<String> = parts[..parts.len()-1].iter().map(|s| s.to_string()).collect();
+            let namespace: Vec<String> = parts[..parts.len() - 1]
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
             if namespace.is_empty() {
                 simple_name
             } else {
@@ -892,9 +929,13 @@ impl IRGenerator {
 
     /// 生成带参数签名的方法名以支持方法重载
     /// 格式: _ZN<len>ns1<len>ns2<len>classNameE.methodName 或 _ZN<len>ns1<len>ns2<len>classNameE.__methodName_paramTypes
-    pub fn generate_method_name(&self, class_name: &str, method: &crate::ast::MethodDecl) -> String {
+    pub fn generate_method_name(
+        &self,
+        class_name: &str,
+        method: &crate::ast::MethodDecl,
+    ) -> String {
         let cls = self.get_qualified_class_name(class_name);
-        
+
         // 只对泛型类尝试从类型注册表获取方法信息
         // 因为类型注册表中的 MethodInfo 已经将泛型参数替换为 GenericParam 类型
         if class_name.contains('<') {
@@ -905,7 +946,7 @@ impl IRGenerator {
                 } else {
                     class_name
                 };
-                
+
                 if let Some(class_info) = registry.get_class(base_class_name) {
                     if !class_info.type_params.is_empty() {
                         if let Some(methods) = class_info.methods.get(&method.name) {
@@ -916,7 +957,9 @@ impl IRGenerator {
                                     if method_info.params.is_empty() {
                                         return format!("{}.{}", cls, method.name);
                                     } else {
-                                        let param_types: Vec<String> = method_info.params.iter()
+                                        let param_types: Vec<String> = method_info
+                                            .params
+                                            .iter()
                                             .map(|p| {
                                                 if p.is_varargs {
                                                     self.varargs_type_to_signature(&p.param_type)
@@ -925,7 +968,12 @@ impl IRGenerator {
                                                 }
                                             })
                                             .collect();
-                                        return format!("{}.__{}_{}", cls, method.name, param_types.join("_"));
+                                        return format!(
+                                            "{}.__{}_{}",
+                                            cls,
+                                            method.name,
+                                            param_types.join("_")
+                                        );
                                     }
                                 }
                             }
@@ -934,12 +982,14 @@ impl IRGenerator {
                 }
             }
         }
-        
+
         // 回退：使用 AST 中的参数类型
         if method.params.is_empty() {
             format!("{}.{}", cls, method.name)
         } else {
-            let param_types: Vec<String> = method.params.iter()
+            let param_types: Vec<String> = method
+                .params
+                .iter()
                 .map(|p| {
                     if p.is_varargs {
                         self.varargs_type_to_signature(&p.param_type)
@@ -966,7 +1016,7 @@ impl IRGenerator {
         } else {
             class_name
         };
-        
+
         // 直接查找（限定名 key）
         if let Some(ns) = self.class_namespaces.get(base_class_name) {
             return ns.clone();
@@ -974,7 +1024,11 @@ impl IRGenerator {
         // 回退：在当前命名空间上下文中查找
         if let Some(ref registry) = self.type_registry {
             if !registry.current_namespace.is_empty() {
-                let qualified = format!("{}::{}", registry.current_namespace.join("::"), base_class_name);
+                let qualified = format!(
+                    "{}::{}",
+                    registry.current_namespace.join("::"),
+                    base_class_name
+                );
                 if let Some(ns) = self.class_namespaces.get(&qualified) {
                     return ns.clone();
                 }
@@ -1017,19 +1071,17 @@ impl IRGenerator {
         use crate::types::Type;
         // 可变参数类型是 Array(ElementType)，提取元素类型
         match ty {
-            Type::Array(elem) => {
-                match elem.as_ref() {
-                    Type::Int32 => "ai".to_string(),
-                    Type::Int64 => "al".to_string(),
-                    Type::Float32 => "af".to_string(),
-                    Type::Float64 => "ad".to_string(),
-                    Type::Bool => "ab".to_string(),
-                    Type::String => "as".to_string(),
-                    Type::Char => "ac".to_string(),
-                    Type::Object(name) => format!("ao{}", name),
-                    _ => "ax".to_string(),
-                }
-            }
+            Type::Array(elem) => match elem.as_ref() {
+                Type::Int32 => "ai".to_string(),
+                Type::Int64 => "al".to_string(),
+                Type::Float32 => "af".to_string(),
+                Type::Float64 => "ad".to_string(),
+                Type::Bool => "ab".to_string(),
+                Type::String => "as".to_string(),
+                Type::Char => "ac".to_string(),
+                Type::Object(name) => format!("ao{}", name),
+                _ => "ax".to_string(),
+            },
             _ => self.type_to_signature(ty), // 如果不是数组类型，回退到普通签名
         }
     }
@@ -1046,36 +1098,46 @@ impl IRGenerator {
         if let Some(ref registry) = self.type_registry {
             if let Some(class_info) = registry.get_class(class_name) {
                 // 收集所有参数数量匹配的构造函数
-                let candidates: Vec<_> = class_info.constructors.iter()
+                let candidates: Vec<_> = class_info
+                    .constructors
+                    .iter()
                     .filter(|c| c.params.len() == arg_count)
                     .collect();
-                
+
                 if candidates.is_empty() {
                     return fallback_types.to_vec();
                 }
-                
+
                 // 如果只有一个候选，直接使用
                 if candidates.len() == 1 {
-                    return candidates[0].params.iter()
+                    return candidates[0]
+                        .params
+                        .iter()
                         .map(|p| self.type_to_signature(&p.param_type))
                         .collect();
                 }
-                
+
                 // 多个候选：通过类型匹配评分选择最佳重载
                 // 评分规则：完全匹配 +10，整数族 +3，对象族 +5，String 不匹配 -100
-                let best = candidates.iter()
+                let best = candidates
+                    .iter()
                     .max_by_key(|ctor| {
-                        let ctor_sigs: Vec<String> = ctor.params.iter()
+                        let ctor_sigs: Vec<String> = ctor
+                            .params
+                            .iter()
                             .map(|p| self.type_to_signature(&p.param_type))
                             .collect();
                         let mut score: i32 = 0;
                         for (c_sig, f_sig) in ctor_sigs.iter().zip(fallback_types.iter()) {
                             if c_sig == f_sig {
-                                score += 10;  // exact match
-                            } else if Self::is_int_signature(c_sig) && Self::is_int_signature(f_sig) {
-                                score += 3;   // int family (e.g., i32→i64 widening)
-                            } else if Self::is_float_signature(c_sig) && Self::is_float_signature(f_sig) {
-                                score += 3;   // float family
+                                score += 10; // exact match
+                            } else if Self::is_int_signature(c_sig) && Self::is_int_signature(f_sig)
+                            {
+                                score += 3; // int family (e.g., i32→i64 widening)
+                            } else if Self::is_float_signature(c_sig)
+                                && Self::is_float_signature(f_sig)
+                            {
+                                score += 3; // float family
                             } else if c_sig.starts_with('o') && f_sig.starts_with('o') {
                                 score += if c_sig == f_sig { 5 } else { 1 };
                             } else if (c_sig == "s") != (f_sig == "s") {
@@ -1085,20 +1147,22 @@ impl IRGenerator {
                         score
                     })
                     .unwrap_or(&candidates[0]);
-                
-                return best.params.iter()
+
+                return best
+                    .params
+                    .iter()
                     .map(|p| self.type_to_signature(&p.param_type))
                     .collect();
             }
         }
         fallback_types.to_vec()
     }
-    
+
     /// 检查签名是否是整数类型（i8, i16, i32, i64 等，但非指针）
     fn is_int_signature(sig: &str) -> bool {
         sig.starts_with('i') && !sig.contains('*') && sig != "i8"
     }
-    
+
     /// 检查签名是否是浮点类型（f, d 或 float, double）
     fn is_float_signature(sig: &str) -> bool {
         sig == "f" || sig == "d"
@@ -1170,13 +1234,19 @@ impl IRGenerator {
     }
 
     /// 注册类型标识符
-    pub fn register_type_id(&mut self, class_name: &str, parent_name: Option<&str>, interfaces: Vec<String>) -> String {
+    pub fn register_type_id(
+        &mut self,
+        class_name: &str,
+        parent_name: Option<&str>,
+        interfaces: Vec<String>,
+    ) -> String {
         let llvm_name = self.get_qualified_class_name(class_name);
         let type_id = format!("@__type_id_{}", llvm_name);
-        let parent_type_id = parent_name.map(|p| format!("@__type_id_{}", self.get_qualified_class_name(p)));
+        let parent_type_id =
+            parent_name.map(|p| format!("@__type_id_{}", self.get_qualified_class_name(p)));
         let type_id_value = self.type_id_counter as i32;
         self.type_id_counter += 1;
-        
+
         self.type_id_map.insert(
             class_name.to_string(),
             TypeIdInfo {
@@ -1184,21 +1254,25 @@ impl IRGenerator {
                 parent_type_id,
                 interfaces,
                 type_id_value,
-            }
+            },
         );
-        
+
         type_id
     }
 
     /// 获取类型的整数标识符值
     pub fn get_type_id_value(&self, class_name: &str) -> Option<i32> {
-        self.type_id_map.get(class_name).map(|info| info.type_id_value)
+        self.type_id_map
+            .get(class_name)
+            .map(|info| info.type_id_value)
     }
 
     /// 获取类型标识符
     pub fn get_type_id(&self, class_name: &str) -> Option<String> {
         let llvm_name = self.get_qualified_class_name(class_name);
-        self.type_id_map.get(class_name).map(|_| format!("@__type_id_{}", llvm_name))
+        self.type_id_map
+            .get(class_name)
+            .map(|_| format!("@__type_id_{}", llvm_name))
     }
 
     /// 检查类型是否是另一个类型的子类或实现了该接口
@@ -1206,7 +1280,7 @@ impl IRGenerator {
         if class_name == target_name {
             return true;
         }
-        
+
         let mut current = class_name.to_string();
         while let Some(info) = self.type_id_map.get(&current) {
             // 检查是否实现了目标接口
@@ -1224,7 +1298,7 @@ impl IRGenerator {
                 break;
             }
         }
-        
+
         false
     }
 
@@ -1243,10 +1317,15 @@ impl IRGenerator {
     }
 
     /// 计算类的实例布局（支持继承）
-    /// 
+    ///
     /// 对象内存布局: [type_id: i32][padding: i32][父类字段...][子类字段...]
     /// 返回对象总大小（字节）
-    pub fn compute_class_layout(&mut self, class_name: &str, fields: &[crate::ast::FieldDecl], parent_name: Option<&str>) -> usize {
+    pub fn compute_class_layout(
+        &mut self,
+        class_name: &str,
+        fields: &[crate::ast::FieldDecl],
+        parent_name: Option<&str>,
+    ) -> usize {
         // 对象头大小：type_id (4 bytes) + padding (4 bytes) + vtable_ptr (8 bytes) = 16 bytes
         // vtable 指针偏移量
         const VTABLE_OFFSET: usize = 8;
@@ -1257,9 +1336,12 @@ impl IRGenerator {
         // 如果有父类，先复制父类的字段布局
         if let Some(parent) = parent_name {
             // 先用简单名找，找不到就用限定名（class_layouts 现在用限定名存储）
-            let parent_layout = self.class_layouts.get(parent)
+            let parent_layout = self
+                .class_layouts
+                .get(parent)
                 .or_else(|| {
-                    self.type_registry.as_ref()
+                    self.type_registry
+                        .as_ref()
                         .and_then(|r| r.find_qualified_class(parent))
                         .and_then(|q| self.class_layouts.get(&q))
                 })
@@ -1282,7 +1364,7 @@ impl IRGenerator {
 
             let llvm_type = self.type_to_llvm(&field.field_type);
             let size = field.field_type.size_in_bytes();
-            
+
             // 对齐处理
             let align = self.get_type_align(&llvm_type) as usize;
             current_offset = (current_offset + align - 1) & !(align - 1);
@@ -1339,7 +1421,11 @@ impl IRGenerator {
     }
 
     /// 获取实例字段信息
-    pub fn get_instance_field(&self, class_name: &str, field_name: &str) -> Option<&InstanceFieldInfo> {
+    pub fn get_instance_field(
+        &self,
+        class_name: &str,
+        field_name: &str,
+    ) -> Option<&InstanceFieldInfo> {
         // 先用传入的类名直接查找
         if let Some(layout) = self.class_layouts.get(class_name) {
             if let Some(result) = layout.fields.get(field_name) {
@@ -1471,7 +1557,7 @@ impl IRGenerator {
     }
 
     /// 启用测试模式
-    /// 
+    ///
     /// 在测试模式下，代码生成器会额外生成 `__cavvy_test_main` 入口函数，
     /// 自动调用所有带 `@Test` 注解的方法，并打印测试结果。
     pub fn enable_test_mode(&mut self) {
@@ -1480,7 +1566,12 @@ impl IRGenerator {
 
     /// 为函数定义分配 DWARF 子程序元数据节点
     /// 返回用于 `!dbg !N` 注解的节点编号
-    pub fn allocate_debug_subprogram(&mut self, func_name: &str, source_file: &str, source_line: usize) -> usize {
+    pub fn allocate_debug_subprogram(
+        &mut self,
+        func_name: &str,
+        source_file: &str,
+        source_line: usize,
+    ) -> usize {
         let subprogram_node = self.debug_node_counter;
         let type_node = self.debug_node_counter + 1;
         self.debug_node_counter += 2;
@@ -1504,7 +1595,7 @@ impl IRGenerator {
         // 模块级 DWARF 引用 — 节点定义在末尾的 emit_debug_metadata 中
         self.output.push_str(&format!(
             "!llvm.dbg.cu = !{{!{}}}\n",
-            self.debug_file_node - 3  // !0 = DICompileUnit
+            self.debug_file_node - 3 // !0 = DICompileUnit
         ));
         self.output.push_str("!llvm.module.flags = !{!1, !2}\n");
         self.output.push('\n');
@@ -1532,10 +1623,12 @@ impl IRGenerator {
         ));
 
         // !1 = Debug Info Version
-        self.output.push_str("!1 = !{i32 2, !\"Debug Info Version\", i32 3}\n");
+        self.output
+            .push_str("!1 = !{i32 2, !\"Debug Info Version\", i32 3}\n");
 
         // !2 = Dwarf Version
-        self.output.push_str("!2 = !{i32 2, !\"Dwarf Version\", i32 4}\n");
+        self.output
+            .push_str("!2 = !{i32 2, !\"Dwarf Version\", i32 4}\n");
 
         // !3 = !DIFile
         self.output.push_str(&format!(
@@ -1544,7 +1637,8 @@ impl IRGenerator {
         ));
 
         // !4 = empty tuple
-        self.output.push_str(&format!("!{} = !{{}}\n", self.debug_empty_node));
+        self.output
+            .push_str(&format!("!{} = !{{}}\n", self.debug_empty_node));
         self.output.push('\n');
 
         // 发射所有子程序元数据

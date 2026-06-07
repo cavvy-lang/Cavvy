@@ -3,7 +3,7 @@
 //! 测试 struct、enum、@FreeFunction、泛型语法等功能
 
 mod common;
-use common::{compile_and_run_eol, compile_eol_expect_error, assert_output_contains};
+use common::{assert_output_contains, compile_and_run_eol, compile_eol_expect_error};
 
 // ============================================================
 // struct 测试

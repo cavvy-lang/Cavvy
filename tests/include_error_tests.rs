@@ -16,24 +16,24 @@ fn get_cayc_path() -> String {
 fn test_include_error_location() {
     let cayc = get_cayc_path();
     let source = "examples/test_include_error_main.cay";
-    
+
     let output = Command::new(&cayc)
         .args(&[source, "examples/test_include_error_temp.exe"])
         .output()
         .expect("Failed to execute cayc");
-    
+
     // 期望编译失败
     assert!(!output.status.success(), "Expected compilation to fail");
-    
+
     let stderr = String::from_utf8_lossy(&output.stderr);
-    
+
     // 错误应指向被包含文件 test_include_error_lib.cay，而不是主文件 main.cay
     assert!(
         stderr.contains("test_include_error_lib.cay"),
         "Error should reference the included file, not just the main file.\nstderr:\n{}",
         stderr
     );
-    
+
     // 错误不应指向主文件的 #include 行（line 1）
     let main_file_header = format!("{}.cay:1:1", source.trim_end_matches(".cay"));
     assert!(
@@ -41,7 +41,7 @@ fn test_include_error_location() {
         "Error should NOT point to the #include line of the main file.\nstderr:\n{}",
         stderr
     );
-    
+
     // 清理临时文件
     let _ = std::fs::remove_file("examples/test_include_error_temp.exe");
     let _ = std::fs::remove_file("examples/test_include_error_temp.ll");

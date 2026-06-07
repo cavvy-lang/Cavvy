@@ -1,7 +1,9 @@
-use logos::Logos;
-use crate::error::{cayResult};
+use crate::diagnostic::{
+    CompilationPhase, Diagnostic, DiagnosticCollector, ErrorCodes, FixSuggestion, SourceSpan,
+};
 use crate::error::SourceLocation;
-use crate::diagnostic::{Diagnostic, DiagnosticCollector, ErrorCodes, CompilationPhase, SourceSpan, FixSuggestion};
+use crate::error::cayResult;
+use logos::Logos;
 
 #[derive(Logos, Debug, Clone, PartialEq)]
 #[logos(skip r"[ \t\f]+")]
@@ -188,7 +190,7 @@ pub enum Token {
     // 标识符
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice().to_string())]
     Identifier(String),
-    
+
     // 字面量
     #[regex(r"(?:0[xX][0-9a-fA-F][0-9a-fA-F_]*|0[bB][01][01_]*|0[oO]?[0-7][0-7_]*|[0-9][0-9_]*)[Ll]?", |lex| {
         let slice = lex.slice();
@@ -221,7 +223,7 @@ pub enum Token {
         num.map(|val| (val, suffix))
     })]
     IntegerLiteral(Option<(i64, Option<char>)>),
-    
+
     // 浮点数字面量 - 支持以下格式：
     // 1. 标准小数: 3.14, .5, 2.
     // 2. 科学计数法: 1e10, 1.5e-10, 2E+5
@@ -240,21 +242,21 @@ pub enum Token {
         cleaned.parse::<f64>().ok().map(|val| (val, suffix))
     })]
     FloatLiteral(Option<(f64, Option<char>)>),
-    
+
     #[regex(r#""([^"\\]|\\.)*""#, |lex| {
         let s = lex.slice();
         let content = &s[1..s.len()-1];
         Some(process_escape_sequences(content))
     })]
     StringLiteral(Option<String>),
-    
+
     #[regex(r"'([^'\\]|\\.)'", |lex| {
         let s = lex.slice();
         let content = &s[1..s.len()-1];
         process_char_escape(content)
     })]
     CharLiteral(Option<char>),
-    
+
     // 运算符
     #[token("+")]
     Plus,
@@ -298,7 +300,7 @@ pub enum Token {
     UnsignedShr,
     #[token("~")]
     Tilde,
-    
+
     // 赋值运算符
     #[token("=")]
     Assign,
@@ -312,13 +314,13 @@ pub enum Token {
     DivAssign,
     #[token("%=")]
     ModAssign,
-    
+
     // 自增自减
     #[token("++")]
     Inc,
     #[token("--")]
     Dec,
-    
+
     // 分隔符
     #[token("(")]
     LParen,
@@ -366,7 +368,12 @@ pub struct TokenWithLocation {
 
 impl TokenWithLocation {
     /// 创建带源映射的token
-    pub fn with_source(token: Token, loc: SourceLocation, file: Option<String>, line: Option<usize>) -> Self {
+    pub fn with_source(
+        token: Token,
+        loc: SourceLocation,
+        file: Option<String>,
+        line: Option<usize>,
+    ) -> Self {
         Self {
             token,
             loc,
@@ -444,12 +451,19 @@ impl<'a> Lexer<'a> {
     }
 
     /// 创建带源映射的词法分析器
-    pub fn with_source_map(source: &'a str, source_map: std::collections::HashMap<usize, (String, usize)>) -> Self {
+    pub fn with_source_map(
+        source: &'a str,
+        source_map: std::collections::HashMap<usize, (String, usize)>,
+    ) -> Self {
         Self::with_source_map_and_file(source, source_map, None)
     }
 
     /// 创建带源映射和当前文件路径的词法分析器
-    pub fn with_source_map_and_file(source: &'a str, source_map: std::collections::HashMap<usize, (String, usize)>, current_file: Option<String>) -> Self {
+    pub fn with_source_map_and_file(
+        source: &'a str,
+        source_map: std::collections::HashMap<usize, (String, usize)>,
+        current_file: Option<String>,
+    ) -> Self {
         Self {
             source,
             inner: Token::lexer(source),
@@ -479,35 +493,35 @@ impl<'a> Lexer<'a> {
     fn is_inside_inline_ir_block(&self, pos: usize) -> bool {
         // 查找最近的__ir {
         let source_before = &self.source[..pos];
-        
+
         // 从后向前查找__ir
         if let Some(ir_pos) = source_before.rfind("__ir") {
             // 检查__ir后面是否有{
             let after_ir = &source_before[ir_pos..];
             if let Some(lbrace_pos) = after_ir.find('{') {
                 let lbrace_global_pos = ir_pos + lbrace_pos;
-                
+
                 // 计算从{到当前位置的{和}的数量
                 let block_content = &self.source[lbrace_global_pos..pos];
                 let open_braces = block_content.chars().filter(|&c| c == '{').count();
                 let close_braces = block_content.chars().filter(|&c| c == '}').count();
-                
+
                 // 如果开放的{数量大于关闭的}数量，说明在块内
                 return open_braces > close_braces;
             }
         }
-        
+
         false
     }
 
     /// 检查当前位置是否在未闭合的字符串中
     fn is_inside_unterminated_string(&self, pos: usize) -> bool {
         let source_before = &self.source[..pos];
-        
+
         // 从后向前查找双引号
         let mut in_string = false;
         let mut escaped = false;
-        
+
         for c in source_before.chars().rev() {
             if escaped {
                 escaped = false;
@@ -521,14 +535,22 @@ impl<'a> Lexer<'a> {
                 in_string = !in_string;
             }
         }
-        
+
         in_string
     }
 
     /// 创建详细的词法错误诊断
-    fn create_lexer_diagnostic(&self, error_type: LexerErrorType, span: std::ops::Range<usize>) -> Diagnostic {
+    fn create_lexer_diagnostic(
+        &self,
+        error_type: LexerErrorType,
+        span: std::ops::Range<usize>,
+    ) -> Diagnostic {
         let error_char = &self.source[span.clone()];
-        let location = crate::diagnostic::SourceLocation::new(self.current_source_file.clone(), self.line, self.column);
+        let location = crate::diagnostic::SourceLocation::new(
+            self.current_source_file.clone(),
+            self.line,
+            self.column,
+        );
 
         match error_type {
             LexerErrorType::InvalidCharacter => {
@@ -606,12 +628,12 @@ impl<'a> Lexer<'a> {
                 Ok(token) => {
                     let span = self.inner.span();
                     token_count += 1;
-                    
+
                     // 从字节偏移量计算真实列号（计入被logos跳过的空白字符）
                     let column = compute_column(self.source, span.start);
-                    
+
                     let loc = SourceLocation {
-                        file: None,  // 将由source_map填充
+                        file: None, // 将由source_map填充
                         line: self.line,
                         column,
                     };
@@ -639,11 +661,12 @@ impl<'a> Lexer<'a> {
                     // 检查源映射 - 使用原始源位置
                     // 注意：loc.line 保持为预处理后的行号，让语义分析器来映射
                     // 这样可以避免双重映射问题
-                    let (source_file, source_line) = if let Some((file, line)) = self.source_map.get(&self.line) {
-                        (Some(file.clone()), Some(*line))
-                    } else {
-                        (self.current_source_file.clone(), Some(self.line))
-                    };
+                    let (source_file, source_line) =
+                        if let Some((file, line)) = self.source_map.get(&self.line) {
+                            (Some(file.clone()), Some(*line))
+                        } else {
+                            (self.current_source_file.clone(), Some(self.line))
+                        };
 
                     // 更新loc中的file和line为原始源文件信息
                     // source_line 来自 source_map（原始行号），回退到预处理行号
@@ -665,11 +688,12 @@ impl<'a> Lexer<'a> {
                     let error_char = &self.source[span.clone()];
 
                     // 检查源映射以获取正确的错误位置
-                    let (error_line, error_file) = if let Some((file, line)) = self.source_map.get(&self.line) {
-                        (*line, Some(file.clone()))
-                    } else {
-                        (self.line, self.current_source_file.clone())
-                    };
+                    let (error_line, error_file) =
+                        if let Some((file, line)) = self.source_map.get(&self.line) {
+                            (*line, Some(file.clone()))
+                        } else {
+                            (self.line, self.current_source_file.clone())
+                        };
 
                     // 检查是否在__ir块内（通过检查前面是否有__ir {）
                     let pos = span.start;
@@ -681,7 +705,8 @@ impl<'a> Lexer<'a> {
 
                     // 检查是否是未闭合的字符串
                     // 如果错误字符以"开头，说明是未闭合的字符串
-                    let is_unterminated_string = error_char.starts_with('"') || self.is_inside_unterminated_string(pos);
+                    let is_unterminated_string =
+                        error_char.starts_with('"') || self.is_inside_unterminated_string(pos);
 
                     if self.collect_all_errors {
                         // 收集错误但继续分析
@@ -690,10 +715,7 @@ impl<'a> Lexer<'a> {
                         } else {
                             LexerErrorType::InvalidCharacter
                         };
-                        let diagnostic = self.create_lexer_diagnostic(
-                            error_type,
-                            span.clone()
-                        );
+                        let diagnostic = self.create_lexer_diagnostic(error_type, span.clone());
                         self.diagnostics.add(diagnostic);
 
                         // 跳过这个字符继续
@@ -705,10 +727,7 @@ impl<'a> Lexer<'a> {
                         } else {
                             LexerErrorType::InvalidCharacter
                         };
-                        let diagnostic = self.create_lexer_diagnostic(
-                            error_type,
-                            span.clone()
-                        );
+                        let diagnostic = self.create_lexer_diagnostic(error_type, span.clone());
                         self.diagnostics.add(diagnostic);
                         self.column += span.end - span.start;
                     }
@@ -719,7 +738,9 @@ impl<'a> Lexer<'a> {
         // 检查是否有收集到的错误
         if self.diagnostics.has_errors() {
             let diagnostics = self.diagnostics.clone();
-            let first = diagnostics.diagnostics().first()
+            let first = diagnostics
+                .diagnostics()
+                .first()
                 .map(|d| d.clone())
                 .unwrap_or_else(|| {
                     crate::diagnostic::Diagnostic::error(
@@ -766,11 +787,12 @@ impl<'a> Lexer<'a> {
 
                 // 检查源映射 - 使用原始源位置
                 // 注意：loc.line 保持为预处理后的行号，让语义分析器来映射
-                let (source_file, source_line) = if let Some((file, line)) = self.source_map.get(&self.line) {
-                    (Some(file.clone()), Some(*line))
-                } else {
-                    (self.current_source_file.clone(), Some(self.line))
-                };
+                let (source_file, source_line) =
+                    if let Some((file, line)) = self.source_map.get(&self.line) {
+                        (Some(file.clone()), Some(*line))
+                    } else {
+                        (self.current_source_file.clone(), Some(self.line))
+                    };
 
                 // 更新loc中的file和line为原始源文件信息
                 let loc = SourceLocation {
@@ -791,16 +813,23 @@ impl<'a> Lexer<'a> {
                 let error_char = &self.source[span.clone()];
 
                 // 检查源映射以获取正确的错误位置
-                let (error_line, error_file) = if let Some((file, line)) = self.source_map.get(&self.line) {
-                    (*line, Some(file.clone()))
-                } else {
-                    (self.line, self.current_source_file.clone())
-                };
+                let (error_line, error_file) =
+                    if let Some((file, line)) = self.source_map.get(&self.line) {
+                        (*line, Some(file.clone()))
+                    } else {
+                        (self.line, self.current_source_file.clone())
+                    };
 
                 let error_msg = if let Some(ref file) = error_file {
-                    format!("Unexpected character: '{}' in {}:{}", error_char, file, error_line)
+                    format!(
+                        "Unexpected character: '{}' in {}:{}",
+                        error_char, file, error_line
+                    )
                 } else {
-                    format!("Unexpected character: '{}' at line {}", error_char, error_line)
+                    format!(
+                        "Unexpected character: '{}' at line {}",
+                        error_char, error_line
+                    )
                 };
 
                 let diagnostic = crate::diagnostic::Diagnostic::error(
@@ -908,9 +937,9 @@ fn compute_column(source: &str, byte_offset: usize) -> usize {
     // 从 byte_offset 往前找最近的一个换行符
     let line_start = source[..byte_offset.min(source.len())]
         .rfind('\n')
-        .map(|pos| pos + 1)  // 换行符之后的位置
-        .unwrap_or(0);        // 第一行从位置 0 开始
-    
+        .map(|pos| pos + 1) // 换行符之后的位置
+        .unwrap_or(0); // 第一行从位置 0 开始
+
     // 列号 = 偏移量 - 行起始位置 + 1（1-indexed）
     byte_offset.saturating_sub(line_start) + 1
 }
@@ -1052,19 +1081,56 @@ pub fn token_name(token: &Token) -> &'static str {
 
 /// 检查token是否为关键字
 pub fn is_keyword(token: &Token) -> bool {
-    matches!(token,
-        Token::Public | Token::Private | Token::Protected |
-        Token::Static | Token::Final | Token::Abstract | Token::Native |
-        Token::Class | Token::Struct | Token::Enum | Token::Void | Token::Int | Token::Long |
-        Token::Float | Token::Double | Token::Bool | Token::String |
-        Token::Char | Token::True | Token::False | Token::Null |
-        Token::If | Token::Else | Token::While | Token::For |
-        Token::Do | Token::Switch | Token::Case | Token::Default |
-        Token::Return | Token::Break | Token::Continue |
-        Token::New | Token::This | Token::Super |
-        Token::Extends | Token::Implements | Token::Interface | Token::InstanceOf |
-        Token::Var | Token::Let | Token::Auto | Token::Extern | Token::Scope |
-        Token::InlineIr | Token::Alias | Token::Fn | Token::As
+    matches!(
+        token,
+        Token::Public
+            | Token::Private
+            | Token::Protected
+            | Token::Static
+            | Token::Final
+            | Token::Abstract
+            | Token::Native
+            | Token::Class
+            | Token::Struct
+            | Token::Enum
+            | Token::Void
+            | Token::Int
+            | Token::Long
+            | Token::Float
+            | Token::Double
+            | Token::Bool
+            | Token::String
+            | Token::Char
+            | Token::True
+            | Token::False
+            | Token::Null
+            | Token::If
+            | Token::Else
+            | Token::While
+            | Token::For
+            | Token::Do
+            | Token::Switch
+            | Token::Case
+            | Token::Default
+            | Token::Return
+            | Token::Break
+            | Token::Continue
+            | Token::New
+            | Token::This
+            | Token::Super
+            | Token::Extends
+            | Token::Implements
+            | Token::Interface
+            | Token::InstanceOf
+            | Token::Var
+            | Token::Let
+            | Token::Auto
+            | Token::Extern
+            | Token::Scope
+            | Token::InlineIr
+            | Token::Alias
+            | Token::Fn
+            | Token::As
     )
 }
 
@@ -1074,7 +1140,13 @@ pub fn keyword_priority(token: &Token) -> u8 {
         Token::If | Token::Else | Token::While | Token::For | Token::Return => 10,
         Token::Class | Token::Interface | Token::Extends | Token::Implements => 9,
         Token::Public | Token::Private | Token::Protected | Token::Static | Token::Final => 8,
-        Token::Int | Token::Long | Token::Float | Token::Double | Token::Bool | Token::String | Token::Void => 7,
+        Token::Int
+        | Token::Long
+        | Token::Float
+        | Token::Double
+        | Token::Bool
+        | Token::String
+        | Token::Void => 7,
         Token::New | Token::This | Token::Super => 6,
         Token::True | Token::False | Token::Null => 5,
         _ => 0,
@@ -1087,12 +1159,19 @@ pub fn lex(source: &str) -> cayResult<Vec<TokenWithLocation>> {
 }
 
 /// 带源映射的词法分析函数
-pub fn lex_with_source_map(source: &str, source_map: std::collections::HashMap<usize, (String, usize)>) -> cayResult<Vec<TokenWithLocation>> {
+pub fn lex_with_source_map(
+    source: &str,
+    source_map: std::collections::HashMap<usize, (String, usize)>,
+) -> cayResult<Vec<TokenWithLocation>> {
     lex_with_source_map_and_file(source, source_map, None)
 }
 
 /// 词法分析（带源映射和当前文件路径）
-pub fn lex_with_source_map_and_file(source: &str, source_map: std::collections::HashMap<usize, (String, usize)>, current_file: Option<String>) -> cayResult<Vec<TokenWithLocation>> {
+pub fn lex_with_source_map_and_file(
+    source: &str,
+    source_map: std::collections::HashMap<usize, (String, usize)>,
+    current_file: Option<String>,
+) -> cayResult<Vec<TokenWithLocation>> {
     let mut lexer = Lexer::with_source_map_and_file(source, source_map, current_file);
     lexer.tokenize()
 }
@@ -1192,7 +1271,7 @@ mod tests {
             (r#"'\n'"#, '\n'),
             (r#"'\t'"#, '\t'),
             (r#"'\r'"#, '\r'),
-            (r#"'\f'"#, '\x0C'),  // 换页符
+            (r#"'\f'"#, '\x0C'), // 换页符
             (r#"'\\'"#, '\\'),
             (r#"'\"'"#, '"'),
             (r#"'\''"#, '\''),
@@ -1214,7 +1293,7 @@ mod tests {
     fn test_operators() {
         let source = r#"+ - * / % == != < <= > >= && ||"#;
         let tokens = tokenize(source).unwrap();
-        assert_eq!(tokens.len(), 13);  // 13个操作符token（空格被跳过）
+        assert_eq!(tokens.len(), 13); // 13个操作符token（空格被跳过）
     }
 
     #[test]
@@ -1314,8 +1393,8 @@ mod tests {
         let source = r#"int
 x"#;
         let tokens = tokenize(source).unwrap();
-        assert_eq!(tokens[0].loc.line, 1);  // int
-        assert_eq!(tokens[1].loc.line, 2);  // x
+        assert_eq!(tokens[0].loc.line, 1); // int
+        assert_eq!(tokens[1].loc.line, 2); // x
     }
 
     #[test]
@@ -1323,7 +1402,7 @@ x"#;
         let source = r#"1_000_000 0xFF_FF 0b1010_1010"#;
         let tokens = tokenize(source).unwrap();
         assert_eq!(tokens.len(), 3);
-        
+
         if let Token::IntegerLiteral(Some((val, _))) = &tokens[0].token {
             assert_eq!(*val, 1000000);
         } else {
@@ -1358,22 +1437,37 @@ x"#;
         let source = r#"1e10 1e-10 1e+10 1.5e10 1.5e-10 2E5 3.14e0"#;
         let tokens = tokenize(source).unwrap();
         assert_eq!(tokens.len(), 7, "Should have 7 float literals");
-        
+
         // 验证所有都是浮点数字面量
         for token in &tokens {
-            assert!(matches!(token.token, Token::FloatLiteral(_)), 
-                "Expected FloatLiteral, got {:?}", token.token);
+            assert!(
+                matches!(token.token, Token::FloatLiteral(_)),
+                "Expected FloatLiteral, got {:?}",
+                token.token
+            );
         }
-        
+
         // 验证具体值
         if let Token::FloatLiteral(Some((val, _))) = &tokens[0].token {
-            assert!((*val - 1e10).abs() < 1e-5, "1e10 should be 10000000000, got {}", val);
+            assert!(
+                (*val - 1e10).abs() < 1e-5,
+                "1e10 should be 10000000000, got {}",
+                val
+            );
         }
         if let Token::FloatLiteral(Some((val, _))) = &tokens[1].token {
-            assert!((*val - 1e-10).abs() < 1e-15, "1e-10 should be 0.0000000001, got {}", val);
+            assert!(
+                (*val - 1e-10).abs() < 1e-15,
+                "1e-10 should be 0.0000000001, got {}",
+                val
+            );
         }
         if let Token::FloatLiteral(Some((val, _))) = &tokens[3].token {
-            assert!((*val - 1.5e10).abs() < 1e-5, "1.5e10 should be 15000000000, got {}", val);
+            assert!(
+                (*val - 1.5e10).abs() < 1e-5,
+                "1.5e10 should be 15000000000, got {}",
+                val
+            );
         }
     }
 
@@ -1383,7 +1477,7 @@ x"#;
         let source = r#"1e10f 1.5e-10d 2E5F"#;
         let tokens = tokenize(source).unwrap();
         assert_eq!(tokens.len(), 3, "Should have 3 float literals");
-        
+
         // 验证后缀
         if let Token::FloatLiteral(Some((_, suffix))) = &tokens[0].token {
             assert_eq!(*suffix, Some('f'), "Should have 'f' suffix");

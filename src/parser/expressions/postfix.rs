@@ -3,11 +3,11 @@
 //! 处理函数调用、成员访问、数组索引、后缀自增自减等后缀表达式。
 //! 支持泛型静态方法调用: Type<T>.method()
 
+use super::super::Parser;
+use super::assignment::parse_expression;
+use super::primary::parse_primary;
 use crate::ast::*;
 use crate::error::cayResult;
-use super::super::Parser;
-use super::primary::parse_primary;
-use super::assignment::parse_expression;
 
 /// 解析后缀表达式
 pub fn parse_postfix(parser: &mut Parser) -> cayResult<Expr> {
@@ -15,22 +15,29 @@ pub fn parse_postfix(parser: &mut Parser) -> cayResult<Expr> {
 
     loop {
         let loc = parser.current_loc();
-        
+
         // 检查是否是泛型参数: Type<T> 或 Type<T, U>
         // 这用于支持 FileResult<File>.ok(file) 语法
         if parser.check(&crate::lexer::Token::Lt) {
             // 向前看，检查是否是泛型参数列表
             let checkpoint = parser.pos;
             let type_args = crate::parser::classes::parse_generic_type_args(parser);
-            
+
             if let Ok(type_args) = type_args {
                 // 成功解析泛型参数，检查后面是否有 '.'
                 if parser.check(&crate::lexer::Token::Dot) {
                     // 这是泛型静态方法调用: Type<T>.method()
                     // 将标识符和泛型参数组合成新的标识符
                     if let Expr::Identifier(ident) = &expr {
-                        let generic_name = format!("{}<{}>", ident.name, 
-                            type_args.iter().map(|t| t.to_string()).collect::<Vec<_>>().join(", "));
+                        let generic_name = format!(
+                            "{}<{}>",
+                            ident.name,
+                            type_args
+                                .iter()
+                                .map(|t| t.to_string())
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        );
                         expr = Expr::Identifier(IdentifierExpr {
                             name: generic_name,
                             loc: loc.clone(),
@@ -39,15 +46,18 @@ pub fn parse_postfix(parser: &mut Parser) -> cayResult<Expr> {
                     }
                 }
             }
-            
+
             // 不是泛型静态方法调用，回退
             parser.pos = checkpoint;
         }
-        
+
         if parser.match_token(&crate::lexer::Token::LParen) {
             // 函数调用
             let args = parse_arguments(parser)?;
-            parser.consume(&crate::lexer::Token::RParen, "期望 ')'\n提示: 函数调用参数列表应以 ')' 结束")?;
+            parser.consume(
+                &crate::lexer::Token::RParen,
+                "期望 ')'\n提示: 函数调用参数列表应以 ')' 结束",
+            )?;
             expr = Expr::Call(CallExpr {
                 callee: Box::new(expr),
                 args,
@@ -55,7 +65,9 @@ pub fn parse_postfix(parser: &mut Parser) -> cayResult<Expr> {
             });
         } else if parser.match_token(&crate::lexer::Token::Dot) {
             // 成员访问
-            let member = parser.consume_identifier("期望成员名\n提示: '.' 后应跟成员名，例如: obj.field 或 obj.method()")?;
+            let member = parser.consume_identifier(
+                "期望成员名\n提示: '.' 后应跟成员名，例如: obj.field 或 obj.method()",
+            )?;
             expr = Expr::MemberAccess(MemberAccessExpr {
                 object: Box::new(expr),
                 member,
@@ -64,7 +76,10 @@ pub fn parse_postfix(parser: &mut Parser) -> cayResult<Expr> {
         } else if parser.match_token(&crate::lexer::Token::LBracket) {
             // 数组索引访问: arr[index]
             let index = parse_expression(parser)?;
-            parser.consume(&crate::lexer::Token::RBracket, "期望 ']'\n提示: 数组索引应以 ']' 结束，例如: arr[0]")?;
+            parser.consume(
+                &crate::lexer::Token::RBracket,
+                "期望 ']'\n提示: 数组索引应以 ']' 结束，例如: arr[0]",
+            )?;
             expr = Expr::ArrayAccess(ArrayAccessExpr {
                 array: Box::new(expr),
                 index: Box::new(index),

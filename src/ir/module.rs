@@ -94,7 +94,9 @@ impl IrModule {
     /// 添加函数
     pub fn add_function(&mut self, func: IrFunction) -> &mut IrFunction {
         self.functions.push(func);
-        self.functions.last_mut().expect("push 后 last_mut 应始终成功")
+        self.functions
+            .last_mut()
+            .expect("push 后 last_mut 应始终成功")
     }
 
     /// 添加外部声明
@@ -112,7 +114,9 @@ impl IrModule {
 
     /// 添加或获取字符串常量
     pub fn add_string(&mut self, value: &str) -> String {
-        if let Some(name) = self.string_constants.iter()
+        if let Some(name) = self
+            .string_constants
+            .iter()
             .find(|(_, v)| *v == value)
             .map(|(n, _)| n.clone())
         {
@@ -121,7 +125,8 @@ impl IrModule {
 
         let name = format!("@.str.{}", self.string_counter);
         self.string_counter += 1;
-        self.string_constants.insert(name.clone(), value.to_string());
+        self.string_constants
+            .insert(name.clone(), value.to_string());
         name
     }
 
@@ -168,7 +173,8 @@ impl IrModule {
             if let Some(prev) = names.insert(&func.name, func.signature()) {
                 if prev != func.signature() {
                     errors.push(format!(
-                        "Duplicate function '{}' with different signature", func.name
+                        "Duplicate function '{}' with different signature",
+                        func.name
                     ));
                 }
             }

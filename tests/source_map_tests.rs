@@ -238,11 +238,11 @@ fn parse_source_map_from_ir(ir_content: &str) -> Vec<(usize, String, usize, usiz
 
     for line in ir_content.lines() {
         current_line += 1;
-        
+
         // 检查是否是源映射注释
         if let Some(comment_start) = line.find("; !source ") {
             let comment = &line[comment_start + 10..]; // 跳过 "; !source "
-            
+
             // 解析格式: file:line:column
             // 处理Windows路径 (E:\path\file.cay:10:5) - 从后往前找冒号
             if let Some(last_colon) = comment.rfind(':') {
@@ -250,8 +250,10 @@ fn parse_source_map_from_ir(ir_content: &str) -> Vec<(usize, String, usize, usiz
                     let file = comment[..second_last_colon].to_string();
                     let line_str = &comment[second_last_colon + 1..last_colon];
                     let col_str = &comment[last_colon + 1..];
-                    
-                    if let (Ok(line_num), Ok(col_num)) = (line_str.parse::<usize>(), col_str.parse::<usize>()) {
+
+                    if let (Ok(line_num), Ok(col_num)) =
+                        (line_str.parse::<usize>(), col_str.parse::<usize>())
+                    {
                         mappings.push((current_line, file, line_num, col_num));
                     }
                 }
@@ -263,14 +265,17 @@ fn parse_source_map_from_ir(ir_content: &str) -> Vec<(usize, String, usize, usiz
 }
 
 /// 验证源映射是否包含有效的源代码行号
-fn verify_source_mappings(ir_content: &str, source_content: &str) -> Result<Vec<(usize, usize, usize)>, String> {
+fn verify_source_mappings(
+    ir_content: &str,
+    source_content: &str,
+) -> Result<Vec<(usize, usize, usize)>, String> {
     let mappings = parse_source_map_from_ir(ir_content);
     let source_lines: Vec<&str> = source_content.lines().collect();
     let source_line_count = source_lines.len();
-    
+
     let mut valid_mappings = Vec::new();
     let mut errors = Vec::new();
-    
+
     for (ir_line, file, source_line, col) in &mappings {
         // 验证源文件行号是否在有效范围内
         if *source_line == 0 || *source_line > source_line_count {
@@ -282,11 +287,11 @@ fn verify_source_mappings(ir_content: &str, source_content: &str) -> Result<Vec<
             valid_mappings.push((*ir_line, *source_line, *col));
         }
     }
-    
+
     if !errors.is_empty() {
         return Err(errors.join("\n"));
     }
-    
+
     Ok(valid_mappings)
 }
 
@@ -307,55 +312,59 @@ fn test_source_map_generation() {
     let exe_ext = get_exe_extension();
     let output_exe = temp_dir.join(format!("test_output{}", exe_ext));
     let output = Command::new("cargo")
-        .args(&["run", "--release", "--bin", "cayc", "--",
+        .args(&[
+            "run",
+            "--release",
+            "--bin",
+            "cayc",
+            "--",
             source_file.to_str().unwrap(),
             output_exe.to_str().unwrap(),
-            "--keep-ir"
+            "--keep-ir",
         ])
         .current_dir("e:\\spj\\EOL")
         .output()
         .expect("Failed to run compiler");
-    
+
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         panic!("Compilation failed: {}", stderr);
     }
-    
+
     // 读取生成的IR文件
-    let ir_content = fs::read_to_string(&ir_file)
-        .expect(&format!("Failed to read IR file: {:?}", ir_file));
-    
+    let ir_content =
+        fs::read_to_string(&ir_file).expect(&format!("Failed to read IR file: {:?}", ir_file));
+
     // 解析源映射
     let mappings = parse_source_map_from_ir(&ir_content);
-    
+
     // 验证映射数量 - 应该有多个映射点
     assert!(
         mappings.len() >= 50,
         "Expected at least 50 source mappings, found {}",
         mappings.len()
     );
-    
+
     println!("Found {} source mappings", mappings.len());
-    
+
     // 验证映射的源行号是否有效
     let valid_mappings = verify_source_mappings(&ir_content, TEST_PROGRAM)
         .expect("Source mapping validation failed");
-    
+
     println!("All {} mappings are valid", valid_mappings.len());
-    
+
     // 验证映射覆盖不同的源代码行
-    let unique_lines: std::collections::HashSet<_> = valid_mappings.iter()
-        .map(|(_, line, _)| *line)
-        .collect();
-    
+    let unique_lines: std::collections::HashSet<_> =
+        valid_mappings.iter().map(|(_, line, _)| *line).collect();
+
     assert!(
         unique_lines.len() >= 20,
         "Expected mappings to cover at least 20 unique source lines, found {}",
         unique_lines.len()
     );
-    
+
     println!("Mappings cover {} unique source lines", unique_lines.len());
-    
+
     // 清理临时文件
     let _ = fs::remove_dir_all(&temp_dir);
 }
@@ -376,40 +385,44 @@ fn test_source_map_accuracy() {
     let exe_ext = get_exe_extension();
     let output_exe = temp_dir.join(format!("test_output{}", exe_ext));
     let output = Command::new("cargo")
-        .args(&["run", "--release", "--bin", "cayc", "--",
+        .args(&[
+            "run",
+            "--release",
+            "--bin",
+            "cayc",
+            "--",
             source_file.to_str().unwrap(),
             output_exe.to_str().unwrap(),
-            "--keep-ir"
+            "--keep-ir",
         ])
         .current_dir("e:\\spj\\EOL")
         .output()
         .expect("Failed to run compiler");
-    
+
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         panic!("Compilation failed: {}", stderr);
     }
-    
+
     // 读取生成的IR文件
-    let ir_content = fs::read_to_string(&ir_file)
-        .expect("Failed to read IR file");
-    
+    let ir_content = fs::read_to_string(&ir_file).expect("Failed to read IR file");
+
     // 解析源映射
     let mappings = parse_source_map_from_ir(&ir_content);
-    
+
     // 验证关键代码行的映射
     // 查找包含特定代码模式的IR行
     let source_lines: Vec<&str> = TEST_PROGRAM.lines().collect();
-    
+
     // 验证一些关键行的映射
     // 注意：方法声明行(如"public int add")不会直接生成IR，IR从方法体内的语句开始生成
     let key_patterns = vec![
-        ("int result = a + b", "add operation"),  // 方法体内的第一条语句
+        ("int result = a + b", "add operation"), // 方法体内的第一条语句
         ("if (b == 0)", "division check"),
         ("for (int i = 2; i <= n", "factorial loop"),
         ("return fibonacci(n - 1)", "fibonacci recursion"),
     ];
-    
+
     for (pattern, desc) in key_patterns {
         // 在源代码中查找行号
         let mut source_line_num = None;
@@ -419,24 +432,30 @@ fn test_source_map_accuracy() {
                 break;
             }
         }
-        
+
         if let Some(expected_line) = source_line_num {
             // 查找映射到此源代码行的IR行
-            let ir_lines: Vec<usize> = mappings.iter()
+            let ir_lines: Vec<usize> = mappings
+                .iter()
                 .filter(|(_, _, line, _)| *line == expected_line)
                 .map(|(ir_line, _, _, _)| *ir_line)
                 .collect();
-            
+
             assert!(
                 !ir_lines.is_empty(),
                 "No IR lines mapped to source line {} ({}: '{}')",
-                expected_line, desc, pattern
+                expected_line,
+                desc,
+                pattern
             );
-            
-            println!("{} (line {}) mapped to IR lines: {:?}", desc, expected_line, ir_lines);
+
+            println!(
+                "{} (line {}) mapped to IR lines: {:?}",
+                desc, expected_line, ir_lines
+            );
         }
     }
-    
+
     // 清理临时文件
     let _ = fs::remove_dir_all(&temp_dir);
 }
@@ -462,7 +481,7 @@ public class ErrorTest {
     }
 }
 "#;
-    
+
     // 创建临时目录
     let temp_dir = std::env::temp_dir().join("cavvy_error_map_test");
     fs::create_dir_all(&temp_dir).expect("Failed to create temp directory");
@@ -475,44 +494,49 @@ public class ErrorTest {
     let exe_ext = get_exe_extension();
     let output_exe = temp_dir.join(format!("test_output{}", exe_ext));
     let output = Command::new("cargo")
-        .args(&["run", "--release", "--bin", "cayc", "--",
+        .args(&[
+            "run",
+            "--release",
+            "--bin",
+            "cayc",
+            "--",
             source_file.to_str().unwrap(),
             output_exe.to_str().unwrap(),
-            "--keep-ir"
+            "--keep-ir",
         ])
         .current_dir("e:\\spj\\EOL")
         .output()
         .expect("Failed to run compiler");
-    
+
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     let combined_output = format!("{} {}", stdout, stderr);
-    
+
     // 编译应该失败
     if output.status.success() {
         panic!("Expected compilation to fail, but it succeeded");
     }
-    
+
     // 验证错误输出中包含源映射信息
     // 检查是否有 "[file:line:column]" 格式的源位置信息
     let has_source_mapping = combined_output.contains("[")
         && combined_output.contains("test_error.cay:")
         && combined_output.contains("error:");
-    
+
     // 如果ir2exe成功重映射了错误，应该能看到源文件信息
     println!("Error output:\n{}", combined_output);
-    
+
     // 检查IR文件是否存在（--keep-ir应该保留它）
     let ir_file = temp_dir.join("test_error.ll");
     if ir_file.exists() {
         let ir_content = fs::read_to_string(&ir_file).expect("Failed to read IR file");
         let mappings = parse_source_map_from_ir(&ir_content);
         println!("IR file has {} source mappings", mappings.len());
-        
+
         // 验证映射存在
         assert!(!mappings.is_empty(), "IR file should have source mappings");
     }
-    
+
     // 清理临时文件
     let _ = fs::remove_dir_all(&temp_dir);
 }
@@ -542,23 +566,28 @@ fn test_source_map_comment_format() {
     let exe_ext = get_exe_extension();
     let output_exe = temp_dir.join(format!("test_output{}", exe_ext));
     let output = Command::new("cargo")
-        .args(&["run", "--release", "--bin", "cayc", "--",
+        .args(&[
+            "run",
+            "--release",
+            "--bin",
+            "cayc",
+            "--",
             source_file.to_str().unwrap(),
             output_exe.to_str().unwrap(),
-            "--keep-ir"
+            "--keep-ir",
         ])
         .current_dir("e:\\spj\\EOL")
         .output()
         .expect("Failed to run compiler");
-    
+
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         panic!("Compilation failed: {}", stderr);
     }
-    
+
     // 读取IR文件
     let ir_content = fs::read_to_string(&ir_file).expect("Failed to read IR file");
-    
+
     // 验证源映射注释格式
     for line in ir_content.lines() {
         if let Some(idx) = line.find("; !source ") {
@@ -570,10 +599,10 @@ fn test_source_map_comment_format() {
                     let file = &comment[..second_last_colon];
                     let line_str = &comment[second_last_colon + 1..last_colon];
                     let col_str = &comment[last_colon + 1..];
-                    
+
                     // 验证文件名非空
                     assert!(!file.is_empty(), "Source file path should not be empty");
-                    
+
                     // 验证行号和列号是有效的数字
                     assert!(
                         line_str.parse::<usize>().is_ok(),
@@ -586,16 +615,22 @@ fn test_source_map_comment_format() {
                         col_str
                     );
                 } else {
-                    panic!("Source map comment should have format 'file:line:column', got: {}", comment);
+                    panic!(
+                        "Source map comment should have format 'file:line:column', got: {}",
+                        comment
+                    );
                 }
             } else {
-                panic!("Source map comment should have format 'file:line:column', got: {}", comment);
+                panic!(
+                    "Source map comment should have format 'file:line:column', got: {}",
+                    comment
+                );
             }
         }
     }
-    
+
     println!("Source map comment format is valid");
-    
+
     // 清理临时文件
     let _ = fs::remove_dir_all(&temp_dir);
 }

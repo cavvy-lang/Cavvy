@@ -21,10 +21,12 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_err_diag1.cay", code).unwrap();
-    let error = compile_eol_expect_error("examples/test_err_diag1.cay")
-        .expect("应该编译失败");
-    assert!(error.contains("type") || error.contains("Type") || error.contains("return"),
-        "应报告类型错误: {}", error);
+    let error = compile_eol_expect_error("examples/test_err_diag1.cay").expect("应该编译失败");
+    assert!(
+        error.contains("type") || error.contains("Type") || error.contains("return"),
+        "应报告类型错误: {}",
+        error
+    );
     let _ = std::fs::remove_file("examples/test_err_diag1.cay");
 }
 
@@ -38,10 +40,12 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_err_diag2.cay", code).unwrap();
-    let error = compile_eol_expect_error("examples/test_err_diag2.cay")
-        .expect("应该编译失败");
-    assert!(error.contains("Cannot add") || error.contains("type") || error.contains("string"),
-        "应报告类型错误: {}", error);
+    let error = compile_eol_expect_error("examples/test_err_diag2.cay").expect("应该编译失败");
+    assert!(
+        error.contains("Cannot add") || error.contains("type") || error.contains("string"),
+        "应报告类型错误: {}",
+        error
+    );
     let _ = std::fs::remove_file("examples/test_err_diag2.cay");
 }
 
@@ -55,10 +59,12 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_err_diag3.cay", code).unwrap();
-    let error = compile_eol_expect_error("examples/test_err_diag3.cay")
-        .expect("应该编译失败");
-    assert!(error.contains("Cannot compare") || error.contains("type") || error.contains("String"),
-        "应报告类型错误: {}", error);
+    let error = compile_eol_expect_error("examples/test_err_diag3.cay").expect("应该编译失败");
+    assert!(
+        error.contains("Cannot compare") || error.contains("type") || error.contains("String"),
+        "应报告类型错误: {}",
+        error
+    );
     let _ = std::fs::remove_file("examples/test_err_diag3.cay");
 }
 
@@ -74,10 +80,12 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_err_diag4.cay", code).unwrap();
-    let error = compile_eol_expect_error("examples/test_err_diag4.cay")
-        .expect("应该编译失败");
-    assert!(error.contains("undefined") || error.contains("not found") || error.contains("Unknown"),
-        "应报告未定义变量: {}", error);
+    let error = compile_eol_expect_error("examples/test_err_diag4.cay").expect("应该编译失败");
+    assert!(
+        error.contains("undefined") || error.contains("not found") || error.contains("Unknown"),
+        "应报告未定义变量: {}",
+        error
+    );
     let _ = std::fs::remove_file("examples/test_err_diag4.cay");
 }
 
@@ -94,10 +102,14 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_err_diag5.cay", code).unwrap();
-    let error = compile_eol_expect_error("examples/test_err_diag5.cay")
-        .expect("应该编译失败");
-    assert!(error.contains("already defined") || error.contains("redefined") || error.contains("Duplicate"),
-        "应报告重复定义: {}", error);
+    let error = compile_eol_expect_error("examples/test_err_diag5.cay").expect("应该编译失败");
+    assert!(
+        error.contains("already defined")
+            || error.contains("redefined")
+            || error.contains("Duplicate"),
+        "应报告重复定义: {}",
+        error
+    );
     let _ = std::fs::remove_file("examples/test_err_diag5.cay");
 }
 
@@ -117,10 +129,12 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_err_diag6.cay", code).unwrap();
-    let error = compile_eol_expect_error("examples/test_err_diag6.cay")
-        .expect("应该编译失败");
-    assert!(error.contains("argument") || error.contains("parameter") || error.contains("count"),
-        "应报告参数数量错误: {}", error);
+    let error = compile_eol_expect_error("examples/test_err_diag6.cay").expect("应该编译失败");
+    assert!(
+        error.contains("argument") || error.contains("parameter") || error.contains("count"),
+        "应报告参数数量错误: {}",
+        error
+    );
     let _ = std::fs::remove_file("examples/test_err_diag6.cay");
 }
 
@@ -137,10 +151,12 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_err_diag7.cay", code).unwrap();
-    let error = compile_eol_expect_error("examples/test_err_diag7.cay")
-        .expect("应该编译失败");
-    assert!(error.contains("index") || error.contains("type") || error.contains("integer"),
-        "应报告数组索引类型错误: {}", error);
+    let error = compile_eol_expect_error("examples/test_err_diag7.cay").expect("应该编译失败");
+    assert!(
+        error.contains("index") || error.contains("type") || error.contains("integer"),
+        "应报告数组索引类型错误: {}",
+        error
+    );
     let _ = std::fs::remove_file("examples/test_err_diag7.cay");
 }
 
@@ -156,10 +172,12 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_err_diag8.cay", code).unwrap();
-    let error = compile_eol_expect_error("examples/test_err_diag8.cay")
-        .expect("应该编译失败");
-    assert!(error.contains("break") || error.contains("loop") || error.contains("outside"),
-        "应报告 break 在循环外错误: {}", error);
+    let error = compile_eol_expect_error("examples/test_err_diag8.cay").expect("应该编译失败");
+    assert!(
+        error.contains("break") || error.contains("loop") || error.contains("outside"),
+        "应报告 break 在循环外错误: {}",
+        error
+    );
     let _ = std::fs::remove_file("examples/test_err_diag8.cay");
 }
 
@@ -173,10 +191,12 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_err_diag9.cay", code).unwrap();
-    let error = compile_eol_expect_error("examples/test_err_diag9.cay")
-        .expect("应该编译失败");
-    assert!(error.contains("continue") || error.contains("loop") || error.contains("outside"),
-        "应报告 continue 在循环外错误: {}", error);
+    let error = compile_eol_expect_error("examples/test_err_diag9.cay").expect("应该编译失败");
+    assert!(
+        error.contains("continue") || error.contains("loop") || error.contains("outside"),
+        "应报告 continue 在循环外错误: {}",
+        error
+    );
     let _ = std::fs::remove_file("examples/test_err_diag9.cay");
 }
 
@@ -193,10 +213,12 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_err_diag10.cay", code).unwrap();
-    let error = compile_eol_expect_error("examples/test_err_diag10.cay")
-        .expect("应该编译失败");
-    assert!(error.contains("expected") || error.contains("syntax") || error.contains(";"),
-        "应报告语法错误: {}", error);
+    let error = compile_eol_expect_error("examples/test_err_diag10.cay").expect("应该编译失败");
+    assert!(
+        error.contains("expected") || error.contains("syntax") || error.contains(";"),
+        "应报告语法错误: {}",
+        error
+    );
     let _ = std::fs::remove_file("examples/test_err_diag10.cay");
 }
 
@@ -210,10 +232,12 @@ public class Test {
 // 缺少右大括号
 "#;
     std::fs::write("examples/test_err_diag11.cay", code).unwrap();
-    let error = compile_eol_expect_error("examples/test_err_diag11.cay")
-        .expect("应该编译失败");
-    assert!(error.contains("expected") || error.contains("EOF") || error.contains("}"),
-        "应报告缺少大括号: {}", error);
+    let error = compile_eol_expect_error("examples/test_err_diag11.cay").expect("应该编译失败");
+    assert!(
+        error.contains("expected") || error.contains("EOF") || error.contains("}"),
+        "应报告缺少大括号: {}",
+        error
+    );
     let _ = std::fs::remove_file("examples/test_err_diag11.cay");
 }
 
@@ -238,10 +262,12 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_err_diag12.cay", code).unwrap();
-    let error = compile_eol_expect_error("examples/test_err_diag12.cay")
-        .expect("应该编译失败");
-    assert!(error.contains("implement") || error.contains("method") || error.contains("abstract"),
-        "应报告未实现接口方法: {}", error);
+    let error = compile_eol_expect_error("examples/test_err_diag12.cay").expect("应该编译失败");
+    assert!(
+        error.contains("implement") || error.contains("method") || error.contains("abstract"),
+        "应报告未实现接口方法: {}",
+        error
+    );
     let _ = std::fs::remove_file("examples/test_err_diag12.cay");
 }
 
@@ -257,10 +283,12 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_err_diag13.cay", code).unwrap();
-    let error = compile_eol_expect_error("examples/test_err_diag13.cay")
-        .expect("应该编译失败");
-    assert!(error.contains("division") || error.contains("zero") || error.contains("divide"),
-        "应报告除零错误: {}", error);
+    let error = compile_eol_expect_error("examples/test_err_diag13.cay").expect("应该编译失败");
+    assert!(
+        error.contains("division") || error.contains("zero") || error.contains("divide"),
+        "应报告除零错误: {}",
+        error
+    );
     let _ = std::fs::remove_file("examples/test_err_diag13.cay");
 }
 
@@ -281,10 +309,12 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_err_diag14.cay", code).unwrap();
-    let error = compile_eol_expect_error("examples/test_err_diag14.cay")
-        .expect("应该编译失败");
-    assert!(error.contains("private") || error.contains("access") || error.contains("Cannot access"),
-        "应报告访问控制错误: {}", error);
+    let error = compile_eol_expect_error("examples/test_err_diag14.cay").expect("应该编译失败");
+    assert!(
+        error.contains("private") || error.contains("access") || error.contains("Cannot access"),
+        "应报告访问控制错误: {}",
+        error
+    );
     let _ = std::fs::remove_file("examples/test_err_diag14.cay");
 }
 
@@ -300,9 +330,11 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_err_diag15.cay", code).unwrap();
-    let error = compile_eol_expect_error("examples/test_err_diag15.cay")
-        .expect("应该编译失败");
-    assert!(error.contains("length") || error.contains("negative") || error.contains("size"),
-        "应报告数组长度错误: {}", error);
+    let error = compile_eol_expect_error("examples/test_err_diag15.cay").expect("应该编译失败");
+    assert!(
+        error.contains("length") || error.contains("negative") || error.contains("size"),
+        "应报告数组长度错误: {}",
+        error
+    );
     let _ = std::fs::remove_file("examples/test_err_diag15.cay");
 }

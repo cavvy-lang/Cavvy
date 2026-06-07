@@ -2,8 +2,8 @@
 //!
 //! 处理switch-case语句的代码生成。
 
-use crate::codegen::context::IRGenerator;
 use crate::ast::*;
+use crate::codegen::context::IRGenerator;
 use crate::error::{cayResult, codegen_error_at};
 
 impl IRGenerator {
@@ -12,7 +12,10 @@ impl IRGenerator {
     fn resolve_case_value(&self, case: &Case) -> cayResult<i64> {
         match &case.value {
             CaseValue::Integer(v) => Ok(*v),
-            CaseValue::EnumVariant { enum_name, variant_name } => {
+            CaseValue::EnumVariant {
+                enum_name,
+                variant_name,
+            } => {
                 // 查找 enum 定义
                 if let Some(ref registry) = self.type_registry {
                     if let Some(enum_info) = registry.get_enum(enum_name) {
@@ -22,16 +25,16 @@ impl IRGenerator {
                                 return Ok(idx as i64);
                             }
                         }
-                        return Err(codegen_error_at(case.loc.clone(), format!(
-                            "enum '{}' 中不存在 variant '{}'",
-                            enum_name, variant_name
-                        )));
+                        return Err(codegen_error_at(
+                            case.loc.clone(),
+                            format!("enum '{}' 中不存在 variant '{}'", enum_name, variant_name),
+                        ));
                     }
                 }
-                Err(codegen_error_at(case.loc.clone(), format!(
-                    "未知的 enum '{}' 在 case 标签中",
-                    enum_name
-                )))
+                Err(codegen_error_at(
+                    case.loc.clone(),
+                    format!("未知的 enum '{}' 在 case 标签中", enum_name),
+                ))
             }
         }
     }
@@ -51,7 +54,7 @@ impl IRGenerator {
         // 生成条件表达式
         let expr = self.generate_expression(&switch_stmt.expr)?;
         let (mut expr_type, mut expr_val) = self.parse_typed_value(&expr);
-        
+
         // 保存 enum struct 指针/值引用，供后续 payload 提取使用
         let enum_struct_ref = if expr_type.starts_with("{ i32, i64 }") {
             Some((expr_type.clone(), expr_val.clone()))
@@ -62,7 +65,10 @@ impl IRGenerator {
         // 对于 enum struct 类型，提取 discriminant 用于 switch 比较
         if expr_type.starts_with("{ i32, i64 }") {
             let disc = self.new_temp();
-            self.emit_line(&format!("  {} = extractvalue {} {}, 0", disc, expr_type, expr_val));
+            self.emit_line(&format!(
+                "  {} = extractvalue {} {}, 0",
+                disc, expr_type, expr_val
+            ));
             expr_type = "i32".to_string();
             expr_val = disc;
         }
@@ -80,12 +86,18 @@ impl IRGenerator {
             expr_val.to_string()
         } else {
             let temp = self.new_temp();
-            self.emit_line(&format!("  {} = sext {} {} to i64", temp, expr_type, expr_val));
+            self.emit_line(&format!(
+                "  {} = sext {} {} to i64",
+                temp, expr_type, expr_val
+            ));
             temp
         };
 
         // 生成 switch 指令
-        self.emit_line(&format!("  switch i64 {}, label %{} [", switch_val, default_label));
+        self.emit_line(&format!(
+            "  switch i64 {}, label %{} [",
+            switch_val, default_label
+        ));
         for (value, label, _) in &case_labels {
             self.emit_line(&format!("    i64 {}, label %{}", value, label));
         }
@@ -106,15 +118,22 @@ impl IRGenerator {
                 let var_type = self.type_to_llvm(&binding.var_type);
                 let align = self.get_type_align(&var_type);
                 let llvm_name = self.scope_manager.declare_var(&binding.var_name, &var_type);
-                self.emit_line(&format!("  %{} = alloca {}, align {}", llvm_name, var_type, align));
-                self.var_types.insert(binding.var_name.clone(), var_type.clone());
-                self.var_cay_types.insert(binding.var_name.clone(), binding.var_type.clone());
+                self.emit_line(&format!(
+                    "  %{} = alloca {}, align {}",
+                    llvm_name, var_type, align
+                ));
+                self.var_types
+                    .insert(binding.var_name.clone(), var_type.clone());
+                self.var_cay_types
+                    .insert(binding.var_name.clone(), binding.var_type.clone());
                 match &binding.var_type {
                     crate::types::Type::Object(class_name) => {
-                        self.var_class_map.insert(binding.var_name.clone(), class_name.clone());
+                        self.var_class_map
+                            .insert(binding.var_name.clone(), class_name.clone());
                     }
                     crate::types::Type::Generic(class_name, _) => {
-                        self.var_class_map.insert(binding.var_name.clone(), class_name.clone());
+                        self.var_class_map
+                            .insert(binding.var_name.clone(), class_name.clone());
                     }
                     _ => {}
                 }
@@ -122,7 +141,10 @@ impl IRGenerator {
                 let store_val = if let Some((ref st_type, ref st_val)) = enum_struct_ref {
                     // extractvalue 获取 field 1 (payload as i64)
                     let pl_i64 = self.new_temp();
-                    self.emit_line(&format!("  {} = extractvalue {} {}, 1", pl_i64, st_type, st_val));
+                    self.emit_line(&format!(
+                        "  {} = extractvalue {} {}, 1",
+                        pl_i64, st_type, st_val
+                    ));
                     // 转换 i64 payload 到目标类型
                     match var_type.as_str() {
                         "i32" => {
@@ -133,12 +155,18 @@ impl IRGenerator {
                         "i64" => format!("i64 {}", pl_i64),
                         "i8*" | _ if var_type.ends_with('*') => {
                             let ptr = self.new_temp();
-                            self.emit_line(&format!("  {} = inttoptr i64 {} to {}", ptr, pl_i64, var_type));
+                            self.emit_line(&format!(
+                                "  {} = inttoptr i64 {} to {}",
+                                ptr, pl_i64, var_type
+                            ));
                             format!("{} {}", var_type, ptr)
                         }
                         _ => {
                             let trunc = self.new_temp();
-                            self.emit_line(&format!("  {} = trunc i64 {} to {}", trunc, pl_i64, var_type));
+                            self.emit_line(&format!(
+                                "  {} = trunc i64 {} to {}",
+                                trunc, pl_i64, var_type
+                            ));
                             format!("{} {}", var_type, trunc)
                         }
                     }
@@ -154,7 +182,10 @@ impl IRGenerator {
                         _ => format!("{} 0", var_type),
                     }
                 };
-                self.emit_line(&format!("  store {}, {}* %{}", store_val, var_type, llvm_name));
+                self.emit_line(&format!(
+                    "  store {}, {}* %{}",
+                    store_val, var_type, llvm_name
+                ));
             }
 
             // 执行 case 体

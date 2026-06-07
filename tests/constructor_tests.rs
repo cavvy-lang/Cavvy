@@ -44,8 +44,7 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_ctor_this1.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_ctor_this1.cay")
-        .expect("编译运行失败");
+    let output = compile_and_run_eol("examples/test_ctor_this1.cay").expect("编译运行失败");
     assert_eq!(normalize(&output), "(0, 0)\n(3, 4)");
     let _ = std::fs::remove_file("examples/test_ctor_this1.cay");
 }
@@ -86,8 +85,7 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_ctor_this2.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_ctor_this2.cay")
-        .expect("编译运行失败");
+    let output = compile_and_run_eol("examples/test_ctor_this2.cay").expect("编译运行失败");
     assert_eq!(normalize(&output), "default=42\ncustom=0\nspecial=100");
     let _ = std::fs::remove_file("examples/test_ctor_this2.cay");
 }
@@ -134,8 +132,7 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_ctor_super.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_ctor_super.cay")
-        .expect("编译运行失败");
+    let output = compile_and_run_eol("examples/test_ctor_super.cay").expect("编译运行失败");
     assert_eq!(normalize(&output), "Type: child\nType: custom");
     let _ = std::fs::remove_file("examples/test_ctor_super.cay");
 }
@@ -176,9 +173,11 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_ctor_chain.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_ctor_chain.cay")
-        .expect("编译运行失败");
-    assert_eq!(normalize(&output), "unknown (4 legs)\ndog (4 legs)\nsnake (0 legs)");
+    let output = compile_and_run_eol("examples/test_ctor_chain.cay").expect("编译运行失败");
+    assert_eq!(
+        normalize(&output),
+        "unknown (4 legs)\ndog (4 legs)\nsnake (0 legs)"
+    );
     let _ = std::fs::remove_file("examples/test_ctor_chain.cay");
 }
 
@@ -209,8 +208,7 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_ctor_field.cay", code).unwrap();
-    let output = compile_and_run_eol("examples/test_ctor_field.cay")
-        .expect("编译运行失败");
+    let output = compile_and_run_eol("examples/test_ctor_field.cay").expect("编译运行失败");
     assert_eq!(normalize(&output), "Area: 15");
     let _ = std::fs::remove_file("examples/test_ctor_field.cay");
 }

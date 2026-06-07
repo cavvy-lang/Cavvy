@@ -23,21 +23,22 @@ impl PlatformConfig {
             obfuscate: false,
         }
     }
-    
+
     /// 检查特性是否启用
     pub fn is_feature_enabled(&self, feature: &str) -> bool {
         self.features.iter().any(|f| f == feature) && !self.no_features.iter().any(|f| f == feature)
     }
-    
+
     /// 检查宏是否定义
     pub fn is_defined(&self, macro_name: &str) -> bool {
-        self.defines.iter().any(|d| d == macro_name) && !self.undefines.iter().any(|d| d == macro_name)
+        self.defines.iter().any(|d| d == macro_name)
+            && !self.undefines.iter().any(|d| d == macro_name)
     }
-    
+
     /// 生成平台特定的运行时声明
     pub fn generate_platform_declarations(&self) -> String {
         let mut declarations = String::new();
-        
+
         match self.target_os.as_str() {
             "windows" => {
                 if self.is_feature_enabled("console_utf8") {
@@ -50,7 +51,9 @@ impl PlatformConfig {
             "linux" | "macos" => {
                 if self.is_feature_enabled("console_utf8") {
                     declarations.push_str("declare i8* @setlocale(i32, i8*)\n");
-                    declarations.push_str("@.str.locale = private unnamed_addr constant [6 x i8] c\"C.UTF-8\"\00\n");
+                    declarations.push_str(
+                        "@.str.locale = private unnamed_addr constant [6 x i8] c\"C.UTF-8\"\00\n",
+                    );
                 }
                 if self.is_defined("LINUX_SPECIFIC") {
                     declarations.push_str("declare void @LinuxSpecificInit()\n");
@@ -61,18 +64,21 @@ impl PlatformConfig {
             }
             _ => {}
         }
-        
+
         declarations
     }
-    
+
     /// 生成平台特定的初始化代码
     pub fn generate_platform_init(&self) -> String {
         let mut code = String::new();
-        
+
         match self.target_os.as_str() {
             "windows" => {
                 if self.is_feature_enabled("console_utf8") {
-                    code.push_str(&format!("  call void @SetConsoleOutputCP(i32 {})\n", UTF8_CODEPAGE));
+                    code.push_str(&format!(
+                        "  call void @SetConsoleOutputCP(i32 {})\n",
+                        UTF8_CODEPAGE
+                    ));
                 }
                 if self.is_defined("WINDOWS_SPECIFIC") {
                     code.push_str("  call void @WindowsSpecificInit()\n");
@@ -91,7 +97,7 @@ impl PlatformConfig {
             }
             _ => {}
         }
-        
+
         code
     }
 }
@@ -105,18 +111,21 @@ impl PlatformCodeGenerator {
     pub fn new(config: PlatformConfig) -> Self {
         Self { config }
     }
-    
+
     /// 生成平台特定的初始化代码
     pub fn generate_platform_init(&self) -> String {
         let mut code = String::new();
-        
+
         match self.config.target_os.as_str() {
             "windows" => {
                 if self.config.is_feature_enabled("console_utf8") {
                     code.push_str("  ; Windows UTF-8 console setup\n");
-                    code.push_str(&format!("  call void @SetConsoleOutputCP(i32 {})\n", UTF8_CODEPAGE));
+                    code.push_str(&format!(
+                        "  call void @SetConsoleOutputCP(i32 {})\n",
+                        UTF8_CODEPAGE
+                    ));
                 }
-                
+
                 if self.config.is_defined("WINDOWS_SPECIFIC") {
                     code.push_str("  ; Windows-specific initialization\n");
                     code.push_str("  call void @WindowsSpecificInit()\n");
@@ -127,7 +136,7 @@ impl PlatformCodeGenerator {
                     code.push_str("  ; Linux UTF-8 locale setup\n");
                     code.push_str("  %locale_ptr = call i8* @setlocale(i32 0, i8* getelementptr inbounds ([6 x i8], [6 x i8]* @.str.locale, i32 0, i32 0))\n");
                 }
-                
+
                 if self.config.is_defined("LINUX_SPECIFIC") {
                     code.push_str("  ; Linux-specific initialization\n");
                     code.push_str("  call void @LinuxSpecificInit()\n");
@@ -138,7 +147,7 @@ impl PlatformCodeGenerator {
                     code.push_str("  ; macOS UTF-8 locale setup\n");
                     code.push_str("  %locale_ptr = call i8* @setlocale(i32 0, i8* getelementptr inbounds ([6 x i8], [6 x i8]* @.str.locale, i32 0, i32 0))\n");
                 }
-                
+
                 if self.config.is_defined("MACOS_SPECIFIC") {
                     code.push_str("  ; macOS-specific initialization\n");
                     code.push_str("  call void @MacOSSpecificInit()\n");
@@ -148,16 +157,16 @@ impl PlatformCodeGenerator {
                 code.push_str("  ; Generic platform initialization\n");
             }
         }
-        
+
         code
     }
-    
+
     /// 生成平台特定的运行时声明
     pub fn generate_platform_declarations(&self) -> String {
         let mut declarations = String::new();
-        
+
         declarations.push_str("; Platform-specific runtime declarations\n");
-        
+
         match self.config.target_os.as_str() {
             "windows" => {
                 declarations.push_str("declare dllimport void @SetConsoleOutputCP(i32)\n");
@@ -167,30 +176,34 @@ impl PlatformCodeGenerator {
             }
             "linux" => {
                 declarations.push_str("declare i8* @setlocale(i32, i8*)\n");
-                declarations.push_str("@.str.locale = private unnamed_addr constant [6 x i8] c\\\"C.UTF-8\\\"\\00\n");
+                declarations.push_str(
+                    "@.str.locale = private unnamed_addr constant [6 x i8] c\\\"C.UTF-8\\\"\\00\n",
+                );
                 if self.config.is_defined("LINUX_SPECIFIC") {
                     declarations.push_str("declare void @LinuxSpecificInit()\n");
                 }
             }
             "macos" => {
                 declarations.push_str("declare i8* @setlocale(i32, i8*)\n");
-                declarations.push_str("@.str.locale = private unnamed_addr constant [6 x i8] c\\\"C.UTF-8\\\"\\00\n");
+                declarations.push_str(
+                    "@.str.locale = private unnamed_addr constant [6 x i8] c\\\"C.UTF-8\\\"\\00\n",
+                );
                 if self.config.is_defined("MACOS_SPECIFIC") {
                     declarations.push_str("declare void @MacOSSpecificInit()\n");
                 }
             }
             _ => {}
         }
-        
+
         declarations
     }
-    
+
     /// 生成跨平台的动态链接库加载代码
     pub fn generate_dynamic_library_loading(&self) -> String {
         let mut code = String::new();
-        
+
         code.push_str("; Dynamic library loading support\n");
-        
+
         match self.config.target_os.as_str() {
             "windows" => {
                 code.push_str("declare i8* @LoadLibraryA(i8*)\n");
@@ -204,7 +217,7 @@ impl PlatformCodeGenerator {
             }
             _ => {}
         }
-        
+
         code
     }
 }

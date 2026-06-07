@@ -2,12 +2,12 @@
 //!
 //! 处理Lambda表达式: (params) -> { body } 或 (params) -> expr
 
+use super::super::Parser;
+use super::super::statements::parse_statement;
+use super::super::types::{is_type_token, parse_type};
+use super::assignment::parse_expression;
 use crate::ast::*;
 use crate::error::cayResult;
-use super::super::Parser;
-use super::super::types::{parse_type, is_type_token};
-use super::super::statements::parse_statement;
-use super::assignment::parse_expression;
 
 /// 尝试解析 Lambda 表达式
 /// 假设已经消耗了 '('，需要解析参数列表和 -> 箭头
@@ -59,11 +59,7 @@ pub fn try_parse_lambda(parser: &mut Parser, loc: crate::error::SourceLocation) 
         LambdaBody::Expr(Box::new(expr))
     };
 
-    Ok(Expr::Lambda(LambdaExpr {
-        params,
-        body,
-        loc,
-    }))
+    Ok(Expr::Lambda(LambdaExpr { params, body, loc }))
 }
 
 /// 解析 Lambda 参数
@@ -128,10 +124,17 @@ fn parse_lambda_block(parser: &mut Parser) -> cayResult<Block> {
         statements.push(stmt);
     }
 
-    parser.consume(&crate::lexer::Token::RBrace, "期望 '}'\n提示: Lambda 代码块应以 '}' 结束")?;
+    parser.consume(
+        &crate::lexer::Token::RBrace,
+        "期望 '}'\n提示: Lambda 代码块应以 '}' 结束",
+    )?;
 
     Ok(Block {
         statements,
-        loc: crate::error::SourceLocation { file: None, line: 0, column: 0 },
+        loc: crate::error::SourceLocation {
+            file: None,
+            line: 0,
+            column: 0,
+        },
     })
 }

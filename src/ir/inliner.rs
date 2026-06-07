@@ -3,12 +3,12 @@
 //! 在 IR 级别执行函数内联展开（inline expansion）。
 //! 将小函数的调用替换为函数体，减少调用开销。
 
-use super::module::IrModule;
-use super::function::{IrFunction, IrLinkage};
-use super::value::{IrInstruction, IrTerminator, IrValue};
-use super::types::IrType;
 use super::block::IrBasicBlock;
-use crate::error::{cayResult, SourceLocation};
+use super::function::{IrFunction, IrLinkage};
+use super::module::IrModule;
+use super::types::IrType;
+use super::value::{IrInstruction, IrTerminator, IrValue};
+use crate::error::{SourceLocation, cayResult};
 use std::collections::{HashMap, HashSet};
 
 /// 内联器配置
@@ -75,7 +75,9 @@ impl Inliner {
         let mut work_list: Vec<(usize, String)> = Vec::new(); // (函数索引, 被调函数名)
 
         // 第一遍：收集所有可内联的调用点
-        let function_map: HashMap<String, &IrFunction> = module.functions.iter()
+        let function_map: HashMap<String, &IrFunction> = module
+            .functions
+            .iter()
             .map(|f| (f.name.clone(), f))
             .collect();
 
@@ -122,9 +124,7 @@ impl Inliner {
             return false;
         }
 
-        let total_insts: usize = func.blocks.iter()
-            .map(|b| b.instructions.len())
-            .sum();
+        let total_insts: usize = func.blocks.iter().map(|b| b.instructions.len()).sum();
 
         if total_insts < self.config.min_instructions {
             return false;
@@ -167,7 +167,12 @@ impl Inliner {
         // 克隆被调函数（因为需要借用 module）
         let callee = match module.find_function(callee_name) {
             Some(f) => f.clone(),
-            None => return Err(crate::error::codegen_error_at(SourceLocation::default(), "Callee not found".to_string())),
+            None => {
+                return Err(crate::error::codegen_error_at(
+                    SourceLocation::default(),
+                    "Callee not found".to_string(),
+                ));
+            }
         };
 
         if callee.linkage == IrLinkage::Declare || callee.blocks.is_empty() {
@@ -200,12 +205,21 @@ impl Inliner {
         // 提取 Call 指令的信息
         let call_inst = caller.blocks[call_block_idx].instructions[call_inst_idx].clone();
         let (call_result, call_args, call_return_ty) = match call_inst {
-            IrInstruction::Call { result, args, return_ty, .. } => (result, args, return_ty),
+            IrInstruction::Call {
+                result,
+                args,
+                return_ty,
+                ..
+            } => (result, args, return_ty),
             _ => unreachable!(),
         };
 
         // 2. 创建唯一的前缀避免命名冲突
-        let prefix = format!("__inline_{}_{}", callee_name.replace('.', "_"), self.stats.functions_inlined);
+        let prefix = format!(
+            "__inline_{}_{}",
+            callee_name.replace('.', "_"),
+            self.stats.functions_inlined
+        );
 
         // 3. 构建寄存器映射：callee 参数 → call 参数
         let mut reg_map: HashMap<String, IrValue> = HashMap::new();
@@ -241,9 +255,10 @@ impl Inliner {
             }
 
             // 重命名终止指令
-            let new_terminator = block.terminator.as_ref().map(|term| {
-                self.rename_terminator(term, &reg_map, &label_map)
-            });
+            let new_terminator = block
+                .terminator
+                .as_ref()
+                .map(|term| self.rename_terminator(term, &reg_map, &label_map));
 
             let mut new_block = IrBasicBlock::new(new_label);
             new_block.instructions = new_insts;
@@ -264,15 +279,14 @@ impl Inliner {
         let call_block = &mut caller.blocks[call_block_idx];
 
         // 保留 call 之前的指令
-        let before_call: Vec<IrInstruction> = call_block.instructions.drain(..call_inst_idx).collect();
+        let before_call: Vec<IrInstruction> =
+            call_block.instructions.drain(..call_inst_idx).collect();
         call_block.instructions = before_call;
 
         // 添加参数绑定
         for (param, arg) in callee.params.iter().zip(call_args.iter()) {
-            let alloca_result = IrValue::Register(
-                format!("{}.{}", prefix, param.name),
-                param.ty.clone(),
-            );
+            let alloca_result =
+                IrValue::Register(format!("{}.{}", prefix, param.name), param.ty.clone());
             call_block.push(IrInstruction::Alloca {
                 result: alloca_result.clone(),
                 ty: param.ty.clone(),
@@ -287,10 +301,8 @@ impl Inliner {
 
         // 如果 call 有返回值，添加 alloca + store
         if let Some(ref result_val) = call_result {
-            let alloca_result = IrValue::Register(
-                format!("{}.result", prefix),
-                call_return_ty.clone(),
-            );
+            let alloca_result =
+                IrValue::Register(format!("{}.result", prefix), call_return_ty.clone());
             call_block.push(IrInstruction::Alloca {
                 result: alloca_result.clone(),
                 ty: call_return_ty.clone(),
@@ -300,7 +312,12 @@ impl Inliner {
             reg_map.insert(
                 match result_val {
                     IrValue::Register(name, _) => name.clone(),
-                    _ => return Err(crate::error::codegen_error_at(SourceLocation::default(), "Call result must be a register".to_string())),
+                    _ => {
+                        return Err(crate::error::codegen_error_at(
+                            SourceLocation::default(),
+                            "Call result must be a register".to_string(),
+                        ));
+                    }
                 },
                 IrValue::Register(format!("{}.result", prefix), call_return_ty.clone()),
             );
@@ -317,10 +334,8 @@ impl Inliner {
             if let Some(IrTerminator::Return { value }) = &block.terminator {
                 // 如果有返回值，先 store 到结果 alloca
                 if let Some(ret_val) = value {
-                    let result_alloca = IrValue::Register(
-                        format!("{}.result", prefix),
-                        call_return_ty.clone(),
-                    );
+                    let result_alloca =
+                        IrValue::Register(format!("{}.result", prefix), call_return_ty.clone());
                     block.push(IrInstruction::Store {
                         value: ret_val.clone(),
                         ptr: result_alloca,
@@ -336,10 +351,8 @@ impl Inliner {
 
         // 11. 在 continuation 块中，如果有返回值，加载它
         if let Some(ref result_val) = call_result {
-            let result_alloca = IrValue::Register(
-                format!("{}.result", prefix),
-                call_return_ty.clone(),
-            );
+            let result_alloca =
+                IrValue::Register(format!("{}.result", prefix), call_return_ty.clone());
             let load_result = self.rename_value(result_val, &reg_map);
             cont_block.push(IrInstruction::Load {
                 result: load_result,
@@ -359,7 +372,9 @@ impl Inliner {
         for (i, block) in renamed_callee_blocks.into_iter().enumerate() {
             caller.blocks.insert(insert_pos + i, block);
         }
-        caller.blocks.insert(insert_pos + callee_block_count, cont_block);
+        caller
+            .blocks
+            .insert(insert_pos + callee_block_count, cont_block);
 
         self.stats.functions_inlined += 1;
         Ok(())
@@ -373,89 +388,111 @@ impl Inliner {
         prefix: &str,
     ) -> IrInstruction {
         match inst {
-            IrInstruction::Alloca { result, ty, align } => {
-                IrInstruction::Alloca {
-                    result: self.rename_value(result, reg_map),
-                    ty: ty.clone(),
-                    align: *align,
-                }
-            }
-            IrInstruction::Load { result, ptr, ty } => {
-                IrInstruction::Load {
-                    result: self.rename_value(result, reg_map),
-                    ptr: self.rename_value(ptr, reg_map),
-                    ty: ty.clone(),
-                }
-            }
-            IrInstruction::Store { value, ptr, ty } => {
-                IrInstruction::Store {
-                    value: self.rename_value(value, reg_map),
-                    ptr: self.rename_value(ptr, reg_map),
-                    ty: ty.clone(),
-                }
-            }
-            IrInstruction::BinaryOp { result, op, left, right } => {
-                IrInstruction::BinaryOp {
-                    result: self.rename_value(result, reg_map),
-                    op: *op,
-                    left: self.rename_value(left, reg_map),
-                    right: self.rename_value(right, reg_map),
-                }
-            }
-            IrInstruction::Compare { result, op, left, right } => {
-                IrInstruction::Compare {
-                    result: self.rename_value(result, reg_map),
-                    op: *op,
-                    left: self.rename_value(left, reg_map),
-                    right: self.rename_value(right, reg_map),
-                }
-            }
-            IrInstruction::Cast { result, kind, value, to_ty } => {
-                IrInstruction::Cast {
-                    result: self.rename_value(result, reg_map),
-                    kind: *kind,
-                    value: self.rename_value(value, reg_map),
-                    to_ty: to_ty.clone(),
-                }
-            }
-            IrInstruction::Call { result, func_name, args, return_ty } => {
-                IrInstruction::Call {
-                    result: result.as_ref().map(|v| self.rename_value(v, reg_map)),
-                    func_name: func_name.clone(),
-                    args: args.iter().map(|a| self.rename_value(a, reg_map)).collect(),
-                    return_ty: return_ty.clone(),
-                }
-            }
-            IrInstruction::GetElementPtr { result, ptr, indices, base_ty } => {
-                IrInstruction::GetElementPtr {
-                    result: self.rename_value(result, reg_map),
-                    ptr: self.rename_value(ptr, reg_map),
-                    indices: indices.iter().map(|i| self.rename_value(i, reg_map)).collect(),
-                    base_ty: base_ty.clone(),
-                }
-            }
-            IrInstruction::BitCast { result, value, to_ty } => {
-                IrInstruction::BitCast {
-                    result: self.rename_value(result, reg_map),
-                    value: self.rename_value(value, reg_map),
-                    to_ty: to_ty.clone(),
-                }
-            }
-            IrInstruction::Phi { result, ty, incoming } => {
-                IrInstruction::Phi {
-                    result: self.rename_value(result, reg_map),
-                    ty: ty.clone(),
-                    incoming: incoming.iter().map(|(v, l)| (self.rename_value(v, reg_map), l.clone())).collect(),
-                }
-            }
-            IrInstruction::Select { result, condition, true_val, false_val } => {
-                IrInstruction::Select {
-                    result: self.rename_value(result, reg_map),
-                    condition: self.rename_value(condition, reg_map),
-                    true_val: self.rename_value(true_val, reg_map),
-                    false_val: self.rename_value(false_val, reg_map),
-                }
-            }
+            IrInstruction::Alloca { result, ty, align } => IrInstruction::Alloca {
+                result: self.rename_value(result, reg_map),
+                ty: ty.clone(),
+                align: *align,
+            },
+            IrInstruction::Load { result, ptr, ty } => IrInstruction::Load {
+                result: self.rename_value(result, reg_map),
+                ptr: self.rename_value(ptr, reg_map),
+                ty: ty.clone(),
+            },
+            IrInstruction::Store { value, ptr, ty } => IrInstruction::Store {
+                value: self.rename_value(value, reg_map),
+                ptr: self.rename_value(ptr, reg_map),
+                ty: ty.clone(),
+            },
+            IrInstruction::BinaryOp {
+                result,
+                op,
+                left,
+                right,
+            } => IrInstruction::BinaryOp {
+                result: self.rename_value(result, reg_map),
+                op: *op,
+                left: self.rename_value(left, reg_map),
+                right: self.rename_value(right, reg_map),
+            },
+            IrInstruction::Compare {
+                result,
+                op,
+                left,
+                right,
+            } => IrInstruction::Compare {
+                result: self.rename_value(result, reg_map),
+                op: *op,
+                left: self.rename_value(left, reg_map),
+                right: self.rename_value(right, reg_map),
+            },
+            IrInstruction::Cast {
+                result,
+                kind,
+                value,
+                to_ty,
+            } => IrInstruction::Cast {
+                result: self.rename_value(result, reg_map),
+                kind: *kind,
+                value: self.rename_value(value, reg_map),
+                to_ty: to_ty.clone(),
+            },
+            IrInstruction::Call {
+                result,
+                func_name,
+                args,
+                return_ty,
+            } => IrInstruction::Call {
+                result: result.as_ref().map(|v| self.rename_value(v, reg_map)),
+                func_name: func_name.clone(),
+                args: args.iter().map(|a| self.rename_value(a, reg_map)).collect(),
+                return_ty: return_ty.clone(),
+            },
+            IrInstruction::GetElementPtr {
+                result,
+                ptr,
+                indices,
+                base_ty,
+            } => IrInstruction::GetElementPtr {
+                result: self.rename_value(result, reg_map),
+                ptr: self.rename_value(ptr, reg_map),
+                indices: indices
+                    .iter()
+                    .map(|i| self.rename_value(i, reg_map))
+                    .collect(),
+                base_ty: base_ty.clone(),
+            },
+            IrInstruction::BitCast {
+                result,
+                value,
+                to_ty,
+            } => IrInstruction::BitCast {
+                result: self.rename_value(result, reg_map),
+                value: self.rename_value(value, reg_map),
+                to_ty: to_ty.clone(),
+            },
+            IrInstruction::Phi {
+                result,
+                ty,
+                incoming,
+            } => IrInstruction::Phi {
+                result: self.rename_value(result, reg_map),
+                ty: ty.clone(),
+                incoming: incoming
+                    .iter()
+                    .map(|(v, l)| (self.rename_value(v, reg_map), l.clone()))
+                    .collect(),
+            },
+            IrInstruction::Select {
+                result,
+                condition,
+                true_val,
+                false_val,
+            } => IrInstruction::Select {
+                result: self.rename_value(result, reg_map),
+                condition: self.rename_value(condition, reg_map),
+                true_val: self.rename_value(true_val, reg_map),
+                false_val: self.rename_value(false_val, reg_map),
+            },
             other => other.clone(),
         }
     }
@@ -468,31 +505,52 @@ impl Inliner {
         label_map: &HashMap<String, String>,
     ) -> IrTerminator {
         match term {
-            IrTerminator::Return { value } => {
-                IrTerminator::Return {
-                    value: value.as_ref().map(|v| self.rename_value(v, reg_map)),
-                }
-            }
-            IrTerminator::Branch { target } => {
-                IrTerminator::Branch {
-                    target: label_map.get(target).cloned().unwrap_or_else(|| target.clone()),
-                }
-            }
-            IrTerminator::ConditionalBranch { condition, true_target, false_target } => {
-                IrTerminator::ConditionalBranch {
-                    condition: self.rename_value(condition, reg_map),
-                    true_target: label_map.get(true_target).cloned().unwrap_or_else(|| true_target.clone()),
-                    false_target: label_map.get(false_target).cloned().unwrap_or_else(|| false_target.clone()),
-                }
-            }
-            IrTerminator::Switch { value, default_target, cases, ty } => {
-                IrTerminator::Switch {
-                    value: self.rename_value(value, reg_map),
-                    default_target: label_map.get(default_target).cloned().unwrap_or_else(|| default_target.clone()),
-                    cases: cases.iter().map(|(v, t)| (self.rename_value(v, reg_map), label_map.get(t).cloned().unwrap_or_else(|| t.clone()))).collect(),
-                    ty: ty.clone(),
-                }
-            }
+            IrTerminator::Return { value } => IrTerminator::Return {
+                value: value.as_ref().map(|v| self.rename_value(v, reg_map)),
+            },
+            IrTerminator::Branch { target } => IrTerminator::Branch {
+                target: label_map
+                    .get(target)
+                    .cloned()
+                    .unwrap_or_else(|| target.clone()),
+            },
+            IrTerminator::ConditionalBranch {
+                condition,
+                true_target,
+                false_target,
+            } => IrTerminator::ConditionalBranch {
+                condition: self.rename_value(condition, reg_map),
+                true_target: label_map
+                    .get(true_target)
+                    .cloned()
+                    .unwrap_or_else(|| true_target.clone()),
+                false_target: label_map
+                    .get(false_target)
+                    .cloned()
+                    .unwrap_or_else(|| false_target.clone()),
+            },
+            IrTerminator::Switch {
+                value,
+                default_target,
+                cases,
+                ty,
+            } => IrTerminator::Switch {
+                value: self.rename_value(value, reg_map),
+                default_target: label_map
+                    .get(default_target)
+                    .cloned()
+                    .unwrap_or_else(|| default_target.clone()),
+                cases: cases
+                    .iter()
+                    .map(|(v, t)| {
+                        (
+                            self.rename_value(v, reg_map),
+                            label_map.get(t).cloned().unwrap_or_else(|| t.clone()),
+                        )
+                    })
+                    .collect(),
+                ty: ty.clone(),
+            },
             other => other.clone(),
         }
     }
@@ -533,11 +591,7 @@ mod tests {
         let config = InlinerConfig::default();
         let inliner = Inliner::with_config(config);
 
-        let func = IrFunction::new(
-            "test.small".to_string(),
-            IrType::I32,
-            Vec::new(),
-        );
+        let func = IrFunction::new("test.small".to_string(), IrType::I32, Vec::new());
 
         assert!(inliner.should_inline(&func));
     }
@@ -547,11 +601,7 @@ mod tests {
         let config = InlinerConfig::default();
         let inliner = Inliner::with_config(config);
 
-        let mut func = IrFunction::declare(
-            "test.extern".to_string(),
-            IrType::Void,
-            Vec::new(),
-        );
+        let mut func = IrFunction::declare("test.extern".to_string(), IrType::Void, Vec::new());
 
         assert!(!inliner.should_inline(&func));
     }

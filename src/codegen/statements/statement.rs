@@ -2,9 +2,9 @@
 //!
 //! 处理语句类型的分发。
 
-use crate::codegen::context::IRGenerator;
-use crate::codegen::bridge::{InlineIrBridge, InlineIrResult};
 use crate::ast::*;
+use crate::codegen::bridge::{InlineIrBridge, InlineIrResult};
+use crate::codegen::context::IRGenerator;
 use crate::error::cayResult;
 
 impl IRGenerator {
@@ -32,7 +32,10 @@ impl IRGenerator {
             Stmt::Block(block) => {
                 self.set_source_from_loc(&block.loc, &source_file);
                 // 检查是否是多变量声明生成的块（只包含 VarDecl）
-                let is_multi_var_decl = block.statements.iter().all(|s| matches!(s, Stmt::VarDecl(_)));
+                let is_multi_var_decl = block
+                    .statements
+                    .iter()
+                    .all(|s| matches!(s, Stmt::VarDecl(_)));
                 if is_multi_var_decl {
                     // 多变量声明不创建新作用域，在当前作用域内声明所有变量
                     for stmt in &block.statements {

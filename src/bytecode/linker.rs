@@ -1,6 +1,5 @@
 /// 链接器模块
 /// 自动检测和匹配所需的链接库
-
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
@@ -115,7 +114,11 @@ impl AutoLinker {
         }
 
         // 检查是否使用了数学函数
-        if source.contains("Math.") || source.contains("sqrt(") || source.contains("sin(") || source.contains("cos(") {
+        if source.contains("Math.")
+            || source.contains("sqrt(")
+            || source.contains("sin(")
+            || source.contains("cos(")
+        {
             self.config.libraries.insert("m".to_string());
         }
 
@@ -147,7 +150,8 @@ impl AutoLinker {
         }
 
         // 标准C库函数
-        if ir_code.contains("@printf") || ir_code.contains("@scanf") || ir_code.contains("@malloc") {
+        if ir_code.contains("@printf") || ir_code.contains("@scanf") || ir_code.contains("@malloc")
+        {
             // 这些通常是自动链接的
         }
 
@@ -440,7 +444,11 @@ impl AutoLinker {
 
         report.push_str("库搜索路径:\n");
         for path in &self.config.lib_paths {
-            let status = if path.exists() { "[存在]" } else { "[不存在]" };
+            let status = if path.exists() {
+                "[存在]"
+            } else {
+                "[不存在]"
+            };
             report.push_str(&format!("  {} {}\n", status, path.display()));
         }
 
@@ -469,7 +477,11 @@ impl Default for AutoLinker {
 /// 便捷的链接函数
 
 /// 自动链接并生成可执行文件
-pub fn auto_link(obj_file: &Path, output_path: &str, source_analysis: Option<&str>) -> Result<(), String> {
+pub fn auto_link(
+    obj_file: &Path,
+    output_path: &str,
+    source_analysis: Option<&str>,
+) -> Result<(), String> {
     let mut linker = AutoLinker::default();
 
     // 分析源代码
@@ -487,9 +499,7 @@ pub fn auto_link(obj_file: &Path, output_path: &str, source_analysis: Option<&st
 
     // 构建链接命令
     let mut cmd = std::process::Command::new(&clang);
-    cmd.arg(obj_file)
-        .arg("-o")
-        .arg(output_path);
+    cmd.arg(obj_file).arg("-o").arg(output_path);
 
     // 添加链接参数
     for arg in linker.get_link_args() {
@@ -497,8 +507,7 @@ pub fn auto_link(obj_file: &Path, output_path: &str, source_analysis: Option<&st
     }
 
     // 执行链接
-    let output = cmd.output()
-        .map_err(|e| format!("链接失败: {}", e))?;
+    let output = cmd.output().map_err(|e| format!("链接失败: {}", e))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -511,7 +520,10 @@ pub fn auto_link(obj_file: &Path, output_path: &str, source_analysis: Option<&st
 /// 查找clang编译器
 fn find_clang() -> Result<PathBuf, String> {
     // 1. 尝试系统PATH中的clang
-    if let Ok(output) = std::process::Command::new("clang").arg("--version").output() {
+    if let Ok(output) = std::process::Command::new("clang")
+        .arg("--version")
+        .output()
+    {
         if output.status.success() {
             return Ok(PathBuf::from("clang"));
         }
@@ -546,9 +558,8 @@ pub fn detect_available_libs() -> Vec<String> {
 
     // 常见的库列表
     let common_libs = [
-        "m", "pthread", "dl", "rt",
-        "user32", "kernel32", "ws2_32", "gdi32",
-        "stdc++", "gcc", "gcc_s",
+        "m", "pthread", "dl", "rt", "user32", "kernel32", "ws2_32", "gdi32", "stdc++", "gcc",
+        "gcc_s",
     ];
 
     for lib in &common_libs {

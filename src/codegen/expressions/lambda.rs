@@ -2,10 +2,10 @@
 //!
 //! 处理 Lambda 表达式和方法引用。
 
-use crate::codegen::context::IRGenerator;
 use crate::ast::*;
-use crate::error::{cayResult, codegen_error_at};
+use crate::codegen::context::IRGenerator;
 use crate::error::SourceLocation;
+use crate::error::{cayResult, codegen_error_at};
 use crate::types::Type;
 use std::collections::HashSet;
 
@@ -14,10 +14,9 @@ impl IRGenerator {
     /// 返回: Vec<(变量名, LLVM类型, Cayvy类型)>
     fn collect_free_variables(&self, lambda: &LambdaExpr) -> Vec<(String, String, Type)> {
         let mut free_vars = Vec::new();
-        let mut param_names: HashSet<String> = lambda.params.iter()
-            .map(|p| p.name.clone())
-            .collect();
-        
+        let mut param_names: HashSet<String> =
+            lambda.params.iter().map(|p| p.name.clone()).collect();
+
         // 收集 lambda 体中引用的所有标识符
         let mut referenced = HashSet::new();
         match &lambda.body {
@@ -30,7 +29,7 @@ impl IRGenerator {
                 }
             }
         }
-        
+
         // 筛选出外部变量（不在参数列表中且在当前作用域可访问）
         for name in referenced {
             if param_names.contains(&name) {
@@ -38,14 +37,18 @@ impl IRGenerator {
             }
             // 检查是否是当前作用域中的变量
             if let Some(llvm_type) = self.scope_manager.get_var_type(&name) {
-                let cay_type = self.var_cay_types.get(&name).cloned().unwrap_or(Type::Int32);
+                let cay_type = self
+                    .var_cay_types
+                    .get(&name)
+                    .cloned()
+                    .unwrap_or(Type::Int32);
                 free_vars.push((name, llvm_type, cay_type));
             }
         }
-        
+
         free_vars
     }
-    
+
     /// 从表达式中收集标识符
     fn collect_identifiers(expr: &Expr, result: &mut HashSet<String>) {
         match expr {
@@ -79,9 +82,8 @@ impl IRGenerator {
             }
             Expr::Lambda(lambda) => {
                 // 嵌套 lambda：收集其体中的标识符，但排除其参数
-                let mut nested_params: HashSet<String> = lambda.params.iter()
-                    .map(|p| p.name.clone())
-                    .collect();
+                let mut nested_params: HashSet<String> =
+                    lambda.params.iter().map(|p| p.name.clone()).collect();
                 match &lambda.body {
                     LambdaBody::Expr(expr) => {
                         let mut nested_refs = HashSet::new();
@@ -108,7 +110,7 @@ impl IRGenerator {
             _ => {}
         }
     }
-    
+
     /// 从语句中收集标识符
     fn collect_identifiers_from_stmt(stmt: &Stmt, result: &mut HashSet<String>) {
         match stmt {
@@ -162,7 +164,11 @@ impl IRGenerator {
     /// # Arguments
     /// * `lambda` - Lambda 表达式
     /// * `var_name` - 变量名（用于记录环境指针）
-    pub fn generate_lambda(&mut self, lambda: &LambdaExpr, var_name: Option<&str>) -> cayResult<String> {
+    pub fn generate_lambda(
+        &mut self,
+        lambda: &LambdaExpr,
+        var_name: Option<&str>,
+    ) -> cayResult<String> {
         // 生成唯一的 Lambda 函数名（使用独立计数器避免嵌套lambda重复）
         let current_class = self.current_class.clone();
         let lambda_idx = self.lambda_counter;
@@ -176,7 +182,7 @@ impl IRGenerator {
         // 收集闭包捕获的外部变量
         let captures = self.collect_free_variables(lambda);
         let has_captures = !captures.is_empty();
-        
+
         // 保存当前代码缓冲区
         let saved_code = std::mem::take(&mut self.code);
         let saved_temp_counter = self.temp_counter;
@@ -191,26 +197,35 @@ impl IRGenerator {
         let mut param_names = Vec::new();
 
         for (i, param) in lambda.params.iter().enumerate() {
-            let param_type = param.param_type.as_ref()
+            let param_type = param
+                .param_type
+                .as_ref()
                 .map(|t| self.type_to_llvm(t))
                 .unwrap_or_else(|| "i64".to_string());
             param_types.push(format!("{} %param{}", param_type, i));
             param_names.push((param.name.clone(), param_type, format!("%param{}", i)));
         }
-        
+
         // 添加环境指针参数（如果有捕获变量）
         if has_captures {
             param_types.push("i8* %env".to_string());
         }
 
         // 记录捕获信息，供调用时使用
-        let capture_info: Vec<(String, Type)> = captures.iter()
+        let capture_info: Vec<(String, Type)> = captures
+            .iter()
             .map(|(name, _llvm, cay)| (name.clone(), cay.clone()))
             .collect();
-        self.lambda_captures.insert(lambda_name.clone(), capture_info);
+        self.lambda_captures
+            .insert(lambda_name.clone(), capture_info);
 
         // 生成 Lambda 函数头
-        self.emit_line(&format!("\ndefine {} @{}({}) {{", llvm_return_type, lambda_name, param_types.join(", ")));
+        self.emit_line(&format!(
+            "\ndefine {} @{}({}) {{",
+            llvm_return_type,
+            lambda_name,
+            param_types.join(", ")
+        ));
         self.emit_line("entry:");
 
         // 创建新的作用域
@@ -219,10 +234,22 @@ impl IRGenerator {
         // 添加显式参数到作用域
         for (name, ty, llvm_name) in &param_names {
             let declared_llvm_name = self.scope_manager.declare_var(name, ty);
-            self.emit_line(&format!("  %{} = alloca {}, align {}", declared_llvm_name, ty, self.get_type_align(ty)));
-            self.emit_line(&format!("  store {} {}, {}* %{}, align {}", ty, llvm_name, ty, declared_llvm_name, self.get_type_align(ty)));
+            self.emit_line(&format!(
+                "  %{} = alloca {}, align {}",
+                declared_llvm_name,
+                ty,
+                self.get_type_align(ty)
+            ));
+            self.emit_line(&format!(
+                "  store {} {}, {}* %{}, align {}",
+                ty,
+                llvm_name,
+                ty,
+                declared_llvm_name,
+                self.get_type_align(ty)
+            ));
         }
-        
+
         // 如果有捕获变量，从环境指针中加载它们
         if has_captures {
             // 计算环境结构体中每个字段的偏移
@@ -232,24 +259,39 @@ impl IRGenerator {
                 let align = self.get_type_align(llvm_type) as i64;
                 // 对齐偏移
                 current_offset = (current_offset + align - 1) / align * align;
-                
+
                 // 计算字段地址：env + offset
                 let field_ptr_temp = self.new_temp();
-                self.emit_line(&format!("  {} = getelementptr i8, i8* %env, i32 {}", field_ptr_temp, current_offset));
-                
+                self.emit_line(&format!(
+                    "  {} = getelementptr i8, i8* %env, i32 {}",
+                    field_ptr_temp, current_offset
+                ));
+
                 // 将 i8* 转换为字段类型指针
                 let typed_ptr_temp = self.new_temp();
-                self.emit_line(&format!("  {} = bitcast i8* {} to {}*", typed_ptr_temp, field_ptr_temp, llvm_type));
-                
+                self.emit_line(&format!(
+                    "  {} = bitcast i8* {} to {}*",
+                    typed_ptr_temp, field_ptr_temp, llvm_type
+                ));
+
                 // 加载字段值
                 let field_val_temp = self.new_temp();
-                self.emit_line(&format!("  {} = load {}, {}* {}, align {}", field_val_temp, llvm_type, llvm_type, typed_ptr_temp, align));
-                
+                self.emit_line(&format!(
+                    "  {} = load {}, {}* {}, align {}",
+                    field_val_temp, llvm_type, llvm_type, typed_ptr_temp, align
+                ));
+
                 // 为捕获变量分配局部存储
                 let declared_name = self.scope_manager.declare_var(var_name, llvm_type);
-                self.emit_line(&format!("  %{} = alloca {}, align {}", declared_name, llvm_type, align));
-                self.emit_line(&format!("  store {} {}, {}* %{}, align {}", llvm_type, field_val_temp, llvm_type, declared_name, align));
-                
+                self.emit_line(&format!(
+                    "  %{} = alloca {}, align {}",
+                    declared_name, llvm_type, align
+                ));
+                self.emit_line(&format!(
+                    "  store {} {}, {}* %{}, align {}",
+                    llvm_type, field_val_temp, llvm_type, declared_name, align
+                ));
+
                 current_offset += type_size;
             }
         }
@@ -289,45 +331,60 @@ impl IRGenerator {
                 total_size = (total_size + align - 1) / align * align;
                 total_size += type_size;
             }
-            
+
             // 分配环境结构体
             let env_ptr = self.new_temp();
-            self.emit_line(&format!("  {} = call i8* @malloc(i64 {})", env_ptr, total_size));
-            
+            self.emit_line(&format!(
+                "  {} = call i8* @malloc(i64 {})",
+                env_ptr, total_size
+            ));
+
             // 填充环境结构体
             let mut current_offset: i64 = 0;
             for (var_name, llvm_type, _cay_type) in &captures {
                 let type_size = self.get_type_size(llvm_type);
                 let align = self.get_type_align(llvm_type) as i64;
                 current_offset = (current_offset + align - 1) / align * align;
-                
+
                 // 获取变量值
-                let var_llvm_name = self.scope_manager.get_llvm_name(var_name)
+                let var_llvm_name = self
+                    .scope_manager
+                    .get_llvm_name(var_name)
                     .unwrap_or_else(|| var_name.to_string());
                 let var_val_temp = self.new_temp();
-                self.emit_line(&format!("  {} = load {}, {}* %{}, align {}", 
-                    var_val_temp, llvm_type, llvm_type, var_llvm_name, align));
-                
+                self.emit_line(&format!(
+                    "  {} = load {}, {}* %{}, align {}",
+                    var_val_temp, llvm_type, llvm_type, var_llvm_name, align
+                ));
+
                 // 计算字段地址
                 let field_ptr_temp = self.new_temp();
-                self.emit_line(&format!("  {} = getelementptr i8, i8* {}, i32 {}", field_ptr_temp, env_ptr, current_offset));
-                
+                self.emit_line(&format!(
+                    "  {} = getelementptr i8, i8* {}, i32 {}",
+                    field_ptr_temp, env_ptr, current_offset
+                ));
+
                 // 转换为字段类型指针
                 let typed_ptr_temp = self.new_temp();
-                self.emit_line(&format!("  {} = bitcast i8* {} to {}*", typed_ptr_temp, field_ptr_temp, llvm_type));
-                
+                self.emit_line(&format!(
+                    "  {} = bitcast i8* {} to {}*",
+                    typed_ptr_temp, field_ptr_temp, llvm_type
+                ));
+
                 // 存储变量值到环境结构体
-                self.emit_line(&format!("  store {} {}, {}* {}, align {}", 
-                    llvm_type, var_val_temp, llvm_type, typed_ptr_temp, align));
-                
+                self.emit_line(&format!(
+                    "  store {} {}, {}* {}, align {}",
+                    llvm_type, var_val_temp, llvm_type, typed_ptr_temp, align
+                ));
+
                 current_offset += type_size;
             }
-            
+
             // 记录环境指针（如果提供了变量名）
             if let Some(vn) = var_name {
                 self.lambda_envs.insert(vn.to_string(), env_ptr.clone());
             }
-            
+
             Some(env_ptr)
         } else {
             None
@@ -335,13 +392,17 @@ impl IRGenerator {
 
         // 返回函数指针（bitcast 为 i8*）
         let func_ptr_temp = self.new_temp();
-        let llvm_param_types: Vec<String> = param_types.iter()
+        let llvm_param_types: Vec<String> = param_types
+            .iter()
             .map(|p| p.split_whitespace().next().unwrap_or("i64").to_string())
             .collect();
-        self.emit_line(&format!("  {} = bitcast {} ({})* @{} to i8*", 
-            func_ptr_temp, llvm_return_type, 
+        self.emit_line(&format!(
+            "  {} = bitcast {} ({})* @{} to i8*",
+            func_ptr_temp,
+            llvm_return_type,
             llvm_param_types.join(", "),
-            lambda_name));
+            lambda_name
+        ));
 
         // 将函数指针和环境指针打包成一个结构体
         // 结构体: { i8* func_ptr, i8* env_ptr }
@@ -358,16 +419,31 @@ impl IRGenerator {
 
         // 存储函数指针到结构体偏移0
         let func_ptr_slot = self.new_temp();
-        self.emit_line(&format!("  {} = bitcast i8* {} to i8**", func_ptr_slot, struct_ptr));
-        self.emit_line(&format!("  store i8* {}, i8** {}, align 8", func_ptr_temp, func_ptr_slot));
+        self.emit_line(&format!(
+            "  {} = bitcast i8* {} to i8**",
+            func_ptr_slot, struct_ptr
+        ));
+        self.emit_line(&format!(
+            "  store i8* {}, i8** {}, align 8",
+            func_ptr_temp, func_ptr_slot
+        ));
 
         // 存储环境指针到结构体偏移8（如果没有捕获变量，则为 null）
         let env_ptr = env_ptr_temp.unwrap_or_else(|| "null".to_string());
         let env_ptr_slot_temp = self.new_temp();
-        self.emit_line(&format!("  {} = getelementptr i8, i8* {}, i64 8", env_ptr_slot_temp, struct_ptr));
+        self.emit_line(&format!(
+            "  {} = getelementptr i8, i8* {}, i64 8",
+            env_ptr_slot_temp, struct_ptr
+        ));
         let env_ptr_slot_cast = self.new_temp();
-        self.emit_line(&format!("  {} = bitcast i8* {} to i8**", env_ptr_slot_cast, env_ptr_slot_temp));
-        self.emit_line(&format!("  store i8* {}, i8** {}, align 8", env_ptr, env_ptr_slot_cast));
+        self.emit_line(&format!(
+            "  {} = bitcast i8* {} to i8**",
+            env_ptr_slot_cast, env_ptr_slot_temp
+        ));
+        self.emit_line(&format!(
+            "  store i8* {}, i8** {}, align 8",
+            env_ptr, env_ptr_slot_cast
+        ));
 
         Ok(format!("i8* {}", struct_ptr))
     }
@@ -409,14 +485,24 @@ impl IRGenerator {
                 // 对于二元表达式，根据操作符推断
                 let left_type = self.infer_expr_type(&bin.left)?;
                 let right_type = self.infer_expr_type(&bin.right)?;
-                
+
                 match bin.op {
-                    BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div | BinaryOp::Mod => {
+                    BinaryOp::Add
+                    | BinaryOp::Sub
+                    | BinaryOp::Mul
+                    | BinaryOp::Div
+                    | BinaryOp::Mod => {
                         // 数值运算返回较宽的类型
                         Ok(self.promote_types(&left_type, &right_type))
                     }
-                    BinaryOp::Eq | BinaryOp::Ne | BinaryOp::Lt | BinaryOp::Le | BinaryOp::Gt | BinaryOp::Ge |
-                    BinaryOp::And | BinaryOp::Or => Ok(Type::Bool),
+                    BinaryOp::Eq
+                    | BinaryOp::Ne
+                    | BinaryOp::Lt
+                    | BinaryOp::Le
+                    | BinaryOp::Gt
+                    | BinaryOp::Ge
+                    | BinaryOp::And
+                    | BinaryOp::Or => Ok(Type::Bool),
                     _ => Ok(left_type),
                 }
             }
@@ -426,7 +512,9 @@ impl IRGenerator {
                 if let Some(ref registry) = self.type_registry {
                     if let Expr::Identifier(name) = call.callee.as_ref() {
                         if !self.current_class.is_empty() {
-                            if let Some(method_info) = registry.get_method(&self.current_class, name.as_ref()) {
+                            if let Some(method_info) =
+                                registry.get_method(&self.current_class, name.as_ref())
+                            {
                                 return Ok(method_info.return_type.clone());
                             }
                         }
@@ -461,15 +549,25 @@ impl IRGenerator {
     }
 
     /// 生成 Lambda 体代码
-    fn generate_lambda_body(&mut self, lambda: &LambdaExpr, _return_type: &Type, llvm_return_type: &str) -> cayResult<()> {
+    fn generate_lambda_body(
+        &mut self,
+        lambda: &LambdaExpr,
+        _return_type: &Type,
+        llvm_return_type: &str,
+    ) -> cayResult<()> {
         match &lambda.body {
             LambdaBody::Expr(expr) => {
                 let val = self.generate_expression(expr)?;
                 let (value_type, val_str) = self.parse_typed_value(&val);
-                
+
                 // 如果表达式类型与返回类型不匹配，进行转换
                 if value_type != llvm_return_type {
-                    let converted = self.convert_type(&val_str, &value_type, llvm_return_type, lambda.loc.clone())?;
+                    let converted = self.convert_type(
+                        &val_str,
+                        &value_type,
+                        llvm_return_type,
+                        lambda.loc.clone(),
+                    )?;
                     self.emit_line(&format!("  ret {} {}", llvm_return_type, converted));
                 } else {
                     self.emit_line(&format!("  ret {} {}", llvm_return_type, val_str));
@@ -485,7 +583,7 @@ impl IRGenerator {
                     }
                     self.generate_statement(stmt)?;
                 }
-                
+
                 // 如果没有显式 return，添加默认返回
                 if !has_return {
                     if llvm_return_type == "void" {
@@ -511,7 +609,13 @@ impl IRGenerator {
     }
 
     /// 类型转换辅助函数
-    fn convert_type(&mut self, val: &str, from_type: &str, to_type: &str, loc: SourceLocation) -> cayResult<String> {
+    fn convert_type(
+        &mut self,
+        val: &str,
+        from_type: &str,
+        to_type: &str,
+        loc: SourceLocation,
+    ) -> cayResult<String> {
         if from_type == to_type {
             return Ok(val.to_string());
         }
@@ -520,7 +624,10 @@ impl IRGenerator {
 
         // 指针到整数的转换（ptrtoint）- 必须优先于整数检查
         if from_type.ends_with("*") && to_type.starts_with("i") && !to_type.ends_with("*") {
-            self.emit_line(&format!("  {} = ptrtoint {} {} to {}", temp, from_type, val, to_type));
+            self.emit_line(&format!(
+                "  {} = ptrtoint {} {} to {}",
+                temp, from_type, val, to_type
+            ));
             return Ok(temp);
         }
 
@@ -530,17 +637,29 @@ impl IRGenerator {
             // 使用 i64 作为中间类型（指针大小）
             if from_type != "i64" {
                 let i64_temp = self.new_temp();
-                self.emit_line(&format!("  {} = sext {} {} to i64", i64_temp, from_type, val));
-                self.emit_line(&format!("  {} = inttoptr i64 {} to {}", temp, i64_temp, to_type));
+                self.emit_line(&format!(
+                    "  {} = sext {} {} to i64",
+                    i64_temp, from_type, val
+                ));
+                self.emit_line(&format!(
+                    "  {} = inttoptr i64 {} to {}",
+                    temp, i64_temp, to_type
+                ));
             } else {
-                self.emit_line(&format!("  {} = inttoptr {} {} to {}", temp, from_type, val, to_type));
+                self.emit_line(&format!(
+                    "  {} = inttoptr {} {} to {}",
+                    temp, from_type, val, to_type
+                ));
             }
             return Ok(temp);
         }
 
         // 指针类型转换（bitcast）- 必须优先于其他检查
         if from_type.ends_with("*") && to_type.ends_with("*") {
-            self.emit_line(&format!("  {} = bitcast {} {} to {}", temp, from_type, val, to_type));
+            self.emit_line(&format!(
+                "  {} = bitcast {} {} to {}",
+                temp, from_type, val, to_type
+            ));
             return Ok(temp);
         }
 
@@ -549,28 +668,40 @@ impl IRGenerator {
         let is_to_ptr = to_type.ends_with("*");
         let is_from_int = from_type.starts_with("i") && !is_from_ptr;
         let is_to_int = to_type.starts_with("i") && !is_to_ptr;
-        
+
         if is_from_int && is_to_int {
             let from_bits: u32 = from_type.trim_start_matches('i').parse().unwrap_or(64);
             let to_bits: u32 = to_type.trim_start_matches('i').parse().unwrap_or(64);
-            
+
             if to_bits > from_bits {
-                self.emit_line(&format!("  {} = sext {} {} to {}", temp, from_type, val, to_type));
+                self.emit_line(&format!(
+                    "  {} = sext {} {} to {}",
+                    temp, from_type, val, to_type
+                ));
             } else {
-                self.emit_line(&format!("  {} = trunc {} {} to {}", temp, from_type, val, to_type));
+                self.emit_line(&format!(
+                    "  {} = trunc {} {} to {}",
+                    temp, from_type, val, to_type
+                ));
             }
             return Ok(temp);
         }
 
         // 整数到浮点数转换（严格排除指针）
         if is_from_int && (to_type == "float" || to_type == "double") {
-            self.emit_line(&format!("  {} = sitofp {} {} to {}", temp, from_type, val, to_type));
+            self.emit_line(&format!(
+                "  {} = sitofp {} {} to {}",
+                temp, from_type, val, to_type
+            ));
             return Ok(temp);
         }
 
         // 浮点数到整数转换（严格排除指针）
         if (from_type == "float" || from_type == "double") && is_to_int {
-            self.emit_line(&format!("  {} = fptosi {} {} to {}", temp, from_type, val, to_type));
+            self.emit_line(&format!(
+                "  {} = fptosi {} {} to {}",
+                temp, from_type, val, to_type
+            ));
             return Ok(temp);
         }
 
@@ -585,9 +716,13 @@ impl IRGenerator {
         }
 
         // 其他不支持的转换
-        Err(codegen_error_at(loc, format!(
-            "Unsupported type conversion from {} to {}", from_type, to_type
-        )))
+        Err(codegen_error_at(
+            loc,
+            format!(
+                "Unsupported type conversion from {} to {}",
+                from_type, to_type
+            ),
+        ))
     }
 
     /// 将 LLVM 类型映射到 Cayvy 类型（静态辅助函数）
@@ -625,12 +760,15 @@ impl IRGenerator {
             // 静态方法引用: ClassName::methodName
             // 尝试从类型注册表获取方法签名
             let fn_name = format!("{}.{}", class_name, method_ref.method_name);
-            
+
             // 尝试推断返回类型和参数类型
             let (return_type, param_types) = if let Some(ref registry) = self.type_registry {
-                if let Some(method_info) = registry.get_method(class_name, &method_ref.method_name) {
+                if let Some(method_info) = registry.get_method(class_name, &method_ref.method_name)
+                {
                     let ret = self.type_to_llvm(&method_info.return_type);
-                    let params: Vec<String> = method_info.params.iter()
+                    let params: Vec<String> = method_info
+                        .params
+                        .iter()
                         .map(|p| self.type_to_llvm(&p.param_type))
                         .collect();
                     (ret, params)
@@ -640,21 +778,29 @@ impl IRGenerator {
             } else {
                 ("i32".to_string(), vec![])
             };
-            
+
             // 生成函数指针类型
             let fn_ptr_type = format!("{} ({})", return_type, param_types.join(", "));
-            
+
             // 生成 bitcast
-            self.emit_line(&format!("  {} = bitcast {} ({})* @{} to i8*", 
-                temp, return_type, param_types.join(", "), fn_name));
-            
+            self.emit_line(&format!(
+                "  {} = bitcast {} ({})* @{} to i8*",
+                temp,
+                return_type,
+                param_types.join(", "),
+                fn_name
+            ));
+
             Ok(format!("i8* {}", temp))
         } else {
             // 实例方法引用: obj::methodName
             // 需要生成一个闭包，包含对象指针和方法指针
             // 简化处理：直接返回方法指针
             let fn_name = format!("{}.{}", self.current_class, method_ref.method_name);
-            self.emit_line(&format!("  {} = bitcast void (i8*)* @{} to i8*", temp, fn_name));
+            self.emit_line(&format!(
+                "  {} = bitcast void (i8*)* @{} to i8*",
+                temp, fn_name
+            ));
             Ok(format!("i8* {}", temp))
         }
     }
