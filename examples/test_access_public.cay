@@ -1,0 +1,13 @@
+
+public class Test {
+    public int value;
+    
+    public Test(int v) {
+        this.value = v;
+    }
+    
+    public static void main() {
+        Test t = new Test(42);
+        println(String.valueOf(t.value));
+    }
+}

@@ -1,0 +1,15 @@
+
+public interface Drawable {
+    void draw();
+}
+
+public class Circle implements Drawable {
+    public void draw() {
+        println("Drawing a circle");
+    }
+    
+    public static void main() {
+        Circle c = new Circle();
+        c.draw();
+    }
+}

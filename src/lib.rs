@@ -358,6 +358,99 @@ public class Test {
         println!("AST: {:?}", ast);
     }
 
+    fn analyze_source(source: &str) -> error::cayResult<()> {
+        let tokens = lexer::lex(source)?;
+        let ast = parser::parse_with_source(tokens, source.to_string())?;
+        let mut analyzer = semantic::SemanticAnalyzer::new();
+        analyzer.analyze(&ast)
+    }
+
+    #[test]
+    fn test_static_method_named_like_string_method_resolves_to_class() {
+        let source = r#"public class TextBuffer {
+    private static bool contains(String text, String pattern) {
+        return true;
+    }
+
+    public static void main() {
+        bool ok = TextBuffer.contains("abc", "a");
+        if (ok) {
+            println("ok");
+        }
+    }
+}"#;
+
+        analyze_source(source).expect("ClassName.contains should resolve to the static class method");
+    }
+
+    #[test]
+    fn test_missing_instance_method_is_semantic_error_with_suggestion() {
+        let source = r#"public class File {
+    public File() {
+    }
+
+    public bool isOpened() {
+        return true;
+    }
+}
+
+public class Example {
+    public static void main() {
+        File file = new File();
+        if (!file.isOpen()) {
+            println("closed");
+        }
+    }
+}"#;
+
+        let err = analyze_source(source).expect_err("missing method should fail in semantic analysis");
+        let message = format!("{:?}", err);
+        assert!(message.contains("Unknown method 'isOpen'"), "{}", message);
+        assert!(message.contains("isOpened"), "{}", message);
+    }
+
+    #[test]
+    fn test_source_location_file_prevents_double_source_map_remap() {
+        let mut ir_gen = codegen::IRGenerator::new();
+        ir_gen.enable_source_map = true;
+
+        let mut source_map = std::collections::HashMap::new();
+        source_map.insert(
+            621,
+            (r"\\?\E:\spj\EOL\target\release\caylibs\StringBuilder.cay".to_string(), 10),
+        );
+        ir_gen.set_preprocessor_source_map(source_map);
+
+        let loc = error::SourceLocation::new(
+            Some(r"\\?\E:\spj\EOL\examples\text_editor.cay".to_string()),
+            621,
+            9,
+        );
+        ir_gen.set_source_from_loc(&loc, "fallback.cay");
+        ir_gen.emit_line("%x = alloca i32");
+
+        assert!(
+            ir_gen.code.contains(r"; !source E:\spj\EOL\examples\text_editor.cay:621:9"),
+            "{}",
+            ir_gen.code
+        );
+        assert!(!ir_gen.code.contains("StringBuilder.cay"), "{}", ir_gen.code);
+        assert!(!ir_gen.code.contains(r"\\?\"), "{}", ir_gen.code);
+    }
+
+    #[test]
+    fn test_llc_error_text_can_remap_to_cay_source() {
+        let mut source_map = ir2exe_lib::IRSourceMap::new();
+        source_map.add_mapping(4834, "examples/text_editor.cay".to_string(), 637, 18);
+
+        let error = "llc.exe: error: llc.exe: text_editor.ll:4834:21: error: use of undefined value '@_ZN3std4FileE.isOpen'\n    %t11 = call i64 @_ZN3std4FileE.isOpen()\n                    ^";
+        let remapped = ir2exe_lib::remap_clang_error(error, &source_map, "text_editor.ll");
+
+        assert!(remapped.contains("at examples/text_editor.cay:637:18"), "{}", remapped);
+        assert!(remapped.contains("use of undefined value"), "{}", remapped);
+        assert!(!remapped.contains("text_editor.ll:4834:21"), "{}", remapped);
+    }
+
     #[test]
     fn test_preprocessor_define() {
         let source = r#"

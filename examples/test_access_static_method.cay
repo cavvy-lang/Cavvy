@@ -1,0 +1,14 @@
+
+public class Config {
+    private static int maxRetries = 3;
+    
+    public static int getMaxRetries() {
+        return Config.maxRetries;
+    }
+}
+
+public class Test {
+    public static void main() {
+        println(String.valueOf(Config.getMaxRetries()));
+    }
+}

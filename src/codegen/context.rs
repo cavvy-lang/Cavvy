@@ -3,6 +3,10 @@ use std::collections::{HashMap, HashSet};
 use crate::types::TypeRegistry;
 use crate::codegen::platform::PlatformConfig;
 
+fn normalize_source_file_path(path: &str) -> String {
+    path.strip_prefix("\\\\?\\").unwrap_or(path).to_string()
+}
+
 /// 循环上下文，用于支持 break/continue
 #[derive(Debug, Clone)]
 pub struct LoopContext {
@@ -564,23 +568,25 @@ impl IRGenerator {
     
     /// 从SourceLocation设置源位置
     /// 优先使用loc中的file字段，如果为None则使用传入的file参数
-    /// 使用预处理器源映射将预处理后的行号映射回原始源文件行号
+    /// 只有loc未携带原始文件时才回退到预处理器源映射
     pub fn set_source_from_loc(&mut self, loc: &crate::error::SourceLocation, file: &str) {
-        let file_path = loc.file.clone().unwrap_or_else(|| file.to_string());
-        
-        // 使用预处理器源映射查找原始源位置
+        if let Some(loc_file) = &loc.file {
+            self.source_file = normalize_source_file_path(loc_file);
+            self.source_line = loc.line;
+            self.source_column = loc.column;
+            return;
+        }
+
         if let Some(ref source_map) = self.preprocessor_source_map {
-            // source_map的键是预处理后的行号，值是(原始文件路径, 原始行号)
             if let Some((original_file, original_line)) = source_map.get(&loc.line) {
-                self.source_file = original_file.clone();
+                self.source_file = normalize_source_file_path(original_file);
                 self.source_line = *original_line;
                 self.source_column = loc.column;
                 return;
             }
         }
-        
-        // 如果没有源映射或查找失败，使用原始位置
-        self.source_file = file_path;
+
+        self.source_file = normalize_source_file_path(file);
         self.source_line = loc.line;
         self.source_column = loc.column;
     }

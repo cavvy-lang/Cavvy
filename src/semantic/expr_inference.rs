@@ -89,6 +89,26 @@ fn is_subclass(child_class: &str, parent_class: &str, type_registry: &crate::typ
     false
 }
 
+fn edit_distance(a: &str, b: &str) -> usize {
+    let a_chars: Vec<char> = a.chars().collect();
+    let b_chars: Vec<char> = b.chars().collect();
+    let mut prev: Vec<usize> = (0..=b_chars.len()).collect();
+    let mut curr = vec![0; b_chars.len() + 1];
+
+    for (i, a_ch) in a_chars.iter().enumerate() {
+        curr[0] = i + 1;
+        for (j, b_ch) in b_chars.iter().enumerate() {
+            let cost = if a_ch == b_ch { 0 } else { 1 };
+            curr[j + 1] = (prev[j + 1] + 1)
+                .min(curr[j] + 1)
+                .min(prev[j] + cost);
+        }
+        std::mem::swap(&mut prev, &mut curr);
+    }
+
+    prev[b_chars.len()]
+}
+
 impl SemanticAnalyzer {
     /// 推断表达式类型（带错误收集）
     /// 这个版本会收集错误到 self.errors 而不是直接返回 Err
@@ -235,6 +255,263 @@ impl SemanticAnalyzer {
             Expr::Dealloc(_) => Ok(Type::Void), // 0.5.0.0: dealloc 返回 void
             Expr::NamedArg(named) => self.infer_expr_type_internal(&named.value), // 命名参数返回其值的类型
         }
+    }
+
+    fn identifier_has_value_binding(&self, name: &str) -> bool {
+        if self.symbol_table.lookup(name).is_some() {
+            return true;
+        }
+
+        let mut class_to_check = self.current_class.clone();
+        while let Some(class_name) = class_to_check {
+            if let Some(class_info) = self.type_registry.get_class(&class_name) {
+                if class_info.fields.contains_key(name) {
+                    return true;
+                }
+                class_to_check = class_info.parent.clone();
+            } else {
+                break;
+            }
+        }
+
+        false
+    }
+
+    fn collect_static_method_candidates(
+        &self,
+        class_name: &str,
+        method_name: &str,
+    ) -> (bool, Vec<(String, crate::types::MethodInfo)>) {
+        let mut has_instance_method = false;
+        let mut candidate_methods = Vec::new();
+        let mut class_to_check = Some(class_name.to_string());
+
+        while let Some(name) = class_to_check {
+            if let Some(class_info) = self.type_registry.get_class(&name) {
+                if let Some(methods) = class_info.methods.get(method_name) {
+                    for method in methods {
+                        if method.is_static {
+                            candidate_methods.push((class_info.name.clone(), method.clone()));
+                        } else {
+                            has_instance_method = true;
+                        }
+                    }
+                }
+                class_to_check = class_info.parent.clone();
+            } else {
+                break;
+            }
+        }
+
+        if let Some(struct_info) = self.type_registry.get_struct(class_name) {
+            if let Some(methods) = struct_info.methods.get(method_name) {
+                for method in methods {
+                    if method.is_static {
+                        candidate_methods.push((struct_info.name.clone(), method.clone()));
+                    } else {
+                        has_instance_method = true;
+                    }
+                }
+            }
+        }
+
+        (has_instance_method, candidate_methods)
+    }
+
+    fn suggest_method_name(&self, class_name: &str, method_name: &str) -> Option<String> {
+        let mut best_name: Option<String> = None;
+        let mut best_distance = usize::MAX;
+        let target = method_name.to_ascii_lowercase();
+        let threshold = (method_name.chars().count() / 3).max(2);
+        let mut class_to_check = Some(class_name.to_string());
+
+        while let Some(name) = class_to_check {
+            if let Some(class_info) = self.type_registry.get_class(&name) {
+                for candidate in class_info.methods.keys() {
+                    let distance = edit_distance(&target, &candidate.to_ascii_lowercase());
+                    if distance < best_distance {
+                        best_distance = distance;
+                        best_name = Some(candidate.clone());
+                    }
+                }
+                class_to_check = class_info.parent.clone();
+            } else {
+                break;
+            }
+        }
+
+        if let Some(struct_info) = self.type_registry.get_struct(class_name) {
+            for candidate in struct_info.methods.keys() {
+                let distance = edit_distance(&target, &candidate.to_ascii_lowercase());
+                if distance < best_distance {
+                    best_distance = distance;
+                    best_name = Some(candidate.clone());
+                }
+            }
+        }
+
+        if best_distance <= threshold {
+            best_name
+        } else {
+            None
+        }
+    }
+
+    fn unknown_method_message(&self, method_name: &str, class_name: &str) -> String {
+        if let Some(suggestion) = self.suggest_method_name(class_name, method_name) {
+            format!(
+                "Unknown method '{}' for class {}. Did you mean '{}'?",
+                method_name, class_name, suggestion
+            )
+        } else {
+            format!("Unknown method '{}' for class {}", method_name, class_name)
+        }
+    }
+
+    fn infer_static_or_enum_member_call(
+        &mut self,
+        member: &MemberAccessExpr,
+        call: &CallExpr,
+    ) -> cayResult<Option<Type>> {
+        let class_name = match &*member.object {
+            Expr::Identifier(class_name) => class_name.as_ref().to_string(),
+            _ => return Ok(None),
+        };
+
+        if self.identifier_has_value_binding(&class_name) {
+            return Ok(None);
+        }
+
+        if let Some(enum_info) = self.type_registry.get_enum(&class_name) {
+            if let Some(variant) = enum_info.variants.iter().find(|v| v.name == member.member) {
+                let payload_type_opt = variant.payload_type.clone();
+                match &payload_type_opt {
+                    Some(expected_payload_type) => {
+                        if call.args.len() != 1 {
+                            return Err(semantic_error_at_loc(
+                                &call.loc,
+                                format!("Enum variant '{}.{}' with payload expects 1 argument, but got {}",
+                                    class_name, member.member, call.args.len())
+                            ));
+                        }
+                        let arg_type = self.infer_expr_type_internal(&call.args[0])?;
+                        if !self.types_compatible(&arg_type, expected_payload_type) {
+                            return Err(semantic_error_at_loc(
+                                &call.loc,
+                                format!("Enum variant '{}.{}' payload type mismatch: expected {}, got {}",
+                                    class_name, member.member, expected_payload_type, arg_type)
+                            ));
+                        }
+                    }
+                    None => {
+                        if !call.args.is_empty() {
+                            return Err(semantic_error_at_loc(
+                                &call.loc,
+                                format!("Enum variant '{}.{}' has no payload, but got {} argument(s)",
+                                    class_name, member.member, call.args.len())
+                            ));
+                        }
+                    }
+                }
+                return Ok(Some(Type::Object(class_name)));
+            }
+
+            return Err(semantic_error_at_loc(
+                &call.loc,
+                format!("Unknown variant '{}' for enum {}", member.member, class_name)
+            ));
+        }
+
+        let resolved_class_name = if let Some(class_info) = self.type_registry.get_class(&class_name) {
+            Some(class_info.name.clone())
+        } else if let Some(qualified_name) = self.type_registry.find_qualified_class(&class_name) {
+            Some(qualified_name)
+        } else if self.type_registry.get_struct(&class_name).is_some() {
+            Some(class_name.clone())
+        } else {
+            None
+        };
+
+        let Some(resolved_class_name) = resolved_class_name else {
+            return Ok(None);
+        };
+
+        if let Some(class_info) = self.type_registry.get_class(&resolved_class_name) {
+            if let Some(field_info) = class_info.fields.get(&member.member) {
+                if field_info.is_static {
+                    return Ok(None);
+                }
+            }
+        }
+
+        let (has_instance_method, candidate_methods) =
+            self.collect_static_method_candidates(&resolved_class_name, &member.member);
+
+        for (owner_class, method_info) in &candidate_methods {
+            if self.check_arguments_exact(&call.args, &method_info.params) {
+                check_member_access(
+                    &member.member,
+                    method_info.is_public,
+                    method_info.is_protected,
+                    method_info.is_private,
+                    &self.current_class,
+                    owner_class,
+                    &self.type_registry,
+                    &member.loc,
+                )?;
+                return Ok(Some(method_info.return_type.clone()));
+            }
+        }
+
+        let mut mismatch_detail = None;
+        for (owner_class, method_info) in &candidate_methods {
+            match self.check_arguments_compatible(&call.args, &method_info.params, call.loc.line, call.loc.column) {
+                Ok(()) => {
+                    check_member_access(
+                        &member.member,
+                        method_info.is_public,
+                        method_info.is_protected,
+                        method_info.is_private,
+                        &self.current_class,
+                        owner_class,
+                        &self.type_registry,
+                        &member.loc,
+                    )?;
+                    return Ok(Some(method_info.return_type.clone()));
+                }
+                Err(msg) => {
+                    if mismatch_detail.is_none() {
+                        mismatch_detail = Some(msg);
+                    }
+                }
+            }
+        }
+
+        if !candidate_methods.is_empty() {
+            let detail = mismatch_detail.unwrap_or_else(|| "argument mismatch".to_string());
+            return Err(semantic_error_at_loc(
+                &call.loc,
+                format!(
+                    "Method '{}' in class '{}' cannot be applied to given types: {}",
+                    member.member, resolved_class_name, detail
+                )
+            ));
+        }
+
+        if has_instance_method {
+            return Err(semantic_error_at_loc(
+                &call.loc,
+                format!(
+                    "Non-static method '{}' in class '{}' cannot be referenced from a static context",
+                    member.member, resolved_class_name
+                )
+            ));
+        }
+
+        Err(semantic_error_at_loc(
+            &call.loc,
+            self.unknown_method_message(&member.member, &resolved_class_name)
+        ))
     }
 
     /// 推断二元表达式类型
@@ -581,93 +858,16 @@ impl SemanticAnalyzer {
 
         // 支持成员调用: obj.method(...) 或 ClassName.method()（静态方法）
         if let Expr::MemberAccess(member) = call.callee.as_ref() {
+            if let Some(return_type) = self.infer_static_or_enum_member_call(member, call)? {
+                return Ok(return_type);
+            }
+
             // 推断对象类型
             let obj_type = self.infer_expr_type_internal(&member.object)?;
 
             // 处理 String 类型方法调用
             if obj_type == Type::String {
                 return self.infer_string_method_call(&member.member, &call.args, call.loc.line, call.loc.column);
-            }
-
-            // 检查是否是类名（静态方法调用）- 支持方法重载
-            if let Expr::Identifier(class_name) = &*member.object {
-                let class_name_str = class_name.as_ref().to_string();
-
-                // 先收集所有候选方法的信息，避免借用冲突
-                let candidate_methods: Vec<(Type, Vec<crate::types::ParameterInfo>)> = if let Some(class_info) = self.type_registry.get_class(&class_name_str) {
-                    if let Some(methods) = class_info.methods.get(&member.member) {
-                        methods.iter()
-                            .filter(|m| m.is_static)
-                            .map(|m| (m.return_type.clone(), m.params.clone()))
-                            .collect()
-                    } else {
-                        Vec::new()
-                    }
-                } else {
-                    Vec::new()
-                };
-
-                // 第一步：尝试精确匹配（参数类型完全相同）
-                for (return_type, params) in &candidate_methods {
-                    if self.check_arguments_exact(&call.args, params) {
-                        return Ok(return_type.clone());
-                    }
-                }
-
-                // 第二步：尝试兼容匹配（允许隐式类型转换）
-                for (return_type, params) in &candidate_methods {
-                    if let Ok(()) = self.check_arguments_compatible(&call.args, params, call.loc.line, call.loc.column) {
-                        return Ok(return_type.clone());
-                    }
-                }
-            }
-            
-            // 检查是否是 enum 构造函数调用: EnumName.VariantName(args)
-            if let Expr::Identifier(class_name) = &*member.object {
-                let class_name_str = class_name.as_ref().to_string();
-                let member_name = member.member.clone();
-                if let Some(enum_info) = self.type_registry.get_enum(&class_name_str) {
-                    if let Some(variant) = enum_info.variants.iter().find(|v| v.name == member_name) {
-                        let payload_type_opt = variant.payload_type.clone();
-                        drop(member); // 释放对 call 的借用
-                        drop(enum_info);
-                        // 验证参数数量
-                        match &payload_type_opt {
-                            Some(expected_payload_type) => {
-                                if call.args.len() != 1 {
-                                    return Err(semantic_error_at_loc(
-                                        &call.loc,
-                                        format!("Enum variant '{}.{}' with payload expects 1 argument, but got {}", 
-                                            class_name_str, member_name, call.args.len())
-                                    ));
-                                }
-                                // 验证参数类型
-                                let arg_type = self.infer_expr_type_internal(&call.args[0])?;
-                                if !self.types_compatible(&arg_type, expected_payload_type) {
-                                    return Err(semantic_error_at_loc(
-                                        &call.loc,
-                                        format!("Enum variant '{}.{}' payload type mismatch: expected {}, got {}",
-                                            class_name_str, member_name, expected_payload_type, arg_type)
-                                    ));
-                                }
-                            }
-                            None => {
-                                if !call.args.is_empty() {
-                                    return Err(semantic_error_at_loc(
-                                        &call.loc,
-                                        format!("Enum variant '{}.{}' has no payload, but got {} argument(s)",
-                                            class_name_str, member_name, call.args.len())
-                                    ));
-                                }
-                            }
-                        }
-                        return Ok(Type::Object(class_name_str));
-                    }
-                    return Err(semantic_error_at_loc(
-                        &call.loc,
-                        format!("Unknown variant '{}' for enum {}", member_name, class_name_str)
-                    ));
-                }
             }
 
             // 处理数组类型的 length() 方法调用（作为 .length 属性的语法糖）
@@ -772,7 +972,9 @@ impl SemanticAnalyzer {
 
                     return Ok(final_return_type);
                 } else {
-                    return Err(semantic_error_at_loc(&call.loc, format!("Unknown method '{}' for class {}", member.member, class_name)
+                    return Err(semantic_error_at_loc(
+                        &call.loc,
+                        self.unknown_method_message(&member.member, &class_name)
                     ));
                 }
             }

@@ -189,6 +189,19 @@ impl SemanticAnalyzer {
         Ok(())
     }
 
+    fn type_check_condition(&mut self, condition: &Expr, loc: &crate::error::SourceLocation) {
+        let error_count_before = self.errors.len();
+        let condition_type = self.infer_expr_type_collect_errors(condition);
+        if self.errors.len() == error_count_before && condition_type != Type::Bool {
+            self.errors.push(self.create_error_info_with_file(
+                loc.file.clone(),
+                loc.line,
+                loc.column,
+                format!("Condition expression must be bool, got {}", condition_type),
+            ));
+        }
+    }
+
     /// 类型检查语句
     pub fn type_check_statement(&mut self, stmt: &Stmt, expected_return: Option<&Type>) -> cayResult<()> {
         match stmt {
@@ -303,6 +316,72 @@ impl SemanticAnalyzer {
                     }
                     self.symbol_table.exit_scope();
                 }
+            }
+            Stmt::If(if_stmt) => {
+                self.type_check_condition(&if_stmt.condition, &if_stmt.loc);
+                self.type_check_statement(&if_stmt.then_branch, expected_return)?;
+                if let Some(else_branch) = &if_stmt.else_branch {
+                    self.type_check_statement(else_branch, expected_return)?;
+                }
+            }
+            Stmt::While(while_stmt) => {
+                self.type_check_condition(&while_stmt.condition, &while_stmt.loc);
+                self.type_check_statement(&while_stmt.body, expected_return)?;
+            }
+            Stmt::For(for_stmt) => {
+                self.symbol_table.enter_scope();
+                if let Some(init) = &for_stmt.init {
+                    self.type_check_statement(init, expected_return)?;
+                }
+                if let Some(condition) = &for_stmt.condition {
+                    self.type_check_condition(condition, &for_stmt.loc);
+                }
+                if let Some(update) = &for_stmt.update {
+                    self.infer_expr_type_collect_errors(update);
+                }
+                self.type_check_statement(&for_stmt.body, expected_return)?;
+                self.symbol_table.exit_scope();
+            }
+            Stmt::DoWhile(do_while_stmt) => {
+                self.type_check_statement(&do_while_stmt.body, expected_return)?;
+                self.type_check_condition(&do_while_stmt.condition, &do_while_stmt.loc);
+            }
+            Stmt::Switch(switch_stmt) => {
+                self.infer_expr_type_collect_errors(&switch_stmt.expr);
+
+                for case in &switch_stmt.cases {
+                    self.symbol_table.enter_scope();
+                    if let Some(binding) = &case.payload_binding {
+                        self.symbol_table.declare(
+                            binding.var_name.clone(),
+                            SemanticSymbolInfo {
+                                name: binding.var_name.clone(),
+                                symbol_type: binding.var_type.clone(),
+                                is_final: false,
+                                is_initialized: true,
+                            },
+                        );
+                    }
+                    for stmt in &case.body {
+                        self.type_check_statement(stmt, expected_return)?;
+                    }
+                    self.symbol_table.exit_scope();
+                }
+
+                if let Some(default_body) = &switch_stmt.default {
+                    self.symbol_table.enter_scope();
+                    for stmt in default_body {
+                        self.type_check_statement(stmt, expected_return)?;
+                    }
+                    self.symbol_table.exit_scope();
+                }
+            }
+            Stmt::Scope(scope_stmt) => {
+                self.symbol_table.enter_scope();
+                for stmt in &scope_stmt.body.statements {
+                    self.type_check_statement(stmt, expected_return)?;
+                }
+                self.symbol_table.exit_scope();
             }
             _ => {}
         }

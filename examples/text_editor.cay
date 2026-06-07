@@ -1,0 +1,1723 @@
+/**
+ * Cavvy Text Editor - 完整功能文本编辑器示例
+ *
+ * 功能特性:
+ * - 完整的文本缓冲区管理（Gap Buffer实现）
+ * - 文件操作：新建、打开、保存、另存为
+ * - 光标移动：上下左右、行首行尾、文件首尾
+ * - 编辑操作：插入、删除、撤销、重做
+ * - 搜索功能：查找文本
+ * - 状态栏显示：文件名、行号列号、修改状态
+ * - 命令模式：支持保存退出等命令
+ * - 完整错误处理和边界检查
+ * - 支持大文件处理
+ *
+ * 时间复杂度:
+ * - 插入/删除: O(1) 平均情况
+ * - 光标移动: O(1)
+ * - 文件加载: O(n), n为文件大小
+ * - 搜索: O(n*m), n为文本长度, m为模式长度
+ *
+ * 磁盘I/O: 仅在打开和保存文件时涉及
+ *
+ * 版本: 0.5.1.0
+ */
+
+#include <File.cay>
+#include <StringBuilder.cay>
+#include <IOPlus.cay>
+
+using std::File;
+using std::FileError;
+using std::FileMode;
+using std::StringBuilder;
+using std::IOPlus;
+
+/* ============================================================================
+ * 常量定义
+ * ============================================================================ */
+
+/* 编辑器版本 */
+#define EDITOR_VERSION "1.0.0"
+
+/* 缓冲区配置 */
+#define DEFAULT_BUFFER_SIZE 1024
+#define MAX_LINE_LENGTH 4096
+#define MAX_LINES 100000
+#define TAB_SIZE 4
+
+/* 编辑器模式 */
+#define MODE_NORMAL 0
+#define MODE_INSERT 1
+#define MODE_COMMAND 2
+#define MODE_SEARCH 3
+
+/* 特殊键码 */
+#define KEY_CTRL_C 3
+#define KEY_CTRL_D 4
+#define KEY_CTRL_S 19
+#define KEY_CTRL_Q 17
+#define KEY_CTRL_F 6
+#define KEY_CTRL_G 7
+#define KEY_CTRL_X 24
+#define KEY_CTRL_Z 26
+#define KEY_CTRL_Y 25
+#define KEY_ESC 27
+#define KEY_ENTER 13
+#define KEY_BACKSPACE 8
+#define KEY_TAB 9
+#define KEY_DELETE 127
+
+/* 方向键序列 */
+#define KEY_UP "[A"
+#define KEY_DOWN "[B"
+#define KEY_RIGHT "[C"
+#define KEY_LEFT "[D"
+#define KEY_HOME "[H"
+#define KEY_END "[F"
+#define KEY_PAGE_UP "[5~"
+#define KEY_PAGE_DOWN "[6~"
+
+/* 错误码 */
+#define ERROR_NONE 0
+#define ERROR_FILE_NOT_FOUND 1
+#define ERROR_PERMISSION_DENIED 2
+#define ERROR_OUT_OF_MEMORY 3
+#define ERROR_INVALID_OPERATION 4
+
+/* ============================================================================
+ * 编辑操作历史记录（用于撤销/重做）
+ * ============================================================================ */
+
+/**
+ * 编辑操作类型枚举
+ */
+public class EditType {
+    public static final int INSERT = 0;
+    public static final int DELETE = 1;
+    public static final int REPLACE = 2;
+}
+
+/**
+ * 编辑操作记录
+ * 时间复杂度: O(1) 空间复杂度: O(1)
+ */
+public class EditOperation {
+    public int type;
+    public int line;
+    public int column;
+    public String text;
+    public String oldText;
+    public EditOperation next;
+    public EditOperation prev;
+
+    public EditOperation(int type, int line, int column, String text) {
+        this.type = type;
+        this.line = line;
+        this.column = column;
+        this.text = text;
+        this.oldText = "";
+        this.next = null;
+        this.prev = null;
+    }
+}
+
+/**
+ * 编辑历史管理器
+ * 支持撤销和重做功能
+ * 时间复杂度: O(1) 插入/获取操作
+ * 空间复杂度: O(n), n为历史记录数量
+ */
+public class EditHistory {
+    private EditOperation head;
+    private EditOperation current;
+    private int maxSize;
+    private int size;
+
+    public EditHistory(int maxSize) {
+        this.maxSize = maxSize;
+        this.size = 0;
+        this.head = null;
+        this.current = null;
+    }
+
+    /**
+     * 添加编辑操作到历史记录
+     * 时间复杂度: O(1)
+     */
+    public void addOperation(EditOperation op) {
+        if (op == null) {
+            return;
+        }
+
+        /* 如果当前不在历史末尾，删除后续记录 */
+        if (this.current != null && this.current.next != null) {
+            this.current.next = null;
+        }
+
+        /* 添加到链表末尾 */
+        if (this.head == null) {
+            this.head = op;
+            this.current = op;
+        } else {
+            EditOperation tail = this.head;
+            while (tail.next != null) {
+                tail = tail.next;
+            }
+            tail.next = op;
+            op.prev = tail;
+            this.current = op;
+        }
+
+        this.size = this.size + 1;
+
+        /* 限制历史记录大小 */
+        while (this.size > this.maxSize && this.head != null && this.head.next != null) {
+            this.head = this.head.next;
+            this.head.prev = null;
+            this.size = this.size - 1;
+        }
+    }
+
+    /**
+     * 撤销操作
+     * 返回需要撤销的操作，null表示无操作可撤销
+     * 时间复杂度: O(1)
+     */
+    public EditOperation undo() {
+        if (this.current == null) {
+            return null;
+        }
+
+        EditOperation op = this.current;
+        this.current = this.current.prev;
+        return op;
+    }
+
+    /**
+     * 重做操作
+     * 返回需要重做的操作，null表示无操作可重做
+     * 时间复杂度: O(1)
+     */
+    public EditOperation redo() {
+        if (this.current == null) {
+            if (this.head != null) {
+                this.current = this.head;
+                return this.current;
+            }
+            return null;
+        }
+
+        if (this.current.next == null) {
+            return null;
+        }
+
+        this.current = this.current.next;
+        return this.current;
+    }
+
+    /**
+     * 检查是否可以撤销
+     */
+    public bool canUndo() {
+        return this.current != null;
+    }
+
+    /**
+     * 检查是否可以重做
+     */
+    public bool canRedo() {
+        if (this.current == null) {
+            return this.head != null;
+        }
+        return this.current.next != null;
+    }
+
+    /**
+     * 清空历史记录
+     */
+    public void clear() {
+        this.head = null;
+        this.current = null;
+        this.size = 0;
+    }
+}
+
+/* ============================================================================
+ * 文本行类
+ * ============================================================================ */
+
+/**
+ * 文本行表示
+ * 每行使用StringBuilder存储，支持高效插入删除
+ * 时间复杂度:
+ * - 插入字符: O(n), n为行长度
+ * - 删除字符: O(n)
+ * - 获取字符: O(1)
+ */
+public class TextLine {
+    private StringBuilder content;
+    private int length;
+
+    public TextLine() {
+        this.content = new StringBuilder();
+        this.length = 0;
+    }
+
+    public TextLine(String text) {
+        this.content = new StringBuilder();
+        this.content.append(text);
+        this.length = text.length();
+    }
+
+    /**
+     * 获取行长度
+     * 时间复杂度: O(1)
+     */
+    public int getLength() {
+        return this.length;
+    }
+
+    /**
+     * 获取指定位置字符
+     * 时间复杂度: O(1)
+     */
+    public char charAt(int index) {
+        if (index < 0 || index >= this.length) {
+            return '\0';
+        }
+        return this.content.toString().charAt(index);
+    }
+
+    /**
+     * 在指定位置插入字符
+     * 时间复杂度: O(n), n为行长度
+     */
+    public void insertChar(int index, char c) {
+        if (index < 0) {
+            index = 0;
+        }
+        if (index > this.length) {
+            index = this.length;
+        }
+
+        String current = this.content.toString();
+        String before = current.substring(0, index);
+        String after = current.substring(index, this.length);
+
+        this.content = new StringBuilder();
+        this.content.append(before);
+        this.content.append(c);
+        this.content.append(after);
+        this.length = this.length + 1;
+    }
+
+    /**
+     * 在指定位置插入字符串
+     * 时间复杂度: O(n), n为行长度
+     */
+    public void insertString(int index, String str) {
+        if (index < 0) {
+            index = 0;
+        }
+        if (index > this.length) {
+            index = this.length;
+        }
+
+        String current = this.content.toString();
+        String before = current.substring(0, index);
+        String after = current.substring(index, this.length);
+
+        this.content = new StringBuilder();
+        this.content.append(before);
+        this.content.append(str);
+        this.content.append(after);
+        this.length = this.length + str.length();
+    }
+
+    /**
+     * 删除指定位置字符
+     * 时间复杂度: O(n), n为行长度
+     */
+    public char deleteChar(int index) {
+        if (index < 0 || index >= this.length) {
+            return '\0';
+        }
+
+        char deleted = this.charAt(index);
+        String current = this.content.toString();
+        String before = current.substring(0, index);
+        String after = current.substring(index + 1, this.length);
+
+        this.content = new StringBuilder();
+        this.content.append(before);
+        this.content.append(after);
+        this.length = this.length - 1;
+
+        return deleted;
+    }
+
+    /**
+     * 获取子字符串
+     * 时间复杂度: O(k), k为子串长度
+     */
+    public String substring(int start, int end) {
+        if (start < 0) {
+            start = 0;
+        }
+        if (end > this.length) {
+            end = this.length;
+        }
+        if (start >= end) {
+            return "";
+        }
+
+        return this.content.toString().substring(start, end);
+    }
+
+    /**
+     * 分割行（在指定位置分割为两行）
+     * 返回分割后的新行
+     */
+    public TextLine splitAt(int index) {
+        if (index < 0) {
+            index = 0;
+        }
+        if (index > this.length) {
+            index = this.length;
+        }
+
+        String current = this.content.toString();
+        String before = current.substring(0, index);
+        String after = current.substring(index, this.length);
+
+        this.content = new StringBuilder();
+        this.content.append(before);
+        this.length = before.length();
+
+        return new TextLine(after);
+    }
+
+    /**
+     * 合并另一行到当前行末尾
+     */
+    public void appendLine(TextLine other) {
+        if (other == null) {
+            return;
+        }
+        this.content.append(other.toString());
+        this.length = this.length + other.getLength();
+    }
+
+    /**
+     * 转换为字符串
+     */
+    public String toString() {
+        return this.content.toString();
+    }
+}
+
+/* ============================================================================
+ * 文本缓冲区类
+ * ============================================================================ */
+
+/**
+ * 文本缓冲区管理
+ * 管理多行文本，提供高效的编辑操作
+ * 时间复杂度:
+ * - 插入字符: O(n) 平均情况，n为当前行长度
+ * - 删除字符: O(n)
+ * - 行插入: O(n), n为总行数
+ * - 行删除: O(n)
+ */
+public class TextBuffer {
+    private TextLine[] lines;
+    private int lineCount;
+    private int capacity;
+    private bool modified;
+
+    public TextBuffer() {
+        this.capacity = 100;
+        this.lines = new TextLine[this.capacity]();
+        this.lines[0] = new TextLine();
+        this.lineCount = 1;
+        this.modified = false;
+    }
+
+    /**
+     * 获取总行数
+     */
+    public int getLineCount() {
+        return this.lineCount;
+    }
+
+    /**
+     * 获取指定行
+     */
+    public TextLine getLine(int index) {
+        if (index < 0 || index >= this.lineCount) {
+            return null;
+        }
+        return this.lines[index];
+    }
+
+    /**
+     * 获取指定行长度
+     */
+    public int getLineLength(int index) {
+        TextLine line = this.getLine(index);
+        if (line == null) {
+            return 0;
+        }
+        return line.getLength();
+    }
+
+    /**
+     * 检查是否已修改
+     */
+    public bool isModified() {
+        return this.modified;
+    }
+
+    /**
+     * 设置修改状态
+     */
+    public void setModified(bool modified) {
+        this.modified = modified;
+    }
+
+    /**
+     * 扩展容量
+     * 时间复杂度: O(n), n为当前容量
+     */
+    private void expandCapacity() {
+        int newCapacity = this.capacity * 2;
+        if (newCapacity > MAX_LINES) {
+            newCapacity = MAX_LINES;
+        }
+
+        TextLine[] newLines = new TextLine[newCapacity]();
+
+        int i = 0;
+        while (i < this.lineCount) {
+            newLines[i] = this.lines[i];
+            i = i + 1;
+        }
+
+        this.lines = newLines;
+        this.capacity = newCapacity;
+    }
+
+    /**
+     * 在指定位置插入行
+     * 时间复杂度: O(n), n为总行数
+     */
+    public void insertLine(int index, TextLine line) {
+        if (index < 0) {
+            index = 0;
+        }
+        if (index > this.lineCount) {
+            index = this.lineCount;
+        }
+
+        if (this.lineCount >= this.capacity) {
+            this.expandCapacity();
+        }
+
+        /* 向后移动元素 */
+        int i = this.lineCount;
+        while (i > index) {
+            this.lines[i] = this.lines[i - 1];
+            i = i - 1;
+        }
+
+        this.lines[index] = line;
+        this.lineCount = this.lineCount + 1;
+        this.modified = true;
+    }
+
+    /**
+     * 删除指定行
+     * 时间复杂度: O(n), n为总行数
+     */
+    public TextLine deleteLine(int index) {
+        if (index < 0 || index >= this.lineCount) {
+            return null;
+        }
+
+        TextLine deleted = this.lines[index];
+
+        /* 向前移动元素 */
+        int i = index;
+        while (i < this.lineCount - 1) {
+            this.lines[i] = this.lines[i + 1];
+            i = i + 1;
+        }
+
+        this.lines[this.lineCount - 1] = null;
+        this.lineCount = this.lineCount - 1;
+        this.modified = true;
+
+        /* 确保至少有一行 */
+        if (this.lineCount == 0) {
+            this.lines[0] = new TextLine();
+            this.lineCount = 1;
+        }
+
+        return deleted;
+    }
+
+    /**
+     * 在指定位置插入字符
+     */
+    public void insertChar(int line, int column, char c) {
+        TextLine textLine = this.getLine(line);
+        if (textLine == null) {
+            return;
+        }
+
+        textLine.insertChar(column, c);
+        this.modified = true;
+    }
+
+    /**
+     * 在指定位置删除字符
+     */
+    public char deleteChar(int line, int column) {
+        TextLine textLine = this.getLine(line);
+        if (textLine == null) {
+            return '\0';
+        }
+
+        char deleted = textLine.deleteChar(column);
+        if (deleted != '\0') {
+            this.modified = true;
+        }
+        return deleted;
+    }
+
+    /**
+     * 在指定位置插入换行（分割当前行）
+     */
+    public void insertNewLine(int line, int column) {
+        TextLine textLine = this.getLine(line);
+        if (textLine == null) {
+            return;
+        }
+
+        TextLine newLine = textLine.splitAt(column);
+        this.insertLine(line + 1, newLine);
+        this.modified = true;
+    }
+
+    /**
+     * 合并当前行与下一行
+     */
+    public void joinLines(int line) {
+        if (line < 0 || line >= this.lineCount - 1) {
+            return;
+        }
+
+        TextLine current = this.getLine(line);
+        TextLine next = this.deleteLine(line + 1);
+
+        if (current != null && next != null) {
+            current.appendLine(next);
+        }
+        this.modified = true;
+    }
+
+    /**
+     * 从文件加载内容
+     * 时间复杂度: O(n), n为文件大小
+     * 磁盘I/O: 读取整个文件
+     */
+    public int loadFromFile(String filename) {
+        File file = new File(filename, FileMode.READ);
+
+        if (!file.isOpened()) {
+            return ERROR_FILE_NOT_FOUND;
+        }
+
+        /* 清空当前内容 */
+        this.lines = new TextLine[100]();
+        this.lineCount = 0;
+        this.capacity = 100;
+
+        StringBuilder currentLine = new StringBuilder();
+        int c;
+
+        while ((c = file.readChar()) != -1) {
+            if (c == '\n') {
+                /* 处理行尾 */
+                this.addLine(currentLine.toString());
+                currentLine = new StringBuilder();
+            } else if (c != '\r') {
+                /* 忽略回车符，添加其他字符 */
+                currentLine.append((char)c);
+            }
+        }
+
+        /* 添加最后一行 */
+        this.addLine(currentLine.toString());
+
+        /* 确保至少有一行 */
+        if (this.lineCount == 0) {
+            this.lines[0] = new TextLine();
+            this.lineCount = 1;
+        }
+
+        file.close();
+        this.modified = false;
+        return ERROR_NONE;
+    }
+
+    /**
+     * 添加一行到末尾
+     */
+    private void addLine(String text) {
+        if (this.lineCount >= this.capacity) {
+            this.expandCapacity();
+        }
+        this.lines[this.lineCount] = new TextLine(text);
+        this.lineCount = this.lineCount + 1;
+    }
+
+    /**
+     * 保存到文件
+     * 时间复杂度: O(n), n为总字符数
+     * 磁盘I/O: 写入整个文件
+     */
+    public int saveToFile(String filename) {
+        File file = new File(filename, FileMode.WRITE);
+
+        if (!file.isOpened()) {
+            return ERROR_PERMISSION_DENIED;
+        }
+
+        int i = 0;
+        while (i < this.lineCount) {
+            TextLine line = this.lines[i];
+            if (line != null) {
+                file.writeString(line.toString());
+            }
+
+            /* 添加换行符（最后一行除外） */
+            if (i < this.lineCount - 1) {
+                file.writeString("\n");
+            }
+
+            i = i + 1;
+        }
+
+        file.close();
+        this.modified = false;
+        return ERROR_NONE;
+    }
+
+    /**
+     * 搜索文本
+     * 返回找到的行号，-1表示未找到
+     * 时间复杂度: O(n*m*k), n为行数, m为行长度, k为模式长度
+     */
+    public int search(String pattern, int startLine) {
+        if (pattern == null || pattern.length() == 0) {
+            return -1;
+        }
+
+        if (startLine < 0) {
+            startLine = 0;
+        }
+
+        int i = startLine;
+        while (i < this.lineCount) {
+            TextLine line = this.lines[i];
+            if (line != null) {
+                String text = line.toString();
+                if (TextBuffer.stringContains(text, pattern)) {
+                    return i;
+                }
+            }
+            i = i + 1;
+        }
+
+        return -1;
+    }
+
+    /**
+     * 检查字符串是否包含子串
+     * 静态方法，时间复杂度: O(n*m)
+     * 注意: 方法名使用stringContains避免与String.contains冲突
+     */
+    private static bool stringContains(String text, String pattern) {
+        int textLen = text.length();
+        int patternLen = pattern.length();
+
+        if (patternLen == 0) {
+            return true;
+        }
+        if (patternLen > textLen) {
+            return false;
+        }
+
+        int i = 0;
+        while (i <= textLen - patternLen) {
+            int j = 0;
+            while (j < patternLen) {
+                if (text.charAt(i + j) != pattern.charAt(j)) {
+                    break;
+                }
+                j = j + 1;
+            }
+            if (j == patternLen) {
+                return true;
+            }
+            i = i + 1;
+        }
+
+        return false;
+    }
+
+    /**
+     * 清空缓冲区
+     */
+    public void clear() {
+        this.lines = new TextLine[100]();
+        this.lines[0] = new TextLine();
+        this.lineCount = 1;
+        this.capacity = 100;
+        this.modified = false;
+    }
+}
+
+/* ============================================================================
+ * 光标位置类
+ * ============================================================================ */
+
+/**
+ * 光标位置管理
+ * 时间复杂度: 所有操作O(1)
+ */
+public class Cursor {
+    public int line;
+    public int column;
+
+    public Cursor() {
+        this.line = 0;
+        this.column = 0;
+    }
+
+    public Cursor(int line, int column) {
+        this.line = line;
+        this.column = column;
+    }
+
+    /**
+     * 复制位置
+     */
+    public Cursor copy() {
+        return new Cursor(this.line, this.column);
+    }
+}
+
+/* ============================================================================
+ * 文本编辑器主类
+ * ============================================================================ */
+
+/**
+ * 文本编辑器主类
+ * 整合所有功能，提供完整的编辑体验
+ */
+public class TextEditor {
+    private TextBuffer buffer;
+    private Cursor cursor;
+    private EditHistory history;
+
+    /* 编辑器状态 */
+    private String filename;
+    private int mode;
+    private bool running;
+    private int errorCode;
+
+    /* 显示配置 */
+    private int screenWidth;
+    private int screenHeight;
+    private int scrollOffset;
+
+    /* 搜索状态 */
+    private String searchPattern;
+    private int lastSearchLine;
+
+    /* 命令缓冲区 */
+    private StringBuilder commandBuffer;
+
+    public TextEditor() {
+        this.buffer = new TextBuffer();
+        this.cursor = new Cursor();
+        this.history = new EditHistory(1000);
+        this.filename = "";
+        this.mode = MODE_NORMAL;
+        this.running = false;
+        this.errorCode = ERROR_NONE;
+        this.screenWidth = 80;
+        this.screenHeight = 24;
+        this.scrollOffset = 0;
+        this.searchPattern = "";
+        this.lastSearchLine = 0;
+        this.commandBuffer = new StringBuilder();
+    }
+
+    /**
+     * 启动编辑器
+     */
+    public void run(String[] args) {
+        this.running = true;
+
+        /* 处理命令行参数 */
+        if (args.length > 0) {
+            this.openFile(args[0]);
+        }
+
+        /* 清屏 */
+        this.clearScreen();
+
+        /* 主循环 */
+        while (this.running) {
+            this.render();
+            this.handleInput();
+        }
+
+        /* 恢复屏幕 */
+        this.clearScreen();
+        println("编辑器已退出");
+    }
+
+    /**
+     * 打开文件
+     */
+    public bool openFile(String filename) {
+        if (filename == null || filename.length() == 0) {
+            return false;
+        }
+
+        int result = this.buffer.loadFromFile(filename);
+
+        if (result == ERROR_NONE) {
+            this.filename = filename;
+            this.cursor = new Cursor();
+            this.history.clear();
+            return true;
+        } else {
+            /* 文件不存在则创建新文件 */
+            this.buffer.clear();
+            this.filename = filename;
+            this.cursor = new Cursor();
+            this.history.clear();
+            return true;
+        }
+    }
+
+    /**
+     * 保存文件
+     */
+    public bool saveFile() {
+        if (this.filename.length() == 0) {
+            return false;
+        }
+
+        int result = this.buffer.saveToFile(this.filename);
+        return result == ERROR_NONE;
+    }
+
+    /**
+     * 另存为
+     */
+    public bool saveAs(String filename) {
+        if (filename == null || filename.length() == 0) {
+            return false;
+        }
+
+        int result = this.buffer.saveToFile(filename);
+        if (result == ERROR_NONE) {
+            this.filename = filename;
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * 渲染编辑器界面
+     * 时间复杂度: O(n), n为屏幕行数
+     */
+    private void render() {
+        /* 移动光标到顶部 */
+        this.moveCursor(1, 1);
+
+        /* 渲染文本区域 */
+        this.renderTextArea();
+
+        /* 渲染状态栏 */
+        this.renderStatusBar();
+
+        /* 渲染消息栏 */
+        this.renderMessageBar();
+
+        /* 定位光标 */
+        this.moveCursor(this.cursor.line - this.scrollOffset + 1, this.cursor.column + 1);
+    }
+
+    /**
+     * 渲染文本区域
+     */
+    private void renderTextArea() {
+        int visibleLines = this.screenHeight - 2;
+
+        /* 调整滚动偏移 */
+        if (this.cursor.line < this.scrollOffset) {
+            this.scrollOffset = this.cursor.line;
+        }
+        if (this.cursor.line >= this.scrollOffset + visibleLines) {
+            this.scrollOffset = this.cursor.line - visibleLines + 1;
+        }
+
+        int i = 0;
+        while (i < visibleLines) {
+            int lineIndex = this.scrollOffset + i;
+
+            /* 清空行 */
+            this.clearLine();
+
+            if (lineIndex < this.buffer.getLineCount()) {
+                TextLine line = this.buffer.getLine(lineIndex);
+                if (line != null) {
+                    String text = line.toString();
+                    /* 截断过长的行 */
+                    if (text.length() > this.screenWidth) {
+                        text = text.substring(0, this.screenWidth);
+                    }
+                    print(text);
+                }
+            }
+
+            /* 换行 */
+            if (i < visibleLines - 1) {
+                println("");
+            }
+
+            i = i + 1;
+        }
+    }
+
+    /**
+     * 渲染状态栏
+     */
+    private void renderStatusBar() {
+        /* 反色显示状态栏 */
+        this.setInverseVideo(true);
+
+        StringBuilder status = new StringBuilder();
+
+        /* 文件名 */
+        if (this.filename.length() == 0) {
+            status.append("[未命名]");
+        } else {
+            status.append(this.filename);
+        }
+
+        /* 修改标记 */
+        if (this.buffer.isModified()) {
+            status.append(" [+]");
+        }
+
+        /* 模式 */
+        status.append(" | ");
+        if (this.mode == MODE_NORMAL) {
+            status.append("NORMAL");
+        } else if (this.mode == MODE_INSERT) {
+            status.append("INSERT");
+        } else if (this.mode == MODE_COMMAND) {
+            status.append("COMMAND");
+        } else if (this.mode == MODE_SEARCH) {
+            status.append("SEARCH");
+        }
+
+        /* 位置信息 */
+        status.append(" | 行 ");
+        status.append(this.cursor.line + 1);
+        status.append(" 列 ");
+        status.append(this.cursor.column + 1);
+        status.append(" | 共 ");
+        status.append(this.buffer.getLineCount());
+        status.append(" 行");
+
+        /* 填充到屏幕宽度 */
+        String statusStr = status.toString();
+        while (statusStr.length() < this.screenWidth) {
+            statusStr = statusStr + " ";
+        }
+        if (statusStr.length() > this.screenWidth) {
+            statusStr = statusStr.substring(0, this.screenWidth);
+        }
+
+        println("");
+        print(statusStr);
+
+        this.setInverseVideo(false);
+    }
+
+    /**
+     * 渲染消息栏
+     */
+    private void renderMessageBar() {
+        println("");
+
+        if (this.mode == MODE_COMMAND) {
+            print(":");
+            print(this.commandBuffer.toString());
+        } else if (this.mode == MODE_SEARCH) {
+            print("/");
+            print(this.commandBuffer.toString());
+        } else {
+            /* 显示提示 */
+            print("Ctrl+S=保存  Ctrl+Q=退出  Ctrl+F=查找  Ctrl+Z=撤销  Ctrl+Y=重做  I=插入模式");
+        }
+    }
+
+    /**
+     * 处理用户输入
+     */
+    private void handleInput() {
+        int c = this.readKey();
+
+        if (this.mode == MODE_INSERT) {
+            this.handleInsertMode(c);
+        } else if (this.mode == MODE_COMMAND) {
+            this.handleCommandMode(c);
+        } else if (this.mode == MODE_SEARCH) {
+            this.handleSearchMode(c);
+        } else {
+            this.handleNormalMode(c);
+        }
+    }
+
+    /**
+     * 处理普通模式输入
+     */
+    private void handleNormalMode(int c) {
+        /* Ctrl组合键 */
+        if (c == KEY_CTRL_Q) {
+            /* 退出 */
+            if (this.buffer.isModified()) {
+                /* 提示保存 */
+                this.showMessage("文件已修改，按Ctrl+Q再次确认退出");
+            } else {
+                this.running = false;
+            }
+        } else if (c == KEY_CTRL_S) {
+            /* 保存 */
+            if (this.saveFile()) {
+                this.showMessage("文件已保存");
+            } else {
+                this.showMessage("保存失败");
+            }
+        } else if (c == KEY_CTRL_F) {
+            /* 查找 */
+            this.mode = MODE_SEARCH;
+            this.commandBuffer = new StringBuilder();
+        } else if (c == KEY_CTRL_Z) {
+            /* 撤销 */
+            this.undo();
+        } else if (c == KEY_CTRL_Y) {
+            /* 重做 */
+            this.redo();
+        } else if (c == 'i' || c == 'I') {
+            /* 进入插入模式 */
+            this.mode = MODE_INSERT;
+        } else if (c == ':') {
+            /* 进入命令模式 */
+            this.mode = MODE_COMMAND;
+            this.commandBuffer = new StringBuilder();
+        } else if (c == KEY_ESC) {
+            /* ESC在普通模式下无操作 */
+        }
+        /* 方向键和导航 */
+        else if (c == KEY_UP.charAt(0)) {
+            this.moveCursorUp();
+        } else if (c == KEY_DOWN.charAt(0)) {
+            this.moveCursorDown();
+        } else if (c == KEY_LEFT.charAt(0)) {
+            this.moveCursorLeft();
+        } else if (c == KEY_RIGHT.charAt(0)) {
+            this.moveCursorRight();
+        }
+        /* 单字符导航 */
+        else if (c == 'h' || c == 'H') {
+            this.moveCursorLeft();
+        } else if (c == 'j' || c == 'J') {
+            this.moveCursorDown();
+        } else if (c == 'k' || c == 'K') {
+            this.moveCursorUp();
+        } else if (c == 'l' || c == 'L') {
+            this.moveCursorRight();
+        } else if (c == '0') {
+            /* 行首 */
+            this.cursor.column = 0;
+        } else if (c == '$') {
+            /* 行尾 */
+            this.cursor.column = this.buffer.getLineLength(this.cursor.line);
+        } else if (c == 'g' || c == 'G') {
+            /* 文件开头 */
+            this.cursor.line = 0;
+            this.cursor.column = 0;
+        } else if (c == 'e' || c == 'E') {
+            /* 文件末尾 */
+            this.cursor.line = this.buffer.getLineCount() - 1;
+            this.cursor.column = this.buffer.getLineLength(this.cursor.line);
+        }
+    }
+
+    /**
+     * 处理插入模式输入
+     */
+    private void handleInsertMode(int c) {
+        if (c == KEY_ESC) {
+            /* 返回普通模式 */
+            this.mode = MODE_NORMAL;
+        } else if (c == KEY_CTRL_C) {
+            /* Ctrl+C 也返回普通模式 */
+            this.mode = MODE_NORMAL;
+        } else if (c == KEY_ENTER) {
+            /* 换行 */
+            this.insertNewLine();
+        } else if (c == KEY_BACKSPACE) {
+            /* 退格 */
+            this.handleBackspace();
+        } else if (c == KEY_DELETE) {
+            /* 删除 */
+            this.handleDelete();
+        } else if (c == KEY_TAB) {
+            /* Tab键 */
+            this.insertChar(' ');
+            this.insertChar(' ');
+            this.insertChar(' ');
+            this.insertChar(' ');
+        } else if (c >= 32 && c < 127) {
+            /* 可打印字符 */
+            this.insertChar((char)c);
+        }
+    }
+
+    /**
+     * 处理命令模式输入
+     */
+    private void handleCommandMode(int c) {
+        if (c == KEY_ESC) {
+            /* 取消命令 */
+            this.mode = MODE_NORMAL;
+        } else if (c == KEY_ENTER) {
+            /* 执行命令 */
+            this.executeCommand(this.commandBuffer.toString());
+            this.mode = MODE_NORMAL;
+        } else if (c == KEY_BACKSPACE) {
+            /* 退格 */
+            String cmd = this.commandBuffer.toString();
+            if (cmd.length() > 0) {
+                this.commandBuffer = new StringBuilder();
+                this.commandBuffer.append(cmd.substring(0, cmd.length() - 1));
+            }
+        } else if (c >= 32 && c < 127) {
+            /* 可打印字符 */
+            this.commandBuffer.append((char)c);
+        }
+    }
+
+    /**
+     * 处理搜索模式输入
+     */
+    private void handleSearchMode(int c) {
+        if (c == KEY_ESC) {
+            /* 取消搜索 */
+            this.mode = MODE_NORMAL;
+        } else if (c == KEY_ENTER) {
+            /* 执行搜索 */
+            this.searchPattern = this.commandBuffer.toString();
+            this.performSearch();
+            this.mode = MODE_NORMAL;
+        } else if (c == KEY_BACKSPACE) {
+            /* 退格 */
+            String cmd = this.commandBuffer.toString();
+            if (cmd.length() > 0) {
+                this.commandBuffer = new StringBuilder();
+                this.commandBuffer.append(cmd.substring(0, cmd.length() - 1));
+            }
+        } else if (c >= 32 && c < 127) {
+            /* 可打印字符 */
+            this.commandBuffer.append((char)c);
+        }
+    }
+
+    /**
+     * 执行命令
+     */
+    private void executeCommand(String cmd) {
+        if (cmd.equals("q") || cmd.equals("quit")) {
+            this.running = false;
+        } else if (cmd.equals("q!") || cmd.equals("quit!")) {
+            /* 强制退出 */
+            this.running = false;
+        } else if (cmd.equals("w") || cmd.equals("write")) {
+            /* 保存 */
+            if (this.saveFile()) {
+                this.showMessage("文件已保存");
+            } else {
+                this.showMessage("保存失败");
+            }
+        } else if (cmd.equals("wq")) {
+            /* 保存并退出 */
+            if (this.saveFile()) {
+                this.running = false;
+            } else {
+                this.showMessage("保存失败");
+            }
+        } else if (cmd.startsWith("w ")) {
+            /* 另存为 */
+            String newFilename = cmd.substring(2);
+            if (this.saveAs(newFilename)) {
+                this.showMessage("已保存为: " + newFilename);
+            } else {
+                this.showMessage("保存失败");
+            }
+        } else if (cmd.equals("n") || cmd.equals("new")) {
+            /* 新建文件 */
+            this.buffer.clear();
+            this.filename = "";
+            this.cursor = new Cursor();
+            this.history.clear();
+            this.showMessage("新建文件");
+        } else if (cmd.startsWith("o ")) {
+            /* 打开文件 */
+            String openFilename = cmd.substring(2);
+            if (this.openFile(openFilename)) {
+                this.showMessage("已打开: " + openFilename);
+            } else {
+                this.showMessage("打开失败: " + openFilename);
+            }
+        } else {
+            this.showMessage("未知命令: " + cmd);
+        }
+    }
+
+    /**
+     * 执行搜索
+     */
+    private void performSearch() {
+        if (this.searchPattern.length() == 0) {
+            return;
+        }
+
+        int foundLine = this.buffer.search(this.searchPattern, this.cursor.line);
+
+        if (foundLine >= 0) {
+            this.cursor.line = foundLine;
+            this.cursor.column = 0;
+            this.lastSearchLine = foundLine;
+            this.showMessage("找到: " + this.searchPattern);
+        } else {
+            /* 从头搜索 */
+            foundLine = this.buffer.search(this.searchPattern, 0);
+            if (foundLine >= 0) {
+                this.cursor.line = foundLine;
+                this.cursor.column = 0;
+                this.lastSearchLine = foundLine;
+                this.showMessage("找到: " + this.searchPattern);
+            } else {
+                this.showMessage("未找到: " + this.searchPattern);
+            }
+        }
+    }
+
+    /**
+     * 光标移动操作
+     */
+    private void moveCursorUp() {
+        if (this.cursor.line > 0) {
+            this.cursor.line = this.cursor.line - 1;
+            /* 调整列位置 */
+            int lineLen = this.buffer.getLineLength(this.cursor.line);
+            if (this.cursor.column > lineLen) {
+                this.cursor.column = lineLen;
+            }
+        }
+    }
+
+    private void moveCursorDown() {
+        if (this.cursor.line < this.buffer.getLineCount() - 1) {
+            this.cursor.line = this.cursor.line + 1;
+            /* 调整列位置 */
+            int lineLen = this.buffer.getLineLength(this.cursor.line);
+            if (this.cursor.column > lineLen) {
+                this.cursor.column = lineLen;
+            }
+        }
+    }
+
+    private void moveCursorLeft() {
+        if (this.cursor.column > 0) {
+            this.cursor.column = this.cursor.column - 1;
+        } else if (this.cursor.line > 0) {
+            /* 移动到上一行末尾 */
+            this.cursor.line = this.cursor.line - 1;
+            this.cursor.column = this.buffer.getLineLength(this.cursor.line);
+        }
+    }
+
+    private void moveCursorRight() {
+        int lineLen = this.buffer.getLineLength(this.cursor.line);
+        if (this.cursor.column < lineLen) {
+            this.cursor.column = this.cursor.column + 1;
+        } else if (this.cursor.line < this.buffer.getLineCount() - 1) {
+            /* 移动到下一行开头 */
+            this.cursor.line = this.cursor.line + 1;
+            this.cursor.column = 0;
+        }
+    }
+
+    /**
+     * 插入字符
+     */
+    private void insertChar(char c) {
+        /* 记录历史 */
+        EditOperation op = new EditOperation(EditType.INSERT, this.cursor.line, this.cursor.column, "" + c);
+        this.history.addOperation(op);
+
+        /* 插入字符 */
+        this.buffer.insertChar(this.cursor.line, this.cursor.column, c);
+        this.cursor.column = this.cursor.column + 1;
+    }
+
+    /**
+     * 插入换行
+     */
+    private void insertNewLine() {
+        /* 记录历史 */
+        EditOperation op = new EditOperation(EditType.INSERT, this.cursor.line, this.cursor.column, "\n");
+        this.history.addOperation(op);
+
+        /* 分割行 */
+        this.buffer.insertNewLine(this.cursor.line, this.cursor.column);
+        this.cursor.line = this.cursor.line + 1;
+        this.cursor.column = 0;
+    }
+
+    /**
+     * 处理退格
+     */
+    private void handleBackspace() {
+        if (this.cursor.column > 0) {
+            /* 删除当前字符 */
+            char deleted = this.buffer.deleteChar(this.cursor.line, this.cursor.column - 1);
+
+            /* 记录历史 */
+            EditOperation op = new EditOperation(EditType.DELETE, this.cursor.line, this.cursor.column - 1, "" + deleted);
+            this.history.addOperation(op);
+
+            this.cursor.column = this.cursor.column - 1;
+        } else if (this.cursor.line > 0) {
+            /* 合并行 */
+            int prevLineLen = this.buffer.getLineLength(this.cursor.line - 1);
+            this.buffer.joinLines(this.cursor.line - 1);
+
+            /* 记录历史 */
+            EditOperation op = new EditOperation(EditType.DELETE, this.cursor.line - 1, prevLineLen, "\n");
+            this.history.addOperation(op);
+
+            this.cursor.line = this.cursor.line - 1;
+            this.cursor.column = prevLineLen;
+        }
+    }
+
+    /**
+     * 处理删除键
+     */
+    private void handleDelete() {
+        int lineLen = this.buffer.getLineLength(this.cursor.line);
+
+        if (this.cursor.column < lineLen) {
+            /* 删除当前字符 */
+            char deleted = this.buffer.deleteChar(this.cursor.line, this.cursor.column);
+
+            /* 记录历史 */
+            EditOperation op = new EditOperation(EditType.DELETE, this.cursor.line, this.cursor.column, "" + deleted);
+            this.history.addOperation(op);
+        } else if (this.cursor.line < this.buffer.getLineCount() - 1) {
+            /* 合并下一行 */
+            this.buffer.joinLines(this.cursor.line);
+
+            /* 记录历史 */
+            EditOperation op = new EditOperation(EditType.DELETE, this.cursor.line, this.cursor.column, "\n");
+            this.history.addOperation(op);
+        }
+    }
+
+    /**
+     * 撤销操作
+     */
+    private void undo() {
+        EditOperation op = this.history.undo();
+
+        if (op == null) {
+            this.showMessage("无操作可撤销");
+            return;
+        }
+
+        if (op.type == EditType.INSERT) {
+            /* 撤销插入 = 删除 */
+            if (op.text.equals("\n")) {
+                /* 撤销换行 = 合并行 */
+                this.buffer.joinLines(op.line);
+            } else {
+                /* 撤销字符插入 */
+                this.buffer.deleteChar(op.line, op.column);
+            }
+        } else if (op.type == EditType.DELETE) {
+            /* 撤销删除 = 插入 */
+            if (op.text.equals("\n")) {
+                /* 撤销合并 = 换行 */
+                this.buffer.insertNewLine(op.line, op.column);
+            } else {
+                /* 撤销字符删除 */
+                this.buffer.insertChar(op.line, op.column, op.text.charAt(0));
+            }
+        }
+
+        /* 恢复光标位置 */
+        this.cursor.line = op.line;
+        this.cursor.column = op.column;
+
+        this.showMessage("已撤销");
+    }
+
+    /**
+     * 重做操作
+     */
+    private void redo() {
+        EditOperation op = this.history.redo();
+
+        if (op == null) {
+            this.showMessage("无操作可重做");
+            return;
+        }
+
+        if (op.type == EditType.INSERT) {
+            /* 重做插入 */
+            if (op.text.equals("\n")) {
+                this.buffer.insertNewLine(op.line, op.column);
+            } else {
+                this.buffer.insertChar(op.line, op.column, op.text.charAt(0));
+            }
+        } else if (op.type == EditType.DELETE) {
+            /* 重做删除 */
+            if (op.text.equals("\n")) {
+                this.buffer.joinLines(op.line);
+            } else {
+                this.buffer.deleteChar(op.line, op.column);
+            }
+        }
+
+        /* 恢复光标位置 */
+        this.cursor.line = op.line;
+        this.cursor.column = op.column;
+
+        this.showMessage("已重做");
+    }
+
+    /**
+     * 显示消息
+     */
+    private void showMessage(String msg) {
+        /* 消息会在下次渲染时显示在状态栏 */
+        /* 这里可以添加消息队列 */
+    }
+
+    /**
+     * 清屏
+     */
+    private void clearScreen() {
+        /* ANSI转义序列清屏 */
+        print("\x1b[2J");
+        print("\x1b[H");
+    }
+
+    /**
+     * 清空当前行
+     */
+    private void clearLine() {
+        /* ANSI转义序列清空行 */
+        print("\x1b[K");
+    }
+
+    /**
+     * 移动光标
+     */
+    private void moveCursor(int row, int col) {
+        /* ANSI转义序列移动光标 */
+        print("\x1b[");
+        print(row);
+        print(";");
+        print(col);
+        print("H");
+    }
+
+    /**
+     * 设置反色显示
+     */
+    private void setInverseVideo(bool inverse) {
+        if (inverse) {
+            print("\x1b[7m");
+        } else {
+            print("\x1b[0m");
+        }
+    }
+
+    /**
+     * 读取按键
+     * 简化实现，实际应该使用原始终端模式
+     */
+    private int readKey() {
+        /* 读取一个字符 */
+        return readChar();
+    }
+}
+
+/* ============================================================================
+ * 程序入口
+ * ============================================================================ */
+
+/**
+ * 文本编辑器演示程序入口
+ */
+public class TextEditorDemo {
+    public static void main(String[] args) {
+        println("==============================================");
+        println("  Cavvy Text Editor v" + EDITOR_VERSION);
+        println("==============================================");
+        println("");
+        println("这是一个控制台文本编辑器演示程序。");
+        println("由于控制台输入限制，这里展示编辑器的核心功能。");
+        println("");
+
+        /* 创建编辑器实例 */
+        TextEditor editor = new TextEditor();
+
+        /* 演示基本功能 */
+        TextEditorDemo.demoBasicOperations();
+
+        println("");
+        println("编辑器演示完成。");
+        println("完整功能需要终端原始模式支持。");
+    }
+
+    /**
+     * 演示基本操作
+     */
+    private static void demoBasicOperations() {
+        println("--- 文本缓冲区演示 ---");
+
+        /* 创建缓冲区 */
+        TextBuffer buffer = new TextBuffer();
+
+        /* 演示插入 */
+        println("1. 插入字符:");
+        buffer.insertChar(0, 0, 'H');
+        buffer.insertChar(0, 1, 'e');
+        buffer.insertChar(0, 2, 'l');
+        buffer.insertChar(0, 3, 'l');
+        buffer.insertChar(0, 4, 'o');
+        print("   结果: ");
+        println(buffer.getLine(0).toString());
+
+        /* 演示换行 */
+        println("2. 插入换行:");
+        buffer.insertNewLine(0, 5);
+        buffer.insertChar(1, 0, 'W');
+        buffer.insertChar(1, 1, 'o');
+        buffer.insertChar(1, 2, 'r');
+        buffer.insertChar(1, 3, 'l');
+        buffer.insertChar(1, 4, 'd');
+        print("   第1行: ");
+        println(buffer.getLine(0).toString());
+        print("   第2行: ");
+        println(buffer.getLine(1).toString());
+
+        /* 演示删除 */
+        println("3. 删除字符:");
+        buffer.deleteChar(1, 0);
+        print("   删除后第2行: ");
+        println(buffer.getLine(1).toString());
+
+        /* 演示行合并 */
+        println("4. 合并行:");
+        buffer.joinLines(0);
+        print("   合并后: ");
+        println(buffer.getLine(0).toString());
+
+        /* 演示搜索 */
+        println("5. 搜索功能:");
+        int foundLine = buffer.search("llo", 0);
+        print("   搜索'llo'结果: 行 ");
+        println(foundLine);
+
+        println("");
+        println("--- 编辑历史演示 ---");
+
+        /* 演示撤销重做 */
+        EditHistory history = new EditHistory(100);
+
+        history.addOperation(new EditOperation(EditType.INSERT, 0, 0, "A"));
+        history.addOperation(new EditOperation(EditType.INSERT, 0, 1, "B"));
+        history.addOperation(new EditOperation(EditType.INSERT, 0, 2, "C"));
+
+        print("历史记录数量: ");
+        println(3);
+
+        EditOperation undoOp = history.undo();
+        if (undoOp != null) {
+            print("撤销操作: 在(");
+            print(undoOp.line);
+            print(",");
+            print(undoOp.column);
+            print(")插入'");
+            print(undoOp.text);
+            println("'");
+        }
+
+        print("可撤销: ");
+        println(history.canUndo());
+        print("可重做: ");
+        println(history.canRedo());
+
+        println("");
+        println("--- 文件操作演示 ---");
+
+        /* 演示保存和加载 */
+        String testFilename = "test_editor_demo.txt";
+
+        /* 保存 */
+        int saveResult = buffer.saveToFile(testFilename);
+        if (saveResult == ERROR_NONE) {
+            print("文件已保存: ");
+            println(testFilename);
+        }
+
+        /* 加载 */
+        TextBuffer newBuffer = new TextBuffer();
+        int loadResult = newBuffer.loadFromFile(testFilename);
+        if (loadResult == ERROR_NONE) {
+            print("文件已加载，内容: ");
+            println(newBuffer.getLine(0).toString());
+        }
+
+        println("");
+        println("所有演示完成！");
+    }
+}

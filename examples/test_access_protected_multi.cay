@@ -1,0 +1,22 @@
+
+public class Grandparent {
+    protected int value = 10;
+}
+
+public class Parent extends Grandparent {
+    public int getValue() {
+        return this.value;
+    }
+}
+
+public class Child extends Parent {
+    public int getChildValue() {
+        return this.value;
+    }
+    
+    public static void main() {
+        Child c = new Child();
+        println(String.valueOf(c.getChildValue()));
+        println(String.valueOf(c.getValue()));
+    }
+}

@@ -1,0 +1,17 @@
+
+public class Test {
+    private int secret;
+    
+    public Test(int s) {
+        this.secret = s;
+    }
+    
+    public int getSecret() {
+        return this.secret;
+    }
+    
+    public static void main() {
+        Test t = new Test(100);
+        println(String.valueOf(t.getSecret()));
+    }
+}

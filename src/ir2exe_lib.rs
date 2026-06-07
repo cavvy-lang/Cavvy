@@ -174,14 +174,14 @@ pub fn remap_clang_error(error_msg: &str, source_map: &IRSourceMap, _ir_file_nam
                 
                 // 修改错误行，指向源文件
                 let modified_line = if line.contains("error:") {
-                    if let Some(error_pos) = line.find("error:") {
+                    if let Some(error_pos) = line.rfind("error:") {
                         let error_msg_part = &line[error_pos + 6..];
                         format!("\n  error: {}", error_msg_part)
                     } else {
                         format!("\n  {}", line)
                     }
                 } else if line.contains("warning:") {
-                    if let Some(warning_pos) = line.find("warning:") {
+                    if let Some(warning_pos) = line.rfind("warning:") {
                         let warning_msg_part = &line[warning_pos + 8..];
                         format!("\n  warning: {}", warning_msg_part)
                     } else {
@@ -1122,7 +1122,7 @@ fn compile_with_llc_lld(
     input_file: &str,
     output_file: &str,
     options: &Ir2ExeOptions,
-    _source_map: &IRSourceMap,
+    source_map: &IRSourceMap,
     llc_exe: &PathBuf,
     lld_exe: &PathBuf,
 ) -> Result<CompileResult, String> {
@@ -1176,9 +1176,15 @@ fn compile_with_llc_lld(
     
     if !llc_output.status.success() {
         let error_msg = String::from_utf8_lossy(&llc_output.stderr);
+        let remapped_error = if !source_map.mappings.is_empty() {
+            let mapped = remap_clang_error(&error_msg, source_map, input_file);
+            add_clang_error_notice(&mapped)
+        } else {
+            error_msg.to_string()
+        };
         let _ = std::fs::remove_file(&obj_file);
         return Err(format!("llc 编译失败 (exit code: {}): {}", 
-            llc_output.status.code().unwrap_or(-1), error_msg));
+            llc_output.status.code().unwrap_or(-1), remapped_error));
     }
     
     // 步骤2: 使用对应平台的 lld 链接目标文件
@@ -1358,8 +1364,14 @@ fn compile_with_llc_lld(
         // 保留目标文件以便调试
         // eprintln!("  [DEBUG] 链接失败，保留目标文件: {}", obj_file);
         let error_msg = String::from_utf8_lossy(&lld_output.stderr);
+        let remapped_error = if !source_map.mappings.is_empty() {
+            let mapped = remap_clang_error(&error_msg, source_map, input_file);
+            add_clang_error_notice(&mapped)
+        } else {
+            error_msg.to_string()
+        };
         return Err(format!("{} 链接失败 (exit code: {}): {}", 
-            linker_name, lld_output.status.code().unwrap_or(-1), error_msg));
+            linker_name, lld_output.status.code().unwrap_or(-1), remapped_error));
     }
     
     // 清理临时目标文件
