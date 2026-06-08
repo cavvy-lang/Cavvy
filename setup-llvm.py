@@ -281,15 +281,24 @@ def extract_tar_xz(archive_path: Path, extract_to: Path) -> bool:
         return False
 
 
-def verify_installation(install_dir: Path, os_name: str) -> bool:
+def verify_installation(install_dir: Path, os_name: str, full_llvm: bool = False) -> bool:
     """
     验证LLVM安装是否成功
     检查关键二进制文件是否存在
+
+    参数:
+        install_dir: 安装目录
+        os_name: 操作系统名称
+        full_llvm: 是否验证完整LLVM开发包（包含llvm-config等）
     """
     log_info("验证安装...")
 
     # 关键二进制文件列表
     essential_bins = ["clang", "ld.lld", "ld64.lld", "llc", "lld-link", "lld", "llvm-ar", "llvm-profdata", "llvm-profgen", "wasm-ld"]
+
+    # 完整LLVM开发包额外需要的工具
+    if full_llvm:
+        essential_bins.extend(["llvm-config", "llvm-dis", "llvm-as"])
 
     bin_dir = install_dir / "bin"
     if not bin_dir.exists():
@@ -308,6 +317,18 @@ def verify_installation(install_dir: Path, os_name: str) -> bool:
     if missing:
         log_error(f"缺少关键二进制文件: {', '.join(missing)}")
         return False
+
+    # 验证完整LLVM开发包的目录结构
+    if full_llvm:
+        include_dir = install_dir / "include"
+        lib_dir = install_dir / "lib"
+        if not include_dir.exists():
+            log_error(f"完整LLVM开发包缺少include目录: {include_dir}")
+            return False
+        if not lib_dir.exists():
+            log_error(f"完整LLVM开发包缺少lib目录: {lib_dir}")
+            return False
+        log_info("完整LLVM开发包验证通过（包含include和lib目录）")
 
     log_success("安装验证通过")
     return True
@@ -359,30 +380,62 @@ def extract_7z(archive_path: Path, extract_to: Path) -> bool:
     log_info(f"目标目录: {extract_to}")
 
     try:
-        # 确保目标目录存在
-        extract_to.mkdir(parents=True, exist_ok=True)
+        # 创建临时解压目录
+        temp_extract = extract_to / "_temp_7z_extract"
+        temp_extract.mkdir(parents=True, exist_ok=True)
 
         # 尝试使用7z或7za命令
+        success = False
         for cmd in ["7z", "7za"]:
             result = subprocess.run(
-                [cmd, "x", str(archive_path), f"-o{extract_to}", "-y"],
+                [cmd, "x", str(archive_path), f"-o{temp_extract}", "-y"],
                 capture_output=True,
                 text=True
             )
             if result.returncode == 0:
-                log_success("7z解压完成")
-                return True
+                success = True
+                break
 
-        # 如果没有7z命令，尝试使用Python的py7zr库
-        try:
-            import py7zr
-            with py7zr.SevenZipFile(archive_path, mode='r') as z:
-                z.extractall(path=extract_to)
-            log_success("7z解压完成 (py7zr)")
-            return True
-        except ImportError:
-            log_error("未找到7z命令或py7zr库，请安装7-Zip或运行: pip install py7zr")
+        if not success:
+            # 如果没有7z命令，尝试使用Python的py7zr库
+            try:
+                import py7zr
+                with py7zr.SevenZipFile(archive_path, mode='r') as z:
+                    z.extractall(path=temp_extract)
+                success = True
+            except ImportError:
+                log_error("未找到7z命令或py7zr库，请安装7-Zip或运行: pip install py7zr")
+                return False
+
+        if not success:
+            log_error("7z解压失败")
             return False
+
+        # 检查解压后的目录结构
+        # LLVM官方包可能包含一个子目录（如 LLVM-22.1.6-win64/）
+        subdirs = [d for d in temp_extract.iterdir() if d.is_dir()]
+        if len(subdirs) == 1 and (subdirs[0] / "bin" / "llvm-config.exe").exists():
+            # 只有一个子目录且包含llvm-config.exe，将其内容移动到目标目录
+            log_info(f"检测到单个子目录: {subdirs[0].name}，移动内容到目标目录")
+            for item in subdirs[0].iterdir():
+                dest = extract_to / item.name
+                if dest.exists():
+                    shutil.rmtree(dest) if dest.is_dir() else dest.unlink()
+                shutil.move(str(item), str(dest))
+            shutil.rmtree(subdirs[0])
+        else:
+            # 直接解压到目标目录
+            for item in temp_extract.iterdir():
+                dest = extract_to / item.name
+                if dest.exists():
+                    shutil.rmtree(dest) if dest.is_dir() else dest.unlink()
+                shutil.move(str(item), str(dest))
+
+        # 清理临时目录
+        shutil.rmtree(temp_extract)
+
+        log_success("7z解压完成")
+        return True
 
     except Exception as e:
         log_error(f"解压7z失败: {e}")
@@ -478,7 +531,7 @@ def main() -> int:
     install_dir = Path(CONFIG["install_dir"])
 
     # 3. 检查是否已安装
-    if verify_installation(install_dir, os_name):
+    if verify_installation(install_dir, os_name, full_llvm=use_full_llvm):
         log_info("LLVM已安装，跳过下载")
         setup_environment(install_dir, os_name)
         return 0
@@ -494,7 +547,7 @@ def main() -> int:
             return 1
 
     # 5. 验证安装
-    if not verify_installation(install_dir, os_name):
+    if not verify_installation(install_dir, os_name, full_llvm=use_full_llvm):
         log_error("安装验证失败")
         return 1
 

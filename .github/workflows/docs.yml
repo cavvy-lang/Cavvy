@@ -52,9 +52,19 @@ jobs:
           "LLVM_SYS_221_PREFIX=$llvmPath" >> $env:GITHUB_ENV
 
       - name: Build release compiler
-        run: cargo build --release --verbose
-        env:
-          LLVM_SYS_221_PREFIX: ${{ github.workspace }}\llvm-minimal
+        shell: pwsh
+        run: |
+          $env:LLVM_SYS_221_PREFIX = Join-Path $pwd "llvm-minimal"
+          Write-Host "LLVM_SYS_221_PREFIX = $env:LLVM_SYS_221_PREFIX"
+          # 验证llvm-config存在
+          $llvmConfig = Join-Path $env:LLVM_SYS_221_PREFIX "bin\llvm-config.exe"
+          if (Test-Path $llvmConfig) {
+            Write-Host "Found llvm-config.exe"
+            & $llvmConfig --version
+          } else {
+            Write-Warning "llvm-config.exe not found at $llvmConfig"
+          }
+          cargo build --release --verbose
 
       - name: Test Markdown code blocks
         run: python scripts/doc-test.py

@@ -45,9 +45,27 @@ jobs:
         # 设置CAVVY_USE_FULL_LLVM=1下载完整LLVM开发包（约2GB，供llvm-sys使用）
         $env:CAVVY_USE_FULL_LLVM = "1"
         python setup-llvm.py
+        if ($LASTEXITCODE -ne 0) {
+          Write-Error "setup-llvm.py failed with exit code $LASTEXITCODE"
+          exit 1
+        }
         $llvmPath = Join-Path $pwd "llvm-minimal"
         $env:PATH = "$llvmPath\bin;$env:PATH"
         "LLVM_SYS_221_PREFIX=$llvmPath" >> $env:GITHUB_ENV
+        # 验证LLVM安装
+        Write-Host "LLVM installed at: $llvmPath"
+        Write-Host "LLVM bin contents:"
+        Get-ChildItem "$llvmPath\bin" | Select-Object -First 20
+        if (Test-Path "$llvmPath\include") {
+          Write-Host "LLVM include directory exists"
+        } else {
+          Write-Warning "LLVM include directory NOT found"
+        }
+        if (Test-Path "$llvmPath\lib") {
+          Write-Host "LLVM lib directory exists"
+        } else {
+          Write-Warning "LLVM lib directory NOT found"
+        }
       shell: pwsh
 
     - name: Extract version and date
@@ -74,14 +92,26 @@ jobs:
 
     - name: Run cargo test
       if: github.event.inputs.skip_tests != 'true'
-      run: cargo test --release --verbose
-      env:
-        LLVM_SYS_221_PREFIX: ${{ github.workspace }}\llvm-minimal
+      shell: pwsh
+      run: |
+        $env:LLVM_SYS_221_PREFIX = Join-Path $pwd "llvm-minimal"
+        Write-Host "LLVM_SYS_221_PREFIX = $env:LLVM_SYS_221_PREFIX"
+        # 验证llvm-config存在
+        $llvmConfig = Join-Path $env:LLVM_SYS_221_PREFIX "bin\llvm-config.exe"
+        if (Test-Path $llvmConfig) {
+          Write-Host "Found llvm-config.exe"
+          & $llvmConfig --version
+        } else {
+          Write-Warning "llvm-config.exe not found at $llvmConfig"
+        }
+        cargo test --release --verbose
 
     - name: Build Release
-      run: cargo build --release --verbose
-      env:
-        LLVM_SYS_221_PREFIX: ${{ github.workspace }}\llvm-minimal
+      shell: pwsh
+      run: |
+        $env:LLVM_SYS_221_PREFIX = Join-Path $pwd "llvm-minimal"
+        Write-Host "LLVM_SYS_221_PREFIX = $env:LLVM_SYS_221_PREFIX"
+        cargo build --release --verbose
 
     - name: Package artifacts
       id: package
