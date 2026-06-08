@@ -117,8 +117,7 @@ public class Test {
 }
 
 // === 接口作为参数 ===
-// 注意：当前接口分发使用声明类型（接口名）解析方法，不支持运行时动态分发
-// 需要避免在测试中依赖不同实现类产生不同输出
+// 当前接口方法调用覆盖单实现和参数传递场景。
 
 #[test]
 fn test_interface_as_parameter() {
@@ -159,9 +158,8 @@ public class Test {
 }
 
 // === 接口类型赋值兼容性 ===
-// 注意：当前实现使用声明类型（接口名）解析方法，不支持运行时动态分发
-// 即 Animal a = new Dog(); a.speak(); 会调用第一个实现类的方法
-// 这是已知限制，后续版本将通过 vtable 支持动态分发
+// 当前接口调用路径仍不能依赖多实现运行时动态分发；类继承的 vtable 动态分发
+// 由 inheritance_tests 中的 test_vtable_dynamic_dispatch 单独覆盖。
 
 #[test]
 fn test_interface_assignment_compatibility() {
@@ -193,8 +191,7 @@ public class Test {
 "#;
     std::fs::write("examples/test_interface_assign.cay", code).unwrap();
     let output = compile_and_run_eol("examples/test_interface_assign.cay").expect("编译运行失败");
-    // 注意：两个都输出 "Meow" 是因为接口分发使用声明类型
-    // 实际上 a1 和 a2 都通过 Animal 接口调用，使用第一个实现类的方法
+    // 这里验证接口赋值和调用不会崩溃；多实现运行时动态分发不是本测试断言目标。
     let normalized = normalize(&output);
     // 只要不 panic 且有输出就算通过
     assert!(!normalized.is_empty(), "应该有输出");
@@ -202,8 +199,7 @@ public class Test {
 }
 
 // === 接口方法带参数 ===
-// 注意：当前接口分发使用声明类型，不支持运行时动态分发
-// 测试单个实现类的参数传递
+// 测试单个实现类的参数传递。
 
 #[test]
 fn test_interface_method_with_args() {

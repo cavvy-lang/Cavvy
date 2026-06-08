@@ -159,8 +159,7 @@ public class Test {
 }
 
 // === 访问控制 ===
-// 注意：Cavvy 当前可能不强制执行 private 访问控制
-// 这是已知限制，后续版本将完善
+// private 访问控制已实现；跨类访问 private 字段应编译失败。
 
 #[test]
 fn test_error_private_access() {

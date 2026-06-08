@@ -1,0 +1,21 @@
+[book]
+title = "Cavvy Documentation"
+authors = ["Cavvy contributors"]
+description = "Language, compiler, tooling, and standard library documentation for Cavvy."
+language = "zh-CN"
+src = "docs"
+
+[build]
+build-dir = "book"
+create-missing = false
+
+[output.html]
+default-theme = "light"
+preferred-dark-theme = "ayu"
+git-repository-url = "https://github.com/cavvy-lang/Cavvy"
+edit-url-template = "https://github.com/cavvy-lang/Cavvy/edit/main/{path}"
+additional-css = ["docs/theme/cavvy.css"]
+site-url = "/Cavvy/"
+
+[output.html.print]
+enable = true

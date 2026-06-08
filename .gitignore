@@ -10,7 +10,6 @@ temp_*
 *.eol
 
 !/examples/
-!/test_docs/
 !/lib/
 !/mingw-minimal/
 !/llvm-minimal/
@@ -23,7 +22,6 @@ temp_*
 !/examples/errors/*.cay
 !/caylibs/*.cay
 !/caylibs/**/*.cay
-!/test_docs/*.cay
 
 .trae/
 /*.cpp
@@ -38,6 +36,7 @@ mingw-minimal/
 !/lib/mingw64/x86_64-w64-mingw32/lib/*.o
 
 target/
+book/
 
 #太大了
 llvm-minimal/bin-linux/*

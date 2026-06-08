@@ -1,8 +1,0 @@
-public int main() {
-    // 命令行参数暂不支持，使用模拟数据
-    println("Arguments count: 3");
-    println("Arg 0: hello");
-    println("Arg 1: world");
-    println("Arg 2: cavvy");
-    return 0;
-}

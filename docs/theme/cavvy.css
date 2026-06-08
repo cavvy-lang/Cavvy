@@ -1,0 +1,67 @@
+:root {
+  --content-max-width: 980px;
+  --cavvy-accent: #0f766e;
+  --cavvy-accent-strong: #b42318;
+  --cavvy-ink: #1f2937;
+  --cavvy-muted: #667085;
+  --cavvy-line: #d0d5dd;
+  --cavvy-surface: #f8fafc;
+}
+
+.content {
+  max-width: var(--content-max-width);
+}
+
+.content main {
+  line-height: 1.72;
+}
+
+.content h1,
+.content h2,
+.content h3 {
+  letter-spacing: 0;
+}
+
+.content h1 {
+  border-bottom: 2px solid var(--cavvy-accent);
+  padding-bottom: 0.35rem;
+}
+
+.content h2 {
+  border-bottom: 1px solid var(--cavvy-line);
+  padding-bottom: 0.25rem;
+}
+
+.content table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.content table th {
+  background: var(--cavvy-surface);
+}
+
+.content table th,
+.content table td {
+  border: 1px solid var(--cavvy-line);
+  padding: 0.55rem 0.7rem;
+}
+
+.content pre {
+  border-radius: 8px;
+  border: 1px solid rgba(16, 24, 40, 0.14);
+}
+
+.content code {
+  font-size: 0.95em;
+}
+
+.sidebar {
+  border-right: 1px solid var(--cavvy-line);
+}
+
+.chapter li.part-title {
+  color: var(--cavvy-accent-strong);
+  font-weight: 700;
+  letter-spacing: 0;
+}
