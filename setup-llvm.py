@@ -115,7 +115,7 @@ def build_download_url(version: str, os_name: str, arch: str) -> str:
     bin_name = "bin" if os_name == "win" else "bin-linux"
     url = (
         f"https://github.com/{CONFIG['github_repo']}/releases/download/"
-        f"llvm-minimal/{version}/{os_name}-{arch}/{bin_name}.tar.xz"
+        f"llvm-minimal/{version}/{os_name}-{arch}/bin/{bin_name}.tar.xz"
     )
     return url
 
