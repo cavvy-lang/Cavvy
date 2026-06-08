@@ -23,6 +23,15 @@ if sys.platform == "win32":
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 
+def is_ci_environment() -> bool:
+    """检测是否在CI环境中运行"""
+    ci_env_vars = [
+        "CI", "GITHUB_ACTIONS", "GITLAB_CI", "TRAVIS", "CIRCLECI",
+        "APPVEYOR", "BUILDKITE", "DRONE", "JENKINS_URL", "TF_BUILD"
+    ]
+    return any(os.environ.get(var) for var in ci_env_vars)
+
+
 # ============ 配置区域 ============
 CONFIG = {
     "github_repo": "cavvy-lang/Cavvy-src-Assets",
@@ -149,6 +158,8 @@ def download_file(url: str, dest_path: Path, timeout: int = 300) -> bool:
             total_size = int(response.headers.get("Content-Length", 0))
             downloaded = 0
             chunk_size = 8192  # 8KB chunks
+            last_percent = -1
+            ci_mode = is_ci_environment()
 
             with open(temp_path, "wb") as f:
                 while True:
@@ -158,11 +169,21 @@ def download_file(url: str, dest_path: Path, timeout: int = 300) -> bool:
                     f.write(chunk)
                     downloaded += len(chunk)
 
-                    # 显示进度
+                    # 显示进度（CI环境下每10%更新一次，避免刷屏）
                     if total_size > 0:
-                        percent = (downloaded / total_size) * 100
-                        sys.stdout.write(f"\r  进度: {percent:.1f}% ({downloaded}/{total_size} bytes)")
-                        sys.stdout.flush()
+                        percent = int((downloaded / total_size) * 100)
+                        if ci_mode:
+                            # CI环境：每10%更新一次
+                            if percent // 10 > last_percent // 10:
+                                sys.stdout.write(f"\r  进度: {percent}% ({downloaded}/{total_size} bytes)")
+                                sys.stdout.flush()
+                                last_percent = percent
+                        else:
+                            # 本地环境：每1%更新
+                            if percent > last_percent:
+                                sys.stdout.write(f"\r  进度: {percent}% ({downloaded}/{total_size} bytes)")
+                                sys.stdout.flush()
+                                last_percent = percent
 
         print()  # 换行
 
@@ -193,7 +214,7 @@ def download_file(url: str, dest_path: Path, timeout: int = 300) -> bool:
 
 def extract_tar_xz(archive_path: Path, extract_to: Path) -> bool:
     """
-    解压.tar.xz文件
+    解压.tar.xz文件到bin子目录
     时间复杂度: O(n), n为归档内容大小
     磁盘IO: 顺序读取，随机写入
     """
@@ -201,22 +222,23 @@ def extract_tar_xz(archive_path: Path, extract_to: Path) -> bool:
     log_info(f"目标目录: {extract_to}")
 
     try:
-        # 确保目标目录存在
-        extract_to.mkdir(parents=True, exist_ok=True)
+        # 确保bin目标目录存在
+        bin_dir = extract_to / "bin"
+        bin_dir.mkdir(parents=True, exist_ok=True)
 
-        # 打开并解压tar.xz文件
+        # 打开并解压tar.xz文件到bin目录
         with tarfile.open(archive_path, "r:xz") as tar:
             # 安全检查：防止路径遍历攻击
             for member in tar.getmembers():
-                member_path = extract_to / member.name
+                member_path = bin_dir / member.name
                 try:
-                    member_path.resolve().relative_to(extract_to.resolve())
+                    member_path.resolve().relative_to(bin_dir.resolve())
                 except ValueError:
                     log_error(f"检测到不安全的路径遍历: {member.name}")
                     return False
 
-            # 执行解压
-            tar.extractall(path=extract_to)
+            # 执行解压到bin目录
+            tar.extractall(path=bin_dir)
 
         log_success("解压完成")
         return True
