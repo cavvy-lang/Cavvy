@@ -97,8 +97,6 @@ jobs:
         } else {
           Write-Warning "llvm-config.exe not found at $llvmConfig"
         }
-        # 设置RUSTFLAGS忽略缺失的xml2s.lib（LLVM Windows包中不包含）
-        $env:RUSTFLAGS = "-C link-arg=/NODEFAULTLIB:xml2s.lib"
         cargo test --release --verbose
 
     - name: Build Release
@@ -106,8 +104,6 @@ jobs:
       run: |
         $env:LLVM_SYS_221_PREFIX = Join-Path $pwd "llvm-minimal"
         Write-Host "LLVM_SYS_221_PREFIX = $env:LLVM_SYS_221_PREFIX"
-        # 设置RUSTFLAGS忽略缺失的xml2s.lib（LLVM Windows包中不包含）
-        $env:RUSTFLAGS = "-C link-arg=/NODEFAULTLIB:xml2s.lib"
         cargo build --release --verbose
 
     - name: Package artifacts
