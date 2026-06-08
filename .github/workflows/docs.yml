@@ -57,6 +57,8 @@ jobs:
           } else {
             Write-Warning "llvm-config.exe not found at $llvmConfig"
           }
+          # 设置RUSTFLAGS忽略缺失的xml2s.lib（LLVM Windows包中不包含）
+          $env:RUSTFLAGS = "-C link-arg=/NODEFAULTLIB:xml2s.lib"
           cargo build --release --verbose
 
       - name: Test Markdown code blocks
