@@ -300,6 +300,61 @@ fn main() {
         }
     }
 
+    // 设置 LLVM_SYS_221_PREFIX 环境变量（供 llvm-sys crate 使用）
+    // 优先使用已存在的环境变量，否则使用项目目录下的 llvm-minimal
+    let llvm_prefix = env::var("LLVM_SYS_221_PREFIX")
+        .unwrap_or_else(|_| {
+            let project_root = env::var("CARGO_MANIFEST_DIR")
+                .unwrap_or_else(|_| ".".to_string());
+            let llvm_path = PathBuf::from(&project_root).join("llvm-minimal");
+            llvm_path.to_string_lossy().to_string()
+        });
+
+    // 检查 LLVM 目录是否存在，如果不存在则运行 setup-llvm.py
+    let llvm_path = PathBuf::from(&llvm_prefix);
+    if !llvm_path.exists() {
+        println!("cargo:warning=LLVM not found at {}, running setup-llvm.py", llvm_prefix);
+        let setup_result = Command::new("python")
+            .args(&["setup-llvm.py"])
+            .current_dir(&env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string()))
+            .output();
+
+        match setup_result {
+            Ok(output) => {
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    println!("cargo:warning=setup-llvm.py failed: {}", stderr);
+                } else {
+                    println!("cargo:warning=setup-llvm.py completed successfully");
+                }
+            }
+            Err(e) => {
+                println!("cargo:warning=Failed to run setup-llvm.py: {}", e);
+            }
+        }
+    }
+
+    // 检查是否是完整LLVM安装（包含include和lib目录）
+    let llvm_include = llvm_path.join("include");
+    let llvm_lib = llvm_path.join("lib");
+    if llvm_include.exists() && llvm_lib.exists() {
+        println!("cargo:warning=Detected full LLVM installation at {}", llvm_prefix);
+        println!("cargo:warning=LLVM include: {}", llvm_include.display());
+        println!("cargo:warning=LLVM lib: {}", llvm_lib.display());
+    } else {
+        println!("cargo:warning=Minimal LLVM installation detected (no include/lib dirs)");
+        println!("cargo:warning=For llvm-sys support, set CAVVY_USE_FULL_LLVM=1 to download full LLVM dev package");
+    }
+
+    // 设置环境变量供 llvm-sys 使用
+    // 注意：必须在编译任何依赖llvm-sys的crate之前设置
+    println!("cargo:rustc-env=LLVM_SYS_221_PREFIX={}", llvm_prefix);
+    // 使用unsafe块设置环境变量（Rust 2024 edition要求）
+    // 这是安全的，因为我们在build.rs主线程中执行，没有并发问题
+    unsafe {
+        env::set_var("LLVM_SYS_221_PREFIX", &llvm_prefix);
+    }
+
     // 获取输出目录
     let out_dir = env::var("OUT_DIR").unwrap();
     let out_path = PathBuf::from(&out_dir);

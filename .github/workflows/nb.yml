@@ -35,6 +35,8 @@ jobs:
 
     - name: Setup LLVM
       run: |
+        # 设置CAVVY_USE_FULL_LLVM=1下载完整LLVM开发包（约2GB，供llvm-sys使用）
+        $env:CAVVY_USE_FULL_LLVM = "1"
         python setup-llvm.py
         $llvmPath = Join-Path $pwd "llvm-minimal"
         $env:PATH = "$llvmPath\bin;$env:PATH"

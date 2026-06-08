@@ -13,6 +13,7 @@ import urllib.request
 import tarfile
 import shutil
 import configparser
+import subprocess
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -38,6 +39,17 @@ CONFIG = {
     "verinfo_path": ".verinfo",
     "install_dir": "llvm-minimal",
     "timeout_seconds": 300,
+}
+
+# LLVM官方发布URL模板 (用于完整开发包下载)
+# 版本221对应LLVM 22.1.x
+LLVM_OFFICIAL_URLS = {
+    "win": {
+        "x86_64": "https://github.com/llvm/llvm-project/releases/download/llvmorg-{version}/LLVM-{version}-win64.exe",
+    },
+    "linux": {
+        "x86_64": "https://github.com/llvm/llvm-project/releases/download/llvmorg-{version}/clang+llvm-{version}-x86_64-linux-gnu-ubuntu-22.04.tar.xz",
+    },
 }
 
 
@@ -116,11 +128,28 @@ def parse_verinfo() -> Optional[str]:
         return None
 
 
-def build_download_url(version: str, os_name: str, arch: str) -> str:
+def build_download_url(version: str, os_name: str, arch: str, full_llvm: bool = False) -> str:
     """
     构建下载URL
     URL格式: https://github.com/{repo}/releases/download/llvm-minimal/{version}/{os}-{arch}/bin/{bin_name}.tar.xz
+
+    参数:
+        version: LLVM版本号
+        os_name: 操作系统名称 (win/linux)
+        arch: 架构 (x86_64)
+        full_llvm: 是否下载完整LLVM开发包（仅CI环境使用，约2GB）
     """
+    if full_llvm:
+        # 使用LLVM官方完整开发包
+        # 将版本号从 22.1.6 转换为 22.1.6
+        llvm_version = version
+        if os_name in LLVM_OFFICIAL_URLS and arch in LLVM_OFFICIAL_URLS[os_name]:
+            return LLVM_OFFICIAL_URLS[os_name][arch].format(version=llvm_version)
+        else:
+            log_error(f"不支持的平台/架构用于完整LLVM下载: {os_name}-{arch}")
+            # 回退到minimal版本
+
+    # 使用Cavvy minimal版本（仅二进制工具）
     bin_name = "bin" if os_name == "win" else "bin-linux"
     url = (
         f"https://github.com/{CONFIG['github_repo']}/releases/download/"
@@ -320,6 +349,76 @@ def setup_environment(install_dir: Path, os_name: str) -> None:
 
 # ============ 主流程 ============
 
+def download_and_install_llvm(
+    version: str,
+    os_name: str,
+    arch: str,
+    install_dir: Path,
+    full_llvm: bool = False
+) -> bool:
+    """
+    下载并安装LLVM
+
+    参数:
+        version: LLVM版本号
+        os_name: 操作系统名称
+        arch: 架构
+        install_dir: 安装目录
+        full_llvm: 是否下载完整开发包
+
+    返回: 是否成功
+    """
+    # 构建URL
+    url = build_download_url(version, os_name, arch, full_llvm=full_llvm)
+
+    if full_llvm:
+        log_info("使用LLVM官方完整开发包（约2GB）")
+        # 完整包使用不同的文件名
+        if os_name == "win":
+            archive_name = f"LLVM-{version}-win64.exe"
+        else:
+            archive_name = f"clang+llvm-{version}-{arch}-linux-gnu-ubuntu-22.04.tar.xz"
+        archive_path = install_dir / archive_name
+    else:
+        archive_name = f"llvm-minimal-{version}-{os_name}-{arch}.tar.xz"
+        archive_path = install_dir / archive_name
+
+    # 下载压缩包
+    if not download_file(url, archive_path, CONFIG["timeout_seconds"]):
+        log_error("下载失败，请检查网络连接和版本号")
+        return False
+
+    # 解压
+    if full_llvm and os_name == "win":
+        # Windows完整包是.exe安装程序，需要静默安装
+        log_info("运行LLVM安装程序（静默模式）...")
+        try:
+            result = subprocess.run(
+                [str(archive_path), "/S", f"/D={install_dir.absolute()}"],
+                capture_output=True,
+                text=True,
+                timeout=600
+            )
+            if result.returncode != 0:
+                log_error(f"LLVM安装程序失败: {result.stderr}")
+                return False
+            log_success("LLVM安装程序完成")
+        except Exception as e:
+            log_error(f"运行安装程序失败: {e}")
+            return False
+    else:
+        # 解压tar.xz
+        if not extract_tar_xz(archive_path, install_dir):
+            log_error("解压失败")
+            cleanup(archive_path)
+            return False
+
+    # 清理临时文件
+    cleanup(archive_path)
+
+    return True
+
+
 def main() -> int:
     """
     主入口函数
@@ -327,6 +426,11 @@ def main() -> int:
     """
     log_info("Cavvy LLVM Minimal Setup")
     log_info("=" * 50)
+
+    # 检测是否使用完整LLVM开发包（CI环境可配置）
+    use_full_llvm = os.environ.get("CAVVY_USE_FULL_LLVM", "").lower() in ("1", "true", "yes")
+    if use_full_llvm:
+        log_info("检测到CAVVY_USE_FULL_LLVM=1，将下载完整LLVM开发包")
 
     # 1. 检测平台
     try:
@@ -342,39 +446,30 @@ def main() -> int:
         return 1
     log_info(f"LLVM-MINIMAL版本: {version}")
 
-    # 3. 构建URL和路径
-    url = build_download_url(version, os_name, arch)
     install_dir = Path(CONFIG["install_dir"])
-    archive_name = f"llvm-minimal-{version}-{os_name}-{arch}.tar.xz"
-    archive_path = install_dir / archive_name
 
-    # 4. 检查是否已安装
+    # 3. 检查是否已安装
     if verify_installation(install_dir, os_name):
         log_info("LLVM已安装，跳过下载")
         setup_environment(install_dir, os_name)
         return 0
 
-    # 5. 下载压缩包
-    if not download_file(url, archive_path, CONFIG["timeout_seconds"]):
-        log_error("下载失败，请检查网络连接和版本号")
-        return 1
+    # 4. 下载并安装
+    if not download_and_install_llvm(version, os_name, arch, install_dir, full_llvm=use_full_llvm):
+        # 如果完整包下载失败，尝试minimal版本
+        if use_full_llvm:
+            log_info("完整包下载失败，尝试minimal版本...")
+            if not download_and_install_llvm(version, os_name, arch, install_dir, full_llvm=False):
+                return 1
+        else:
+            return 1
 
-    # 6. 解压
-    if not extract_tar_xz(archive_path, install_dir):
-        log_error("解压失败")
-        cleanup(archive_path)
-        return 1
-
-    # 7. 验证安装
+    # 5. 验证安装
     if not verify_installation(install_dir, os_name):
         log_error("安装验证失败")
-        cleanup(archive_path)
         return 1
 
-    # 8. 清理临时文件
-    cleanup(archive_path)
-
-    # 9. 输出环境变量设置
+    # 6. 输出环境变量设置
     setup_environment(install_dir, os_name)
 
     log_success("LLVM安装完成!")
