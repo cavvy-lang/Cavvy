@@ -43,9 +43,10 @@ CONFIG = {
 
 # LLVM官方发布URL模板 (用于完整开发包下载)
 # 版本221对应LLVM 22.1.x
+# Windows使用7z压缩包（ Portable 版本），可以直接解压到指定目录
 LLVM_OFFICIAL_URLS = {
     "win": {
-        "x86_64": "https://github.com/llvm/llvm-project/releases/download/llvmorg-{version}/LLVM-{version}-win64.exe",
+        "x86_64": "https://github.com/llvm/llvm-project/releases/download/llvmorg-{version}/LLVM-{version}-win64.7z",
     },
     "linux": {
         "x86_64": "https://github.com/llvm/llvm-project/releases/download/llvmorg-{version}/clang+llvm-{version}-x86_64-linux-gnu-ubuntu-22.04.tar.xz",
@@ -349,6 +350,45 @@ def setup_environment(install_dir: Path, os_name: str) -> None:
 
 # ============ 主流程 ============
 
+def extract_7z(archive_path: Path, extract_to: Path) -> bool:
+    """
+    解压.7z文件
+    需要系统中安装7z或7za命令
+    """
+    log_info(f"解压7z: {archive_path}")
+    log_info(f"目标目录: {extract_to}")
+
+    try:
+        # 确保目标目录存在
+        extract_to.mkdir(parents=True, exist_ok=True)
+
+        # 尝试使用7z或7za命令
+        for cmd in ["7z", "7za"]:
+            result = subprocess.run(
+                [cmd, "x", str(archive_path), f"-o{extract_to}", "-y"],
+                capture_output=True,
+                text=True
+            )
+            if result.returncode == 0:
+                log_success("7z解压完成")
+                return True
+
+        # 如果没有7z命令，尝试使用Python的py7zr库
+        try:
+            import py7zr
+            with py7zr.SevenZipFile(archive_path, mode='r') as z:
+                z.extractall(path=extract_to)
+            log_success("7z解压完成 (py7zr)")
+            return True
+        except ImportError:
+            log_error("未找到7z命令或py7zr库，请安装7-Zip或运行: pip install py7zr")
+            return False
+
+    except Exception as e:
+        log_error(f"解压7z失败: {e}")
+        return False
+
+
 def download_and_install_llvm(
     version: str,
     os_name: str,
@@ -375,7 +415,7 @@ def download_and_install_llvm(
         log_info("使用LLVM官方完整开发包（约2GB）")
         # 完整包使用不同的文件名
         if os_name == "win":
-            archive_name = f"LLVM-{version}-win64.exe"
+            archive_name = f"LLVM-{version}-win64.7z"
         else:
             archive_name = f"clang+llvm-{version}-{arch}-linux-gnu-ubuntu-22.04.tar.xz"
         archive_path = install_dir / archive_name
@@ -390,21 +430,10 @@ def download_and_install_llvm(
 
     # 解压
     if full_llvm and os_name == "win":
-        # Windows完整包是.exe安装程序，需要静默安装
-        log_info("运行LLVM安装程序（静默模式）...")
-        try:
-            result = subprocess.run(
-                [str(archive_path), "/S", f"/D={install_dir.absolute()}"],
-                capture_output=True,
-                text=True,
-                timeout=600
-            )
-            if result.returncode != 0:
-                log_error(f"LLVM安装程序失败: {result.stderr}")
-                return False
-            log_success("LLVM安装程序完成")
-        except Exception as e:
-            log_error(f"运行安装程序失败: {e}")
+        # Windows完整包是.7z格式，需要解压
+        if not extract_7z(archive_path, install_dir):
+            log_error("解压7z失败")
+            cleanup(archive_path)
             return False
     else:
         # 解压tar.xz

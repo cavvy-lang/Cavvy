@@ -32,6 +32,13 @@ jobs:
           toolchain: stable
           target: x86_64-pc-windows-gnu
 
+      - name: Install 7z for LLVM extraction
+        run: |
+          choco install 7zip -y
+          $env:PATH = "C:\Program Files\7-Zip;$env:PATH"
+          "C:\Program Files\7-Zip" >> $env:GITHUB_PATH
+        shell: pwsh
+
       - name: Restore bundled toolchain if needed
         shell: pwsh
         run: |
