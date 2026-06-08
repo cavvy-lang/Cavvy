@@ -29,17 +29,26 @@ CONFIG = {
 
 def log_info(msg: str) -> None:
     """输出信息日志"""
-    print(f"[INFO] {msg}")
+    try:
+        print(f"[INFO] {msg}")
+    except UnicodeEncodeError:
+        print(f"[INFO] {msg.encode('utf-8', errors='replace').decode('utf-8')}")
 
 
 def log_error(msg: str) -> None:
     """输出错误日志"""
-    print(f"[ERROR] {msg}", file=sys.stderr)
+    try:
+        print(f"[ERROR] {msg}", file=sys.stderr)
+    except UnicodeEncodeError:
+        print(f"[ERROR] {msg.encode('utf-8', errors='replace').decode('utf-8')}", file=sys.stderr)
 
 
 def log_success(msg: str) -> None:
     """输出成功日志"""
-    print(f"[SUCCESS] {msg}")
+    try:
+        print(f"[SUCCESS] {msg}")
+    except UnicodeEncodeError:
+        print(f"[SUCCESS] {msg.encode('utf-8', errors='replace').decode('utf-8')}")
 
 
 def detect_platform() -> Tuple[str, str]:
