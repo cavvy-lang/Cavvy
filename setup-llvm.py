@@ -43,10 +43,10 @@ CONFIG = {
 
 # LLVM官方发布URL模板 (用于完整开发包下载)
 # 版本221对应LLVM 22.1.x
-# Windows使用7z压缩包（ Portable 版本），可以直接解压到指定目录
+# Windows官方发布使用tar.xz格式
 LLVM_OFFICIAL_URLS = {
     "win": {
-        "x86_64": "https://github.com/llvm/llvm-project/releases/download/llvmorg-{version}/LLVM-{version}-win64.7z",
+        "x86_64": "https://github.com/llvm/llvm-project/releases/download/llvmorg-{version}/clang+llvm-{version}-x86_64-pc-windows-msvc.tar.xz",
     },
     "linux": {
         "x86_64": "https://github.com/llvm/llvm-project/releases/download/llvmorg-{version}/clang+llvm-{version}-x86_64-linux-gnu-ubuntu-22.04.tar.xz",
@@ -371,56 +371,48 @@ def setup_environment(install_dir: Path, os_name: str) -> None:
 
 # ============ 主流程 ============
 
-def extract_7z(archive_path: Path, extract_to: Path) -> bool:
+def extract_tar_xz_with_structure(archive_path: Path, extract_to: Path) -> bool:
     """
-    解压.7z文件
-    需要系统中安装7z或7za命令
+    解压.tar.xz文件并处理LLVM官方包的目录结构
+    LLVM官方包通常包含一个子目录（如 clang+llvm-22.1.6-x86_64-pc-windows-msvc/）
+    需要将其内容移动到目标目录
     """
-    log_info(f"解压7z: {archive_path}")
+    log_info(f"解压tar.xz: {archive_path}")
     log_info(f"目标目录: {extract_to}")
 
     try:
         # 创建临时解压目录
-        temp_extract = extract_to / "_temp_7z_extract"
+        temp_extract = extract_to / "_temp_tar_extract"
         temp_extract.mkdir(parents=True, exist_ok=True)
 
-        # 尝试使用7z或7za命令
-        success = False
-        for cmd in ["7z", "7za"]:
-            result = subprocess.run(
-                [cmd, "x", str(archive_path), f"-o{temp_extract}", "-y"],
-                capture_output=True,
-                text=True
-            )
-            if result.returncode == 0:
-                success = True
-                break
+        # 解压tar.xz到临时目录
+        with tarfile.open(archive_path, "r:xz") as tar:
+            # 安全检查：防止路径遍历攻击
+            for member in tar.getmembers():
+                member_path = temp_extract / member.name
+                try:
+                    member_path.resolve().relative_to(temp_extract.resolve())
+                except ValueError:
+                    log_error(f"检测到不安全的路径遍历: {member.name}")
+                    return False
 
-        if not success:
-            # 如果没有7z命令，尝试使用Python的py7zr库
-            try:
-                import py7zr
-                with py7zr.SevenZipFile(archive_path, mode='r') as z:
-                    z.extractall(path=temp_extract)
-                success = True
-            except ImportError:
-                log_error("未找到7z命令或py7zr库，请安装7-Zip或运行: pip install py7zr")
-                return False
-
-        if not success:
-            log_error("7z解压失败")
-            return False
+            tar.extractall(path=temp_extract)
 
         # 检查解压后的目录结构
-        # LLVM官方包可能包含一个子目录（如 LLVM-22.1.6-win64/）
+        # LLVM官方包通常包含一个子目录
         subdirs = [d for d in temp_extract.iterdir() if d.is_dir()]
-        if len(subdirs) == 1 and (subdirs[0] / "bin" / "llvm-config.exe").exists():
-            # 只有一个子目录且包含llvm-config.exe，将其内容移动到目标目录
+        files = [f for f in temp_extract.iterdir() if f.is_file()]
+
+        if len(subdirs) == 1 and not files:
+            # 只有一个子目录，将其内容移动到目标目录
             log_info(f"检测到单个子目录: {subdirs[0].name}，移动内容到目标目录")
             for item in subdirs[0].iterdir():
                 dest = extract_to / item.name
                 if dest.exists():
-                    shutil.rmtree(dest) if dest.is_dir() else dest.unlink()
+                    if dest.is_dir():
+                        shutil.rmtree(dest)
+                    else:
+                        dest.unlink()
                 shutil.move(str(item), str(dest))
             shutil.rmtree(subdirs[0])
         else:
@@ -428,17 +420,23 @@ def extract_7z(archive_path: Path, extract_to: Path) -> bool:
             for item in temp_extract.iterdir():
                 dest = extract_to / item.name
                 if dest.exists():
-                    shutil.rmtree(dest) if dest.is_dir() else dest.unlink()
+                    if dest.is_dir():
+                        shutil.rmtree(dest)
+                    else:
+                        dest.unlink()
                 shutil.move(str(item), str(dest))
 
         # 清理临时目录
         shutil.rmtree(temp_extract)
 
-        log_success("7z解压完成")
+        log_success("tar.xz解压完成")
         return True
 
+    except tarfile.TarError as e:
+        log_error(f"tar文件错误: {e}")
+        return False
     except Exception as e:
-        log_error(f"解压7z失败: {e}")
+        log_error(f"解压tar.xz失败: {e}")
         return False
 
 
@@ -468,7 +466,7 @@ def download_and_install_llvm(
         log_info("使用LLVM官方完整开发包（约2GB）")
         # 完整包使用不同的文件名
         if os_name == "win":
-            archive_name = f"LLVM-{version}-win64.7z"
+            archive_name = f"clang+llvm-{version}-x86_64-pc-windows-msvc.tar.xz"
         else:
             archive_name = f"clang+llvm-{version}-{arch}-linux-gnu-ubuntu-22.04.tar.xz"
         archive_path = install_dir / archive_name
@@ -482,14 +480,14 @@ def download_and_install_llvm(
         return False
 
     # 解压
-    if full_llvm and os_name == "win":
-        # Windows完整包是.7z格式，需要解压
-        if not extract_7z(archive_path, install_dir):
-            log_error("解压7z失败")
+    if full_llvm:
+        # 完整包使用tar.xz格式，需要处理目录结构
+        if not extract_tar_xz_with_structure(archive_path, install_dir):
+            log_error("解压完整包失败")
             cleanup(archive_path)
             return False
     else:
-        # 解压tar.xz
+        # minimal包解压到bin子目录
         if not extract_tar_xz(archive_path, install_dir):
             log_error("解压失败")
             cleanup(archive_path)
