@@ -25,7 +25,7 @@ tempfile = "3.0"
 # LLVM 嵌入式支持 (用于 --use-embedded-llc)
 # llvm-sys 版本与 LLVM 版本对应关系: 221 = LLVM 22.1.x
 # force-static: Windows必须使用静态链接（动态链接不支持）
-llvm-sys = { version = "221", features = ["force-static"] }
+llvm-sys = { version = "221" }
 libc = "0.2"
 
 # Windows平台构建所有bin（包括依赖MinGW的ir2exe）
