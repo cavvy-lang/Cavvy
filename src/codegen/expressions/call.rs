@@ -507,10 +507,14 @@ impl IRGenerator {
         // 条件：是实例方法，有可用的 this 指针，类有 vtable 布局，且方法不是 private
         // private 方法不需要动态分派，直接调用即可
         let is_private = self.is_private_method(&class_name, &method_name);
-        let needs_vtable_dispatch = is_instance_method
-            && resolved_this_val.is_some()
-            && self.class_has_vtable(&class_name)
-            && !is_private;
+        let is_interface_dispatch = !is_static_call && self.is_interface_type(&class_name);
+        let has_dispatch_slot = if is_interface_dispatch {
+            self.interface_has_vtable_slot(&class_name, &method_name, &param_types)
+        } else {
+            self.class_has_vtable(&class_name)
+        };
+        let needs_vtable_dispatch =
+            is_instance_method && resolved_this_val.is_some() && has_dispatch_slot && !is_private;
 
         if needs_vtable_dispatch {
             let this_val = resolved_this_val.unwrap();
@@ -529,15 +533,11 @@ impl IRGenerator {
                 vtable_temp, vtable_ptr_temp
             ));
 
-            // 获取方法在 vtable 中的槽位
-            // 需要参数类型来构建方法签名（支持重载方法）
-            let param_types = self.get_method_param_types(
-                &class_name,
-                &method_name,
-                &processed_args,
-                has_varargs_array,
-            );
-            let slot = self.get_vtable_slot(&class_name, &method_name, &param_types);
+            let slot = if is_interface_dispatch {
+                self.get_interface_vtable_slot(&class_name, &method_name, &param_types)
+            } else {
+                self.get_vtable_slot(&class_name, &method_name, &param_types)
+            };
 
             // 将 vtable 指针转换为 i8** 数组（每个元素是 i8*）
             let vtable_array_temp = self.new_temp();
@@ -940,6 +940,12 @@ impl IRGenerator {
         method_name: &str,
     ) -> Option<Vec<crate::types::ParameterInfo>> {
         if let Some(ref registry) = self.type_registry {
+            if let Some(interface_info) = registry.get_interface(class_name) {
+                if let Some(method) = interface_info.methods.get(method_name) {
+                    return Some(method.params.clone());
+                }
+            }
+
             let mut current = class_name.to_string();
             loop {
                 if let Some(class_info) = registry.get_class(&current) {
@@ -985,6 +991,12 @@ impl IRGenerator {
     fn is_varargs_method(&self, class_name: &str, method_name: &str) -> bool {
         // 查询类型注册表
         if let Some(ref registry) = self.type_registry {
+            if let Some(interface_info) = registry.get_interface(class_name) {
+                if let Some(method) = interface_info.methods.get(method_name) {
+                    return method.params.iter().any(|p| p.is_varargs);
+                }
+            }
+
             // 先尝试直接查找类
             if let Some(class_info) = registry.get_class(class_name) {
                 if let Some(methods) = class_info.methods.get(method_name) {
@@ -1015,6 +1027,10 @@ impl IRGenerator {
     fn is_instance_method(&self, class_name: &str, method_name: &str) -> bool {
         // 查询类型注册表，支持继承查找
         if let Some(ref registry) = self.type_registry {
+            if let Some(interface_info) = registry.get_interface(class_name) {
+                return interface_info.methods.contains_key(method_name);
+            }
+
             // 先查 struct
             if let Some(struct_info) = registry.get_struct(class_name) {
                 if let Some(methods) = struct_info.methods.get(method_name) {
@@ -1216,6 +1232,20 @@ impl IRGenerator {
     /// 返回 (varargs_param_index, element_type)，如果未找到可变参数则返回 (0, Int32)
     fn get_varargs_info(&self, class_name: &str, method_name: &str) -> (usize, crate::types::Type) {
         if let Some(ref registry) = self.type_registry {
+            if let Some(interface_info) = registry.get_interface(class_name) {
+                if let Some(method) = interface_info.methods.get(method_name) {
+                    for (i, param) in method.params.iter().enumerate() {
+                        if param.is_varargs {
+                            let elem_type = match &param.param_type {
+                                crate::types::Type::Array(elem) => elem.as_ref().clone(),
+                                _ => param.param_type.clone(),
+                            };
+                            return (i, elem_type);
+                        }
+                    }
+                }
+            }
+
             // 先尝试直接查找类
             if let Some(class_info) = registry.get_class(class_name) {
                 if let Some(methods) = class_info.methods.get(method_name) {
@@ -1401,8 +1431,6 @@ impl IRGenerator {
         processed_args: &[String],
         has_varargs_array: bool,
     ) -> Option<crate::types::MethodInfo> {
-        use crate::types::MethodInfo;
-
         let varargs_param_index = self.get_varargs_index(class_name, method_name);
         let arg_types: Vec<String> = processed_args
             .iter()
@@ -1426,6 +1454,17 @@ impl IRGenerator {
         } else {
             class_name
         };
+
+        if let Some(interface_info) = registry.get_interface(base_class_name) {
+            if let Some(method) = interface_info.methods.get(method_name) {
+                if method.params.len() == processed_args.len()
+                    || method.params.iter().any(|p| p.is_varargs)
+                {
+                    return Some(method.clone());
+                }
+            }
+        }
+
         let mut current_class_name = base_class_name.to_string();
 
         loop {
@@ -2717,6 +2756,31 @@ impl IRGenerator {
         false
     }
 
+    fn is_interface_type(&self, class_name: &str) -> bool {
+        let base_class_name = if let Some(pos) = class_name.find('<') {
+            &class_name[..pos]
+        } else {
+            class_name
+        };
+
+        self.type_registry
+            .as_ref()
+            .is_some_and(|registry| registry.get_interface(base_class_name).is_some())
+    }
+
+    fn interface_has_vtable_slot(
+        &self,
+        interface_name: &str,
+        method_name: &str,
+        arg_types: &[crate::types::Type],
+    ) -> bool {
+        self.type_registry.as_ref().is_some_and(|registry| {
+            registry
+                .get_interface_vtable_slot(interface_name, method_name, arg_types)
+                .is_some()
+        })
+    }
+
     /// 获取方法在 vtable 中的槽位编号
     /// 使用方法签名（方法名+参数类型）作为键，支持重载方法
     fn get_vtable_slot(
@@ -2743,6 +2807,20 @@ impl IRGenerator {
         0
     }
 
+    fn get_interface_vtable_slot(
+        &self,
+        interface_name: &str,
+        method_name: &str,
+        arg_types: &[crate::types::Type],
+    ) -> usize {
+        self.type_registry
+            .as_ref()
+            .and_then(|registry| {
+                registry.get_interface_vtable_slot(interface_name, method_name, arg_types)
+            })
+            .unwrap_or(0)
+    }
+
     /// 构建函数指针类型字符串（用于 vtable 间接调用）
     fn build_function_type_string(
         &self,
@@ -2764,6 +2842,12 @@ impl IRGenerator {
                         for param in &method.params {
                             param_types.push(self.type_to_llvm(&param.param_type));
                         }
+                    }
+                }
+            } else if let Some(interface_info) = registry.get_interface(class_name) {
+                if let Some(method) = interface_info.methods.get(method_name) {
+                    for param in &method.params {
+                        param_types.push(self.type_to_llvm(&param.param_type));
                     }
                 }
             }

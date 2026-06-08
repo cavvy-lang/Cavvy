@@ -900,14 +900,14 @@ impl IRGenerator {
         let llvm_class = self.get_qualified_class_name(class_name);
         let vtable_name = format!("{}.vtable", llvm_class);
 
-        // 收集 vtable 条目
-        let mut entries = Vec::new();
+        // 收集 vtable 条目。接口槽位是全局分配的，可能导致当前类 vtable 中存在空洞。
+        let mut entries = vec!["i8* null".to_string(); layout.size];
 
         // 按槽位编号排序（确保与 vtable 布局一致）
         let mut sorted_slots: Vec<_> = layout.slots.iter().collect();
         sorted_slots.sort_by_key(|&(_, &slot)| slot);
 
-        for (method_sig, _slot) in &sorted_slots {
+        for (method_sig, slot) in &sorted_slots {
             // 查找方法的 LLVM 函数名
             // 需要在继承链中查找方法定义（使用方法签名支持重载）
             let fn_name_opt = self.find_method_in_hierarchy(class_name, method_sig);
@@ -918,14 +918,13 @@ impl IRGenerator {
                     fn_param_types.push(self.type_to_llvm(&param));
                 }
                 let fn_ptr_type = format!("{} ({})", ret_llvm, fn_param_types.join(", "));
-                entries.push(format!(
-                    "i8* bitcast ({}* @{} to i8*)",
-                    fn_ptr_type, fn_name
-                ));
+                if **slot < entries.len() {
+                    entries[**slot] = format!("i8* bitcast ({}* @{} to i8*)", fn_ptr_type, fn_name);
+                }
             }
         }
 
-        if entries.is_empty() {
+        if layout.size == 0 {
             return Ok(());
         }
 
@@ -951,6 +950,10 @@ impl IRGenerator {
         class_name: &str,
         method_sig: &str,
     ) -> Option<(String, crate::types::Type, Vec<crate::types::Type>)> {
+        let method_sig =
+            crate::types::TypeRegistry::interface_vtable_key_method_signature(method_sig)
+                .unwrap_or(method_sig);
+
         // 解析方法签名：方法名(参数类型1,参数类型2,...)
         let (method_name, param_types_str) = if let Some(pos) = method_sig.find('(') {
             let name = &method_sig[..pos];

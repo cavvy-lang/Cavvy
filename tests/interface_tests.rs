@@ -157,9 +157,7 @@ public class Test {
     let _ = std::fs::remove_file("examples/test_interface_param.cay");
 }
 
-// === 接口类型赋值兼容性 ===
-// 当前接口调用路径仍不能依赖多实现运行时动态分发；类继承的 vtable 动态分发
-// 由 inheritance_tests 中的 test_vtable_dynamic_dispatch 单独覆盖。
+// === 接口类型赋值兼容性与运行时动态分发 ===
 
 #[test]
 fn test_interface_assignment_compatibility() {
@@ -191,15 +189,98 @@ public class Test {
 "#;
     std::fs::write("examples/test_interface_assign.cay", code).unwrap();
     let output = compile_and_run_eol("examples/test_interface_assign.cay").expect("编译运行失败");
-    // 这里验证接口赋值和调用不会崩溃；多实现运行时动态分发不是本测试断言目标。
-    let normalized = normalize(&output);
-    // 只要不 panic 且有输出就算通过
-    assert!(!normalized.is_empty(), "应该有输出");
+    assert_eq!(normalize(&output), "Woof\nMeow");
     let _ = std::fs::remove_file("examples/test_interface_assign.cay");
 }
 
+#[test]
+fn test_interface_dispatch_uses_runtime_type_with_different_class_slots() {
+    let code = r#"
+interface Animal {
+    void speak();
+}
+
+class Dog implements Animal {
+    public void bark() {
+        println("Dog.bark");
+    }
+
+    public void speak() {
+        println("Dog.speak");
+    }
+}
+
+class Cat implements Animal {
+    public void speak() {
+        println("Cat.speak");
+    }
+
+    public void zoom() {
+        println("Cat.zoom");
+    }
+}
+
+public class Test {
+    public static void main() {
+        Animal a1 = new Dog();
+        a1.speak();
+        Animal a2 = new Cat();
+        a2.speak();
+    }
+}
+"#;
+    std::fs::write("examples/test_interface_dispatch_slots.cay", code).unwrap();
+    let output =
+        compile_and_run_eol("examples/test_interface_dispatch_slots.cay").expect("编译运行失败");
+    assert_eq!(normalize(&output), "Dog.speak\nCat.speak");
+    let _ = std::fs::remove_file("examples/test_interface_dispatch_slots.cay");
+}
+
+#[test]
+fn test_interface_dispatch_with_args_and_return_uses_runtime_type() {
+    let code = r#"
+interface Scorer {
+    int score(int base);
+}
+
+class Doubler implements Scorer {
+    public int score(int base) {
+        return base * 2;
+    }
+
+    public void later() {
+        println("unused");
+    }
+}
+
+class Tripler implements Scorer {
+    public void earlier() {
+        println("unused");
+    }
+
+    public int score(int base) {
+        return base * 3;
+    }
+}
+
+public class Test {
+    public static void main() {
+        Scorer s1 = new Doubler();
+        println(s1.score(7));
+        Scorer s2 = new Tripler();
+        println(s2.score(7));
+    }
+}
+"#;
+    std::fs::write("examples/test_interface_dispatch_return.cay", code).unwrap();
+    let output =
+        compile_and_run_eol("examples/test_interface_dispatch_return.cay").expect("编译运行失败");
+    assert_eq!(normalize(&output), "14\n21");
+    let _ = std::fs::remove_file("examples/test_interface_dispatch_return.cay");
+}
+
 // === 接口方法带参数 ===
-// 测试单个实现类的参数传递。
+// 测试参数传递。
 
 #[test]
 fn test_interface_method_with_args() {

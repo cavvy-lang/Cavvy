@@ -904,6 +904,17 @@ impl SemanticAnalyzer {
                 class_info.vtable_layout = Some(layout);
             }
         }
+
+        let max_class_vtable_size = self
+            .type_registry
+            .classes
+            .values()
+            .filter_map(|c| c.vtable_layout.as_ref().map(|v| v.size))
+            .max()
+            .unwrap_or(0);
+
+        self.compute_interface_vtable_slots(max_class_vtable_size);
+        self.attach_interface_slots_to_class_vtables(&sorted_classes);
     }
 
     /// 计算类的继承深度
@@ -927,20 +938,6 @@ impl SemanticAnalyzer {
     fn compute_single_class_vtable(&self, class_name: &str) -> crate::types::VTableLayout {
         let mut slots = std::collections::HashMap::new();
         let mut next_slot = 0;
-
-        // 辅助函数：构建方法签名（方法名+参数类型）
-        fn build_method_signature(method_name: &str, method: &crate::types::MethodInfo) -> String {
-            let param_types: Vec<String> = method
-                .params
-                .iter()
-                .map(|p| format!("{:?}", p.param_type))
-                .collect();
-            if param_types.is_empty() {
-                method_name.to_string()
-            } else {
-                format!("{}({})", method_name, param_types.join(","))
-            }
-        }
 
         // 如果有父类，先复制父类的 vtable 布局
         if let Some(class_info) = self.type_registry.get_class(class_name) {
@@ -967,7 +964,10 @@ impl SemanticAnalyzer {
                 for method in methods {
                     // 只收集非 static、非 native、非 private 的实例方法
                     if !method.is_static && !method.is_native && !method.is_private {
-                        let sig = build_method_signature(method_name, method);
+                        let sig = crate::types::TypeRegistry::build_method_signature(
+                            method_name,
+                            &method.params,
+                        );
                         if !instance_method_sigs.contains(&sig) {
                             instance_method_sigs.push(sig);
                         }
@@ -993,5 +993,103 @@ impl SemanticAnalyzer {
             slots,
             size: next_slot,
         }
+    }
+
+    fn compute_interface_vtable_slots(&mut self, start_slot: usize) {
+        let mut entries = Vec::new();
+        let mut interface_names: Vec<String> =
+            self.type_registry.interfaces.keys().cloned().collect();
+        interface_names.sort();
+
+        for interface_name in interface_names {
+            if let Some(interface_info) = self.type_registry.get_interface(&interface_name) {
+                let mut method_entries: Vec<(String, String)> = interface_info
+                    .methods
+                    .iter()
+                    .map(|(method_name, method)| {
+                        (
+                            method_name.clone(),
+                            crate::types::TypeRegistry::build_method_signature(
+                                method_name,
+                                &method.params,
+                            ),
+                        )
+                    })
+                    .collect();
+                method_entries.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+
+                for (_, method_sig) in method_entries {
+                    let key = crate::types::TypeRegistry::build_interface_vtable_key(
+                        &interface_name,
+                        &method_sig,
+                    );
+                    entries.push(key);
+                }
+            }
+        }
+
+        self.type_registry.interface_vtable_slots.clear();
+        for (offset, key) in entries.into_iter().enumerate() {
+            self.type_registry
+                .interface_vtable_slots
+                .insert(key, start_slot + offset);
+        }
+    }
+
+    fn attach_interface_slots_to_class_vtables(&mut self, class_names: &[String]) {
+        for class_name in class_names {
+            let interfaces = self.collect_all_interfaces_for_class(class_name);
+            if interfaces.is_empty() {
+                continue;
+            }
+
+            let mut additions = Vec::new();
+            for interface_name in interfaces {
+                if let Some(interface_info) = self.type_registry.get_interface(&interface_name) {
+                    for (method_name, method) in &interface_info.methods {
+                        let method_sig = crate::types::TypeRegistry::build_method_signature(
+                            method_name,
+                            &method.params,
+                        );
+                        let key = crate::types::TypeRegistry::build_interface_vtable_key(
+                            &interface_name,
+                            &method_sig,
+                        );
+                        if let Some(slot) = self.type_registry.interface_vtable_slots.get(&key) {
+                            additions.push((key, *slot));
+                        }
+                    }
+                }
+            }
+
+            if let Some(class_info) = self.type_registry.classes.get_mut(class_name) {
+                if let Some(layout) = class_info.vtable_layout.as_mut() {
+                    for (key, slot) in additions {
+                        layout.slots.insert(key, slot);
+                        layout.size = layout.size.max(slot + 1);
+                    }
+                }
+            }
+        }
+    }
+
+    fn collect_all_interfaces_for_class(&self, class_name: &str) -> Vec<String> {
+        let mut interfaces = std::collections::HashSet::new();
+        let mut current = class_name.to_string();
+
+        while let Some(class_info) = self.type_registry.get_class(&current) {
+            for interface in &class_info.interfaces {
+                interfaces.insert(interface.clone());
+            }
+            if let Some(parent) = &class_info.parent {
+                current = parent.clone();
+            } else {
+                break;
+            }
+        }
+
+        let mut result: Vec<String> = interfaces.into_iter().collect();
+        result.sort();
+        result
     }
 }

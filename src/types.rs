@@ -796,6 +796,9 @@ pub struct TypeRegistry {
     pub structs: HashMap<String, StructInfo>,
     pub enums: HashMap<String, EnumInfo>,
     pub interfaces: HashMap<String, InterfaceInfo>,
+    /// 接口方法在对象 vtable 中的全局槽位映射。
+    /// key 使用 build_interface_vtable_key(interface, method_sig) 构造。
+    pub interface_vtable_slots: HashMap<String, usize>,
     /// 命名空间别名映射: simple_name -> namespace_qualified_name (用于 using 声明)
     pub namespace_aliases: HashMap<String, String>,
     /// 类的命名空间路径: qualified_name -> namespace_path
@@ -814,6 +817,7 @@ impl TypeRegistry {
             structs: HashMap::new(),
             enums: HashMap::new(),
             interfaces: HashMap::new(),
+            interface_vtable_slots: HashMap::new(),
             namespace_aliases: HashMap::new(),
             class_namespace_paths: HashMap::new(),
             free_functions: HashMap::new(),
@@ -1088,6 +1092,48 @@ impl TypeRegistry {
         }
         self.interfaces.insert(name, interface_info);
         Ok(())
+    }
+
+    pub fn build_method_signature(method_name: &str, params: &[ParameterInfo]) -> String {
+        let param_types: Vec<String> = params
+            .iter()
+            .map(|p| format!("{:?}", p.param_type))
+            .collect();
+        if param_types.is_empty() {
+            method_name.to_string()
+        } else {
+            format!("{}({})", method_name, param_types.join(","))
+        }
+    }
+
+    pub fn build_method_signature_from_types(method_name: &str, arg_types: &[Type]) -> String {
+        let param_types: Vec<String> = arg_types.iter().map(|t| format!("{:?}", t)).collect();
+        if param_types.is_empty() {
+            method_name.to_string()
+        } else {
+            format!("{}({})", method_name, param_types.join(","))
+        }
+    }
+
+    pub fn build_interface_vtable_key(interface_name: &str, method_sig: &str) -> String {
+        format!("$iface${}${}", interface_name, method_sig)
+    }
+
+    pub fn interface_vtable_key_method_signature(slot_key: &str) -> Option<&str> {
+        let rest = slot_key.strip_prefix("$iface$")?;
+        let (_, method_sig) = rest.split_once('$')?;
+        Some(method_sig)
+    }
+
+    pub fn get_interface_vtable_slot(
+        &self,
+        interface_name: &str,
+        method_name: &str,
+        arg_types: &[Type],
+    ) -> Option<usize> {
+        let method_sig = Self::build_method_signature_from_types(method_name, arg_types);
+        let key = Self::build_interface_vtable_key(interface_name, &method_sig);
+        self.interface_vtable_slots.get(&key).copied()
     }
 
     /// 注册 struct（值类型）
