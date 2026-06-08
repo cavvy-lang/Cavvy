@@ -33,12 +33,20 @@ jobs:
         toolchain: stable
         target: x86_64-pc-windows-gnu
 
+    - name: Setup LLVM
+      run: |
+        python setup-llvm.py
+        $llvmPath = Join-Path $pwd "llvm-minimal"
+        $env:PATH = "$llvmPath\bin;$env:PATH"
+        "LLVM_SYS_221_PREFIX=$llvmPath" >> $env:GITHUB_ENV
+      shell: pwsh
+
     - name: Extract version and date
       id: version
       shell: pwsh
       run: |
         $ErrorActionPreference = "Stop"
-        
+
         $tag = git describe --tags --abbrev=0 2>$null
         if (-not $tag) {
           $shortSha = $env:GITHUB_SHA.Substring(0,7)
@@ -47,10 +55,10 @@ jobs:
         } else {
           Write-Host "Found tag: $tag"
         }
-        
+
         $date = Get-Date -Format "yyyyMMdd"
         $baseName = "eol-$tag-build$date"
-        
+
         "TAG=$tag" >> $env:GITHUB_OUTPUT
         "DATE=$date" >> $env:GITHUB_OUTPUT
         "BASENAME=$baseName" >> $env:GITHUB_OUTPUT
@@ -58,9 +66,13 @@ jobs:
     - name: Run cargo test
       if: github.event.inputs.skip_tests != 'true'
       run: cargo test --release --verbose
+      env:
+        LLVM_SYS_221_PREFIX: ${{ github.workspace }}\llvm-minimal
 
     - name: Build Release
       run: cargo build --release --verbose
+      env:
+        LLVM_SYS_221_PREFIX: ${{ github.workspace }}\llvm-minimal
 
     - name: Package artifacts
       id: package

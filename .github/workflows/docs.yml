@@ -39,9 +39,13 @@ jobs:
           if (-not (Test-Path "llvm-minimal") -or -not (Test-Path "mingw-minimal") -or -not (Test-Path "lib")) {
             python setup-llvm.py
           }
+          $llvmPath = Join-Path $pwd "llvm-minimal"
+          "LLVM_SYS_221_PREFIX=$llvmPath" >> $env:GITHUB_ENV
 
       - name: Build release compiler
         run: cargo build --release --verbose
+        env:
+          LLVM_SYS_221_PREFIX: ${{ github.workspace }}\llvm-minimal
 
       - name: Test Markdown code blocks
         run: python scripts/doc-test.py
