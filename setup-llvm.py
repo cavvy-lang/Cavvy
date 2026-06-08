@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Cavvy LLVM Minimal Setup Script
 跨平台LLVM最小化安装脚本
@@ -15,6 +16,12 @@ import configparser
 from pathlib import Path
 from typing import Optional, Tuple
 
+# 强制使用UTF-8编码输出（解决Windows中文编码问题）
+if sys.platform == "win32":
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
 
 # ============ 配置区域 ============
 CONFIG = {
@@ -29,26 +36,17 @@ CONFIG = {
 
 def log_info(msg: str) -> None:
     """输出信息日志"""
-    try:
-        print(f"[INFO] {msg}")
-    except UnicodeEncodeError:
-        print(f"[INFO] {msg.encode('utf-8', errors='replace').decode('utf-8')}")
+    print(f"[INFO] {msg}")
 
 
 def log_error(msg: str) -> None:
     """输出错误日志"""
-    try:
-        print(f"[ERROR] {msg}", file=sys.stderr)
-    except UnicodeEncodeError:
-        print(f"[ERROR] {msg.encode('utf-8', errors='replace').decode('utf-8')}", file=sys.stderr)
+    print(f"[ERROR] {msg}", file=sys.stderr)
 
 
 def log_success(msg: str) -> None:
     """输出成功日志"""
-    try:
-        print(f"[SUCCESS] {msg}")
-    except UnicodeEncodeError:
-        print(f"[SUCCESS] {msg.encode('utf-8', errors='replace').decode('utf-8')}")
+    print(f"[SUCCESS] {msg}")
 
 
 def detect_platform() -> Tuple[str, str]:
