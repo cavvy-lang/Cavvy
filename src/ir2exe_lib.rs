@@ -1502,6 +1502,24 @@ fn compile_with_llc_lld(
             lld_cmd.arg(format!("-l{}", lib));
         }
 
+        // 添加动态链接器路径 - 必须设置否则生成的 ELF 没有 INTERP 段
+        // 没有 INTERP 段，内核无法找到动态链接器，导致程序无法启动
+        if !options.static_link {
+            // 尝试找到系统动态链接器
+            let interp_paths = [
+                "/lib64/ld-linux-x86-64.so.2",
+                "/usr/lib64/ld-linux-x86-64.so.2",
+                "/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+                "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+            ];
+            for interp in &interp_paths {
+                if std::path::Path::new(interp).exists() {
+                    lld_cmd.arg("--dynamic-linker").arg(interp);
+                    break;
+                }
+            }
+        }
+
         if options.static_link {
             lld_cmd.arg("-static");
         }
