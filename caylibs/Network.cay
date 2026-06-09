@@ -849,7 +849,7 @@ public class TcpServer {
         #else
         c_int tv_sec = timeoutMs / 1000;
         c_int tv_usec = (timeoutMs % 1000) * 1000;
-        c_int[] timeout_val = new c_int[2];
+        int[] timeout_val = new int[2];
         timeout_val[0] = tv_sec;
         timeout_val[1] = tv_usec;
         setsockopt((c_int)this.handle, SOL_SOCKET, SO_RCVTIMEO, (c_void*)timeout_val, 8);
