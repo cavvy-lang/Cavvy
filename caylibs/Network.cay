@@ -537,7 +537,7 @@ public class TcpSocket {
         #ifdef _WIN32
         c_int result = send(this.handle, buf, len, 0);
         #else
-        long len_long = len;
+        long len_long = (long)len;
         c_int result = (c_int)send((c_int)this.handle, buf, len_long, 0);
         #endif
         
@@ -988,7 +988,7 @@ public class UdpSocket {
         #ifdef _WIN32
         c_int result = sendto(this.handle, buf, len, 0, (c_void*)&addr, 16);
         #else
-        long len_long = len;
+        long len_long = (long)len;
         c_int result = (c_int)sendto((c_int)this.handle, buf, len_long, 0, (c_void*)&addr, 16);
         #endif
         
