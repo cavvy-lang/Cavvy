@@ -22,16 +22,24 @@ const CAVVYN_PATH: &str = "examples/CavvyN";
 /// 获取当前平台的可执行文件扩展名
 fn get_exe_extension() -> &'static str {
     if cfg!(target_os = "windows") {
-        if cfg!(target_os = "windows") { ".exe" } else { "" }
+        ".exe"
     } else {
         ""
     }
 }
 
 /// 获取 cavly 可执行文件路径
+/// 优先使用 CARGO_BIN_EXE_cavly 环境变量（由cargo test设置），
+/// 否则使用相对路径
 fn get_cavly_path() -> String {
+    // 使用cargo提供的二进制文件路径环境变量
+    if let Ok(path) = std::env::var("CARGO_BIN_EXE_cavly") {
+        return path;
+    }
+    
+    // 回退到相对路径
     if cfg!(target_os = "windows") {
-        if cfg!(target_os = "windows") { "./target/release/cavly.exe".to_string() } else { "./target/release/cavly".to_string() }
+        "./target/release/cavly.exe".to_string()
     } else {
         "./target/release/cavly".to_string()
     }
