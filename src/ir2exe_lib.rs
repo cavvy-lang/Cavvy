@@ -1454,19 +1454,27 @@ fn compile_with_llc_lld(
                 let crti = std::path::Path::new(lib_path).join("crti.o");
                 let crtn = std::path::Path::new(lib_path).join("crtn.o");
 
+                // 如果已经添加过启动文件，跳过此路径（避免重复符号）
+                if crt_files_added {
+                    continue;
+                }
+
                 if scrt1.exists() {
                     lld_cmd.arg(&scrt1);
                     crt_files_added = true;
-                } else if crt1.exists() && !crt_files_added {
+                } else if crt1.exists() {
                     lld_cmd.arg(&crt1);
                     crt_files_added = true;
                 }
 
-                if crti.exists() {
-                    lld_cmd.arg(&crti);
-                }
-                if crtn.exists() {
-                    lld_cmd.arg(&crtn);
+                // 只在找到主启动文件后，才添加 init/fini 文件
+                if crt_files_added {
+                    if crti.exists() {
+                        lld_cmd.arg(&crti);
+                    }
+                    if crtn.exists() {
+                        lld_cmd.arg(&crtn);
+                    }
                 }
             }
         }
