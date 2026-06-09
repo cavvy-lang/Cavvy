@@ -189,19 +189,15 @@ fn test_calling_conventions() {
     let code = r#"
 extern {
     c_int printf(c_string fmt, ...);
-}
-
-extern stdcall {
-    // Windows API通常使用stdcall
-    void Sleep(c_uint dwMilliseconds);
+    c_int usleep(c_uint usec);
 }
 
 public int main() {
     printf("Testing cdecl calling convention\n");
-    
-    // 短暂休眠测试stdcall
-    Sleep(10);
-    
+
+    // 短暂休眠测试cdecl调用约定 (usleep是标准POSIX函数，使用微秒)
+    usleep(10000);  // 10毫秒 = 10000微秒
+
     printf("Calling conventions test passed!\n");
     return 0;
 }
