@@ -496,7 +496,72 @@ def download_and_install_llvm(
     # 清理临时文件
     cleanup(archive_path)
 
+    # 创建假的xml2s.lib（llvm-sys需要但LLVM Windows包不包含）
+    if os_name == "win" and full_llvm:
+        create_dummy_xml2_lib(install_dir)
+
     return True
+
+
+def create_dummy_xml2_lib(install_dir: Path) -> None:
+    """
+    创建假的xml2s.lib占位符文件
+    llvm-sys在Windows上需要这个库进行链接，但LLVM官方Windows包不包含它
+    创建一个空的静态库作为占位符
+    """
+    lib_dir = install_dir / "lib"
+    xml2_lib = lib_dir / "xml2s.lib"
+
+    if xml2_lib.exists():
+        log_info("xml2s.lib已存在，跳过创建")
+        return
+
+    log_info("创建假的xml2s.lib占位符...")
+
+    try:
+        # 创建一个最小的有效静态库文件
+        # Windows静态库格式: 签名 + 成员表 + 数据
+        # 创建一个空但有效的.lib文件
+
+        # 方法: 使用llvm-ar创建一个空库（如果可用）
+        llvm_ar = install_dir / "bin" / "llvm-ar.exe"
+        if llvm_ar.exists():
+            # 创建一个临时空对象文件
+            temp_obj = lib_dir / "_dummy_xml2.o"
+            # 使用clang创建空对象文件
+            clang = install_dir / "bin" / "clang.exe"
+            if clang.exists():
+                # 创建一个空的C文件并编译
+                temp_c = lib_dir / "_dummy_xml2.c"
+                temp_c.write_text("// dummy\n")
+                subprocess.run(
+                    [str(clang), "-c", str(temp_c), "-o", str(temp_obj)],
+                    capture_output=True,
+                    check=False
+                )
+                if temp_obj.exists():
+                    # 使用llvm-ar创建静态库
+                    subprocess.run(
+                        [str(llvm_ar), "rcs", str(xml2_lib), str(temp_obj)],
+                        capture_output=True,
+                        check=False
+                    )
+                    temp_obj.unlink(missing_ok=True)
+                    temp_c.unlink(missing_ok=True)
+
+        # 如果上面的方法失败，创建一个最小占位符文件
+        if not xml2_lib.exists():
+            # 创建一个空的.lib文件头（Windows静态库签名）
+            # 这是最小的占位符，链接器会接受但不会提供任何符号
+            xml2_lib.write_bytes(b"!<arch>\n")
+
+        if xml2_lib.exists():
+            log_success(f"已创建xml2s.lib占位符: {xml2_lib}")
+        else:
+            log_error("创建xml2s.lib失败")
+
+    except Exception as e:
+        log_error(f"创建xml2s.lib时出错: {e}")
 
 
 def main() -> int:
