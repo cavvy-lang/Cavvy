@@ -221,7 +221,7 @@ pub fn remap_clang_error(error_msg: &str, source_map: &IRSourceMap, _ir_file_nam
 /// 添加Clang错误映射的说明信息
 pub fn add_clang_error_notice(remapped_error: &str) -> String {
     format!(
-        "{}\n\n  请注意，当 Clang 执行失败时，其映射代码输出并非 Cavvy 错误报告系统的组成部分，且不属于 Cavvy 错误。此项功能仅用于协助您排查相关问题。\n  如果您遇到 Clang 执行失败的报错信息，请立即通过提交 Issue 的方式告知我们，以便我们及时修复该问题。\n  Issue 提交地址：https://github.com/cavvy-lang/cavvy/issues",
+        "{}\n\n  请注意，当 LLVM 编译执行失败时，其映射代码输出并非 Cavvy 错误报告系统的组成部分，且不属于 Cavvy 错误。此项功能仅用于协助您排查相关问题。\n  如果您遇到 LLVM编译执行失败的报错信息，请立即通过提交 Issue 的方式告知我们，以便我们及时修复该问题。\n  Issue 提交地址：https://github.com/cavvy-lang/cavvy/issues",
         remapped_error
     )
 }
@@ -1224,6 +1224,10 @@ fn compile_with_llc_lld(
         llc_cmd.arg("-mtriple=x86_64-apple-darwin");
     } else if is_wasm {
         llc_cmd.arg("-mtriple=wasm32-unknown-unknown");
+    } else {
+        // Linux/Unix: 必须显式设置目标三元组以覆盖 IR 文件中嵌入的目标
+        // 否则 llc 会使用 IR 中的目标（可能是 Windows），导致目标文件格式不匹配
+        llc_cmd.arg("-mtriple=x86_64-unknown-linux-gnu");
     }
 
     // CPU 指令集
@@ -1374,8 +1378,8 @@ fn compile_with_llc_lld(
         }
     } else {
         // Linux/Unix: 使用 GNU ld 风格参数
+        lld_cmd.arg("-flavor").arg("gnu");
         lld_cmd.arg("-o").arg(output_file);
-        lld_cmd.arg(&obj_file);
 
         // 添加标准库搜索路径 - ld.lld 不会自动搜索系统库路径
         // 时间复杂度: O(1) - 固定数量的路径
@@ -1399,9 +1403,56 @@ fn compile_with_llc_lld(
             lld_cmd.arg("-L").arg(path);
         }
 
+        // Cavvy 运行时库路径
+        let cayrt_path = exe_dir.join("caylibs/bin");
+        if cayrt_path.exists() {
+            lld_cmd.arg("-L").arg(&cayrt_path);
+        }
+
+        // 添加 C 运行时启动文件 - 这些文件提供 _start 入口点
+        // _start 负责初始化栈、调用 main、处理程序退出
+        // 没有这些文件，入口点会是 0x0，导致段错误
+        let mut crt_files_added = false;
+        for lib_path in &default_lib_paths {
+            if std::path::Path::new(lib_path).exists() {
+                // 尝试找到 Scrt1.o (PIE) 或 crt1.o (非 PIE)
+                let scrt1 = std::path::Path::new(lib_path).join("Scrt1.o");
+                let crt1 = std::path::Path::new(lib_path).join("crt1.o");
+                let crti = std::path::Path::new(lib_path).join("crti.o");
+                let crtn = std::path::Path::new(lib_path).join("crtn.o");
+
+                if scrt1.exists() {
+                    lld_cmd.arg(&scrt1);
+                    crt_files_added = true;
+                } else if crt1.exists() && !crt_files_added {
+                    lld_cmd.arg(&crt1);
+                    crt_files_added = true;
+                }
+
+                if crti.exists() {
+                    lld_cmd.arg(&crti);
+                }
+                if crtn.exists() {
+                    lld_cmd.arg(&crtn);
+                }
+            }
+        }
+
+        // 输入目标文件（放在启动文件之后）
+        lld_cmd.arg(&obj_file);
+
+        // 根据目标平台选择正确的 Cavvy 运行时库
+        let cayrt_lib_name = if options.target.contains("linux") {
+            "cayrt-linux"
+        } else {
+            "cayrt"
+        };
+        lld_cmd.arg(format!("-l{}", cayrt_lib_name));
+
         // 添加启动文件和默认库
         // 注意: ld.lld 需要显式链接这些库，不像 GNU ld 那样自动处理
         lld_cmd.arg("-lc");
+        lld_cmd.arg("-lm");
         lld_cmd.arg("-ldl");
         lld_cmd.arg("-lpthread");
 
