@@ -181,10 +181,10 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_err_access1.cay", code).unwrap();
-    let result = std::process::Command::new("./target/release/cayc.exe")
+    let result = std::process::Command::new(if cfg!(target_os = "windows") { "./target/release/cayc.exe" } else { "./target/release/cayc" })
         .args(&[
             "examples/test_err_access1.cay",
-            "examples/test_err_access1.exe",
+            if cfg!(target_os = "windows") { "examples/test_err_access1.exe" } else { "examples/test_err_access1" },
         ])
         .output()
         .expect("Failed to execute cayc");
@@ -199,7 +199,7 @@ public class Test {
         stderr
     );
     let _ = std::fs::remove_file("examples/test_err_access1.cay");
-    let _ = std::fs::remove_file("examples/test_err_access1.exe");
+    let _ = std::fs::remove_file(if cfg!(target_os = "windows") { "examples/test_err_access1.exe" } else { "examples/test_err_access1" });
 }
 
 // === 返回类型错误 ===

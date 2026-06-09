@@ -8,7 +8,7 @@ use std::process::Command;
 /// 获取当前平台的可执行文件扩展名
 fn get_exe_extension() -> &'static str {
     if cfg!(target_os = "windows") {
-        ".exe"
+        if cfg!(target_os = "windows") { ".exe" } else { "" }
     } else {
         ""
     }

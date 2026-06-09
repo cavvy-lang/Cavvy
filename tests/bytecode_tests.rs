@@ -7,6 +7,34 @@ use std::process::Command;
 
 mod common;
 
+
+/// 获取当前平台的 cay-bcgen 可执行文件路径
+fn get_cay_bcgen_path() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "./target/release/cay-bcgen.exe"
+    } else {
+        "./target/release/cay-bcgen"
+    }
+}
+
+/// 获取当前平台的 cay-run 可执行文件路径
+fn get_cay_run_path() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "./target/release/cay-run.exe"
+    } else {
+        "./target/release/cay-run"
+    }
+}
+
+/// 获取当前平台的可执行文件扩展名
+fn get_exe_extension() -> &'static str {
+    if cfg!(target_os = "windows") {
+        ".exe"
+    } else {
+        ""
+    }
+}
+
 /// 测试 cay-bcgen 生成字节码文件
 #[test]
 fn test_bcgen_generate_bytecode() {
@@ -30,7 +58,7 @@ fn test_bcgen_generate_bytecode() {
     }
 
     // 使用 cay-bcgen 生成字节码
-    let output = Command::new("./target/release/cay-bcgen.exe")
+    let output = Command::new(get_cay_bcgen_path())
         .args(&[source_path, "-o", bc_path])
         .output()
         .expect("Failed to execute cay-bcgen");
@@ -77,7 +105,7 @@ fn test_bcgen_obfuscated_bytecode() {
     .unwrap();
 
     // 使用 cay-bcgen 生成混淆的字节码
-    let output = Command::new("./target/release/cay-bcgen.exe")
+    let output = Command::new(get_cay_bcgen_path())
         .args(&[
             source_path,
             "-o",
@@ -127,7 +155,7 @@ fn test_cay_run_bytecode() {
     .unwrap();
 
     // 首先生成字节码
-    let output = Command::new("./target/release/cay-bcgen.exe")
+    let output = Command::new(get_cay_bcgen_path())
         .args(&[source_path, "-o", bc_path])
         .output()
         .expect("Failed to execute cay-bcgen");
@@ -135,12 +163,12 @@ fn test_cay_run_bytecode() {
     assert!(output.status.success(), "Failed to generate bytecode");
 
     // 使用 cay-run 运行字节码
-    let output = Command::new("./target/release/cay-run.exe")
+    let output = Command::new(get_cay_run_path())
         .args(&[
             bc_path,
             "--no-run",
             "-o",
-            "examples/bytecode/run_bc_test.exe",
+            &format!("examples/bytecode/run_bc_test{}", get_exe_extension()),
         ])
         .output()
         .expect("Failed to execute cay-run");
@@ -154,14 +182,14 @@ fn test_cay_run_bytecode() {
     // 清理
     let _ = fs::remove_file(bc_path);
     let _ = fs::remove_file(source_path);
-    let _ = fs::remove_file("examples/bytecode/run_bc_test.exe");
+    let _ = fs::remove_file(&format!("examples/bytecode/run_bc_test{}", get_exe_extension()));
 }
 
 /// 测试 cay-run 运行 IR 文件
 #[test]
 fn test_cay_run_ir() {
     let ir_path = "examples/bytecode/test_ir.ll";
-    let exe_path = "examples/bytecode/test_ir.exe";
+    let exe_path = &format!("examples/bytecode/test_ir{}", get_exe_extension());
 
     // 创建测试 IR 文件
     fs::create_dir_all("examples/bytecode").unwrap();
@@ -185,7 +213,7 @@ entry:
     .unwrap();
 
     // 使用 cay-run 运行 IR 文件
-    let output = Command::new("./target/release/cay-run.exe")
+    let output = Command::new(get_cay_run_path())
         .args(&[ir_path, "--no-run", "-o", exe_path])
         .output()
         .expect("Failed to execute cay-run");
@@ -219,7 +247,7 @@ entry:
 #[test]
 fn test_cay_run_source_with_obfuscation() {
     let source_path = "examples/bytecode/obfuscate_run_test.cay";
-    let exe_path = "examples/bytecode/obfuscate_run_test.exe";
+    let exe_path = &format!("examples/bytecode/obfuscate_run_test{}", get_exe_extension());
 
     // 创建测试源文件
     fs::create_dir_all("examples/bytecode").unwrap();
@@ -235,7 +263,7 @@ fn test_cay_run_source_with_obfuscation() {
     .unwrap();
 
     // 使用 cay-run 带混淆运行
-    let output = Command::new("./target/release/cay-run.exe")
+    let output = Command::new(get_cay_run_path())
         .args(&[source_path, "--no-run", "--obfuscate", "-o", exe_path])
         .output()
         .expect("Failed to execute cay-run");
@@ -513,7 +541,7 @@ fn test_constant_pool() {
 /// 测试 cay-bcgen 帮助信息
 #[test]
 fn test_bcgen_help() {
-    let output = Command::new("./target/release/cay-bcgen.exe")
+    let output = Command::new(get_cay_bcgen_path())
         .args(&["--help"])
         .output()
         .expect("Failed to execute cay-bcgen --help");
@@ -538,7 +566,7 @@ fn test_bcgen_help() {
 /// 测试 cay-run 帮助信息
 #[test]
 fn test_cay_run_help() {
-    let output = Command::new("./target/release/cay-run.exe")
+    let output = Command::new(get_cay_run_path())
         .args(&["--help"])
         .output()
         .expect("Failed to execute cay-run --help");
@@ -560,7 +588,7 @@ fn test_cay_run_help() {
 /// 测试 cay-bcgen 版本信息
 #[test]
 fn test_bcgen_version() {
-    let output = Command::new("./target/release/cay-bcgen.exe")
+    let output = Command::new(get_cay_bcgen_path())
         .args(&["--version"])
         .output()
         .expect("Failed to execute cay-bcgen --version");
@@ -593,7 +621,7 @@ fn test_bcgen_version() {
 /// 测试 cay-run 版本信息
 #[test]
 fn test_cay_run_version() {
-    let output = Command::new("./target/release/cay-run.exe")
+    let output = Command::new(get_cay_run_path())
         .args(&["--version"])
         .output()
         .expect("Failed to execute cay-run --version");
