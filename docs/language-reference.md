@@ -587,7 +587,7 @@ public class Main {
 详见[预处理器文档](preprocessor.md)。
 
 ```cay
-#include <file.cay>
+#include <File.cay>
 #define MACRO value
 #ifdef CONDITION
 #endif

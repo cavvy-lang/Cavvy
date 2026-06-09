@@ -652,7 +652,9 @@ impl Preprocessor {
             }
 
             // 2. 可执行文件所在目录下的 caylibs
+            // 使用 canonicalize 解析符号链接（Linux上current_exe可能返回/proc/self/exe）
             if let Ok(exe_path) = std::env::current_exe() {
+                let exe_path = exe_path.canonicalize().unwrap_or(exe_path);
                 if let Some(exe_dir) = exe_path.parent() {
                     let exe_caylibs = exe_dir.join("caylibs").join(path);
                     if exe_caylibs.exists() {

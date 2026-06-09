@@ -101,7 +101,9 @@ fn get_system_include_paths() -> Vec<PathBuf> {
     let mut paths = Vec::new();
 
     // 1. 从可执行文件所在目录查找 caylibs
+    // 使用 canonicalize 解析符号链接（Linux上current_exe可能返回/proc/self/exe）
     if let Ok(exe_path) = env::current_exe() {
+        let exe_path = exe_path.canonicalize().unwrap_or(exe_path);
         if let Some(exe_dir) = exe_path.parent() {
             let exe_caylibs = exe_dir.join("caylibs");
             if exe_caylibs.exists() {
