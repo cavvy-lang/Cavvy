@@ -11,18 +11,19 @@
 # 语言
 
 - [语言总览](language-overview.md)
-- [语法参考](language-reference.md)
+- [语言参考手册](language-reference.md)
 - [预处理器](preprocessor.md)
 - [FFI](ffi.md)
 
 # 项目与库
 
-- [标准库](stdlib.md)
 - [Cavly 包管理器](cavly.md)
 
 # 编译器
 
 - [编译器架构](compiler-architecture.md)
-- [测试与文档示例](testing.md)
+- [CayBC 字节码格式](bytecode-format.md)
+- [测试指南](testing.md)
 - [实现状态](current-status.md)
+- [LSP 协议](lsp-protocol.md)
 - [维护文档](maintaining-docs.md)

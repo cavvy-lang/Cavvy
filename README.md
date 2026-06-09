@@ -57,17 +57,16 @@ cargo build --release
 创建 `hello.cay`:
 
 ```cay
-public class Hello {
-    public static void main() {
-        println("Hello, Cavvy!");
-    }
+public int main() {
+    println("Hello, Cavvy!");
+    return 0;
 }
 ```
 
 编译并运行:
 
 ```powershell
-.\target\release\cayc.exe hello.cay hello.exe
+.\target\release\cayc.exe hello.cay
 .\hello.exe
 # 输出: Hello, Cavvy!
 ```
@@ -229,14 +228,14 @@ public class DataDemo {
 ### FFI 示例
 
 ```cay
-extern "C" {
-    fn strlen(char* s) -> int;
-    fn printf(char* fmt, ...) -> int;
+extern {
+    int strlen(c_string s);
+    int printf(c_string fmt, ...);
 }
 
 public class FFIExample {
     public static void main() {
-        char* msg = "Hello from Cavvy!";
+        c_string msg = "Hello from Cavvy!";
         int len = strlen(msg);
         printf("Length: %d\n", len);
     }
@@ -273,7 +272,6 @@ ir2exe (LLVM/MinGW 本地可执行文件)
 - [工具链与构建](docs/toolchain.md) - 构建和测试指南
 - [编译器架构](docs/compiler-architecture.md) - 内部架构说明
 - [语言参考](docs/language-reference.md) - 完整语言规范
-- [标准库](docs/stdlib.md) - 标准库文档
 - [FFI 指南](docs/ffi.md) - 外部函数接口
 - [预处理器](docs/preprocessor.md) - 预处理器文档
 
