@@ -3,21 +3,40 @@
 use std::path::Path;
 use std::process::Command;
 
+mod common;
+
+/// 获取当前平台的可执行文件扩展名
+fn get_exe_extension() -> &'static str {
+    if cfg!(target_os = "windows") {
+        ".exe"
+    } else {
+        ""
+    }
+}
+
+/// 获取 release 二进制文件路径
+fn release_bin(name: &str) -> std::path::PathBuf {
+    let mut path = std::path::PathBuf::from("./target/release");
+    path.push(format!("{}{}", name, get_exe_extension()));
+    path
+}
+
 #[test]
 fn test_inline_ir_parsing() {
+    let _lock = common::TEST_LOCK.lock().unwrap();
     let cay_path = Path::new("examples/test_inline_ir_basic.cay");
 
-    // 使用 cay-check 检查语法
-    let output = Command::new("cargo")
-        .args([
-            "run",
-            "--release",
-            "--bin",
-            "cay-check",
-            "--",
-            "examples/test_inline_ir_basic.cay",
-        ])
-        .current_dir("E:\\spj\\EOL")
+    // 使用已编译的 cay-check 二进制文件检查语法
+    // 避免使用 cargo run 以防止触发 llvm-sys 重新编译
+    let cay_check_bin = release_bin("cay-check");
+    assert!(
+        cay_check_bin.exists(),
+        "cay-check binary not found at {:?}",
+        cay_check_bin
+    );
+
+    let output = Command::new(&cay_check_bin)
+        .args(["examples/test_inline_ir_basic.cay"])
         .output()
         .expect("Failed to run cay-check");
 
@@ -35,19 +54,23 @@ fn test_inline_ir_parsing() {
 
 #[test]
 fn test_inline_ir_generation() {
-    // 使用 cay-ir 生成IR
-    let output = Command::new("cargo")
+    let _lock = common::TEST_LOCK.lock().unwrap();
+
+    // 使用已编译的 cay-ir 二进制文件生成IR
+    // 避免使用 cargo run 以防止触发 llvm-sys 重新编译
+    let cay_ir_bin = release_bin("cay-ir");
+    assert!(
+        cay_ir_bin.exists(),
+        "cay-ir binary not found at {:?}",
+        cay_ir_bin
+    );
+
+    let output = Command::new(&cay_ir_bin)
         .args([
-            "run",
-            "--release",
-            "--bin",
-            "cay-ir",
-            "--",
             "examples/test_inline_ir_basic.cay",
             "-o",
             "examples/test_inline_ir_debug.ll",
         ])
-        .current_dir("E:\\spj\\EOL")
         .output()
         .expect("Failed to run cay-ir");
 

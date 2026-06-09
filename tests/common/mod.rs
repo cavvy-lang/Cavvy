@@ -32,7 +32,7 @@ fn get_exe_extension() -> &'static str {
 }
 
 /// 全局测试锁，确保测试串行执行避免文件冲突
-static TEST_LOCK: Mutex<()> = Mutex::new(());
+pub static TEST_LOCK: Mutex<()> = Mutex::new(());
 
 /// 编译并运行单个 EOL 文件，返回输出结果
 ///
