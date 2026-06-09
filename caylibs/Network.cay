@@ -478,9 +478,9 @@ public class TcpSocket {
     }
     
     /**
-     * 包级私有构造函数，用于TcpServer.accept()
+     * 内部构造函数，用于TcpServer.accept()
      */
-    TcpSocket(c_long handle, bool connected) {
+    public TcpSocket(c_long handle, bool connected) {
         this.handle = handle;
         this.connected = connected;
     }
@@ -1315,7 +1315,7 @@ public class HttpClient {
         String requestStr = request.build();
 
         /* 发送请求 */
-        if (!socket.send(requestStr)) {
+        if (socket.send(requestStr) < 0) {
             socket.close();
             return "";
         }

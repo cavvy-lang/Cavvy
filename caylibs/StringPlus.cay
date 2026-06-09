@@ -149,7 +149,7 @@ public class StringPlus {
         int i = 0;
         while (i < argCount) {
             // 构建占位符 {i}
-            String placeholder = "{" + i + "}";
+            String placeholder = "{" + String.valueOf(i) + "}";
             String value = args[i];
             result = result.replace(placeholder, value);
             i = i + 1;

@@ -524,8 +524,9 @@ public class HttpParams {
             } else {
                 /* 百分号编码 */
                 sb.append("%");
-                sb.append(this.toHex((c >> 4) & 0xF));
-                sb.append(this.toHex(c & 0xF));
+                int ci = (int)c;
+                sb.append(this.toHex((ci >> 4) & 0xF));
+                sb.append(this.toHex(ci & 0xF));
             }
             i = i + 1;
         }
