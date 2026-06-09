@@ -1463,6 +1463,10 @@ impl TypeRegistry {
     /// 根据简单名查找命名空间限定名（如 "HttpHeaders" → "http::HttpHeaders"）
     /// 优先匹配当前命名空间
     pub fn find_qualified_class(&self, simple_name: &str) -> Option<String> {
+        // 首先检查 using 别名
+        if let Some(qualified) = self.namespace_aliases.get(simple_name) {
+            return Some(qualified.clone());
+        }
         // 如果有当前命名空间，优先检查
         if !self.current_namespace.is_empty() {
             let preferred = format!("{}::{}", self.current_namespace.join("::"), simple_name);
@@ -1470,12 +1474,8 @@ impl TypeRegistry {
                 return Some(preferred);
             }
         }
-        // 回退：遍历查找
-        for qname in self.classes.keys() {
-            if qname.ends_with(&format!("::{}", simple_name)) {
-                return Some(qname.clone());
-            }
-        }
+        // 注意：不在全局回退查找其他命名空间中的类
+        // 必须通过 using 声明或限定名显式引用
         None
     }
 

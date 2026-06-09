@@ -1021,6 +1021,14 @@ impl IRGenerator {
         if let Some(ns) = self.class_namespaces.get(base_class_name) {
             return ns.clone();
         }
+        // 检查 using 别名
+        if let Some(ref registry) = self.type_registry {
+            if let Some(qualified) = registry.namespace_aliases.get(base_class_name) {
+                if let Some(ns) = self.class_namespaces.get(qualified) {
+                    return ns.clone();
+                }
+            }
+        }
         // 回退：在当前命名空间上下文中查找
         if let Some(ref registry) = self.type_registry {
             if !registry.current_namespace.is_empty() {
@@ -1034,12 +1042,8 @@ impl IRGenerator {
                 }
             }
         }
-        // 再回退：遍历查找（通过 :: 后缀匹配简单名）
-        for (qname, ns) in &self.class_namespaces {
-            if qname.ends_with(&format!("::{}", base_class_name)) {
-                return ns.clone();
-            }
-        }
+        // 注意：不在全局回退查找其他命名空间中的类
+        // 必须通过 using 声明或限定名显式引用
         Vec::new()
     }
 
