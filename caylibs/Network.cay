@@ -533,11 +533,12 @@ public class TcpSocket {
         
         c_void* buf = (c_void*)data.c_str();
         c_int len = data.length();
-        
+
         #ifdef _WIN32
         c_int result = send(this.handle, buf, len, 0);
         #else
-        c_int result = (c_int)send((c_int)this.handle, buf, len, 0);
+        long len_long = len;
+        c_int result = (c_int)send((c_int)this.handle, buf, len_long, 0);
         #endif
         
         return result;
@@ -852,7 +853,11 @@ public class TcpServer {
         int[] timeout_val = new int[2];
         timeout_val[0] = tv_sec;
         timeout_val[1] = tv_usec;
-        setsockopt((c_int)this.handle, SOL_SOCKET, SO_RCVTIMEO, (c_void*)timeout_val, 8);
+        long timeout_ptr;
+        __ir {
+            store i64 %timeout_val, i64* %timeout_ptr
+        }
+        setsockopt((c_int)this.handle, SOL_SOCKET, SO_RCVTIMEO, (c_void*)timeout_ptr, 8);
         #endif
     }
     
@@ -979,11 +984,12 @@ public class UdpSocket {
         SocketAddr addr = new SocketAddr().fromString(ip, port);
         c_void* buf = (c_void*)data.c_str();
         c_int len = data.length();
-        
+
         #ifdef _WIN32
         c_int result = sendto(this.handle, buf, len, 0, (c_void*)&addr, 16);
         #else
-        c_int result = (c_int)sendto((c_int)this.handle, buf, len, 0, (c_void*)&addr, 16);
+        long len_long = len;
+        c_int result = (c_int)sendto((c_int)this.handle, buf, len_long, 0, (c_void*)&addr, 16);
         #endif
         
         return result;
