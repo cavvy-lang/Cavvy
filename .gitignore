@@ -20,6 +20,7 @@ temp_*
 !/examples/errors/*.eol
 !/examples/*.cay
 !/examples/errors/*.cay
+!/examples/**/*.cay
 !/caylibs/*.cay
 !/caylibs/**/*.cay
 

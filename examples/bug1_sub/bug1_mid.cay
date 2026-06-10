@@ -1,0 +1,3 @@
+// Intermediate include file for Bug 1 regression test
+// Includes the helper via a relative path from the subdirectory
+#include "../bug1_helper.cay"
