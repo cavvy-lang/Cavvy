@@ -116,7 +116,7 @@ jobs:
         
         # 确定构建目录（优先 release）
         $buildDir = "target/release"
-        if (-not (Test-Path "$buildDir/eolc.exe")) {
+        if (-not (Test-Path "$buildDir/cayc.exe")) {
           Write-Host "Error: Release build not found"
           exit 1
         }

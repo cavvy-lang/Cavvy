@@ -5,6 +5,18 @@
 use std::fs;
 use std::process::Command;
 
+/// 获取当前平台的 cayc 可执行文件路径
+fn get_cayc_path() -> String {
+    if let Ok(path) = std::env::var("CARGO_BIN_EXE_cayc") {
+        return path;
+    }
+    if cfg!(target_os = "windows") {
+        "./target/release/cayc.exe".to_string()
+    } else {
+        "./target/release/cayc".to_string()
+    }
+}
+
 /// 获取当前平台的可执行文件扩展名
 fn get_exe_extension() -> &'static str {
     if cfg!(target_os = "windows") {
@@ -311,18 +323,12 @@ fn test_source_map_generation() {
     let ir_file = temp_dir.join("test_output.ll");
     let exe_ext = get_exe_extension();
     let output_exe = temp_dir.join(format!("test_output{}", exe_ext));
-    let output = Command::new("cargo")
+    let output = Command::new(get_cayc_path())
         .args(&[
-            "run",
-            "--release",
-            "--bin",
-            "cayc",
-            "--",
-            source_file.to_str().unwrap(),
+                        source_file.to_str().unwrap(),
             output_exe.to_str().unwrap(),
             "--keep-ir",
         ])
-        .current_dir(env!("CARGO_MANIFEST_DIR"))
         .output()
         .expect("Failed to run compiler");
 
@@ -384,18 +390,12 @@ fn test_source_map_accuracy() {
     let ir_file = temp_dir.join("test_output.ll");
     let exe_ext = get_exe_extension();
     let output_exe = temp_dir.join(format!("test_output{}", exe_ext));
-    let output = Command::new("cargo")
+    let output = Command::new(get_cayc_path())
         .args(&[
-            "run",
-            "--release",
-            "--bin",
-            "cayc",
-            "--",
-            source_file.to_str().unwrap(),
+                        source_file.to_str().unwrap(),
             output_exe.to_str().unwrap(),
             "--keep-ir",
         ])
-        .current_dir(env!("CARGO_MANIFEST_DIR"))
         .output()
         .expect("Failed to run compiler");
 
@@ -493,18 +493,12 @@ public class ErrorTest {
     // 尝试编译 - 应该失败
     let exe_ext = get_exe_extension();
     let output_exe = temp_dir.join(format!("test_output{}", exe_ext));
-    let output = Command::new("cargo")
+    let output = Command::new(get_cayc_path())
         .args(&[
-            "run",
-            "--release",
-            "--bin",
-            "cayc",
-            "--",
-            source_file.to_str().unwrap(),
+                        source_file.to_str().unwrap(),
             output_exe.to_str().unwrap(),
             "--keep-ir",
         ])
-        .current_dir(env!("CARGO_MANIFEST_DIR"))
         .output()
         .expect("Failed to run compiler");
 
@@ -565,18 +559,12 @@ fn test_source_map_comment_format() {
     let ir_file = temp_dir.join("test_output.ll");
     let exe_ext = get_exe_extension();
     let output_exe = temp_dir.join(format!("test_output{}", exe_ext));
-    let output = Command::new("cargo")
+    let output = Command::new(get_cayc_path())
         .args(&[
-            "run",
-            "--release",
-            "--bin",
-            "cayc",
-            "--",
-            source_file.to_str().unwrap(),
+                        source_file.to_str().unwrap(),
             output_exe.to_str().unwrap(),
             "--keep-ir",
         ])
-        .current_dir(env!("CARGO_MANIFEST_DIR"))
         .output()
         .expect("Failed to run compiler");
 
