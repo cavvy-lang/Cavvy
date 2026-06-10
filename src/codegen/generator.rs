@@ -96,10 +96,10 @@ impl IRGenerator {
         // 设置源文件路径
         self.source_file = source_file.to_string();
 
-        self.emit_header();
-
-        // 设置 extern 声明并构建索引
+        // 先设置 extern 声明，这样 emit_header 中的运行时声明可以检查用户是否已声明
         self.set_extern_declarations(program.extern_declarations.clone());
+
+        self.emit_header();
 
         // 设置顶层函数列表
         self.top_level_functions = program.top_level_functions.clone();

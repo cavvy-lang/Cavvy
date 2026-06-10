@@ -200,61 +200,155 @@ impl IRGenerator {
     }
 
     /// 声明所有运行时函数（来自 libcayrt.a）
+    /// 如果用户已通过 extern 声明了同名函数，则跳过内置声明（用户声明优先）
     fn emit_runtime_declarations(&mut self) {
+        // 辅助函数：检查函数是否已被用户通过 extern 声明
+        // 如果用户已声明，返回 true（跳过内置声明）
+        let should_skip = |generator: &IRGenerator, func_name: &str| -> bool {
+            // 检查用户是否声明了此函数（通过原名或别名）
+            generator.is_extern_function(func_name)
+        };
+
         // 字符串操作
-        self.emit_raw("declare i8* @__cay_string_concat(i8*, i8*)");
-        self.emit_raw("declare i32 @__cay_string_length(i8*)");
-        self.emit_raw("declare i8* @__cay_string_substring(i8*, i32, i32)");
-        self.emit_raw("declare i32 @__cay_string_indexof(i8*, i8*)");
-        self.emit_raw("declare i32 @__cay_string_indexof_from(i8*, i8*, i32)");
-        self.emit_raw("declare i32 @__cay_string_lastindexof(i8*, i8*)");
-        self.emit_raw("declare i1 @__cay_string_startswith(i8*, i8*)");
-        self.emit_raw("declare i1 @__cay_string_endswith(i8*, i8*)");
-        self.emit_raw("declare i8 @__cay_string_charat(i8*, i32)");
-        self.emit_raw("declare i8* @__cay_string_replace(i8*, i8*, i8*)");
-        self.emit_raw("declare i1 @__cay_string_isempty(i8*)");
-        self.emit_raw("declare i1 @__cay_string_equals(i8*, i8*)");
-        self.emit_raw("declare i1 @__cay_string_equals_ignorecase(i8*, i8*)");
-        self.emit_raw("declare i8* @__cay_string_trim(i8*)");
-        self.emit_raw("declare i8* @__cay_string_to_lower(i8*)");
-        self.emit_raw("declare i8* @__cay_string_to_upper(i8*)");
-        self.emit_raw("declare i1 @__cay_string_contains(i8*, i8*)");
-        self.emit_raw("declare i32 @__cay_string_compareto(i8*, i8*)");
+        if !should_skip(self, "__cay_string_concat") {
+            self.emit_raw("declare i8* @__cay_string_concat(i8*, i8*)");
+        }
+        if !should_skip(self, "__cay_string_length") {
+            self.emit_raw("declare i32 @__cay_string_length(i8*)");
+        }
+        if !should_skip(self, "__cay_string_substring") {
+            self.emit_raw("declare i8* @__cay_string_substring(i8*, i32, i32)");
+        }
+        if !should_skip(self, "__cay_string_indexof") {
+            self.emit_raw("declare i32 @__cay_string_indexof(i8*, i8*)");
+        }
+        if !should_skip(self, "__cay_string_indexof_from") {
+            self.emit_raw("declare i32 @__cay_string_indexof_from(i8*, i8*, i32)");
+        }
+        if !should_skip(self, "__cay_string_lastindexof") {
+            self.emit_raw("declare i32 @__cay_string_lastindexof(i8*, i8*)");
+        }
+        if !should_skip(self, "__cay_string_startswith") {
+            self.emit_raw("declare i1 @__cay_string_startswith(i8*, i8*)");
+        }
+        if !should_skip(self, "__cay_string_endswith") {
+            self.emit_raw("declare i1 @__cay_string_endswith(i8*, i8*)");
+        }
+        if !should_skip(self, "__cay_string_charat") {
+            self.emit_raw("declare i8 @__cay_string_charat(i8*, i32)");
+        }
+        if !should_skip(self, "__cay_string_replace") {
+            self.emit_raw("declare i8* @__cay_string_replace(i8*, i8*, i8*)");
+        }
+        if !should_skip(self, "__cay_string_isempty") {
+            self.emit_raw("declare i1 @__cay_string_isempty(i8*)");
+        }
+        if !should_skip(self, "__cay_string_equals") {
+            self.emit_raw("declare i1 @__cay_string_equals(i8*, i8*)");
+        }
+        if !should_skip(self, "__cay_string_equals_ignorecase") {
+            self.emit_raw("declare i1 @__cay_string_equals_ignorecase(i8*, i8*)");
+        }
+        if !should_skip(self, "__cay_string_trim") {
+            self.emit_raw("declare i8* @__cay_string_trim(i8*)");
+        }
+        if !should_skip(self, "__cay_string_to_lower") {
+            self.emit_raw("declare i8* @__cay_string_to_lower(i8*)");
+        }
+        if !should_skip(self, "__cay_string_to_upper") {
+            self.emit_raw("declare i8* @__cay_string_to_upper(i8*)");
+        }
+        if !should_skip(self, "__cay_string_contains") {
+            self.emit_raw("declare i1 @__cay_string_contains(i8*, i8*)");
+        }
+        if !should_skip(self, "__cay_string_compareto") {
+            self.emit_raw("declare i32 @__cay_string_compareto(i8*, i8*)");
+        }
 
         // 类型转换
-        self.emit_raw("declare i8* @__cay_int_to_string(i32)");
-        self.emit_raw("declare i8* @__cay_long_to_string(i64)");
-        self.emit_raw("declare i8* @__cay_float_to_string(float)");
-        self.emit_raw("declare i8* @__cay_double_to_string(double)");
-        self.emit_raw("declare i8* @__cay_bool_to_string(i1)");
-        self.emit_raw("declare i8* @__cay_char_to_string(i8)");
+        if !should_skip(self, "__cay_int_to_string") {
+            self.emit_raw("declare i8* @__cay_int_to_string(i32)");
+        }
+        if !should_skip(self, "__cay_long_to_string") {
+            self.emit_raw("declare i8* @__cay_long_to_string(i64)");
+        }
+        if !should_skip(self, "__cay_float_to_string") {
+            self.emit_raw("declare i8* @__cay_float_to_string(float)");
+        }
+        if !should_skip(self, "__cay_double_to_string") {
+            self.emit_raw("declare i8* @__cay_double_to_string(double)");
+        }
+        if !should_skip(self, "__cay_bool_to_string") {
+            self.emit_raw("declare i8* @__cay_bool_to_string(i1)");
+        }
+        if !should_skip(self, "__cay_char_to_string") {
+            self.emit_raw("declare i8* @__cay_char_to_string(i8)");
+        }
 
         // 指针/缓冲区操作
-        self.emit_raw("declare i64 @__cay_read_ptr(i64)");
-        self.emit_raw("declare i8* @__cay_ptr_to_string(i64)");
-        self.emit_raw("declare void @__cay_write_ptr(i64, i64)");
-        self.emit_raw("declare void @__cay_write_int(i64, i32)");
-        self.emit_raw("declare i32 @__cay_read_int(i64)");
-        self.emit_raw("declare void @__cay_write_byte(i64, i32)");
-        self.emit_raw("declare i8* @__cay_buffer_to_string(i64, i32)");
+        if !should_skip(self, "__cay_read_ptr") {
+            self.emit_raw("declare i64 @__cay_read_ptr(i64)");
+        }
+        if !should_skip(self, "__cay_ptr_to_string") {
+            self.emit_raw("declare i8* @__cay_ptr_to_string(i64)");
+        }
+        if !should_skip(self, "__cay_write_ptr") {
+            self.emit_raw("declare void @__cay_write_ptr(i64, i64)");
+        }
+        if !should_skip(self, "__cay_write_int") {
+            self.emit_raw("declare void @__cay_write_int(i64, i32)");
+        }
+        if !should_skip(self, "__cay_read_int") {
+            self.emit_raw("declare i32 @__cay_read_int(i64)");
+        }
+        if !should_skip(self, "__cay_write_byte") {
+            self.emit_raw("declare void @__cay_write_byte(i64, i32)");
+        }
+        if !should_skip(self, "__cay_buffer_to_string") {
+            self.emit_raw("declare i8* @__cay_buffer_to_string(i64, i32)");
+        }
 
         // 内存操作
-        self.emit_raw("declare void @__cay_memset_byte(i64, i32, i32)");
-        self.emit_raw("declare void @__cay_memcpy_byte(i64, i64, i32)");
+        if !should_skip(self, "__cay_memset_byte") {
+            self.emit_raw("declare void @__cay_memset_byte(i64, i32, i32)");
+        }
+        if !should_skip(self, "__cay_memcpy_byte") {
+            self.emit_raw("declare void @__cay_memcpy_byte(i64, i64, i32)");
+        }
 
         // 数组/参数操作
-        self.emit_raw("declare i8** @__cay_create_string_array(i32)");
-        self.emit_raw("declare i8* @__cay_cstr_to_string(i8*)");
-        self.emit_raw("declare void @__cay_array_set_ref(i8**, i32, i8*)");
-        self.emit_raw("declare i8* @__cay_array_get_ref(i8**, i32)");
-        self.emit_raw("declare i32 @__cay_array_length(i8**)");
+        if !should_skip(self, "__cay_create_string_array") {
+            self.emit_raw("declare i8** @__cay_create_string_array(i32)");
+        }
+        if !should_skip(self, "__cay_cstr_to_string") {
+            self.emit_raw("declare i8* @__cay_cstr_to_string(i8*)");
+        }
+        if !should_skip(self, "__cay_array_set_ref") {
+            self.emit_raw("declare void @__cay_array_set_ref(i8**, i32, i8*)");
+        }
+        if !should_skip(self, "__cay_array_get_ref") {
+            self.emit_raw("declare i8* @__cay_array_get_ref(i8**, i32)");
+        }
+        if !should_skip(self, "__cay_array_length") {
+            self.emit_raw("declare i32 @__cay_array_length(i8**)");
+        }
 
         // 分配器
-        self.emit_raw("declare %GlobalAlloc* @__cay_global_alloc_get()");
-        self.emit_raw("declare %ArenaAllocator* @__cay_arena_new(i64)");
-        self.emit_raw("declare i8* @__cay_arena_alloc(%ArenaAllocator*, i64, i64)");
-        self.emit_raw("declare void @__cay_arena_reset(%ArenaAllocator*)");
-        self.emit_raw("declare void @__cay_arena_free(%ArenaAllocator*)");
+        if !should_skip(self, "__cay_global_alloc_get") {
+            self.emit_raw("declare %GlobalAlloc* @__cay_global_alloc_get()");
+        }
+        if !should_skip(self, "__cay_arena_new") {
+            self.emit_raw("declare %ArenaAllocator* @__cay_arena_new(i64)");
+        }
+        if !should_skip(self, "__cay_arena_alloc") {
+            self.emit_raw("declare i8* @__cay_arena_alloc(%ArenaAllocator*, i64, i64)");
+        }
+        if !should_skip(self, "__cay_arena_reset") {
+            self.emit_raw("declare void @__cay_arena_reset(%ArenaAllocator*)");
+        }
+        if !should_skip(self, "__cay_arena_free") {
+            self.emit_raw("declare void @__cay_arena_free(%ArenaAllocator*)");
+        }
 
         self.emit_raw("");
     }
