@@ -1,4 +1,4 @@
-name: EOL Nightly Build
+name: Cavvy Nightly Build
 
 on:
   schedule:
@@ -26,6 +26,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
+        submodules: recursive
 
     - name: Setup Rust toolchain
       uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -77,7 +78,7 @@ jobs:
         }
 
         $date = Get-Date -Format "yyyyMMdd"
-        $baseName = "eol-$tag-build$date"
+        $baseName = "cavvy-$tag-build$date"
 
         "TAG=$tag" >> $env:GITHUB_OUTPUT
         "DATE=$date" >> $env:GITHUB_OUTPUT
@@ -130,17 +131,34 @@ jobs:
         
         # 复制完整版内容
         Copy-Item -Path "lib/*" -Destination "packaging/full/lib/" -Recurse -Force
+        Copy-Item -Path "caylibs/*" -Destination "packaging/full/caylibs/" -Recurse -Force
         Copy-Item -Path "mingw-minimal/*" -Destination "packaging/full/mingw-minimal/" -Recurse -Force
         Copy-Item -Path "llvm-minimal/*" -Destination "packaging/full/llvm-minimal/" -Recurse -Force
-        Copy-Item -Path "$buildDir/eolc.exe" -Destination "packaging/full/" -Force
-        Copy-Item -Path "$buildDir/eolll.exe" -Destination "packaging/full/" -Force
+        Copy-Item -Path "$buildDir/cayc.exe" -Destination "packaging/full/" -Force
+        Copy-Item -Path "$buildDir/cay-ir.exe" -Destination "packaging/full/" -Force
         Copy-Item -Path "$buildDir/ir2exe.exe" -Destination "packaging/full/" -Force
+        Copy-Item -Path "$buildDir/cay-check.exe" -Destination "packaging/full/" -Force
+        Copy-Item -Path "$buildDir/cay-run.exe" -Destination "packaging/full/" -Force
+        Copy-Item -Path "$buildDir/cay-rcpl.exe" -Destination "packaging/full/" -Force
+        Copy-Item -Path "$buildDir/cay-bcgen.exe" -Destination "packaging/full/" -Force
+        Copy-Item -Path "$buildDir/cay-lsp.exe" -Destination "packaging/full/" -Force
+        Copy-Item -Path "$buildDir/cavly.exe" -Destination "packaging/full/" -Force
+        Copy-Item -Path "$buildDir/cay-dt.exe" -Destination "packaging/full/" -Force
+        Copy-Item -Path "$buildDir/cay-dp.exe" -Destination "packaging/full/" -Force
         
-        # 复制核心版内容（仅 exe）
-        Copy-Item -Path "$buildDir/eolc.exe" -Destination "packaging/core/" -Force
-        Copy-Item -Path "$buildDir/eolll.exe" -Destination "packaging/core/" -Force
+        # 复制核心版内容（仅 exe和标准库）
+        Copy-Item -Path "caylibs/*" -Destination "packaging/full/caylibs/" -Recurse -Force
+        Copy-Item -Path "$buildDir/cayc.exe" -Destination "packaging/core/" -Force
+        Copy-Item -Path "$buildDir/cay-ir.exe" -Destination "packaging/core/" -Force
         Copy-Item -Path "$buildDir/ir2exe.exe" -Destination "packaging/core/" -Force
-        
+        Copy-Item -Path "$buildDir/cay-check.exe" -Destination "packaging/core/" -Force
+        Copy-Item -Path "$buildDir/cay-run.exe" -Destination "packaging/core/" -Force
+        Copy-Item -Path "$buildDir/cay-rcpl.exe" -Destination "packaging/core/" -Force
+        Copy-Item -Path "$buildDir/cay-bcgen.exe" -Destination "packaging/core/" -Force
+        Copy-Item -Path "$buildDir/cay-lsp.exe" -Destination "packaging/core/" -Force
+        Copy-Item -Path "$buildDir/cavly.exe" -Destination "packaging/core/" -Force
+        Copy-Item -Path "$buildDir/cay-dt.exe" -Destination "packaging/core/" -Force
+        Copy-Item -Path "$buildDir/cay-dp.exe" -Destination "packaging/core/" -Force
         # 创建 zip 文件
         $fullName = "${baseName}-win86-64-mingw64-llvm21.zip"
         $coreName = "${baseName}-win86-64-core.zip"
@@ -165,7 +183,7 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         tag_name: nightly-latest
-        name: "EOL Nightly ${{ steps.version.outputs.TAG }} (${{ steps.version.outputs.DATE }})"
+        name: "Cavvy Nightly ${{ steps.version.outputs.TAG }} (${{ steps.version.outputs.DATE }})"
         body: |
           **预发布版本** | Pre-release Build
           
@@ -177,10 +195,10 @@ jobs:
           | 文件名 | 说明 |
           |--------|------|
           | `*-win86-64-mingw64-llvm21.zip` | **完整版**：含 lib, mingw-minimal, llvm-minimal 工具链 |
-          | `*-win86-64-core.zip` | **核心版**：仅 eolc.exe, eolll.exe, ir2exe.exe |
+          | `*-win86-64-core.zip` | **核心版**：仅 exe |
           
         files: |
-          eol-*.zip
+          cavvy-*.zip
         prerelease: true
         fail_on_unmatched_files: true
       env:
