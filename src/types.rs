@@ -110,7 +110,10 @@ impl StructInfo {
     /// 检查类型是否精确匹配（支持泛型参数）
     fn types_match_exact(param_type: &Type, arg_type: &Type) -> bool {
         // 泛型参数类型可以匹配任何类型
-        if matches!(param_type, Type::GenericParam(_)) {
+        if matches!(
+            (param_type, arg_type),
+            (Type::GenericParam(_), _) | (_, Type::GenericParam(_))
+        ) {
             return true;
         }
 
@@ -289,7 +292,10 @@ impl StructInfo {
             return true;
         }
         // 泛型参数类型匹配
-        if matches!(param_type, Type::GenericParam(_)) {
+        if matches!(
+            (param_type, arg_type),
+            (Type::GenericParam(_), _) | (_, Type::GenericParam(_))
+        ) {
             return true;
         }
         // 基本类型隐式转换
@@ -351,7 +357,10 @@ impl ClassInfo {
     /// 检查类型是否精确匹配（支持泛型参数）
     fn types_match_exact(param_type: &Type, arg_type: &Type) -> bool {
         // 泛型参数类型可以匹配任何类型
-        if matches!(param_type, Type::GenericParam(_)) {
+        if matches!(
+            (param_type, arg_type),
+            (Type::GenericParam(_), _) | (_, Type::GenericParam(_))
+        ) {
             return true;
         }
 
@@ -531,7 +540,10 @@ impl ClassInfo {
             return true;
         }
         // 泛型参数类型匹配：GenericParam 可以匹配任何类型
-        if matches!(param_type, Type::GenericParam(_)) {
+        if matches!(
+            (param_type, arg_type),
+            (Type::GenericParam(_), _) | (_, Type::GenericParam(_))
+        ) {
             return true;
         }
         // 允许 int -> long, int -> float, int -> double 等隐式转换
@@ -1374,7 +1386,7 @@ impl TypeRegistry {
 
         // 首先在当前类中查找
         if let Some(class_info) = self.get_class(base_class_name) {
-            if let Some(method) = class_info.find_method(method_name, arg_types) {
+            if let Some(method) = self.find_matching_method(class_info, method_name, arg_types) {
                 return Some(method);
             }
             // 如果在当前类中没找到，递归在父类中查找
@@ -1390,7 +1402,9 @@ impl TypeRegistry {
         }
         // 检查 struct 方法
         if let Some(struct_info) = self.get_struct(base_class_name) {
-            if let Some(method) = struct_info.find_method(method_name, arg_types) {
+            if let Some(method) =
+                self.find_matching_struct_method(struct_info, method_name, arg_types)
+            {
                 return Some(method);
             }
         }
@@ -1414,50 +1428,322 @@ impl TypeRegistry {
         if param_type == arg_type {
             return true;
         }
-        // 处理 Object 类型的命名空间前缀
-        if let (Type::Object(param_name), Type::Object(arg_name)) = (param_type, arg_type) {
-            // 尝试通过类注册表解析两个类名
-            let param_class = self.get_class(param_name);
-            let arg_class = self.get_class(arg_name);
 
-            match (param_class, arg_class) {
-                (Some(p), Some(a)) => {
-                    // 两个类都找到了，检查它们是否是同一个类
-                    return p.name == a.name;
-                }
-                (Some(p), None) => {
-                    // 只有参数类型找到了，检查实参类型是否是它的简单名形式
-                    let p_simple = p
-                        .name
-                        .rfind("::")
-                        .map(|pos| &p.name[pos + 2..])
-                        .unwrap_or(&p.name);
-                    return p_simple == arg_name.as_str();
-                }
-                (None, Some(a)) => {
-                    // 只有实参类型找到了，检查形参类型是否是它的简单名形式
-                    let a_simple = a
-                        .name
-                        .rfind("::")
-                        .map(|pos| &a.name[pos + 2..])
-                        .unwrap_or(&a.name);
-                    return a_simple == param_name.as_str();
-                }
-                (None, None) => {
-                    // 两个都没找到，比较简单类名
-                    let param_simple = param_name
-                        .rfind("::")
-                        .map(|pos| &param_name[pos + 2..])
-                        .unwrap_or(param_name);
-                    let arg_simple = arg_name
-                        .rfind("::")
-                        .map(|pos| &arg_name[pos + 2..])
-                        .unwrap_or(arg_name);
-                    return param_simple == arg_simple;
-                }
+        if matches!(
+            (param_type, arg_type),
+            (Type::GenericParam(_), _) | (_, Type::GenericParam(_))
+        ) {
+            return true;
+        }
+
+        match (param_type, arg_type) {
+            (Type::Object(param_name), Type::Object(arg_name)) => {
+                self.class_names_compatible(param_name, arg_name)
+            }
+            (Type::Generic(param_name, param_args), Type::Generic(arg_name, arg_args)) => {
+                self.class_names_compatible(param_name, arg_name)
+                    && param_args.len() == arg_args.len()
+                    && param_args
+                        .iter()
+                        .zip(arg_args.iter())
+                        .all(|(p, a)| self.types_compatible_with_namespace(p, a))
+            }
+            (Type::Generic(param_name, param_args), Type::Object(arg_name)) => {
+                self.class_names_compatible(param_name, arg_name)
+                    && Self::generic_arg_count_in_name(arg_name)
+                        .map(|count| count == param_args.len())
+                        .unwrap_or(true)
+            }
+            (Type::Object(param_name), Type::Generic(arg_name, _)) => {
+                self.class_names_compatible(param_name, arg_name)
+            }
+            (Type::Array(param_elem), Type::Array(arg_elem)) => {
+                self.types_compatible_with_namespace(param_elem, arg_elem)
+            }
+            (Type::Pointer(param_inner), Type::Pointer(arg_inner)) => {
+                matches!(param_inner.as_ref(), Type::CVoid)
+                    || matches!(arg_inner.as_ref(), Type::CVoid)
+                    || self.types_compatible_with_namespace(param_inner, arg_inner)
+            }
+            (Type::Function(param_fn), Type::Function(arg_fn)) => {
+                param_fn.params.len() == arg_fn.params.len()
+                    && self
+                        .types_compatible_with_namespace(&param_fn.return_type, &arg_fn.return_type)
+                    && param_fn
+                        .params
+                        .iter()
+                        .zip(arg_fn.params.iter())
+                        .all(|(p, a)| self.types_compatible_with_namespace(p, a))
+            }
+            _ => false,
+        }
+    }
+
+    fn find_matching_method<'a>(
+        &self,
+        class_info: &'a ClassInfo,
+        method_name: &str,
+        arg_types: &[Type],
+    ) -> Option<&'a MethodInfo> {
+        let methods = class_info.methods.get(method_name)?;
+        self.find_matching_method_in_list(methods, arg_types)
+    }
+
+    fn find_matching_struct_method<'a>(
+        &self,
+        struct_info: &'a StructInfo,
+        method_name: &str,
+        arg_types: &[Type],
+    ) -> Option<&'a MethodInfo> {
+        let methods = struct_info.methods.get(method_name)?;
+        self.find_matching_method_in_list(methods, arg_types)
+    }
+
+    fn find_matching_method_in_list<'a>(
+        &self,
+        methods: &'a [MethodInfo],
+        arg_types: &[Type],
+    ) -> Option<&'a MethodInfo> {
+        for method in methods {
+            if self.match_method_params_exact(&method.params, arg_types) {
+                return Some(method);
             }
         }
-        false
+
+        methods
+            .iter()
+            .find(|method| self.match_method_params(&method.params, arg_types))
+    }
+
+    fn match_method_params_exact(&self, params: &[ParameterInfo], arg_types: &[Type]) -> bool {
+        self.match_method_params_impl(params, arg_types, true)
+    }
+
+    fn match_method_params(&self, params: &[ParameterInfo], arg_types: &[Type]) -> bool {
+        self.match_method_params_impl(params, arg_types, false)
+    }
+
+    fn match_method_params_impl(
+        &self,
+        params: &[ParameterInfo],
+        arg_types: &[Type],
+        exact: bool,
+    ) -> bool {
+        if params.is_empty() {
+            return arg_types.is_empty();
+        }
+
+        let type_matches = |registry: &TypeRegistry, param: &Type, arg: &Type| {
+            if exact {
+                registry.types_match_exact_with_namespace(param, arg)
+            } else {
+                registry.types_match_with_namespace(param, arg)
+            }
+        };
+
+        let varargs_idx = params.iter().position(|p| p.is_varargs);
+
+        if let Some(vi) = varargs_idx {
+            let fixed_before = vi;
+            let fixed_after = params.len() - vi - 1;
+            let min_args = fixed_before + fixed_after;
+
+            if arg_types.len() < min_args {
+                return false;
+            }
+
+            for i in 0..fixed_before {
+                if !type_matches(self, &params[i].param_type, &arg_types[i]) {
+                    return false;
+                }
+            }
+
+            let vararg_elem_type = match &params[vi].param_type {
+                Type::Array(elem) => elem.as_ref(),
+                _ => &params[vi].param_type,
+            };
+            let varargs_len = arg_types.len() - min_args;
+            let varargs_end = fixed_before + varargs_len;
+
+            if varargs_len == 1
+                && type_matches(self, &params[vi].param_type, &arg_types[fixed_before])
+            {
+                // 直接传递数组给可变参数
+            } else {
+                for i in fixed_before..varargs_end {
+                    if !type_matches(self, vararg_elem_type, &arg_types[i]) {
+                        return false;
+                    }
+                }
+            }
+
+            for i in 0..fixed_after {
+                if !type_matches(
+                    self,
+                    &params[vi + 1 + i].param_type,
+                    &arg_types[varargs_end + i],
+                ) {
+                    return false;
+                }
+            }
+
+            true
+        } else {
+            params.len() == arg_types.len()
+                && params
+                    .iter()
+                    .zip(arg_types.iter())
+                    .all(|(p, a)| type_matches(self, &p.param_type, a))
+        }
+    }
+
+    fn types_match_exact_with_namespace(&self, param_type: &Type, arg_type: &Type) -> bool {
+        if param_type == arg_type {
+            return true;
+        }
+
+        if matches!(
+            (param_type, arg_type),
+            (Type::GenericParam(_), _) | (_, Type::GenericParam(_))
+        ) {
+            return true;
+        }
+
+        match (param_type, arg_type) {
+            (Type::Generic(param_name, param_args), Type::Generic(arg_name, arg_args)) => {
+                self.class_names_compatible(param_name, arg_name)
+                    && param_args.len() == arg_args.len()
+                    && param_args
+                        .iter()
+                        .zip(arg_args.iter())
+                        .all(|(p, a)| self.types_match_exact_with_namespace(p, a))
+            }
+            (Type::Generic(param_name, param_args), Type::Object(arg_name)) => {
+                self.class_names_compatible(param_name, arg_name)
+                    && Self::generic_arg_count_in_name(arg_name)
+                        .map(|count| count == param_args.len())
+                        .unwrap_or(true)
+            }
+            (Type::Object(param_name), Type::Generic(arg_name, _)) => {
+                self.class_names_compatible(param_name, arg_name)
+            }
+            (Type::Object(param_name), Type::Object(arg_name)) => {
+                self.class_names_compatible(param_name, arg_name)
+            }
+            (Type::Array(param_elem), Type::Array(arg_elem)) => {
+                self.types_match_exact_with_namespace(param_elem, arg_elem)
+            }
+            (Type::Pointer(param_inner), Type::Pointer(arg_inner)) => {
+                self.types_match_exact_with_namespace(param_inner, arg_inner)
+            }
+            _ => false,
+        }
+    }
+
+    fn types_match_with_namespace(&self, param_type: &Type, arg_type: &Type) -> bool {
+        if self.types_match_exact_with_namespace(param_type, arg_type) {
+            return true;
+        }
+
+        match (param_type, arg_type) {
+            (Type::Int64, Type::Int32) => true,
+            (Type::Float32, Type::Int32) => true,
+            (Type::Float64, Type::Int32) => true,
+            (Type::Float64, Type::Int64) => true,
+            (Type::Float64, Type::Float32) => true,
+            (Type::Float32, Type::Float64) => true,
+            (Type::CInt, Type::Int32) | (Type::Int32, Type::CInt) => true,
+            (Type::CUInt, Type::Int32) | (Type::Int32, Type::CUInt) => true,
+            (Type::CLong, Type::Int64) | (Type::Int64, Type::CLong) => true,
+            (Type::CShort, Type::Int32) | (Type::Int32, Type::CShort) => true,
+            (Type::CChar, Type::Int32) | (Type::Int32, Type::CChar) => true,
+            (Type::CChar, Type::Char) | (Type::Char, Type::CChar) => true,
+            (Type::CFloat, Type::Float32) | (Type::Float32, Type::CFloat) => true,
+            (Type::CDouble, Type::Float64) | (Type::Float64, Type::CDouble) => true,
+            (Type::CBool, Type::Bool) | (Type::Bool, Type::CBool) => true,
+            (Type::SizeT, Type::Int64) | (Type::Int64, Type::SizeT) => true,
+            (Type::SizeT, Type::Int32) | (Type::Int32, Type::SizeT) => true,
+            (Type::SSizeT, Type::Int64) | (Type::Int64, Type::SSizeT) => true,
+            (Type::SSizeT, Type::Int32) | (Type::Int32, Type::SSizeT) => true,
+            (Type::Pointer(_), Type::Object(obj_name)) if obj_name == "Object" => true,
+            (Type::Pointer(_), Type::Array(_)) => true,
+            (Type::Function(expected), Type::Function(actual)) => {
+                expected.params.len() == actual.params.len()
+                    && self.types_match_with_namespace(&expected.return_type, &actual.return_type)
+                    && expected
+                        .params
+                        .iter()
+                        .zip(actual.params.iter())
+                        .all(|(e, a)| self.types_match_with_namespace(e, a))
+            }
+            _ => false,
+        }
+    }
+
+    fn class_names_compatible(&self, param_name: &str, arg_name: &str) -> bool {
+        let param_base = Self::generic_base_name(param_name);
+        let arg_base = Self::generic_base_name(arg_name);
+
+        if param_base == arg_base {
+            return true;
+        }
+
+        let param_class = self.get_class(param_base);
+        let arg_class = self.get_class(arg_base);
+
+        match (param_class, arg_class) {
+            (Some(p), Some(a)) => p.name == a.name,
+            (Some(p), None) => Self::simple_name(&p.name) == Self::simple_name(arg_base),
+            (None, Some(a)) => Self::simple_name(param_base) == Self::simple_name(&a.name),
+            (None, None) => Self::simple_name(param_base) == Self::simple_name(arg_base),
+        }
+    }
+
+    fn simple_name(name: &str) -> &str {
+        name.rfind("::").map(|pos| &name[pos + 2..]).unwrap_or(name)
+    }
+
+    fn generic_base_name(name: &str) -> &str {
+        name.find('<').map(|pos| &name[..pos]).unwrap_or(name)
+    }
+
+    fn generic_arg_count_in_name(name: &str) -> Option<usize> {
+        let start = name.find('<')?;
+        if !name.ends_with('>') {
+            return None;
+        }
+
+        let args = &name[start + 1..name.len() - 1];
+        let mut count = 0usize;
+        let mut depth = 0usize;
+        let mut has_current = false;
+
+        for ch in args.chars() {
+            match ch {
+                '<' => {
+                    depth += 1;
+                    has_current = true;
+                }
+                '>' => {
+                    depth = depth.saturating_sub(1);
+                    has_current = true;
+                }
+                ',' if depth == 0 => {
+                    if has_current {
+                        count += 1;
+                    }
+                    has_current = false;
+                }
+                c if !c.is_whitespace() => has_current = true,
+                _ => {}
+            }
+        }
+
+        if has_current {
+            count += 1;
+        }
+
+        Some(count)
     }
 
     /// 根据简单名查找命名空间限定名（如 "HttpHeaders" → "http::HttpHeaders"）

@@ -156,6 +156,10 @@ impl SemanticAnalyzer {
             }
         }
 
+        if self.type_registry.types_compatible_with_namespace(to, from) {
+            return true;
+        }
+
         // 基本类型之间的兼容
         match (from, to) {
             (Type::Int32, Type::Int64) => true,

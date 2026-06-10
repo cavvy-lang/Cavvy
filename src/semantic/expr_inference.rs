@@ -378,6 +378,61 @@ impl SemanticAnalyzer {
         specialized
     }
 
+    fn qualify_type_for_class(&self, ty: &Type, owner_class: &str) -> Type {
+        match ty {
+            Type::Object(name) => {
+                Type::Object(self.qualify_class_name_for_owner(name, owner_class))
+            }
+            Type::Generic(name, args) => Type::Generic(
+                self.qualify_class_name_for_owner(name, owner_class),
+                args.iter()
+                    .map(|arg| self.qualify_type_for_class(arg, owner_class))
+                    .collect(),
+            ),
+            Type::Array(elem) => {
+                Type::Array(Box::new(self.qualify_type_for_class(elem, owner_class)))
+            }
+            Type::Pointer(inner) => {
+                Type::Pointer(Box::new(self.qualify_type_for_class(inner, owner_class)))
+            }
+            Type::Function(func_type) => {
+                let params = func_type
+                    .params
+                    .iter()
+                    .map(|param| self.qualify_type_for_class(param, owner_class))
+                    .collect();
+                let return_type = self.qualify_type_for_class(&func_type.return_type, owner_class);
+                Type::Function(Box::new(crate::types::FunctionType {
+                    params,
+                    return_type: Box::new(return_type),
+                    is_static: func_type.is_static,
+                    is_closure: func_type.is_closure,
+                }))
+            }
+            _ => ty.clone(),
+        }
+    }
+
+    fn qualify_class_name_for_owner(&self, name: &str, owner_class: &str) -> String {
+        let Some(ns_end) = owner_class.rfind("::") else {
+            return name.to_string();
+        };
+
+        let base_end = name.find('<').unwrap_or(name.len());
+        let base_name = &name[..base_end];
+        if base_name.contains("::") {
+            return name.to_string();
+        }
+
+        let namespace = &owner_class[..ns_end];
+        let qualified = format!("{}::{}", namespace, base_name);
+        if self.type_registry.classes.contains_key(&qualified) {
+            format!("{}{}", qualified, &name[base_end..])
+        } else {
+            name.to_string()
+        }
+    }
+
     fn collect_static_method_candidates(
         &self,
         class_name: &str,
@@ -609,7 +664,9 @@ impl SemanticAnalyzer {
                     &self.type_registry,
                     &member.loc,
                 )?;
-                return Ok(Some(method_info.return_type.clone()));
+                return Ok(Some(
+                    self.qualify_type_for_class(&method_info.return_type, owner_class),
+                ));
             }
         }
 
@@ -632,7 +689,9 @@ impl SemanticAnalyzer {
                         &self.type_registry,
                         &member.loc,
                     )?;
-                    return Ok(Some(method_info.return_type.clone()));
+                    return Ok(Some(
+                        self.qualify_type_for_class(&method_info.return_type, owner_class),
+                    ));
                 }
                 Err(msg) => {
                     if mismatch_detail.is_none() {
@@ -676,6 +735,9 @@ impl SemanticAnalyzer {
 
         match bin.op {
             BinaryOp::Add => {
+                let right_is_literal = matches!(bin.right.as_ref(), Expr::Literal(_));
+                let left_is_literal = matches!(bin.left.as_ref(), Expr::Literal(_));
+
                 // 字符串连接：支持 String + String 和 String + char
                 if left_type == Type::String && right_type == Type::String {
                     Ok(Type::String)
@@ -684,6 +746,16 @@ impl SemanticAnalyzer {
                     Ok(Type::String)
                 } else if left_type == Type::Char && right_type == Type::String {
                     // char + String = String
+                    Ok(Type::String)
+                } else if left_type == Type::String
+                    && Self::is_numeric_type_helper(&right_type)
+                    && !right_is_literal
+                {
+                    Ok(Type::String)
+                } else if Self::is_numeric_type_helper(&left_type)
+                    && !left_is_literal
+                    && right_type == Type::String
+                {
                     Ok(Type::String)
                 }
                 // 数值加法：两个操作数都必须是基本数值类型
@@ -1175,6 +1247,7 @@ impl SemanticAnalyzer {
                         .find_method(&class_name, &member.member, &arg_types)
                 {
                     Some((
+                        class_name.clone(),
                         method_info.clone(),
                         method_info.return_type.clone(),
                         method_info.params.clone(),
@@ -1186,13 +1259,20 @@ impl SemanticAnalyzer {
                     {
                         self.type_registry
                             .find_method(&qualified_name, &member.member, &arg_types)
-                            .map(|m| (m.clone(), m.return_type.clone(), m.params.clone()))
+                            .map(|m| {
+                                (
+                                    qualified_name.clone(),
+                                    m.clone(),
+                                    m.return_type.clone(),
+                                    m.params.clone(),
+                                )
+                            })
                     } else {
                         None
                     }
                 };
 
-                if let Some((method_info, return_type, params)) = method_result {
+                if let Some((owner_class, method_info, return_type, params)) = method_result {
                     // 检查方法访问权限
                     check_member_access(
                         &member.member,
@@ -1200,7 +1280,7 @@ impl SemanticAnalyzer {
                         method_info.is_protected,
                         method_info.is_private,
                         &self.current_class,
-                        &class_name,
+                        &owner_class,
                         &self.type_registry,
                         &member.loc,
                     )?;
@@ -1216,18 +1296,20 @@ impl SemanticAnalyzer {
                     }
 
                     // 如果对象是泛型类型，替换返回类型中的泛型参数
+                    let scoped_return_type =
+                        self.qualify_type_for_class(&return_type, &owner_class);
                     let final_return_type = if let Type::Generic(_, type_args) = &obj_type {
-                        if let Some(class_info) = self.type_registry.get_class(&class_name) {
+                        if let Some(class_info) = self.type_registry.get_class(&owner_class) {
                             self.substitute_type_params(
-                                &return_type,
+                                &scoped_return_type,
                                 &class_info.type_params,
                                 type_args,
                             )
                         } else {
-                            return_type
+                            scoped_return_type
                         }
                     } else {
-                        return_type
+                        scoped_return_type
                     };
 
                     return Ok(final_return_type);

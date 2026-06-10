@@ -207,6 +207,7 @@ alias IntAlias3 = IntAlias2;
 
 alias PtrAlias1 = ptr;
 alias PtrAlias2 = PtrAlias1;
+alias PtrAlias3 = PtrAlias2;
 
 extern {
     c_int printf(c_string fmt, ...);
