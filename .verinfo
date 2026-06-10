@@ -1,50 +1,50 @@
 [CAYC]
-version = "5.1.0-RC.1"
-build = 45
+version = "5.1.0"
+build = 46
 
 [CAY-IR]
-version = "5.1.0-RC.1"
-build = 45
+version = "5.1.0"
+build = 46
 
 [IR2EXE]
-version = "5.1.0-RC.1"
-build = 45
+version = "5.1.0"
+build = 46
 
 [CAY-CHECK]
-version = "5.1.0-RC.1"
-build = 37
+version = "5.1.0"
+build = 38
 
 [CAY-RUN]
-version = "5.1.0-RC.1"
-build = 21
+version = "5.1.0"
+build = 22
 
 [CAY-LSP]
-version = "5.1.0-RC.1"
-build = 17
+version = "5.1.0"
+build = 18
 
 [CAVLY]
-version = "5.1.0-RC.1"
-build = 11
+version = "5.1.0"
+build = 12
 
 [CAY-PRE]
-version = "5.1.0-RC.1"
-build = 10
+version = "5.1.0"
+build = 11
 
 [CAY-BCGEN]
-version = "5.1.0-RC.1"
-build = 10
+version = "5.1.0"
+build = 11
 
 [CAY-DT]
-version = "5.1.0-RC.1"
-build = 10
+version = "5.1.0"
+build = 11
 
 [CAY-DP]
-version = "5.1.0-RC.1"
-build = 10
+version = "5.1.0"
+build = 11
 
 [CAY-RCPL]
-version = "5.1.0-RC.1"
-build = 10
+version = "5.1.0"
+build = 11
 
 [LLVM-MINIMAL]
 version = "22.1.6"
