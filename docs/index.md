@@ -1,5 +1,7 @@
 # Cavvy 文档
 
+## 文档还在测试阶段且未编写完，遇到任何问题可以提出issue，也可以提PR帮助我们丰富文档
+
 欢迎阅读 Cavvy 编程语言文档。
 
 Cavvy（曾用名 EOL — Ethernos Object Language）是一门静态类型、面向对象的编程语言编译器。它使用 Rust 编写，将 `.cay` 源码编译为 LLVM IR，再通过捆绑的 LLVM/MinGW 工具链生成原生可执行文件。

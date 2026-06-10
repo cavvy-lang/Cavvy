@@ -2,6 +2,15 @@
 
 [Cavvy 文档](index.md)
 
+# 发布说明
+
+- [5.1.0 发布说明](release/5.1.0/index.md)
+  - [新特性详解](release/5.1.0/features.md)
+  - [Bug 修复清单](release/5.1.0/bugfixes.md)
+  - [破坏性变更](release/5.1.0/breaking-changes.md)
+  - [迁移指南](release/5.1.0/migration.md)
+  - [已知问题](release/5.1.0/known-issues.md)
+
 # 入门
 
 - [快速开始](getting-started.md)
