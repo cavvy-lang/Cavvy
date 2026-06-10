@@ -125,6 +125,7 @@ jobs:
         
         # 创建临时目录结构
         New-Item -ItemType Directory -Force -Path "packaging/full/lib"
+        New-Item -ItemType Directory -Force -Path "packaging/full/caylibs"
         New-Item -ItemType Directory -Force -Path "packaging/full/mingw-minimal"
         New-Item -ItemType Directory -Force -Path "packaging/full/llvm-minimal"
         New-Item -ItemType Directory -Force -Path "packaging/core"
