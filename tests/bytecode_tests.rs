@@ -7,6 +7,40 @@ use std::process::Command;
 
 mod common;
 
+/// 从 .verinfo 文件读取指定段的版本号
+/// O(n) 磁盘IO复杂度，n为文件行数
+fn read_verinfo_version(section: &str) -> Option<String> {
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let verinfo_path = std::path::Path::new(manifest_dir).join(".verinfo");
+    let content = fs::read_to_string(verinfo_path).ok()?;
+
+    let mut in_target_section = false;
+    for line in content.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with(';') || line.starts_with('#') {
+            continue;
+        }
+        if line.starts_with('[') && line.ends_with(']') {
+            in_target_section = line[1..line.len() - 1].eq(section);
+            continue;
+        }
+        if in_target_section {
+            if let Some(pos) = line.find('=') {
+                let key = line[..pos].trim();
+                let value = line[pos + 1..].trim();
+                if key == "version" {
+                    let version = if value.starts_with('"') && value.ends_with('"') {
+                        &value[1..value.len() - 1]
+                    } else {
+                        value
+                    };
+                    return Some(version.to_string());
+                }
+            }
+        }
+    }
+    None
+}
 
 /// 获取当前平台的 cay-bcgen 可执行文件路径
 fn get_cay_bcgen_path() -> &'static str {
@@ -599,15 +633,13 @@ fn test_bcgen_version() {
         output.status.success(),
         "cay-bcgen --version should succeed"
     );
-    // 验证版本号格式: 应该包含主版本号 5.1.0 和 Alpha/Beta/RC 标识
+
+    let expected_version = read_verinfo_version("CAY-BCGEN")
+        .expect("Failed to read CAY-BCGEN version from .verinfo");
     assert!(
-        stdout.contains("5.1.0"),
-        "Version should contain 5.1.0, got: {}",
-        stdout
-    );
-    assert!(
-        stdout.contains("Alpha") || stdout.contains("Beta") || stdout.contains("RC"),
-        "Version should contain Alpha/Beta/RC, got: {}",
+        stdout.contains(&expected_version),
+        "Version should contain {}, got: {}",
+        expected_version,
         stdout
     );
     // 验证包含 commit hash（格式: version+commit 或 version+commit-dirty）
@@ -629,15 +661,13 @@ fn test_cay_run_version() {
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     assert!(output.status.success(), "cay-run --version should succeed");
-    // 验证版本号格式: 应该包含主版本号 5.1.0 和 Alpha/Beta/RC 标识
+
+    let expected_version = read_verinfo_version("CAY-RUN")
+        .expect("Failed to read CAY-RUN version from .verinfo");
     assert!(
-        stdout.contains("5.1.0"),
-        "Version should contain 5.1.0, got: {}",
-        stdout
-    );
-    assert!(
-        stdout.contains("Alpha") || stdout.contains("Beta") || stdout.contains("RC"),
-        "Version should contain Alpha/Beta/RC, got: {}",
+        stdout.contains(&expected_version),
+        "Version should contain {}, got: {}",
+        expected_version,
         stdout
     );
     // 验证包含 commit hash（格式: version+commit 或 version+commit-dirty）
