@@ -6,6 +6,33 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process;
 
+/// 从 IR 内容中解析链接库元数据
+/// 格式: ; !link "libname" 或 ; !link <libname>
+fn parse_link_libraries_from_ir(ir_content: &str) -> Vec<String> {
+    let mut libraries = Vec::new();
+
+    for line in ir_content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("; !link ") {
+            let lib_part = &trimmed[8..]; // 跳过 "; !link "
+            let lib_name = if lib_part.starts_with('"') && lib_part.ends_with('"') {
+                // 用户库: "libname"
+                &lib_part[1..lib_part.len() - 1]
+            } else if lib_part.starts_with('<') && lib_part.ends_with('>') {
+                // 系统库: <libname>
+                &lib_part[1..lib_part.len() - 1]
+            } else {
+                lib_part
+            };
+            if !lib_name.is_empty() && !libraries.contains(&lib_name.to_string()) {
+                libraries.push(lib_name.to_string());
+            }
+        }
+    }
+
+    libraries
+}
+
 const VERSION: &str = env!("CAYC_VERSION");
 
 struct CompileOptions {
@@ -566,6 +593,12 @@ fn main() {
         println!("  [I] 已加载源映射: {} 个映射点", source_map.mappings.len());
     }
 
+    // 解析链接库元数据（来自 #link 指令）
+    let link_libraries = parse_link_libraries_from_ir(&ir_content);
+    if !link_libraries.is_empty() {
+        println!("  [I] 发现链接库声明: {:?}", link_libraries);
+    }
+
     // 构建 ir2exe 选项
     let mut ir2exe_options = Ir2ExeOptions {
         optimization: options.optimization.clone(),
@@ -599,13 +632,22 @@ fn main() {
         use_embedded_llc: options.use_embedded_llc,
     };
 
+    // 添加 #link 指令声明的链接库
+    for lib in link_libraries {
+        if !ir2exe_options.extra_libs.contains(&lib) {
+            ir2exe_options.extra_libs.push(lib);
+        }
+    }
+
     // Windows 平台自动检测 socket 相关函数并添加 ws2_32 库
     #[cfg(target_os = "windows")]
     if ir_content.contains("WSAStartup")
         || ir_content.contains("socket(")
         || ir_content.contains("@socket(")
     {
-        ir2exe_options.extra_libs.push("ws2_32".to_string());
+        if !ir2exe_options.extra_libs.contains(&"ws2_32".to_string()) {
+            ir2exe_options.extra_libs.push("ws2_32".to_string());
+        }
     }
 
     // 调用 ir2exe_lib 进行编译

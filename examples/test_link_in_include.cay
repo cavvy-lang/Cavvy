@@ -1,0 +1,12 @@
+// 测试 #link 指令在包含文件中的使用
+// 这个文件被 test_link_directive_include.cay 包含
+
+// 在包含文件中声明链接库
+#link "user32"
+
+// 使用类来包含辅助函数
+public class LinkIncludeHelper {
+    public static void helperFunction() {
+        println("Helper function from included file");
+    }
+}

@@ -173,6 +173,28 @@ impl Compiler {
         output_path: &str,
         main_file: Option<String>,
     ) -> cayResult<()> {
+        self.compile_with_source_map_and_link_libs(source, source_map, output_path, main_file, Vec::new())
+    }
+
+    /// 使用源映射编译（带主文件路径和链接库信息）
+    ///
+    /// # Arguments
+    /// * `source` - 预处理后的源代码
+    /// * `source_map` - 源映射表
+    /// * `output_path` - 输出文件路径
+    /// * `main_file` - 主文件路径（用于错误报告）
+    /// * `link_libraries` - #link 声明的链接库列表
+    ///
+    /// # Returns
+    /// 编译成功返回 Ok(())
+    pub fn compile_with_source_map_and_link_libs(
+        &self,
+        source: &str,
+        source_map: std::collections::HashMap<usize, (String, usize)>,
+        output_path: &str,
+        main_file: Option<String>,
+        link_libraries: Vec<crate::ast::LinkLibraryDecl>,
+    ) -> cayResult<()> {
         // 保留一份源映射用于语义分析错误定位
         let source_map_for_analyzer = source_map.clone();
 
@@ -201,7 +223,10 @@ impl Compiler {
         }
 
         // 2. 语法分析（传入源代码以支持内联IR解析）
-        let ast = parser::parse_with_source(tokens, source.to_string())?;
+        let mut ast = parser::parse_with_source(tokens, source.to_string())?;
+
+        // 合并预处理器收集的链接库信息到 AST
+        ast.link_libraries = link_libraries;
 
         // 3. 语义分析
         let mut analyzer = semantic::SemanticAnalyzer::with_features(self.options.features.clone());
@@ -218,7 +243,7 @@ impl Compiler {
         ir_gen.set_type_registry(analyzer.get_type_registry().clone());
         // 设置预处理器源映射（用于多文件include场景）
         ir_gen.set_preprocessor_source_map(source_map_for_analyzer.clone());
-        // 启��� DWARF 调试信息
+        // 启用 DWARF 调试信息
         if self.options.debug {
             ir_gen.enable_debug_info();
         }
@@ -301,9 +326,26 @@ impl Compiler {
 
         let source_map = Self::convert_source_map(&result.source_map);
 
-        // 编译预处理后的代码（带源映射和主文件路径）
+        // 转换链接库信息
+        let link_libraries: Vec<crate::ast::LinkLibraryDecl> = result
+            .link_libraries
+            .into_iter()
+            .map(|lib| crate::ast::LinkLibraryDecl {
+                name: lib.name,
+                is_system: lib.is_system,
+                loc: crate::error::SourceLocation::default(),
+            })
+            .collect();
+
+        // 编译预处理后的代码（带源映射、主文件路径和链接库信息）
         let main_file = Some(input_path.to_string());
-        self.compile_with_source_map_and_main_file(&result.code, source_map, output_path, main_file)
+        self.compile_with_source_map_and_link_libs(
+            &result.code,
+            source_map,
+            output_path,
+            main_file,
+            link_libraries,
+        )
     }
 
     /// 将预处理器源映射转换为HashMap格式

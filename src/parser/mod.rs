@@ -232,6 +232,7 @@ impl Parser {
             namespace_path,
             namespace_decls,
             using_decls,
+            link_libraries: Vec::new(), // 链接库信息由预处理器收集，在编译阶段合并
         })
     }
 

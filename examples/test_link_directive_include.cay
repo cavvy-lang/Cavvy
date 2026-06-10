@@ -1,0 +1,15 @@
+// 测试 #link 指令与 #include 结合使用
+
+// 声明链接库
+#link "gdi32"
+
+// 包含另一个声明链接库的文件
+#include "test_link_in_include.cay"
+
+public class TestLinkWithInclude {
+    public static void main() {
+        println("#link with #include test passed!");
+        println("Libraries declared: gdi32 (main), user32 (included)");
+        LinkIncludeHelper.helperFunction();
+    }
+}

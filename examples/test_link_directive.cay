@@ -1,0 +1,13 @@
+// 测试 #link 指令 - 声明需要链接的库
+// 本示例使用 #link 指令声明链接 ws2_32 库（Windows Socket API）
+
+// 声明需要链接的库
+#link "ws2_32"
+#link <kernel32>
+
+public class TestLinkDirective {
+    public static void main() {
+        println("#link directive test passed!");
+        println("Libraries declared: ws2_32, kernel32");
+    }
+}

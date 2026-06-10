@@ -19,7 +19,7 @@
  * 1. 预处理器指令 (Preprocessor Directives)
  * ============================================================================ *)
 
-(* 预处理器指令在编译前处理，支持条件编译和宏定义 *)
+(* 预处理器指令在编译前处理，支持条件编译、宏定义和链接库声明 *)
 preprocessor_directive = define_directive
                        | ifdef_directive
                        | ifndef_directive
@@ -30,7 +30,8 @@ preprocessor_directive = define_directive
                        | include_directive
                        | error_directive
                        | warning_directive
-                       | pragma_directive;
+                       | pragma_directive
+                       | link_directive;
 
 (* #define 定义宏 - 支持对象宏 *)
 define_directive = "#define", identifier, [ replacement_text ];
@@ -71,10 +72,15 @@ pragma_directive = "#pragma", pragma_option;
 
 pragma_option = "once";
 
+(* #link 链接库声明 - 在代码中声明需要链接的外部库 *)
+link_directive = "#link", ( '"', library_name, '"' | "<", library_name, ">" );
+
+library_name = { any_character_except_angle_quote };
+
 (* 预处理器指令示例：
  *   #define DEBUG
  *   #define MAX_SIZE 100
- *   
+ *
  *   #ifdef DEBUG
  *   result = result + 1;
  *   #elif defined(LOG_LEVEL)
@@ -82,13 +88,16 @@ pragma_option = "once";
  *   #else
  *   result = result + 0;
  *   #endif
- *   
+ *
  *   #ifndef RELEASE
  *   println("Non-release code included");
  *   #endif
- *   
+ *
  *   #include "caylibs/Network.cay"
  *   #include <std/ffi.cay>
+ *
+ *   #link "ws2_32"      (* 链接用户库 *)
+ *   #link <kernel32>    (* 链接系统库 *)
  *)
 
 (* ============================================================================

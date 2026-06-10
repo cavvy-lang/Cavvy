@@ -8,6 +8,14 @@ pub trait HasLocation {
     fn location(&self) -> &SourceLocation;
 }
 
+/// 链接库声明 - 用于 #link 指令
+#[derive(Debug, Clone)]
+pub struct LinkLibraryDecl {
+    pub name: String,
+    pub is_system: bool, // true 表示系统库 <lib>, false 表示用户库 "lib"
+    pub loc: SourceLocation,
+}
+
 #[derive(Debug, Clone)]
 pub struct Program {
     pub classes: Vec<ClassDecl>,
@@ -20,6 +28,7 @@ pub struct Program {
     pub namespace_path: Option<Vec<String>>,  // 文件级 namespace 路径 (namespace std;)
     pub namespace_decls: Vec<NamespaceDecl>,  // 块级 namespace 声明
     pub using_decls: Vec<UsingDecl>,          // using 声明
+    pub link_libraries: Vec<LinkLibraryDecl>, // #link 声明的链接库
 }
 
 /// namespace 块级声明 - namespace std { ... }
@@ -840,6 +849,7 @@ impl Program {
             namespace_path: file_namespace,
             namespace_decls: Vec::new(),
             using_decls: self.using_decls.clone(),
+            link_libraries: self.link_libraries.clone(),
         }
     }
 }
@@ -857,6 +867,7 @@ impl Default for Program {
             namespace_path: None,
             namespace_decls: Vec::new(),
             using_decls: Vec::new(),
+            link_libraries: Vec::new(),
         }
     }
 }

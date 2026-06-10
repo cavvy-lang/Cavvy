@@ -6,6 +6,7 @@
 //! - #ifdef / #ifndef / #else / #elif / #endif  - 条件编译
 //! - #error "message"  - 编译期错误
 //! - #warning "message"  - 编译期警告
+//! - #link "libname"  - 声明需要链接的库
 //!
 //! 设计约束：
 //! - 仅支持简单常量定义，禁止宏函数
@@ -63,11 +64,19 @@ impl SourceMap {
     }
 }
 
+/// 链接库声明
+#[derive(Debug, Clone)]
+pub struct LinkLibrary {
+    pub name: String,
+    pub is_system: bool,
+}
+
 /// 预处理结果，包含处理后的代码和源映射
 #[derive(Debug, Clone)]
 pub struct PreprocessResult {
     pub code: String,
     pub source_map: SourceMap,
+    pub link_libraries: Vec<LinkLibrary>,
 }
 
 /// 预处理器状态
@@ -124,6 +133,8 @@ enum Directive {
     Warning(String),
     /// #pragma once
     PragmaOnce,
+    /// #link "libname" 或 #link <libname>
+    Link(String, bool), // (库名, 是否系统库)
 }
 
 /// 指令处理结果
@@ -133,6 +144,8 @@ enum DirectiveResult {
     Single(Option<String>),
     /// 多行输出（包含文件）
     Multi { code: String, source_map: SourceMap },
+    /// 链接库声明
+    Link { lib_name: String, is_system: bool },
 }
 
 impl Preprocessor {
@@ -201,6 +214,7 @@ impl Preprocessor {
     ) -> cayResult<PreprocessResult> {
         let mut output_lines = Vec::new();
         let mut source_map = SourceMap::new();
+        let mut link_libraries = Vec::new();
         let lines: Vec<&str> = source.lines().collect();
 
         for (line_number, line) in lines.iter().enumerate() {
@@ -243,6 +257,12 @@ impl Preprocessor {
                                     source_map.add_mapping(mapping.file.clone(), mapping.line);
                                 }
                             }
+                            DirectiveResult::Link { lib_name, is_system } => {
+                                // 收集链接库信息
+                                link_libraries.push(LinkLibrary { name: lib_name, is_system });
+                                source_map.add_mapping(file_path.to_string(), line_number);
+                                output_lines.push("".to_string());
+                            }
                         }
                     }
                     Ok(None) => {
@@ -278,6 +298,7 @@ impl Preprocessor {
         Ok(PreprocessResult {
             code: output_lines.join("\n"),
             source_map,
+            link_libraries,
         })
     }
 
@@ -362,13 +383,18 @@ impl Preprocessor {
                     Ok(None)
                 }
             }
+            "link" => {
+                // 解析 #link "libname" 或 #link <libname>
+                let (lib_name, is_system) = self.parse_link_args(args, line_num, file_path)?;
+                Ok(Some(Directive::Link(lib_name, is_system)))
+            }
             _ => {
                 Err(cayError::Preprocessor {
                     file: Some(file_path.to_string()),
                     line: line_num,
                     column: 1,
                     message: format!("未知的预处理指令: {}", directive_name),
-                    suggestion: "支持的指令: #include, #define, #ifdef, #ifndef, #else, #elif, #endif, #error, #warning".to_string(),
+                    suggestion: "支持的指令: #include, #define, #ifdef, #ifndef, #else, #elif, #endif, #error, #warning, #link".to_string(),
                 })
             }
         }
@@ -509,6 +535,13 @@ impl Preprocessor {
             Directive::PragmaOnce => {
                 // 隐式处理：基于绝对路径的哈希
                 Ok(DirectiveResult::Single(None))
+            }
+            Directive::Link(lib_name, is_system) => {
+                if self.skipping {
+                    return Ok(DirectiveResult::Single(None));
+                }
+                // #link 指令返回链接库信息
+                Ok(DirectiveResult::Link { lib_name, is_system })
             }
         }
     }
@@ -769,6 +802,64 @@ impl Preprocessor {
         }
 
         line.to_string()
+    }
+
+    /// 解析 #link 参数
+    /// 支持 #link "libname" 或 #link <libname>
+    fn parse_link_args(
+        &self,
+        args: &str,
+        line_num: usize,
+        file_path: &str,
+    ) -> cayResult<(String, bool)> {
+        let trimmed = args.trim();
+
+        if trimmed.is_empty() {
+            return Err(cayError::Preprocessor {
+                file: Some(file_path.to_string()),
+                line: line_num,
+                column: 1,
+                message: "#link 缺少库名称参数".to_string(),
+                suggestion: "使用 #link \"libname\" 或 #link <libname>".to_string(),
+            });
+        }
+
+        // 检查是系统库 <libname> 还是用户库 "libname"
+        if trimmed.starts_with('<') && trimmed.ends_with('>') {
+            // 系统库
+            let lib_name = &trimmed[1..trimmed.len() - 1];
+            if lib_name.is_empty() {
+                return Err(cayError::Preprocessor {
+                    file: Some(file_path.to_string()),
+                    line: line_num,
+                    column: 1,
+                    message: "#link 库名称不能为空".to_string(),
+                    suggestion: "使用 #link <libname>".to_string(),
+                });
+            }
+            Ok((lib_name.to_string(), true))
+        } else if trimmed.starts_with('"') && trimmed.ends_with('"') {
+            // 用户库
+            let lib_name = &trimmed[1..trimmed.len() - 1];
+            if lib_name.is_empty() {
+                return Err(cayError::Preprocessor {
+                    file: Some(file_path.to_string()),
+                    line: line_num,
+                    column: 1,
+                    message: "#link 库名称不能为空".to_string(),
+                    suggestion: "使用 #link \"libname\"".to_string(),
+                });
+            }
+            Ok((lib_name.to_string(), false))
+        } else {
+            Err(cayError::Preprocessor {
+                file: Some(file_path.to_string()),
+                line: line_num,
+                column: 1,
+                message: format!("无效的 #link 语法: {}", trimmed),
+                suggestion: "使用 #link \"libname\" 或 #link <libname>".to_string(),
+            })
+        }
     }
 
     /// 解析标识符

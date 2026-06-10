@@ -1,0 +1,10 @@
+// 测试 #link 指令空库名
+
+// 错误的语法：空库名
+#link ""
+
+public class ErrorLinkEmptyName {
+    public static void main() {
+        println("This should not compile");
+    }
+}

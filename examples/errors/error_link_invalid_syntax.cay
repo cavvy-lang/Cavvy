@@ -1,0 +1,10 @@
+// 测试 #link 指令错误语法
+
+// 错误的语法：缺少引号
+#link ws2_32
+
+public class ErrorLinkInvalidSyntax {
+    public static void main() {
+        println("This should not compile");
+    }
+}

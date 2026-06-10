@@ -161,3 +161,59 @@ fn test_preprocessor_conditional() {
         output
     );
 }
+
+// ==================== #link 指令测试 ====================
+
+#[test]
+fn test_link_directive_basic() {
+    let output = compile_and_run_eol("examples/test_link_directive.cay")
+        .expect("link directive basic should compile and run");
+    assert!(
+        output.contains("#link directive test passed!"),
+        "Should show link directive test passed, got: {}",
+        output
+    );
+    assert!(
+        output.contains("ws2_32"),
+        "Should mention ws2_32 library, got: {}",
+        output
+    );
+}
+
+#[test]
+fn test_link_directive_with_include() {
+    let output = compile_and_run_eol("examples/test_link_directive_include.cay")
+        .expect("link directive with include should compile and run");
+    assert!(
+        output.contains("#link with #include test passed!"),
+        "Should show link with include test passed, got: {}",
+        output
+    );
+    assert!(
+        output.contains("gdi32") && output.contains("user32"),
+        "Should mention both gdi32 and user32 libraries, got: {}",
+        output
+    );
+}
+
+#[test]
+fn test_error_link_invalid_syntax() {
+    let error = compile_eol_expect_error("examples/errors/error_link_invalid_syntax.cay")
+        .expect("invalid link syntax should fail to compile");
+    assert!(
+        error.contains("无效的 #link 语法") || error.contains("#link"),
+        "Should report invalid #link syntax error, got: {}",
+        error
+    );
+}
+
+#[test]
+fn test_error_link_empty_name() {
+    let error = compile_eol_expect_error("examples/errors/error_link_empty_name.cay")
+        .expect("empty link name should fail to compile");
+    assert!(
+        error.contains("库名称不能为空") || error.contains("#link"),
+        "Should report empty library name error, got: {}",
+        error
+    );
+}
