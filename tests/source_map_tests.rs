@@ -322,7 +322,7 @@ fn test_source_map_generation() {
             output_exe.to_str().unwrap(),
             "--keep-ir",
         ])
-        .current_dir("e:\\spj\\EOL")
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
         .output()
         .expect("Failed to run compiler");
 
@@ -395,7 +395,7 @@ fn test_source_map_accuracy() {
             output_exe.to_str().unwrap(),
             "--keep-ir",
         ])
-        .current_dir("e:\\spj\\EOL")
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
         .output()
         .expect("Failed to run compiler");
 
@@ -504,7 +504,7 @@ public class ErrorTest {
             output_exe.to_str().unwrap(),
             "--keep-ir",
         ])
-        .current_dir("e:\\spj\\EOL")
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
         .output()
         .expect("Failed to run compiler");
 
@@ -576,7 +576,7 @@ fn test_source_map_comment_format() {
             output_exe.to_str().unwrap(),
             "--keep-ir",
         ])
-        .current_dir("e:\\spj\\EOL")
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
         .output()
         .expect("Failed to run compiler");
 

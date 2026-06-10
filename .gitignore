@@ -60,3 +60,5 @@ sync_docs.py
 debug_*
 .sisyphus/
 llvm-project/
+
+fix_*.py
