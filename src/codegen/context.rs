@@ -250,6 +250,10 @@ pub struct IRGenerator {
     pub specializations: HashMap<String, HashSet<crate::codegen::specialization::SpecializationInstance>>,
     // 泛型特化：已生成的特化方法名（避免重复生成）
     pub generated_specializations: HashSet<String>,
+    // 已生成的 vtable 全局常量（避免重复生成）
+    pub generated_vtables: HashSet<String>,
+    // 已生成的方法定义（避免重复生成）
+    pub generated_methods: HashSet<String>,
 }
 
 /// DWARF 子程序元数据
@@ -324,6 +328,8 @@ impl IRGenerator {
             generic_type_args: HashMap::new(),
             specializations: HashMap::new(),
             generated_specializations: HashSet::new(),
+            generated_vtables: HashSet::new(),
+            generated_methods: HashSet::new(),
         }
     }
 

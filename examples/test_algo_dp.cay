@@ -1,0 +1,239 @@
+/**
+ * algo::dp 动态规划算法库综合测试
+ *
+ * 测试所有 DP 算法的正确性和边界处理
+ */
+
+#include <algorithms/dp.cay>
+using algo::dp::DP;
+
+public class TestAlgoDP {
+
+    // ==================== 辅助验证方法 ====================
+
+    public static void assertEq(String name, long expected, long actual) {
+        if (expected == actual) {
+            println("  [PASS] " + name);
+        } else {
+            println("  [FAIL] " + name + " expected=" + String.valueOf(expected) + " actual=" + String.valueOf(actual));
+        }
+    }
+
+    public static void assertEqInt(String name, int expected, int actual) {
+        if (expected == actual) {
+            println("  [PASS] " + name);
+        } else {
+            println("  [FAIL] " + name + " expected=" + String.valueOf(expected) + " actual=" + String.valueOf(actual));
+        }
+    }
+
+    public static void assertEqBool(String name, boolean expected, boolean actual) {
+        if (expected == actual) {
+            println("  [PASS] " + name);
+        } else {
+            println("  [FAIL] " + name + " expected=" + String.valueOf(expected) + " actual=" + String.valueOf(actual));
+        }
+    }
+
+    // ==================== 测试入口 ====================
+
+    public static void main() {
+        println("=== algo::dp Dynamic Programming Library Test Suite ===");
+
+        // -------------------- fibonacci --------------------
+        println("\n--- fibonacci ---");
+        assertEq("fib(0)", 0L, DP.fibonacci(0));
+        assertEq("fib(1)", 1L, DP.fibonacci(1));
+        assertEq("fib(2)", 1L, DP.fibonacci(2));
+        assertEq("fib(10)", 55L, DP.fibonacci(10));
+        assertEq("fib(20)", 6765L, DP.fibonacci(20));
+        assertEq("fib(30)", 832040L, DP.fibonacci(30));
+        assertEq("fib(-5)", 0L, DP.fibonacci(-5));
+
+        // -------------------- climbStairs --------------------
+        println("\n--- climbStairs ---");
+        assertEq("climb(0)", 0L, DP.climbStairs(0));
+        assertEq("climb(1)", 1L, DP.climbStairs(1));
+        assertEq("climb(2)", 2L, DP.climbStairs(2));
+        assertEq("climb(3)", 3L, DP.climbStairs(3));
+        assertEq("climb(4)", 5L, DP.climbStairs(4));
+        assertEq("climb(10)", 89L, DP.climbStairs(10));
+        assertEq("climb(-1)", 0L, DP.climbStairs(-1));
+
+        // -------------------- maxSubarraySum --------------------
+        println("\n--- maxSubarraySum ---");
+        int[] arr1 = {-2, 1, -3, 4, -1, 2, 1, -5, 4};
+        assertEqInt("maxSub([-2,1,-3,4,-1,2,1,-5,4])", 6, DP.maxSubarraySum(arr1, 9));
+
+        int[] arr2 = {1};
+        assertEqInt("maxSub([1])", 1, DP.maxSubarraySum(arr2, 1));
+
+        int[] arr3 = {5, 4, -1, 7, 8};
+        assertEqInt("maxSub([5,4,-1,7,8])", 23, DP.maxSubarraySum(arr3, 5));
+
+        int[] arr4 = {-1, -2, -3};
+        assertEqInt("maxSub([-1,-2,-3])", -1, DP.maxSubarraySum(arr4, 3));
+
+        assertEqInt("maxSub(empty)", 0, DP.maxSubarraySum(null, 0));
+
+        // -------------------- houseRobber --------------------
+        println("\n--- houseRobber ---");
+        int[] houses1 = {1, 2, 3, 1};
+        assertEqInt("rob([1,2,3,1])", 4, DP.houseRobber(houses1, 4));
+
+        int[] houses2 = {2, 7, 9, 3, 1};
+        assertEqInt("rob([2,7,9,3,1])", 12, DP.houseRobber(houses2, 5));
+
+        int[] houses3 = {5};
+        assertEqInt("rob([5])", 5, DP.houseRobber(houses3, 1));
+
+        int[] houses4 = {2, 1};
+        assertEqInt("rob([2,1])", 2, DP.houseRobber(houses4, 2));
+
+        assertEqInt("rob(empty)", 0, DP.houseRobber(null, 0));
+
+        // -------------------- lcs --------------------
+        println("\n--- lcs ---");
+        assertEqInt("lcs(ABC,AC)", 2, DP.lcs("ABC", "AC"));
+        assertEqInt("lcs(ABCDGH,AEDFHR)", 3, DP.lcs("ABCDGH", "AEDFHR"));
+        assertEqInt("lcs(AGGTAB,GXTXAYB)", 4, DP.lcs("AGGTAB", "GXTXAYB"));
+        assertEqInt("lcs(empty,ABC)", 0, DP.lcs("", "ABC"));
+        assertEqInt("lcs(null,ABC)", 0, DP.lcs(null, "ABC"));
+
+        // -------------------- editDistance --------------------
+        println("\n--- editDistance ---");
+        assertEqInt("edit(horse,ros)", 3, DP.editDistance("horse", "ros"));
+        assertEqInt("edit(intention,execution)", 5, DP.editDistance("intention", "execution"));
+        assertEqInt("edit(kitten,sitting)", 3, DP.editDistance("kitten", "sitting"));
+        assertEqInt("edit(same,same)", 0, DP.editDistance("same", "same"));
+        assertEqInt("edit(empty,abc)", 3, DP.editDistance("", "abc"));
+
+        // -------------------- lis --------------------
+        println("\n--- lis ---");
+        int[] seq1 = {10, 9, 2, 5, 3, 7, 101, 18};
+        assertEqInt("lis([10,9,2,5,3,7,101,18])", 4, DP.lis(seq1, 8));
+
+        int[] seq2 = {0, 1, 0, 3, 2, 3};
+        assertEqInt("lis([0,1,0,3,2,3])", 4, DP.lis(seq2, 6));
+
+        int[] seq3 = {7, 7, 7, 7, 7, 7, 7};
+        assertEqInt("lis([7,7,7,7,7,7,7])", 1, DP.lis(seq3, 7));
+
+        int[] seq4 = {1, 3, 6, 7, 9, 4, 10, 5, 6};
+        assertEqInt("lis([1,3,6,7,9,4,10,5,6])", 6, DP.lis(seq4, 9));
+
+        assertEqInt("lis(empty)", 0, DP.lis(null, 0));
+
+        // -------------------- knapsack01 --------------------
+        println("\n--- knapsack01 ---");
+        int[] w1 = {1, 2, 3};
+        int[] v1 = {6, 10, 12};
+        assertEqInt("knapsack(w=[1,2,3],v=[6,10,12],cap=5)", 22, DP.knapsack01(w1, v1, 3, 5));
+
+        int[] w2 = {2, 3, 4, 5};
+        int[] v2 = {3, 4, 5, 6};
+        assertEqInt("knapsack(w=[2,3,4,5],v=[3,4,5,6],cap=5)", 7, DP.knapsack01(w2, v2, 4, 5));
+
+        int[] w3 = {10, 20, 30};
+        int[] v3 = {60, 100, 120};
+        assertEqInt("knapsack(w=[10,20,30],v=[60,100,120],cap=50)", 220, DP.knapsack01(w3, v3, 3, 50));
+
+        assertEqInt("knapsack(empty)", 0, DP.knapsack01(null, null, 0, 0));
+
+        // -------------------- coinChange --------------------
+        println("\n--- coinChange ---");
+        int[] coins1 = {1, 2, 5};
+        assertEqInt("coin([1,2,5],11)", 3, DP.coinChange(coins1, 3, 11));
+
+        int[] coins2 = {2};
+        assertEqInt("coin([2],3)", -1, DP.coinChange(coins2, 1, 3));
+
+        int[] coins3 = {1};
+        assertEqInt("coin([1],0)", 0, DP.coinChange(coins3, 1, 0));
+
+        int[] coins4 = {1, 3, 4};
+        assertEqInt("coin([1,3,4],6)", 2, DP.coinChange(coins4, 3, 6));
+
+        assertEqInt("coin(null,0,5)", -1, DP.coinChange(null, 0, 5));
+
+        // -------------------- maximalSquare --------------------
+        println("\n--- maximalSquare ---");
+        int[][] matrix1 = {
+            {1, 0, 1, 0, 0},
+            {1, 0, 1, 1, 1},
+            {1, 1, 1, 1, 1},
+            {1, 0, 0, 1, 0}
+        };
+        assertEqInt("maxSquare(4x5)", 2, DP.maximalSquare(matrix1, 4, 5));
+
+        int[][] matrix2 = {
+            {0, 1},
+            {1, 0}
+        };
+        assertEqInt("maxSquare(2x2)", 1, DP.maximalSquare(matrix2, 2, 2));
+
+        int[][] matrix3 = {
+            {1, 1, 1, 1},
+            {1, 1, 1, 1},
+            {1, 1, 1, 1}
+        };
+        assertEqInt("maxSquare(3x4)", 3, DP.maximalSquare(matrix3, 3, 4));
+
+        assertEqInt("maxSquare(empty)", 0, DP.maximalSquare(null, 0, 0));
+
+        // -------------------- minPathSum --------------------
+        println("\n--- minPathSum ---");
+        int[][] grid1 = {
+            {1, 3, 1},
+            {1, 5, 1},
+            {4, 2, 1}
+        };
+        assertEqInt("minPath(3x3)", 7, DP.minPathSum(grid1, 3, 3));
+
+        int[][] grid2 = {
+            {1, 2, 3},
+            {4, 5, 6}
+        };
+        assertEqInt("minPath(2x3)", 12, DP.minPathSum(grid2, 2, 3));
+
+        assertEqInt("minPath(empty)", 0, DP.minPathSum(null, 0, 0));
+
+        // -------------------- canPartition --------------------
+        println("\n--- canPartition ---");
+        int[] part1 = {1, 5, 11, 5};
+        assertEqBool("canPartition([1,5,11,5])", true, DP.canPartition(part1, 4));
+
+        int[] part2 = {1, 2, 3, 5};
+        assertEqBool("canPartition([1,2,3,5])", false, DP.canPartition(part2, 4));
+
+        int[] part3 = {2, 2, 1, 1};
+        assertEqBool("canPartition([2,2,1,1])", true, DP.canPartition(part3, 4));
+
+        assertEqBool("canPartition(empty)", false, DP.canPartition(null, 0));
+
+        // -------------------- uniquePaths --------------------
+        println("\n--- uniquePaths ---");
+        assertEq("uniquePaths(3,7)", 28L, DP.uniquePaths(3, 7));
+        assertEq("uniquePaths(3,2)", 3L, DP.uniquePaths(3, 2));
+        assertEq("uniquePaths(1,1)", 1L, DP.uniquePaths(1, 1));
+        assertEq("uniquePaths(1,5)", 1L, DP.uniquePaths(1, 5));
+        assertEq("uniquePaths(0,5)", 0L, DP.uniquePaths(0, 5));
+
+        // -------------------- wordBreak --------------------
+        println("\n--- wordBreak ---");
+        String[] dict1 = {"leet", "code"};
+        assertEqBool("wordBreak(leetcode, [leet,code])", true, DP.wordBreak("leetcode", dict1, 2));
+
+        String[] dict2 = {"apple", "pen"};
+        assertEqBool("wordBreak(applepenapple, [apple,pen])", true, DP.wordBreak("applepenapple", dict2, 2));
+
+        String[] dict3 = {"cats", "dog", "sand", "and", "cat"};
+        assertEqBool("wordBreak(catsandog, [cats,dog,sand,and,cat])", false, DP.wordBreak("catsandog", dict3, 5));
+
+        assertEqBool("wordBreak(empty, dict)", true, DP.wordBreak("", dict1, 2));
+        assertEqBool("wordBreak(s, null)", false, DP.wordBreak("hello", null, 0));
+
+        // ==================== 总结 ====================
+        println("\n=== algo::dp Test Suite PASSED ===");
+    }
+}

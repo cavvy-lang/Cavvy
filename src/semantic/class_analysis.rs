@@ -178,11 +178,26 @@ impl SemanticAnalyzer {
                         let params =
                             self.replace_params_type_params(&ctor.params, &class.type_params);
                         let ctor_info = crate::types::ConstructorInfo {
-                            params,
+                            params: params.clone(),
                             is_public: ctor.modifiers.contains(&Modifier::Public),
                             is_private: ctor.modifiers.contains(&Modifier::Private),
                             is_protected: ctor.modifiers.contains(&Modifier::Protected),
                         };
+                        // 检查是否存在签名完全相同的构造函数（重复定义）
+                        for existing in &class_info.constructors {
+                            if existing.params.len() == params.len() {
+                                let same_params = existing.params.iter().zip(params.iter())
+                                    .all(|(a, b)| a.param_type == b.param_type && a.is_varargs == b.is_varargs);
+                                if same_params {
+                                    return Err(semantic_error_with_file(
+                                        self.current_file.clone(),
+                                        ctor.loc.line,
+                                        ctor.loc.column,
+                                        "构造函数已被定义，不能重复定义相同签名的构造函数".to_string(),
+                                    ));
+                                }
+                            }
+                        }
                         class_info.constructors.push(ctor_info);
                     }
                     ClassMember::Destructor(_) => {
@@ -332,6 +347,26 @@ impl SemanticAnalyzer {
                     }
 
                     if let Some(class_info) = self.type_registry.get_class_mut(&class.name) {
+                        // 检查是否存在签名完全相同的方法（重复定义）
+                        if let Some(existing_methods) = class_info.methods.get(&method_info.name) {
+                            for existing in existing_methods {
+                                if existing.params.len() == method_info.params.len() {
+                                    let same_params = existing.params.iter().zip(method_info.params.iter())
+                                        .all(|(a, b)| a.param_type == b.param_type && a.is_varargs == b.is_varargs);
+                                    if same_params {
+                                        return Err(semantic_error_with_file(
+                                            self.current_file.clone(),
+                                            method.loc.line,
+                                            method.loc.column,
+                                            format!(
+                                                "方法 '{}' 已被定义，不能重复定义相同签名的方法",
+                                                method.name
+                                            ),
+                                        ));
+                                    }
+                                }
+                            }
+                        }
                         class_info.add_method(method_info);
                     }
                 }

@@ -1032,6 +1032,14 @@ impl IRGenerator {
     /// vtable 结构：[slot_0, slot_1, ..., slot_N]
     /// 每个 slot 是一个 i8* 类型的函数指针。
     fn generate_vtable_global(&mut self, class_name: &str) -> cayResult<()> {
+        let llvm_class = self.get_qualified_class_name(class_name);
+        let vtable_name = format!("{}.vtable", llvm_class);
+
+        // 防止重复生成 vtable
+        if self.generated_vtables.contains(&vtable_name) {
+            return Ok(());
+        }
+
         // 从 TypeRegistry 获取 vtable 布局
         // 对于泛型类，需要提取基础类名（不含泛型参数）进行查找
         let base_class_name = if let Some(pos) = class_name.find('<') {
@@ -1064,9 +1072,6 @@ impl IRGenerator {
         if layout.size == 0 {
             return Ok(());
         }
-
-        let llvm_class = self.get_qualified_class_name(class_name);
-        let vtable_name = format!("{}.vtable", llvm_class);
 
         // 收集 vtable 条目。接口槽位是全局分配的，可能导致当前类 vtable 中存在空洞。
         let mut entries = vec!["i8* null".to_string(); layout.size];
@@ -1105,6 +1110,9 @@ impl IRGenerator {
             vtable_type,
             entries.join(", ")
         ));
+
+        // 标记已生成
+        self.generated_vtables.insert(vtable_name);
 
         Ok(())
     }
@@ -1216,6 +1224,13 @@ impl IRGenerator {
         }
 
         let fn_name = self.generate_method_name(class_name, method);
+
+        // 防止重复生成相同名称的方法（泛型特化可能产生同名方法）
+        if self.generated_methods.contains(&fn_name) {
+            return Ok(());
+        }
+        self.generated_methods.insert(fn_name.clone());
+
         self.current_function = fn_name.clone();
         // 从可能包含 :: 的限定名中提取简单名用于 current_class
         let raw_class_name = if class_name.contains("::") {
@@ -1391,6 +1406,13 @@ impl IRGenerator {
         ctor: &crate::ast::ConstructorDecl,
     ) -> cayResult<()> {
         let fn_name = self.generate_constructor_name(class_name, ctor);
+
+        // 防止重复生成相同名称的构造函数（泛型特化可能产生同名构造函数）
+        if self.generated_methods.contains(&fn_name) {
+            return Ok(());
+        }
+        self.generated_methods.insert(fn_name.clone());
+
         self.current_function = fn_name.clone();
         // 从可能包含 :: 的限定名中提取简单名用于 current_class
         let raw_class_name = if class_name.contains("::") {
@@ -1547,6 +1569,13 @@ impl IRGenerator {
     fn generate_default_constructor(&mut self, class_name: &str) -> cayResult<()> {
         let llvm_class = self.get_qualified_class_name(class_name);
         let fn_name = format!("{}.__ctor", llvm_class);
+
+        // 防止重复生成相同名称的默认构造函数（泛型特化可能产生同名构造函数）
+        if self.generated_methods.contains(&fn_name) {
+            return Ok(());
+        }
+        self.generated_methods.insert(fn_name.clone());
+
         self.current_function = fn_name.clone();
         // 从可能包含 :: 的限定名中提取简单名用于 current_class
         let raw_class_name = if class_name.contains("::") {
@@ -1694,6 +1723,13 @@ impl IRGenerator {
     ) -> cayResult<()> {
         let llvm_class = self.get_qualified_class_name(class_name);
         let fn_name = format!("{}.__dtor", llvm_class);
+
+        // 防止重复生成相同名称的析构函数（泛型特化可能产生同名析构函数）
+        if self.generated_methods.contains(&fn_name) {
+            return Ok(());
+        }
+        self.generated_methods.insert(fn_name.clone());
+
         self.current_function = fn_name.clone();
         // 从可能包含 :: 的限定名中提取简单名用于 current_class
         let raw_class_name = if class_name.contains("::") {

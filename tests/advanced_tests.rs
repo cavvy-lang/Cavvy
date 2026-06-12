@@ -28,6 +28,17 @@ fn test_algorithm_search() {
 }
 
 #[test]
+fn test_algo_dp_library() {
+    let output = compile_and_run_eol("examples/test_algo_dp.cay")
+        .expect("algo::dp library should compile and run");
+    assert!(
+        output.contains("algo::dp Test Suite PASSED"),
+        "algo::dp library test should pass, got: {}",
+        output
+    );
+}
+
+#[test]
 fn test_math_operations() {
     let output = compile_and_run_eol("examples/test_math_operations.cay")
         .expect("math operations should compile and run");
