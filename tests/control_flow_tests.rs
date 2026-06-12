@@ -256,3 +256,19 @@ fn test_switch_char() {
         output
     );
 }
+
+#[test]
+fn test_for_init_reuse_regression() {
+    let output = compile_and_run_eol("examples/test_for_init_reuse_regression.cay")
+        .expect("for init reuse regression should compile and run");
+    assert!(
+        output.contains("count=3"),
+        "For loop should execute 3 times, got: {}",
+        output
+    );
+    assert!(
+        output.contains("final_totalTime=15"),
+        "totalTime += should accumulate to 15 (3*5), got: {}",
+        output
+    );
+}

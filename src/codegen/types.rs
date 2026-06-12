@@ -81,8 +81,14 @@ impl IRGenerator {
                 }
             }
             Type::Struct(name) => format!("%struct.{}", name), // 命名结构体
-            // 泛型类型 - 默认为 i8* 指针
-            Type::GenericParam(_) => "i8*".to_string(),
+            // 泛型类型参数 - 查找特化映射，回退到 i8*
+            Type::GenericParam(param_name) => {
+                if let Some(actual_type) = self.generic_type_args.get(param_name) {
+                    self.type_to_llvm(actual_type)
+                } else {
+                    "i8*".to_string()
+                }
+            }
             Type::Generic(_, _) => "i8*".to_string(),
         }
     }

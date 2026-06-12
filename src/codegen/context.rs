@@ -244,6 +244,12 @@ pub struct IRGenerator {
     pub lambda_captures: HashMap<String, Vec<(String, crate::types::Type)>>, // lambda函数名 -> 捕获变量列表 [(变量名, 类型)]
     pub lambda_envs: HashMap<String, String>, // lambda变量名 -> 环境指针临时变量名
     pub lambda_counter: usize,                // Lambda函数名计数器，确保唯一性
+    // 泛型特化：当前类型参数映射（如 {"T" -> Type::Int32}）
+    pub generic_type_args: HashMap<String, crate::types::Type>,
+    // 泛型特化：已收集的特化实例（基础类名 -> 实例集合）
+    pub specializations: HashMap<String, HashSet<crate::codegen::specialization::SpecializationInstance>>,
+    // 泛型特化：已生成的特化方法名（避免重复生成）
+    pub generated_specializations: HashSet<String>,
 }
 
 /// DWARF 子程序元数据
@@ -315,6 +321,9 @@ impl IRGenerator {
             lambda_captures: HashMap::new(),
             lambda_envs: HashMap::new(),
             lambda_counter: 0,
+            generic_type_args: HashMap::new(),
+            specializations: HashMap::new(),
+            generated_specializations: HashSet::new(),
         }
     }
 
@@ -675,6 +684,43 @@ impl IRGenerator {
             .find(|ctx| ctx.label.as_deref() == Some(label))
     }
 
+    /// 替换类型中的泛型参数为实际类型（使用 generic_type_args 映射）
+    pub fn substitute_generic_params(&self, ty: crate::types::Type) -> crate::types::Type {
+        use crate::types::Type;
+        match ty {
+            Type::GenericParam(name) => {
+                if let Some(actual_type) = self.generic_type_args.get(&name) {
+                    actual_type.clone()
+                } else {
+                    Type::GenericParam(name)
+                }
+            }
+            Type::Array(inner) => {
+                Type::Array(Box::new(self.substitute_generic_params(*inner)))
+            }
+            Type::Pointer(inner) => {
+                Type::Pointer(Box::new(self.substitute_generic_params(*inner)))
+            }
+            Type::Function(func_type) => {
+                let new_return = self.substitute_generic_params(*func_type.return_type);
+                let new_params = func_type.params.into_iter().map(|p| {
+                    self.substitute_generic_params(p)
+                }).collect();
+                Type::Function(Box::new(crate::types::FunctionType {
+                    return_type: Box::new(new_return),
+                    params: new_params,
+                    is_static: func_type.is_static,
+                    is_closure: func_type.is_closure,
+                }))
+            }
+            Type::Generic(base, args) => {
+                let new_args = args.into_iter().map(|a| self.substitute_generic_params(a)).collect();
+                Type::Generic(base, new_args)
+            }
+            _ => ty,
+        }
+    }
+
     /// 获取表达式的类型
     /// 用于在代码生成期间推断表达式类型
     pub fn get_expression_type(&self, expr: &crate::ast::Expr) -> Option<crate::types::Type> {
@@ -725,7 +771,7 @@ impl IRGenerator {
                                 }
                                 None
                             }
-                            Type::Generic(class_name, _) => {
+                            Type::Generic(class_name, type_args) => {
                                 // 对于泛型类型（如 vector<Student>），从类型注册表查找字段类型
                                 if let Some(ref registry) = self.type_registry {
                                     if let Some(class_info) = registry.get_class(&class_name) {
@@ -733,7 +779,10 @@ impl IRGenerator {
                                         if let Some(field_info) =
                                             class_info.fields.get(&member.member)
                                         {
-                                            return Some(field_info.field_type.clone());
+                                            let mut field_type = field_info.field_type.clone();
+                                            // 如果字段类型包含泛型参数，使用类型参数映射替换
+                                            field_type = self.substitute_generic_params(field_type);
+                                            return Some(field_type);
                                         }
                                     }
                                 }
@@ -950,6 +999,14 @@ impl IRGenerator {
     ) -> String {
         let cls = self.get_qualified_class_name(class_name);
 
+        // 对泛型特化版本，使用基础类名作为前缀（与调用端一致）
+        let base_cls = if class_name.contains('<') {
+            let base_name = class_name.split('<').next().unwrap_or(class_name);
+            self.get_qualified_class_name(base_name)
+        } else {
+            cls.clone()
+        };
+
         // 只对泛型类尝试从类型注册表获取方法信息
         // 因为类型注册表中的 MethodInfo 已经将泛型参数替换为 GenericParam 类型
         if class_name.contains('<') {
@@ -969,7 +1026,7 @@ impl IRGenerator {
                                 if method_info.params.len() == method.params.len() {
                                     // 使用 MethodInfo 中的参数类型（已替换泛型参数）
                                     if method_info.params.is_empty() {
-                                        return format!("{}.{}", cls, method.name);
+                                        return format!("{}.{}", base_cls, method.name);
                                     } else {
                                         let param_types: Vec<String> = method_info
                                             .params
@@ -984,7 +1041,7 @@ impl IRGenerator {
                                             .collect();
                                         return format!(
                                             "{}.__{}_{}",
-                                            cls,
+                                            base_cls,
                                             method.name,
                                             param_types.join("_")
                                         );
@@ -999,7 +1056,7 @@ impl IRGenerator {
 
         // 回退：使用 AST 中的参数类型
         if method.params.is_empty() {
-            format!("{}.{}", cls, method.name)
+            format!("{}.{}", base_cls, method.name)
         } else {
             let param_types: Vec<String> = method
                 .params
@@ -1012,7 +1069,7 @@ impl IRGenerator {
                     }
                 })
                 .collect();
-            format!("{}.__{}_{}", cls, method.name, param_types.join("_"))
+            format!("{}.__{}_{}", base_cls, method.name, param_types.join("_"))
         }
     }
 

@@ -298,8 +298,20 @@ impl IRGenerator {
                                         false,
                                     )
                                 }
-                                crate::types::Type::Generic(class_name, _) => {
+                                crate::types::Type::Generic(class_name, type_args) => {
                                     // 对于泛型类型（如 vector<Student>），处理其方法调用
+                                    // 建立类型参数映射，支持泛型特化
+                                    if let Some(ref registry) = self.type_registry {
+                                        if let Some(class_info) = registry.get_class(&class_name) {
+                                            if !class_info.type_params.is_empty() && !type_args.is_empty() {
+                                                for (idx, param_name) in class_info.type_params.iter().enumerate() {
+                                                    if let Some(type_arg) = type_args.get(idx) {
+                                                        self.generic_type_args.insert(param_name.clone(), type_arg.clone());
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                     // 首先检查是否是函数指针字段
                                     if let Some(field_type) =
                                         self.get_field_type(&class_name, &member.member)
@@ -845,15 +857,25 @@ impl IRGenerator {
                 match &resolved_type {
                     crate::types::Type::Object(name) => {
                         if class_type_params.contains(name) {
-                            // 这是泛型参数，使用参数名
-                            format!("g{}", name)
+                            // 这是泛型参数 - 检查是否有特化映射
+                            if let Some(actual_type) = self.generic_type_args.get(name) {
+                                self.param_type_to_signature(actual_type, is_param_varargs)
+                            } else {
+                                format!("g{}", name)
+                            }
                         } else {
                             self.param_type_to_signature(&resolved_type, is_param_varargs)
                         }
                     }
                     crate::types::Type::GenericParam(name) => {
-                        // 泛型参数类型，使用参数名
-                        format!("g{}", name)
+                        // 泛型参数类型 - 检查是否有特化映射
+                        if let Some(actual_type) = self.generic_type_args.get(name) {
+                            // 有特化映射，使用实际类型
+                            self.param_type_to_signature(actual_type, is_param_varargs)
+                        } else {
+                            // 无特化映射，使用泛型参数名
+                            format!("g{}", name)
+                        }
                     }
                     _ => self.param_type_to_signature(&resolved_type, is_param_varargs),
                 }

@@ -481,3 +481,34 @@ fn test_expression_complex() {
         output
     );
 }
+
+#[test]
+fn test_compound_assignment_regression() {
+    let output = compile_and_run_eol("examples/test_compound_assignment_regression.cay")
+        .expect("compound assignment regression should compile and run");
+    assert!(
+        output.contains("total_after_5_adds=50"),
+        "+= should accumulate 5 times, got: {}",
+        output
+    );
+    assert!(
+        output.contains("sum_1_to_5=15"),
+        "Multiple += should accumulate, got: {}",
+        output
+    );
+    assert!(
+        output.contains("diff_after_subs=40"),
+        "-= should accumulate, got: {}",
+        output
+    );
+    assert!(
+        output.contains("prod_1_to_4=24"),
+        "*= should accumulate, got: {}",
+        output
+    );
+    assert!(
+        output.contains("arr0=15") && output.contains("arr1=10"),
+        "Array element += should accumulate, got: {}",
+        output
+    );
+}

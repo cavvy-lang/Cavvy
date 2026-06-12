@@ -597,6 +597,27 @@ public class Main {
 
 ---
 
+## 内联 IR
+
+`__ir { ... }` 可在函数或方法体内插入 LLVM IR 指令，包括 public/private、static/instance 方法以及顶层函数。private 方法同样允许使用内联 IR；这不会收窄其他可用场景。
+
+```cay
+public class Main {
+    private static int addOne(int x) {
+        int result;
+        __ir {
+            %sum = add i32 %x, 1
+            store i32 %sum, i32* %result
+        }
+        return result;
+    }
+}
+```
+
+内联 IR 可以引用当前作用域中的 Cavvy 变量，形式为 `%变量名`，也可以用 `%0`、`%1` 等按参数和局部变量顺序引用。该功能面向底层库和性能敏感代码，使用者需要保证 IR 类型和控制流正确。
+
+---
+
 ## FFI extern 声明
 
 详见 [FFI 文档](ffi.md)。

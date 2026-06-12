@@ -335,3 +335,15 @@ fn test_inline_ir_math() {
         output
     );
 }
+
+#[test]
+fn test_inline_ir_private_method() {
+    let output = compile_and_run_eol("examples/test_inline_ir_private_method.cay")
+        .expect("test_inline_ir_private_method.cay should compile and run");
+
+    assert!(
+        output.contains("private inline ir = 43"),
+        "Private methods should allow inline IR blocks, got: {}",
+        output
+    );
+}

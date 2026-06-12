@@ -1,0 +1,88 @@
+#include <std/vector.cay>
+#include <c/stdio.cay>
+
+using std::vector;
+
+public struct Student {
+    string name;
+    int age;
+    float score;
+}
+
+public int main() {
+    vector<int> nums = new vector<int>();
+
+    if (nums.empty()) {
+        println("initial empty = true");
+    }
+
+    nums.push_back(10);
+    nums.push_back(20);
+    nums.push_back(30);
+    println("size after push = " + String.valueOf(nums.size()));
+    println("middle before set = " + String.valueOf(nums.get(1)));
+
+    nums.set(1, 25);
+    println("middle after set = " + String.valueOf(nums.at(1)));
+    println("front = " + String.valueOf(nums.front()));
+    println("back = " + String.valueOf(nums.back()));
+
+    nums.pop_back();
+    println("size after pop = " + String.valueOf(nums.length()));
+
+    nums.reserve(8);
+    println("capacity after reserve = " + String.valueOf(nums.capacity()));
+
+    nums.resize(4, 7);
+    println("size after resize = " + String.valueOf(nums.size()));
+    println("capacity after resize = " + String.valueOf(nums.capacity()));
+    println("new element = " + String.valueOf(nums.get(2)));
+
+    nums.erase(1);
+    println("size after erase = " + String.valueOf(nums.size()));
+    println("capacity after erase = " + String.valueOf(nums.capacity()));
+    println("element after erase = " + String.valueOf(nums.get(1)));
+
+    nums.clear();
+    println("capacity after clear = " + String.valueOf(nums.capacity()));
+    if (nums.empty()) {
+        println("empty after clear = true");
+    }
+
+    nums.push_back(99);
+    println("value after clear reuse = " + String.valueOf(nums.get(0)));
+    println("capacity after clear reuse = " + String.valueOf(nums.capacity()));
+
+    nums.shrink_to_fit();
+    println("capacity after shrink = " + String.valueOf(nums.capacity()));
+
+    vector<Student> students = new vector<Student>();
+
+    Student zhang = new Student();
+    zhang.name = "Zhang";
+    zhang.age = 18;
+    zhang.score = 90.0;
+    students.push_back(zhang);
+
+    Student li = new Student();
+    li.name = "Li";
+    li.age = 19;
+    li.score = 85.0;
+    students.push_back(li);
+
+    printf(
+        "student 0 = %s, %d, %f\n",
+        students.get(0).name.c_str(),
+        students.get(0).age,
+        students.get(0).score
+    );
+    printf(
+        "student 1 = %s, %d, %f\n",
+        students.get(1).name.c_str(),
+        students.get(1).age,
+        students.get(1).score
+    );
+
+    println("std::vector tests passed");
+    return 0;
+}

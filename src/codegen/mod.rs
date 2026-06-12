@@ -21,6 +21,7 @@ pub mod runtime;
 pub mod source_map;
 mod statements;
 mod types;
+pub mod specialization;
 
 // 0.5.0.0: CodeGen-IR Builder 协作桥
 pub mod bridge;

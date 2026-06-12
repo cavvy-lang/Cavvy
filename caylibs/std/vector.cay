@@ -1,0 +1,246 @@
+/**
+ * std::vector<T> - source-only dynamic array container
+ *
+ * The implementation is intentionally thin: a vector stores only an array
+ * buffer and the logical element count. Storage is Cavvy's built-in T[] array,
+ * so element access has the same representation as direct array access.
+ */
+
+#pragma once
+
+namespace std {
+
+public class vector<T> {
+    public T[] data;
+    public int size;
+
+    public vector() {
+        this.data = new T[0];
+        this.size = 0;
+    }
+
+    public vector(int n) {
+        if (n < 0) {
+            n = 0;
+        }
+
+        this.data = new T[n];
+        this.size = n;
+    }
+
+    public vector(int n, T val) {
+        if (n < 0) {
+            n = 0;
+        }
+
+        this.data = new T[n];
+        this.size = n;
+
+        for (int i = 0; i < n; i++) {
+            this.data[i] = val;
+        }
+    }
+
+    private int next_capacity(int minCapacity) {
+        int newCapacity = this.data.length;
+        if (newCapacity < 1) {
+            newCapacity = 1;
+        }
+
+        while (newCapacity < minCapacity) {
+            newCapacity = newCapacity * 2;
+        }
+
+        return newCapacity;
+    }
+
+    private void reallocate(int newCapacity) {
+        if (newCapacity < 0) {
+            newCapacity = 0;
+        }
+
+        int oldSize = this.size;
+        T[] oldData = this.data;
+        T[] newData = new T[newCapacity];
+        int limit = oldSize;
+        if (limit > newCapacity) {
+            limit = newCapacity;
+        }
+
+        if (limit > 0) {
+            copy_slots(newData, oldData, limit);
+        }
+
+        this.data = newData;
+        this.size = limit;
+    }
+
+    private void ensure_capacity(int minCapacity) {
+        if (minCapacity <= this.data.length) {
+            return;
+        }
+
+        this.reallocate(this.next_capacity(minCapacity));
+    }
+
+    private void fill_default(int fromIndex, int toIndex) {
+        if (toIndex <= fromIndex) {
+            return;
+        }
+
+        clear_slots(this.data, fromIndex, toIndex - fromIndex);
+    }
+
+    private static void copy_slots(T[] dest, T[] src, int count) {
+        __ir {
+            %dest_i8 = bitcast i8** %dest to i8*
+            %src_i8 = bitcast i8** %src to i8*
+            %count64 = sext i32 %count to i64
+            %bytes = mul i64 %count64, 8
+            call void @llvm.memcpy.p0i8.p0i8.i64(i8* %dest_i8, i8* %src_i8, i64 %bytes, i1 false)
+        }
+    }
+
+    private static void move_slots_left(T[] data, int index, int count) {
+        if (count <= 0) {
+            return;
+        }
+
+        __ir {
+            %idx64 = sext i32 %index to i64
+            %cnt64 = sext i32 %count to i64
+            %dst_slot = getelementptr i8*, i8** %data, i64 %idx64
+            %src_idx = add i64 %idx64, 1
+            %src_slot = getelementptr i8*, i8** %data, i64 %src_idx
+            %dst_i8 = bitcast i8** %dst_slot to i8*
+            %src_i8 = bitcast i8** %src_slot to i8*
+            %bytes = mul i64 %cnt64, 8
+            call void @llvm.memmove.p0i8.p0i8.i64(i8* %dst_i8, i8* %src_i8, i64 %bytes, i1 false)
+        }
+    }
+
+    private static void clear_slots(T[] data, int index, int count) {
+        if (count <= 0) {
+            return;
+        }
+
+        __ir {
+            %idx64 = sext i32 %index to i64
+            %cnt64 = sext i32 %count to i64
+            %slot = getelementptr i8*, i8** %data, i64 %idx64
+            %slot_i8 = bitcast i8** %slot to i8*
+            %bytes = mul i64 %cnt64, 8
+            call void @llvm.memset.p0i8.i64(i8* %slot_i8, i8 0, i64 %bytes, i1 false)
+        }
+    }
+
+    public T get(int index) {
+        return this.data[index];
+    }
+
+    public T at(int index) {
+        return this.data[index];
+    }
+
+    public void set(int index, T val) {
+        this.data[index] = val;
+    }
+
+    public T front() {
+        return this.data[0];
+    }
+
+    public T back() {
+        return this.data[this.size - 1];
+    }
+
+    public void push_back(T val) {
+        this.ensure_capacity(this.size + 1);
+        this.data[this.size] = val;
+        this.size = this.size + 1;
+    }
+
+    public void pop_back() {
+        if (this.size > 0) {
+            this.size = this.size - 1;
+        }
+    }
+
+    public int length() {
+        return this.size;
+    }
+
+    public int size() {
+        return this.size;
+    }
+
+    public bool empty() {
+        return this.size == 0;
+    }
+
+    public int capacity() {
+        return this.data.length;
+    }
+
+    public void reserve(int n) {
+        if (n > this.data.length) {
+            this.reallocate(n);
+        }
+    }
+
+    public void shrink_to_fit() {
+        if (this.size != this.data.length) {
+            this.reallocate(this.size);
+        }
+    }
+
+    public void clear() {
+        this.size = 0;
+    }
+
+    public void resize(int n) {
+        if (n < 0) {
+            n = 0;
+        }
+
+        if (n > this.data.length) {
+            this.reallocate(this.next_capacity(n));
+        }
+
+        if (n > this.size) {
+            this.fill_default(this.size, n);
+        }
+
+        this.size = n;
+    }
+
+    public void resize(int n, T val) {
+        if (n < 0) {
+            n = 0;
+        }
+
+        int oldSize = this.size;
+
+        if (n > this.data.length) {
+            this.reallocate(this.next_capacity(n));
+        }
+
+        for (int i = oldSize; i < n; i++) {
+            this.data[i] = val;
+        }
+
+        this.size = n;
+    }
+
+    public void erase(int index) {
+        if (index < 0 || index >= this.size) {
+            return;
+        }
+
+        move_slots_left(this.data, index, this.size - index - 1);
+        this.size = this.size - 1;
+        clear_slots(this.data, this.size, 1);
+    }
+}
+
+} // namespace std

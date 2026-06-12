@@ -3,6 +3,39 @@ use crate::codegen::context::IRGenerator;
 use crate::error::cayResult;
 use crate::types::Type;
 
+/// 泛型特化：替换类型中的泛型参数为实际类型
+fn substitute_type_params(ty: &Type, type_args: &[Type], type_params: &[String]) -> Type {
+    match ty {
+        Type::GenericParam(name) => {
+            if let Some(idx) = type_params.iter().position(|p| p == name) {
+                if let Some(type_arg) = type_args.get(idx) {
+                    return type_arg.clone();
+                }
+            }
+            ty.clone()
+        }
+        Type::Array(inner) => Type::Array(Box::new(substitute_type_params(inner, type_args, type_params))),
+        Type::Pointer(inner) => Type::Pointer(Box::new(substitute_type_params(inner, type_args, type_params))),
+        Type::Function(func_type) => {
+            let new_return = substitute_type_params(&func_type.return_type, type_args, type_params);
+            let new_params: Vec<Type> = func_type.params.iter().map(|p| {
+                substitute_type_params(p, type_args, type_params)
+            }).collect();
+            Type::Function(Box::new(crate::types::FunctionType {
+                return_type: Box::new(new_return),
+                params: new_params,
+                is_static: func_type.is_static,
+                is_closure: func_type.is_closure,
+            }))
+        }
+        Type::Generic(base, args) => {
+            let new_args = args.iter().map(|a| substitute_type_params(a, type_args, type_params)).collect();
+            Type::Generic(base.clone(), new_args)
+        }
+        _ => ty.clone(),
+    }
+}
+
 /// Windows 控制台 UTF-8 代码页
 const UTF8_CODEPAGE: i32 = 65001;
 
@@ -110,6 +143,11 @@ impl IRGenerator {
                 .insert(type_alias.name.clone(), type_alias.target_type.clone());
         }
 
+        // ===== 泛型特化：收集所有特化需求 =====
+        let mut collector = crate::codegen::specialization::SpecializationCollector::new();
+        collector.collect_from_program(&program);
+        self.specializations = collector.instances.clone();
+
         let mut main_class = None;
         let mut main_method = None;
         let mut fallback_main_class = None;
@@ -166,7 +204,30 @@ impl IRGenerator {
                 })
                 .collect();
             generator.compute_class_layout(&base_qname, &instance_fields, class.parent.as_deref());
-            computed.insert(base_qname);
+            computed.insert(base_qname.clone());
+
+            // ===== 泛型特化：为每个特化版本计算布局 =====
+            if !class.type_params.is_empty() {
+                let instances = generator.specializations.get(&base_qname)
+                    .cloned()
+                    .unwrap_or_default();
+                for instance in instances {
+                    let specialized_name = instance.specialized_name();
+                    // 设置类型参数映射
+                    let mapping = instance.type_param_mapping(&class.type_params);
+                    let old_mapping = std::mem::replace(&mut generator.generic_type_args, mapping);
+
+                    // 计算特化版本的布局（字段类型已替换）
+                    let specialized_fields: Vec<_> = instance_fields.iter().map(|f| {
+                        let mut field = f.clone();
+                        field.field_type = substitute_type_params(&field.field_type, &instance.type_args, &class.type_params);
+                        field
+                    }).collect();
+                    generator.compute_class_layout(&specialized_name, &specialized_fields, class.parent.as_deref());
+
+                    generator.generic_type_args = old_mapping;
+                }
+            }
         }
 
         for class in &program.classes {
@@ -780,9 +841,16 @@ impl IRGenerator {
 
         // 构建限定名（用于 LLVM 名称改编）
         let qname = if class.namespace_path.is_empty() {
-            full_class_name
+            full_class_name.clone()
         } else {
             format!("{}::{}", class.namespace_path.join("::"), full_class_name)
+        };
+
+        // 构建基础限定名（不含泛型参数）
+        let base_qname = if class.namespace_path.is_empty() {
+            class.name.clone()
+        } else {
+            format!("{}::{}", class.namespace_path.join("::"), class.name)
         };
 
         // 生成 vtable 全局常量
@@ -808,10 +876,10 @@ impl IRGenerator {
                 .insert(qname.clone(), fields_with_init);
         }
 
+        // 生成原始类的方法（类型擦除版本，用于兼容性和非特化调用）
         for member in &class.members {
             match member {
                 ClassMember::Method(method) => {
-                    // 跳过 native 和 abstract 方法（它们没有方法体）
                     if !method.modifiers.contains(&Modifier::Native)
                         && !method.modifiers.contains(&Modifier::Abstract)
                     {
@@ -835,6 +903,86 @@ impl IRGenerator {
         // 如果没有显式构造函数，生成默认构造函数
         if !has_explicit_ctor {
             self.generate_default_constructor(&qname)?;
+        }
+
+        // ===== 泛型特化：为每个特化版本生成方法 =====
+        if !class.type_params.is_empty() {
+            let instances = self.specializations.get(&base_qname)
+                .cloned()
+                .unwrap_or_default();
+            for instance in instances {
+                let specialized_name = instance.specialized_name();
+                let llvm_specialized = instance.llvm_specialized_name();
+
+                // 检查是否已生成过此特化版本
+                let spec_key = format!("{}", llvm_specialized);
+                if self.generated_specializations.contains(&spec_key) {
+                    continue;
+                }
+                self.generated_specializations.insert(spec_key);
+
+                // 设置类型参数映射
+                let mapping = instance.type_param_mapping(&class.type_params);
+                let old_mapping = std::mem::replace(&mut self.generic_type_args, mapping);
+
+                // 生成特化版本的 vtable
+                self.generate_vtable_global(&specialized_name)?;
+
+                // 为特化版本生成方法
+                for member in &class.members {
+                    match member {
+                        ClassMember::Method(method) => {
+                            if !method.modifiers.contains(&Modifier::Native)
+                                && !method.modifiers.contains(&Modifier::Abstract)
+                            {
+                                // 创建特化版本的方法（替换参数和返回类型中的泛型参数）
+                                let mut specialized_method = method.clone();
+                                specialized_method.return_type = substitute_type_params(
+                                    &method.return_type,
+                                    &instance.type_args,
+                                    &class.type_params,
+                                );
+                                specialized_method.params = method.params.iter().map(|p| {
+                                    crate::types::ParameterInfo {
+                                        name: p.name.clone(),
+                                        param_type: substitute_type_params(
+                                            &p.param_type,
+                                            &instance.type_args,
+                                            &class.type_params,
+                                        ),
+                                        is_varargs: p.is_varargs,
+                                    }
+                                }).collect();
+                                self.generate_method(&specialized_name, &specialized_method)?;
+                            }
+                        }
+                        ClassMember::Constructor(ctor) => {
+                            let mut specialized_ctor = ctor.clone();
+                            specialized_ctor.params = ctor.params.iter().map(|p| {
+                                crate::types::ParameterInfo {
+                                    name: p.name.clone(),
+                                    param_type: substitute_type_params(
+                                        &p.param_type,
+                                        &instance.type_args,
+                                        &class.type_params,
+                                    ),
+                                    is_varargs: p.is_varargs,
+                                }
+                            }).collect();
+                            self.generate_constructor(&specialized_name, &specialized_ctor)?;
+                        }
+                        _ => {}
+                    }
+                }
+
+                // 如果没有显式构造函数，生成默认构造函数
+                if !has_explicit_ctor {
+                    self.generate_default_constructor(&specialized_name)?;
+                }
+
+                // 恢复类型参数映射
+                self.generic_type_args = old_mapping;
+            }
         }
 
         // 清除命名空间上下文

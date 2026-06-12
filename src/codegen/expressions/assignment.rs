@@ -12,6 +12,10 @@ impl IRGenerator {
     /// # Arguments
     /// * `assign` - 赋值表达式
     pub fn generate_assignment(&mut self, assign: &AssignmentExpr) -> cayResult<String> {
+        if assign.op != AssignOp::Assign {
+            return self.generate_compound_assignment(assign);
+        }
+
         let value = self.generate_expression(&assign.value)?;
         let (value_type, val) = self.parse_typed_value(&value);
 
@@ -38,6 +42,245 @@ impl IRGenerator {
                 "Invalid assignment target",
             )),
         }
+    }
+
+    /// 生成复合赋值表达式（+=、-=、*=、/=、%=）。
+    fn generate_compound_assignment(&mut self, assign: &AssignmentExpr) -> cayResult<String> {
+        let (target_type, target_ptr) = self.get_lvalue_info(&assign.target)?;
+        let align = self.get_type_align(&target_type);
+
+        let current_temp = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = load {}, {}* {}, align {}",
+            current_temp, target_type, target_type, target_ptr, align
+        ));
+
+        let value = self.generate_expression(&assign.value)?;
+        let (value_type, value_val) = self.parse_typed_value(&value);
+        let result = self.generate_compound_assignment_value(
+            assign.op,
+            &target_type,
+            &current_temp,
+            &value_type,
+            &value_val,
+            &assign.loc,
+        )?;
+        let (result_type, result_val) = self.parse_typed_value(&result);
+
+        if result_type != target_type {
+            return self.generate_store_to_lvalue_with_conversion(
+                &target_type,
+                &target_ptr,
+                &result_type,
+                &result_val,
+                &assign.loc,
+            );
+        }
+
+        self.emit_line(&format!(
+            "  store {} {}, {}* {}, align {}",
+            target_type, result_val, target_type, target_ptr, align
+        ));
+        Ok(format!("{} {}", target_type, result_val))
+    }
+
+    fn generate_compound_assignment_value(
+        &mut self,
+        op: AssignOp,
+        left_type: &str,
+        left_val: &str,
+        right_type: &str,
+        right_val: &str,
+        loc: &crate::error::SourceLocation,
+    ) -> cayResult<String> {
+        let temp = self.new_temp();
+        let is_left_int = left_type.starts_with("i") && !left_type.ends_with("*");
+        let is_right_int = right_type.starts_with("i") && !right_type.ends_with("*");
+        let is_left_float = left_type == "float" || left_type == "double";
+        let is_right_float = right_type == "float" || right_type == "double";
+
+        match op {
+            AssignOp::AddAssign => {
+                if is_left_int && is_right_int {
+                    let (ty, l, r) =
+                        self.promote_integer_operands(left_type, left_val, right_type, right_val);
+                    self.emit_line(&format!("  {} = add {} {}, {}", temp, ty, l, r));
+                    Ok(format!("{} {}", ty, temp))
+                } else if is_left_float && is_right_float {
+                    let (ty, l, r) =
+                        self.promote_float_operands(left_type, left_val, right_type, right_val);
+                    self.emit_line(&format!("  {} = fadd {} {}, {}", temp, ty, l, r));
+                    Ok(format!("{} {}", ty, temp))
+                } else if let Some((ty, l, r)) =
+                    self.promote_mixed_operands(left_type, left_val, right_type, right_val)
+                {
+                    self.emit_line(&format!("  {} = fadd {} {}, {}", temp, ty, l, r));
+                    Ok(format!("{} {}", ty, temp))
+                } else {
+                    Err(codegen_error_at(
+                        loc.clone(),
+                        format!("Unsupported += types: {} and {}", left_type, right_type),
+                    ))
+                }
+            }
+            AssignOp::SubAssign => {
+                if is_left_int && is_right_int {
+                    let (ty, l, r) =
+                        self.promote_integer_operands(left_type, left_val, right_type, right_val);
+                    self.emit_line(&format!("  {} = sub {} {}, {}", temp, ty, l, r));
+                    Ok(format!("{} {}", ty, temp))
+                } else if is_left_float && is_right_float {
+                    let (ty, l, r) =
+                        self.promote_float_operands(left_type, left_val, right_type, right_val);
+                    self.emit_line(&format!("  {} = fsub {} {}, {}", temp, ty, l, r));
+                    Ok(format!("{} {}", ty, temp))
+                } else if let Some((ty, l, r)) =
+                    self.promote_mixed_operands(left_type, left_val, right_type, right_val)
+                {
+                    self.emit_line(&format!("  {} = fsub {} {}, {}", temp, ty, l, r));
+                    Ok(format!("{} {}", ty, temp))
+                } else {
+                    Err(codegen_error_at(
+                        loc.clone(),
+                        format!("Unsupported -= types: {} and {}", left_type, right_type),
+                    ))
+                }
+            }
+            AssignOp::MulAssign => {
+                if is_left_int && is_right_int {
+                    let (ty, l, r) =
+                        self.promote_integer_operands(left_type, left_val, right_type, right_val);
+                    self.emit_line(&format!("  {} = mul {} {}, {}", temp, ty, l, r));
+                    Ok(format!("{} {}", ty, temp))
+                } else if is_left_float && is_right_float {
+                    let (ty, l, r) =
+                        self.promote_float_operands(left_type, left_val, right_type, right_val);
+                    self.emit_line(&format!("  {} = fmul {} {}, {}", temp, ty, l, r));
+                    Ok(format!("{} {}", ty, temp))
+                } else if let Some((ty, l, r)) =
+                    self.promote_mixed_operands(left_type, left_val, right_type, right_val)
+                {
+                    self.emit_line(&format!("  {} = fmul {} {}, {}", temp, ty, l, r));
+                    Ok(format!("{} {}", ty, temp))
+                } else {
+                    Err(codegen_error_at(
+                        loc.clone(),
+                        format!("Unsupported *= types: {} and {}", left_type, right_type),
+                    ))
+                }
+            }
+            AssignOp::DivAssign => {
+                if is_left_int && is_right_int {
+                    let (ty, l, r) =
+                        self.promote_integer_operands(left_type, left_val, right_type, right_val);
+                    self.generate_division_by_zero_check(&ty, &r)?;
+                    self.emit_line(&format!("  {} = sdiv {} {}, {}", temp, ty, l, r));
+                    Ok(format!("{} {}", ty, temp))
+                } else if is_left_float && is_right_float {
+                    let (ty, l, r) =
+                        self.promote_float_operands(left_type, left_val, right_type, right_val);
+                    self.emit_line(&format!("  {} = fdiv {} {}, {}", temp, ty, l, r));
+                    Ok(format!("{} {}", ty, temp))
+                } else if let Some((ty, l, r)) =
+                    self.promote_mixed_operands(left_type, left_val, right_type, right_val)
+                {
+                    self.emit_line(&format!("  {} = fdiv {} {}, {}", temp, ty, l, r));
+                    Ok(format!("{} {}", ty, temp))
+                } else {
+                    Err(codegen_error_at(
+                        loc.clone(),
+                        format!("Unsupported /= types: {} and {}", left_type, right_type),
+                    ))
+                }
+            }
+            AssignOp::ModAssign => {
+                if is_left_int && is_right_int {
+                    let (ty, l, r) =
+                        self.promote_integer_operands(left_type, left_val, right_type, right_val);
+                    self.generate_division_by_zero_check(&ty, &r)?;
+                    self.emit_line(&format!("  {} = srem {} {}, {}", temp, ty, l, r));
+                    Ok(format!("{} {}", ty, temp))
+                } else {
+                    Err(codegen_error_at(
+                        loc.clone(),
+                        format!("Unsupported %= types: {} and {}", left_type, right_type),
+                    ))
+                }
+            }
+            AssignOp::Assign => unreachable!(),
+        }
+    }
+
+    fn generate_store_to_lvalue_with_conversion(
+        &mut self,
+        target_type: &str,
+        target_ptr: &str,
+        value_type: &str,
+        val: &str,
+        loc: &crate::error::SourceLocation,
+    ) -> cayResult<String> {
+        let temp = self.new_temp();
+        let final_val = if value_type == target_type {
+            val.to_string()
+        } else if value_type == "double" && target_type == "float" {
+            self.emit_line(&format!("  {} = fptrunc double {} to float", temp, val));
+            temp
+        } else if value_type == "float" && target_type == "double" {
+            self.emit_line(&format!("  {} = fpext float {} to double", temp, val));
+            temp
+        } else if value_type.starts_with("i")
+            && target_type.starts_with("i")
+            && !value_type.ends_with("*")
+            && !target_type.ends_with("*")
+        {
+            let from_bits: u32 = value_type.trim_start_matches('i').parse().unwrap_or(64);
+            let to_bits: u32 = target_type.trim_start_matches('i').parse().unwrap_or(64);
+            if to_bits > from_bits {
+                self.emit_line(&format!(
+                    "  {} = sext {} {} to {}",
+                    temp, value_type, val, target_type
+                ));
+            } else {
+                self.emit_line(&format!(
+                    "  {} = trunc {} {} to {}",
+                    temp, value_type, val, target_type
+                ));
+            }
+            temp
+        } else if value_type.starts_with("i")
+            && !value_type.ends_with("*")
+            && (target_type == "float" || target_type == "double")
+        {
+            self.emit_line(&format!(
+                "  {} = sitofp {} {} to {}",
+                temp, value_type, val, target_type
+            ));
+            temp
+        } else if (value_type == "float" || value_type == "double")
+            && target_type.starts_with("i")
+            && !target_type.ends_with("*")
+        {
+            self.emit_line(&format!(
+                "  {} = fptosi {} {} to {}",
+                temp, value_type, val, target_type
+            ));
+            temp
+        } else {
+            return Err(codegen_error_at(
+                loc.clone(),
+                format!(
+                    "Cannot convert {} to {} for compound assignment",
+                    value_type, target_type
+                ),
+            ));
+        };
+
+        let align = self.get_type_align(target_type);
+        self.emit_line(&format!(
+            "  store {} {}, {}* {}, align {}",
+            target_type, final_val, target_type, target_ptr, align
+        ));
+        Ok(format!("{} {}", target_type, final_val))
     }
 
     /// 生成成员赋值（静态字段或实例字段赋值）

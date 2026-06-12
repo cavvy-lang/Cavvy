@@ -1055,6 +1055,10 @@ fn parse_inline_ir_from_tokens(parser: &mut Parser) -> cayResult<Vec<String>> {
                 current_line.push(",".to_string());
                 parser.advance();
             }
+            crate::lexer::Token::Dot => {
+                current_line.push(".".to_string());
+                parser.advance();
+            }
             crate::lexer::Token::Star => {
                 current_line.push("*".to_string());
                 parser.advance();
@@ -1098,6 +1102,14 @@ fn parse_inline_ir_from_tokens(parser: &mut Parser) -> cayResult<Vec<String>> {
             }
             crate::lexer::Token::Bool => {
                 current_line.push("bool".to_string());
+                parser.advance();
+            }
+            crate::lexer::Token::True => {
+                current_line.push("true".to_string());
+                parser.advance();
+            }
+            crate::lexer::Token::False => {
+                current_line.push("false".to_string());
                 parser.advance();
             }
             crate::lexer::Token::Semicolon => {
@@ -1162,8 +1174,10 @@ fn join_ir_tokens(tokens: &[String]) -> String {
             // - 前一个是 @ (  时
             let no_space = token == ")"
                 || token == ","
+                || token == "."
                 || token == "("
                 || prev == "@"
+                || prev == "."
                 || prev == "("
                 || (*token == "*" && is_llvm_type_token(prev));
             if !no_space {
@@ -1181,4 +1195,41 @@ fn is_llvm_type_token(token: &str) -> bool {
         token,
         "i1" | "i8" | "i16" | "i32" | "i64" | "float" | "double" | "void" | "%struct" | "label"
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::ast::{ClassMember, Stmt};
+
+    #[test]
+    fn inline_ir_preserves_intrinsic_names_and_bool_literals() {
+        let source = r#"
+            class InlineIrParserProbe {
+                void copy(ptr dest, ptr src) {
+                    __ir {
+                        call void @llvm.memcpy.p0i8.p0i8.i64(i8* %dest, i8* %src, i64 8, i1 false)
+                    }
+                }
+            }
+        "#;
+
+        let tokens = crate::lexer::lex(source).expect("source should lex");
+        let ast = crate::parser::parse_with_source(tokens, source.to_string())
+            .expect("source should parse");
+
+        let method = match &ast.classes[0].members[0] {
+            ClassMember::Method(method) => method,
+            _ => panic!("expected method"),
+        };
+        let body = method.body.as_ref().expect("method should have body");
+        let inline_ir = match &body.statements[0] {
+            Stmt::InlineIr(inline_ir) => inline_ir,
+            _ => panic!("expected inline IR statement"),
+        };
+
+        assert_eq!(
+            inline_ir.raw_lines[0],
+            "call void @llvm.memcpy.p0i8.p0i8.i64(i8* %dest, i8* %src, i64 8, i1 false)"
+        );
+    }
 }

@@ -13,9 +13,10 @@ Cavvy 标准库提供全面的系统编程能力，涵盖内存管理、字符�
 5. [网络编程](#网络编程)
 6. [HTTP 客户端](#http-客户端)
 7. [数学计算](#数学计算)
-8. [可选值类型 (Optional)](#可选值类型-optional)
-9. [增强 I/O 工具](#增强-io-工具)
-10. [FFI 类型系统](#ffi-类型系统)
+8. [容器](#容器)
+9. [可选值类型 (Optional)](#可选值类型-optional)
+10. [增强 I/O 工具](#增强-io-工具)
+11. [FFI 类型系统](#ffi-类型系统)
 
 ---
 
@@ -28,6 +29,7 @@ Cavvy 标准库提供全面的系统编程能力，涵盖内存管理、字符�
 #include <StringBuilder.cay>
 #include <File.cay>
 #include <Math.cay>
+#include <std/vector.cay>
 ```
 
 ---
@@ -786,6 +788,63 @@ class Main {
         double val = std::Math.lerp(0.0, 100.0, 0.5);  // 50.0
         int clamped = std::Math.clamp(150, 0, 100);    // 100
     }
+}
+```
+
+---
+
+## 容器
+
+### vector<T>
+
+**文件**: `caylibs/std/vector.cay`
+
+`std::vector<T>` 是基于 Cavvy 内置数组 `T[]` 的源代码级动态数组。它只保存数组缓冲区和逻辑长度，不引入额外运行时对象；元素存储和访问沿用内置数组表示。容量按 2 倍增长，`push_back` 仅在容量不足时搬迁元素；`pop_back`、`clear` 和容量内的 `resize` 不重新分配缓冲区。
+
+```cay,ignore
+public class vector<T> {
+    public vector();                                  // O(1) 创建空 vector
+    public vector(int n);                            // O(n) 创建 n 个默认元素
+    public vector(int n, T val);                     // O(n) 创建并填充值
+
+    public T get(int index);                         // O(1)
+    public T at(int index);                          // O(1)
+    public void set(int index, T val);               // O(1)
+    public T front();                                // O(1)
+    public T back();                                 // O(1)
+
+    public void push_back(T val);                    // 均摊 O(1)
+    public void pop_back();                          // O(1)
+    public void erase(int index);                    // O(n)
+    public void clear();                             // O(1)
+    public void resize(int n);                       // O(k)，k 为新增默认槽位数；扩容时 O(size)
+    public void resize(int n, T val);                // O(k)，k 为新增填充值数；扩容时 O(size)
+    public void reserve(int n);                      // 容量不足时 O(size)，否则 O(1)
+    public void shrink_to_fit();                     // O(n)
+
+    public int size();                               // O(1)
+    public int length();                             // O(1)
+    public int capacity();                           // O(1)
+    public bool empty();                             // O(1)
+}
+```
+
+**使用示例**:
+```cay
+#include <std/vector.cay>
+
+using std::vector;
+
+public int main() {
+    vector<int> nums = new vector<int>();
+    nums.push_back(10);
+    nums.push_back(20);
+    nums.set(1, 25);
+
+    println(nums.get(0));    // 10
+    println(nums.back());    // 25
+    println(nums.size());    // 2
+    return 0;
 }
 ```
 

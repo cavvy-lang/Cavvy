@@ -62,3 +62,4 @@ debug_*
 llvm-project/
 
 fix_*.py
+.claude/settings.local.json

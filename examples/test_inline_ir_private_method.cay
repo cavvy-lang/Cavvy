@@ -1,0 +1,29 @@
+public class PrivateInlineIrProbe {
+    private static int addOne(int x) {
+        int result;
+        __ir {
+            %sum = add i32 %x, 1
+            store i32 %sum, i32* %result
+        }
+        return result;
+    }
+
+    private int addTwo(int x) {
+        int result;
+        __ir {
+            %sum = add i32 %x, 2
+            store i32 %sum, i32* %result
+        }
+        return result;
+    }
+
+    public int run() {
+        return this.addTwo(addOne(40));
+    }
+}
+
+public int main() {
+    PrivateInlineIrProbe probe = new PrivateInlineIrProbe();
+    println("private inline ir = " + String.valueOf(probe.run()));
+    return 0;
+}

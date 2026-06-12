@@ -1,0 +1,51 @@
+// 回归测试：for 循环初始化复用外层同名变量
+// 验证 for (let i = ...) 如果外层已有 i，应该复用而不是创建新变量
+public class TestForInitReuseRegression {
+    public static void main() {
+        // 测试1: 外层 i 被 for 初始化复用，内层循环修改应该影响外层
+        int i = 0;
+        int count = 0;
+        for (int i = 0; i < 3; i = i + 1) {
+            count = count + 1;
+        }
+        // for 结束后 i 应该等于 3（因为循环条件 i < 3，最后一次 i=3 时退出）
+        // 但 update 在 body 之后执行，所以 i=2 时 body 执行，然后 i=3，条件不满足退出
+        // 所以 i 应该是 3
+        print("i_after_for=");
+        println(i);
+        print("count=");
+        println(count);
+
+        // 测试2: 嵌套 for 使用同名变量，内层应该复用外层
+        int outer = 0;
+        for (int outer = 0; outer < 2; outer = outer + 1) {
+            // 内层 for 复用 outer
+            for (int outer = 0; outer < 3; outer = outer + 1) {
+                print("inner_outer=");
+                println(outer);
+            }
+            // 这里 outer 应该被内层循环推到 3
+            print("mid_outer=");
+            println(outer);
+        }
+        print("final_outer=");
+        println(outer);
+
+        // 测试3: 累加器场景（原始 bug 场景）
+        long totalTime = 0;
+        for (int iter = 0; iter < 3; iter = iter + 1) {
+            long start = iter * 10;
+            long end = start + 5;
+            totalTime += end - start;
+            print("iter=");
+            print(iter);
+            print(" totalTime=");
+            println(totalTime);
+        }
+        // 期望: totalTime = 15 (3 * 5)
+        print("final_totalTime=");
+        println(totalTime);
+
+        println("=== for init reuse regression tests completed ===");
+    }
+}

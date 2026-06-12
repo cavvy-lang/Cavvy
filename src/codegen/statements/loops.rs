@@ -5,6 +5,7 @@
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
 use crate::error::cayResult;
+use crate::types::Type;
 
 impl IRGenerator {
     /// 生成 while 语句代码
@@ -63,7 +64,7 @@ impl IRGenerator {
 
         // 初始化部分
         if let Some(init) = for_stmt.init.as_ref() {
-            self.generate_statement(init)?;
+            self.generate_for_initializer(init)?;
         }
 
         // 进入循环上下文（continue 跳转到 update 标签）
@@ -117,6 +118,35 @@ impl IRGenerator {
         self.exit_loop();
 
         Ok(())
+    }
+
+    fn generate_for_initializer(&mut self, init: &Stmt) -> cayResult<()> {
+        match init {
+            Stmt::VarDecl(var) if self.scope_manager.get_var_type(&var.name).is_some() => {
+                if let Some(initializer) = &var.initializer {
+                    let assign = AssignmentExpr {
+                        target: Box::new(Expr::Identifier(IdentifierExpr {
+                            name: var.name.clone(),
+                            loc: var.loc.clone(),
+                        })),
+                        value: Box::new(initializer.clone()),
+                        op: AssignOp::Assign,
+                        loc: var.loc.clone(),
+                    };
+                    self.generate_assignment(&assign)?;
+                }
+                Ok(())
+            }
+            Stmt::Block(block)
+                if block.statements.iter().all(|s| matches!(s, Stmt::VarDecl(_))) =>
+            {
+                for stmt in &block.statements {
+                    self.generate_for_initializer(stmt)?;
+                }
+                Ok(())
+            }
+            _ => self.generate_statement(init),
+        }
     }
 
     /// 生成 do-while 语句代码

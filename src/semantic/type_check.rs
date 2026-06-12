@@ -345,7 +345,7 @@ impl SemanticAnalyzer {
             Stmt::For(for_stmt) => {
                 self.symbol_table.enter_scope();
                 if let Some(init) = &for_stmt.init {
-                    self.type_check_statement(init, expected_return)?;
+                    self.type_check_for_init(init, expected_return)?;
                 }
                 if let Some(condition) = &for_stmt.condition {
                     self.type_check_condition(condition, &for_stmt.loc);
@@ -400,6 +400,125 @@ impl SemanticAnalyzer {
             _ => {}
         }
 
+        Ok(())
+    }
+
+    /// 类型检查 for 循环初始化语句
+    ///
+    /// 与常规变量声明不同，for 初始化中的变量声明如果与外层作用域同名，
+    /// 会复用外层变量而不是创建新变量（与代码生成行为一致）。
+    fn type_check_for_init(
+        &mut self,
+        init: &Stmt,
+        expected_return: Option<&Type>,
+    ) -> cayResult<()> {
+        match init {
+            Stmt::VarDecl(var) => {
+                // 先检查外层作用域是否已有同名变量
+                let outer_exists = self.symbol_table.lookup(&var.name).is_some();
+
+                if outer_exists {
+                    // 复用外层变量：检查类型兼容性，然后更新符号表
+                    let mut var_type = if self.current_class_type_params.is_empty() {
+                        var.var_type.clone()
+                    } else {
+                        self.replace_type_params(&var.var_type, &self.current_class_type_params)
+                    };
+
+                    if let Some(init_expr) = &var.initializer {
+                        let init_type = self.infer_expr_type_collect_errors(init_expr);
+
+                        if var_type == Type::Auto {
+                            var_type = init_type.clone();
+                        } else if !self.types_compatible(&init_type, &var_type) {
+                            self.errors.push(self.create_error_info_with_file(
+                                var.loc.file.clone(),
+                                var.loc.line,
+                                var.loc.column,
+                                format!("Cannot assign {} to {}", init_type, var_type),
+                            ));
+                        }
+                    } else if var_type == Type::Auto {
+                        self.errors.push(self.create_error_info(
+                            var.loc.line,
+                            var.loc.column,
+                            "'auto' variable declaration requires an initializer",
+                        ));
+                        var_type = Type::Int32;
+                    }
+
+                    // 更新外层同名变量的类型和初始化状态
+                    self.symbol_table.update(
+                        &var.name,
+                        SemanticSymbolInfo {
+                            name: var.name.clone(),
+                            symbol_type: var_type,
+                            is_final: var.is_final,
+                            is_initialized: var.initializer.is_some(),
+                        },
+                    );
+                } else {
+                    // 外层没有同名变量，按常规变量声明处理
+                    // 但需要在 for 作用域中声明（当前已经在 for 作用域内）
+                    if self.symbol_table.lookup_current(&var.name).is_some() {
+                        self.errors.push(self.create_error_info(
+                            var.loc.line,
+                            var.loc.column,
+                            format!("Variable '{}' already defined in current scope", var.name),
+                        ));
+                        return Ok(());
+                    }
+
+                    let mut var_type = if self.current_class_type_params.is_empty() {
+                        var.var_type.clone()
+                    } else {
+                        self.replace_type_params(&var.var_type, &self.current_class_type_params)
+                    };
+                    let mut init_type_opt: Option<Type> = None;
+
+                    if let Some(init_expr) = &var.initializer {
+                        let init_type = self.infer_expr_type_collect_errors(init_expr);
+                        init_type_opt = Some(init_type.clone());
+
+                        if var_type == Type::Auto {
+                            var_type = init_type;
+                        } else if !self.types_compatible(&init_type, &var_type) {
+                            self.errors.push(self.create_error_info_with_file(
+                                var.loc.file.clone(),
+                                var.loc.line,
+                                var.loc.column,
+                                format!("Cannot assign {} to {}", init_type, var_type),
+                            ));
+                        }
+                    } else if var_type == Type::Auto {
+                        self.errors.push(self.create_error_info(
+                            var.loc.line,
+                            var.loc.column,
+                            "'auto' variable declaration requires an initializer",
+                        ));
+                        var_type = Type::Int32;
+                    }
+
+                    self.symbol_table.declare(
+                        var.name.clone(),
+                        SemanticSymbolInfo {
+                            name: var.name.clone(),
+                            symbol_type: var_type,
+                            is_final: var.is_final,
+                            is_initialized: var.initializer.is_some(),
+                        },
+                    );
+                }
+            }
+            Stmt::Block(block) => {
+                for stmt in &block.statements {
+                    self.type_check_for_init(stmt, expected_return)?;
+                }
+            }
+            _ => {
+                self.type_check_statement(init, expected_return)?;
+            }
+        }
         Ok(())
     }
 }

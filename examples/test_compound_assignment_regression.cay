@@ -1,0 +1,57 @@
+// 回归测试：复合赋值运算符累加
+// 验证 += 等复合赋值运算符是否正确执行累加而不是简单赋值
+public class TestCompoundAssignmentRegression {
+    public static void main() {
+        // 测试1: 简单变量 += 累加
+        long total = 0;
+        for (int i = 0; i < 5; i = i + 1) {
+            total += 10;
+        }
+        print("total_after_5_adds=");
+        println(total);
+        // 期望: 50
+
+        // 测试2: 多次 += 应该累加
+        long sum = 0;
+        sum += 1;
+        sum += 2;
+        sum += 3;
+        sum += 4;
+        sum += 5;
+        print("sum_1_to_5=");
+        println(sum);
+        // 期望: 15
+
+        // 测试3: -= 累减
+        long diff = 100;
+        diff -= 10;
+        diff -= 20;
+        diff -= 30;
+        print("diff_after_subs=");
+        println(diff);
+        // 期望: 40
+
+        // 测试4: *= 累乘
+        long prod = 1;
+        prod *= 2;
+        prod *= 3;
+        prod *= 4;
+        print("prod_1_to_4=");
+        println(prod);
+        // 期望: 24
+
+        // 测试5: 数组元素 +=
+        int[] arr = new int[3];
+        arr[0] += 5;
+        arr[0] += 10;
+        arr[1] += 3;
+        arr[1] += 7;
+        print("arr0=");
+        println(arr[0]);
+        print("arr1=");
+        println(arr[1]);
+        // 期望: arr0=15, arr1=10
+
+        println("=== compound assignment regression tests completed ===");
+    }
+}
