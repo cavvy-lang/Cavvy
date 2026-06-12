@@ -73,6 +73,49 @@ public int main() {
     }
 }
 
+/// 测试 C 可变参数默认实参提升（float -> double）
+#[test]
+fn test_printf_varargs_promotes_float_to_double() {
+    let code = r#"
+extern {
+    c_int printf(c_string fmt, ...);
+}
+
+public int main() {
+    float score = 90.0f;
+    c_float cscore = (c_float)85.0;
+
+    printf("score: %f\n", score);
+    printf("cscore: %f\n", cscore);
+    return 0;
+}
+"#;
+
+    let temp_path = format!("tests/temp_printf_float_varargs_{}.cay", std::process::id());
+    std::fs::write(&temp_path, code).expect("Failed to write temp file");
+
+    let result = compile_and_run_eol(&temp_path);
+    let _ = std::fs::remove_file(&temp_path);
+
+    match result {
+        Ok(output) => {
+            assert!(
+                output.contains("score: 90.000000"),
+                "printf should promote float varargs to double, got: {}",
+                output
+            );
+            assert!(
+                output.contains("cscore: 85.000000"),
+                "printf should promote c_float varargs to double, got: {}",
+                output
+            );
+        }
+        Err(e) => {
+            panic!("Test failed with error: {}", e);
+        }
+    }
+}
+
 /// 测试size_t和指针类型
 #[test]
 fn test_size_t_and_pointer_types() {

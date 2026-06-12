@@ -302,6 +302,15 @@ impl IRGenerator {
         } else if let Expr::ArrayAccess(arr_access) = &*member.object {
             // 数组元素访问: 获取元素类型，如果是对象类型则返回类名
             self.get_array_element_class_name(arr_access)
+        } else if let Expr::Call(call_expr) = &*member.object {
+            // 方法调用返回对象: 从调用返回类型推断类名
+            self.get_expression_type(&member.object)
+                .and_then(|ty| {
+                    match ty {
+                        crate::types::Type::Object(class_name) => Some(class_name),
+                        _ => None,
+                    }
+                })
         } else {
             None
         };
@@ -463,7 +472,16 @@ impl IRGenerator {
         } else if let Expr::ArrayAccess(arr_access) = &*member.object {
             // 数组元素访问: 获取元素类型，如果是对象类型则返回类名
             self.get_array_element_class_name(arr_access)
-        } else {
+        } else if let Expr::Call(_) = &*member.object {
+            // 方法调用返回对象: 从调用返回类型推断类名
+            self.get_expression_type(&member.object)
+                .and_then(|ty| {
+                    match ty {
+                        crate::types::Type::Object(class_name) => Some(class_name),
+                        _ => None,
+                    }
+                })
+        } else { 
             None
         };
 

@@ -725,6 +725,20 @@ impl IRGenerator {
                                 }
                                 None
                             }
+                            Type::Generic(class_name, _) => {
+                                // 对于泛型类型（如 vector<Student>），从类型注册表查找字段类型
+                                if let Some(ref registry) = self.type_registry {
+                                    if let Some(class_info) = registry.get_class(&class_name) {
+                                        // 查找字段
+                                        if let Some(field_info) =
+                                            class_info.fields.get(&member.member)
+                                        {
+                                            return Some(field_info.field_type.clone());
+                                        }
+                                    }
+                                }
+                                None
+                            }
                             _ => None,
                         }
                     })

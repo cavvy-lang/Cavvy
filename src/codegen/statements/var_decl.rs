@@ -173,16 +173,40 @@ impl IRGenerator {
                         }
                     }
                     // 否则尝试从变量映射获取
-                    if let Some(class_name) = self.var_class_map.get(obj_name_str) {
-                        let found = if let Some(types) = arg_types_slice {
-                            registry.find_method(class_name, &member.member, types)
-                        } else {
-                            None
+                    // 首先尝试从 var_cay_types 获取完整类型信息（支持泛型）
+                    let (class_name, type_args) = if let Some(cay_type) = self.var_cay_types.get(obj_name_str) {
+                        match cay_type {
+                            crate::types::Type::Object(name) => (name.clone(), Vec::new()),
+                            crate::types::Type::Generic(name, args) => (name.clone(), args.clone()),
+                            _ => {
+                                // 回退到 var_class_map
+                                if let Some(name) = self.var_class_map.get(obj_name_str) {
+                                    (name.clone(), Vec::new())
+                                } else {
+                                    return None;
+                                }
+                            }
                         }
-                        .or_else(|| registry.get_method(class_name, &member.member));
-                        if let Some(method_info) = found {
-                            return Some(method_info.return_type.clone());
-                        }
+                    } else if let Some(name) = self.var_class_map.get(obj_name_str) {
+                        (name.clone(), Vec::new())
+                    } else {
+                        return None;
+                    };
+
+                    let found = if let Some(types) = arg_types_slice {
+                        registry.find_method(&class_name, &member.member, types)
+                    } else {
+                        None
+                    }
+                    .or_else(|| registry.get_method(&class_name, &member.member));
+                    if let Some(method_info) = found {
+                        // 如果返回类型是泛型参数，需要根据调用上下文替换为实际类型
+                        return self.resolve_generic_return_type(
+                            &method_info.return_type,
+                            registry,
+                            &class_name,
+                            &type_args,
+                        );
                     }
                     // 检查是否是 String 类型变量
                     if let Some(var_cay_type) = self.var_cay_types.get(obj_name_str) {
@@ -217,42 +241,55 @@ impl IRGenerator {
                 } else {
                     // 处理链式调用：obj 不是 Identifier，递归推断其类型
                     if let Some(obj_type) = self.get_expression_type(&member.object) {
-                        if let crate::types::Type::Object(class_name) = obj_type {
-                            let found = if let Some(types) = arg_types_slice {
-                                registry.find_method(&class_name, &member.member, types)
-                            } else {
-                                None
+                        let (class_name, type_args) = match &obj_type {
+                            crate::types::Type::Object(name) => (name.clone(), Vec::new()),
+                            crate::types::Type::Generic(name, args) => (name.clone(), args.clone()),
+                            crate::types::Type::String => {
+                                // String 类型特殊处理
+                                if member.member == "length"
+                                    || member.member == "indexOf"
+                                    || member.member == "lastIndexOf"
+                                    || member.member == "compareTo"
+                                {
+                                    return Some(crate::types::Type::Int32);
+                                } else if member.member == "substring"
+                                    || member.member == "toString"
+                                    || member.member == "replace"
+                                    || member.member == "toLowerCase"
+                                    || member.member == "toUpperCase"
+                                {
+                                    return Some(crate::types::Type::String);
+                                } else if member.member == "equals"
+                                    || member.member == "isEmpty"
+                                    || member.member == "startsWith"
+                                    || member.member == "endsWith"
+                                    || member.member == "contains"
+                                    || member.member == "equalsIgnoreCase"
+                                {
+                                    return Some(crate::types::Type::Bool);
+                                } else if member.member == "charAt" {
+                                    return Some(crate::types::Type::Char);
+                                }
+                                return None;
                             }
-                            .or_else(|| registry.get_method(&class_name, &member.member));
-                            if let Some(method_info) = found {
-                                return Some(method_info.return_type.clone());
-                            }
-                        } else if let crate::types::Type::String = obj_type {
-                            // String 类型特殊处理
-                            if member.member == "length"
-                                || member.member == "indexOf"
-                                || member.member == "lastIndexOf"
-                                || member.member == "compareTo"
-                            {
-                                return Some(crate::types::Type::Int32);
-                            } else if member.member == "substring"
-                                || member.member == "toString"
-                                || member.member == "replace"
-                                || member.member == "toLowerCase"
-                                || member.member == "toUpperCase"
-                            {
-                                return Some(crate::types::Type::String);
-                            } else if member.member == "equals"
-                                || member.member == "isEmpty"
-                                || member.member == "startsWith"
-                                || member.member == "endsWith"
-                                || member.member == "contains"
-                                || member.member == "equalsIgnoreCase"
-                            {
-                                return Some(crate::types::Type::Bool);
-                            } else if member.member == "charAt" {
-                                return Some(crate::types::Type::Char);
-                            }
+                            _ => return None,
+                        };
+
+                        let found = if let Some(types) = arg_types_slice {
+                            registry.find_method(&class_name, &member.member, types)
+                        } else {
+                            None
+                        }
+                        .or_else(|| registry.get_method(&class_name, &member.member));
+
+                        if let Some(method_info) = found {
+                            // 如果返回类型是泛型参数，需要根据调用上下文替换为实际类型
+                            return self.resolve_generic_return_type(
+                                &method_info.return_type,
+                                registry,
+                                &class_name,
+                                &type_args,
+                            );
                         }
                     }
                 }
@@ -261,6 +298,31 @@ impl IRGenerator {
 
         // 无法推断
         None
+    }
+
+    /// 解析泛型返回类型
+    /// 如果返回类型是 GenericParam，则根据类型参数替换为实际类型
+    fn resolve_generic_return_type(
+        &self,
+        return_type: &Type,
+        registry: &crate::types::TypeRegistry,
+        class_name: &str,
+        type_args: &[Type],
+    ) -> Option<Type> {
+        match return_type {
+            Type::GenericParam(param_name) => {
+                // 获取类的泛型参数定义
+                if let Some(class_info) = registry.get_class(class_name) {
+                    // 找到泛型参数的位置
+                    if let Some(pos) = class_info.type_params.iter().position(|p| p == param_name) {
+                        // 返回对应的类型参数
+                        return type_args.get(pos).cloned();
+                    }
+                }
+                None
+            }
+            _ => Some(return_type.clone()),
+        }
     }
 
     /// 推断方法的返回类型

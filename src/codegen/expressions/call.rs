@@ -298,6 +298,30 @@ impl IRGenerator {
                                         false,
                                     )
                                 }
+                                crate::types::Type::Generic(class_name, _) => {
+                                    // 对于泛型类型（如 vector<Student>），处理其方法调用
+                                    // 首先检查是否是函数指针字段
+                                    if let Some(field_type) =
+                                        self.get_field_type(&class_name, &member.member)
+                                    {
+                                        if matches!(field_type, crate::types::Type::Function(_)) {
+                                            // 是函数指针字段调用，生成函数指针调用代码
+                                            return self.generate_member_func_ptr_call(
+                                                member,
+                                                &call.args,
+                                                &field_type,
+                                                &call.loc,
+                                            );
+                                        }
+                                    }
+                                    // 不是函数指针字段，按普通方法处理
+                                    (
+                                        class_name,
+                                        member.member.clone(),
+                                        Some(member.object.clone()),
+                                        false,
+                                    )
+                                }
                                 _ => {
                                     return Err(codegen_error_at(
                                         member.loc.clone(),
@@ -1694,6 +1718,55 @@ impl IRGenerator {
         format!("{} {}", arg_type, arg_val)
     }
 
+    /// 对 C ABI 可变参数应用默认实参提升。
+    ///
+    /// C 的 `...` 参数没有声明类型，调用方必须先把 float 提升为 double，
+    /// 并把比 int 窄的整数类型提升为 int，否则 printf/scanf 等函数会按错宽度取参。
+    fn promote_c_vararg_arg(
+        &mut self,
+        arg_type: &str,
+        arg_val: &str,
+        cay_type: Option<&crate::types::Type>,
+    ) -> String {
+        if arg_type == "float" {
+            let promoted = self.new_temp();
+            self.emit_line(&format!(
+                "  {} = fpext float {} to double",
+                promoted, arg_val
+            ));
+            return format!("double {}", promoted);
+        }
+
+        if arg_type == "i1" {
+            let promoted = self.new_temp();
+            self.emit_line(&format!("  {} = zext i1 {} to i32", promoted, arg_val));
+            return format!("i32 {}", promoted);
+        }
+
+        if matches!(arg_type, "i8" | "i16") {
+            let promoted = self.new_temp();
+            let extension = if matches!(
+                cay_type,
+                Some(
+                    crate::types::Type::CUChar
+                        | crate::types::Type::CUShort
+                        | crate::types::Type::CBool
+                )
+            ) {
+                "zext"
+            } else {
+                "sext"
+            };
+            self.emit_line(&format!(
+                "  {} = {} {} {} to i32",
+                promoted, extension, arg_type, arg_val
+            ));
+            return format!("i32 {}", promoted);
+        }
+
+        format!("{} {}", arg_type, arg_val)
+    }
+
     /// 生成 extern 函数调用
     ///
     /// # Arguments
@@ -1745,12 +1818,28 @@ impl IRGenerator {
         }
 
         // 获取参数类型和值
+        let is_varargs = extern_func.params.iter().any(|p| p.is_varargs);
+        let varargs_index = extern_func
+            .params
+            .iter()
+            .position(|p| p.is_varargs)
+            .unwrap_or(extern_func.params.len());
         let mut processed_args = Vec::new();
         for (idx, arg_str) in arg_results.iter().enumerate() {
             let (arg_type, arg_val) = self.parse_typed_value(arg_str);
 
             // 获取参数的期望类型（从 extern 函数声明中）
-            if idx < extern_func.params.len() {
+            if is_varargs && idx >= varargs_index {
+                let cay_type = match &args[idx] {
+                    Expr::Cast(cast) => Some(cast.target_type.clone()),
+                    expr => self.get_expression_type(expr),
+                };
+                processed_args.push(self.promote_c_vararg_arg(
+                    &arg_type,
+                    &arg_val,
+                    cay_type.as_ref(),
+                ));
+            } else if idx < extern_func.params.len() {
                 let param_type = &extern_func.params[idx].param_type;
                 let llvm_param_type = self.type_to_llvm(param_type);
 
@@ -1765,9 +1854,6 @@ impl IRGenerator {
 
         // 获取返回类型
         let llvm_ret_type = self.type_to_llvm(&extern_func.return_type);
-
-        // 检查是否是可变参数函数
-        let is_varargs = extern_func.params.iter().any(|p| p.is_varargs);
 
         // 直接调用 extern 函数（不创建包装函数）
         if llvm_ret_type == "void" {

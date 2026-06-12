@@ -1135,8 +1135,11 @@ impl IRGenerator {
         if !is_static {
             let this_llvm_name = self.scope_manager.declare_var("this", "i8*");
             self.emit_line(&format!("  %{} = alloca i8*", this_llvm_name));
-            self.emit_line(&format!("  store i8* %this, i8** %{}", this_llvm_name));
+            self.emit_line(&format!("  store i8* %this, i8** %{}" , this_llvm_name));
             self.var_types.insert("this".to_string(), "i8*".to_string());
+            // 存储 this 的 Cavvy 类型信息，用于准确的类型推断
+            let this_cay_type = crate::types::Type::Object(class_name.to_string());
+            self.var_cay_types.insert("this".to_string(), this_cay_type);
         }
 
         for param in &method.params {
