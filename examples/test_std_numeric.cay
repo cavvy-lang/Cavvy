@@ -1,0 +1,271 @@
+// std::numeric 标准数值算法库测试
+#include <std/numeric.cay>
+
+public class TestStdNumeric {
+
+    public static void printResult(String name, boolean pass) {
+        print(name);
+        if (pass) {
+            println(" - PASS");
+        } else {
+            println(" - FAIL");
+        }
+    }
+
+    public static void main() {
+        int passCount = 0;
+        int totalCount = 0;
+
+        // --- abs tests ---
+        {
+            totalCount = totalCount + 1;
+            boolean pass = std::numeric.abs(-5) == 5;
+            pass = pass && std::numeric.abs(5) == 5;
+            pass = pass && std::numeric.abs(0) == 0;
+            if (pass) passCount = passCount + 1;
+            printResult("abs", pass);
+        }
+
+        // --- clamp tests ---
+        {
+            totalCount = totalCount + 1;
+            boolean pass = std::numeric.clamp(5, 0, 10) == 5;
+            pass = pass && std::numeric.clamp(-5, 0, 10) == 0;
+            pass = pass && std::numeric.clamp(15, 0, 10) == 10;
+            if (pass) passCount = passCount + 1;
+            printResult("clamp", pass);
+        }
+
+        // --- sign tests ---
+        {
+            totalCount = totalCount + 1;
+            boolean pass = std::numeric.sign(-7) == -1;
+            pass = pass && std::numeric.sign(7) == 1;
+            pass = pass && std::numeric.sign(0) == 0;
+            if (pass) passCount = passCount + 1;
+            printResult("sign", pass);
+        }
+
+        // --- power tests ---
+        {
+            totalCount = totalCount + 1;
+            boolean pass = std::numeric.power(2, 10) == 1024L;
+            pass = pass && std::numeric.power(3, 4) == 81L;
+            pass = pass && std::numeric.power(5, 0) == 1L;
+            pass = pass && std::numeric.power(2, -1) == 0L;
+            if (pass) passCount = passCount + 1;
+            printResult("power", pass);
+        }
+
+        // --- factorial tests ---
+        {
+            totalCount = totalCount + 1;
+            boolean pass = std::numeric.factorial(0) == 1L;
+            pass = pass && std::numeric.factorial(1) == 1L;
+            pass = pass && std::numeric.factorial(5) == 120L;
+            pass = pass && std::numeric.factorial(-1) == 0L;
+            if (pass) passCount = passCount + 1;
+            printResult("factorial", pass);
+        }
+
+        // --- permutation tests ---
+        {
+            totalCount = totalCount + 1;
+            boolean pass = std::numeric.permutation(5, 2) == 20L;
+            pass = pass && std::numeric.permutation(5, 0) == 1L;
+            pass = pass && std::numeric.permutation(5, 6) == 0L;
+            if (pass) passCount = passCount + 1;
+            printResult("permutation", pass);
+        }
+
+        // --- combination tests ---
+        {
+            totalCount = totalCount + 1;
+            boolean pass = std::numeric.combination(5, 2) == 10L;
+            pass = pass && std::numeric.combination(5, 0) == 1L;
+            pass = pass && std::numeric.combination(5, 5) == 1L;
+            pass = pass && std::numeric.combination(10, 3) == 120L;
+            if (pass) passCount = passCount + 1;
+            printResult("combination", pass);
+        }
+
+        // --- accumulate tests ---
+        {
+            int[] arr = {1, 2, 3, 4, 5};
+            totalCount = totalCount + 1;
+            boolean pass = std::numeric.accumulate(arr, 5) == 15L;
+            pass = pass && std::numeric.accumulateWithInit(arr, 5, 10L) == 25L;
+            if (pass) passCount = passCount + 1;
+            printResult("accumulate", pass);
+        }
+
+        // --- product tests ---
+        {
+            int[] arr = {2, 3, 4};
+            totalCount = totalCount + 1;
+            boolean pass = std::numeric.product(arr, 3) == 24L;
+            if (pass) passCount = passCount + 1;
+            printResult("product", pass);
+        }
+
+        // --- gcd tests ---
+        {
+            totalCount = totalCount + 1;
+            boolean pass = std::numeric.gcd(48, 18) == 6;
+            pass = pass && std::numeric.gcd(17, 13) == 1;
+            pass = pass && std::numeric.gcd(0, 5) == 5;
+            pass = pass && std::numeric.gcd(-48, 18) == 6;
+            if (pass) passCount = passCount + 1;
+            printResult("gcd", pass);
+        }
+
+        // --- lcm tests ---
+        {
+            totalCount = totalCount + 1;
+            boolean pass = std::numeric.lcm(4, 6) == 12L;
+            pass = pass && std::numeric.lcm(5, 7) == 35L;
+            pass = pass && std::numeric.lcm(0, 5) == 0L;
+            if (pass) passCount = passCount + 1;
+            printResult("lcm", pass);
+        }
+
+        // --- isPrime tests ---
+        {
+            totalCount = totalCount + 1;
+            boolean pass = std::numeric.isPrime(2);
+            pass = pass && std::numeric.isPrime(17);
+            pass = pass && !std::numeric.isPrime(1);
+            pass = pass && !std::numeric.isPrime(4);
+            pass = pass && !std::numeric.isPrime(9);
+            pass = pass && std::numeric.isPrime(97);
+            if (pass) passCount = passCount + 1;
+            printResult("isPrime", pass);
+        }
+
+        // --- factorCount tests ---
+        {
+            totalCount = totalCount + 1;
+            boolean pass = std::numeric.factorCount(6) == 4;
+            pass = pass && std::numeric.factorCount(1) == 1;
+            pass = pass && std::numeric.factorCount(12) == 6;
+            if (pass) passCount = passCount + 1;
+            printResult("factorCount", pass);
+        }
+
+        // --- sumOfDivisors tests ---
+        {
+            totalCount = totalCount + 1;
+            boolean pass = std::numeric.sumOfDivisors(6) == 12L;
+            pass = pass && std::numeric.sumOfDivisors(28) == 56L;
+            if (pass) passCount = passCount + 1;
+            printResult("sumOfDivisors", pass);
+        }
+
+        // --- eulerTotient tests ---
+        {
+            totalCount = totalCount + 1;
+            boolean pass = std::numeric.eulerTotient(1) == 1;
+            pass = pass && std::numeric.eulerTotient(9) == 6;
+            pass = pass && std::numeric.eulerTotient(10) == 4;
+            if (pass) passCount = passCount + 1;
+            printResult("eulerTotient", pass);
+        }
+
+        // --- sumArithmetic tests ---
+        {
+            totalCount = totalCount + 1;
+            boolean pass = std::numeric.sumArithmetic(10) == 55L;
+            pass = pass && std::numeric.sumArithmetic(100) == 5050L;
+            pass = pass && std::numeric.sumArithmetic(0) == 0L;
+            if (pass) passCount = passCount + 1;
+            printResult("sumArithmetic", pass);
+        }
+
+        // --- sumArithmeticSeries tests ---
+        {
+            totalCount = totalCount + 1;
+            boolean pass = std::numeric.sumArithmeticSeries(2L, 3L, 4) == 26L;
+            if (pass) passCount = passCount + 1;
+            printResult("sumArithmeticSeries", pass);
+        }
+
+        // --- sumGeometric tests ---
+        {
+            totalCount = totalCount + 1;
+            boolean pass = std::numeric.sumGeometric(2, 5) == 31L;
+            pass = pass && std::numeric.sumGeometric(1, 10) == 10L;
+            if (pass) passCount = passCount + 1;
+            printResult("sumGeometric", pass);
+        }
+
+        // --- sumSquares tests ---
+        {
+            totalCount = totalCount + 1;
+            boolean pass = std::numeric.sumSquares(3) == 14L;
+            pass = pass && std::numeric.sumSquares(10) == 385L;
+            if (pass) passCount = passCount + 1;
+            printResult("sumSquares", pass);
+        }
+
+        // --- sumCubes tests ---
+        {
+            totalCount = totalCount + 1;
+            boolean pass = std::numeric.sumCubes(3) == 36L;
+            pass = pass && std::numeric.sumCubes(10) == 3025L;
+            if (pass) passCount = passCount + 1;
+            printResult("sumCubes", pass);
+        }
+
+        // --- digitCount tests ---
+        {
+            totalCount = totalCount + 1;
+            boolean pass = std::numeric.digitCount(0) == 1;
+            pass = pass && std::numeric.digitCount(12345) == 5;
+            pass = pass && std::numeric.digitCount(-999) == 3;
+            if (pass) passCount = passCount + 1;
+            printResult("digitCount", pass);
+        }
+
+        // --- digitSum tests ---
+        {
+            totalCount = totalCount + 1;
+            boolean pass = std::numeric.digitSum(123) == 6;
+            pass = pass && std::numeric.digitSum(-456) == 15;
+            if (pass) passCount = passCount + 1;
+            printResult("digitSum", pass);
+        }
+
+        // --- reverseInt tests ---
+        {
+            totalCount = totalCount + 1;
+            boolean pass = std::numeric.reverseInt(123) == 321;
+            pass = pass && std::numeric.reverseInt(-45) == -54;
+            if (pass) passCount = passCount + 1;
+            printResult("reverseInt", pass);
+        }
+
+        // --- isPalindromeInt tests ---
+        {
+            totalCount = totalCount + 1;
+            boolean pass = std::numeric.isPalindromeInt(121);
+            pass = pass && !std::numeric.isPalindromeInt(123);
+            pass = pass && std::numeric.isPalindromeInt(0);
+            pass = pass && !std::numeric.isPalindromeInt(-121);
+            if (pass) passCount = passCount + 1;
+            printResult("isPalindromeInt", pass);
+        }
+
+        // --- summary ---
+        println("");
+        print("std::numeric Test Suite: ");
+        print(passCount);
+        print(" / ");
+        print(totalCount);
+        println(" passed");
+        if (passCount == totalCount) {
+            println("std::numeric Test Suite PASSED");
+        } else {
+            println("std::numeric Test Suite FAILED");
+        }
+    }
+}

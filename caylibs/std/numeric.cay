@@ -1,0 +1,448 @@
+/**
+ * std::numeric - 标准数值算法库
+ *
+ * 提供全面的数值计算功能：
+ * - 累加/累乘: accumulate, product
+ * - 数论算法: gcd, lcm, isPrime, factorCount
+ * - 序列求和: sumArithmetic, sumGeometric, sumSquares, sumCubes
+ * - 前缀/差分: prefixSum, diff
+ * - 数学工具: abs, clamp, sign, power, factorial
+ *
+ * 版本: 0.5.3.2
+ * 时间复杂度: 标注于各方法
+ * 磁盘I/O: 无（纯计算）
+ */
+
+#ifndef CAY_STD_NUMERIC_H
+#define CAY_STD_NUMERIC_H
+
+namespace std {
+
+public class numeric {
+
+    /* ============================================================================
+     * 基础数值操作
+     * ============================================================================ */
+
+    /**
+     * 整数绝对值
+     * 时间复杂度: O(1)
+     * 空间复杂度: O(1)
+     */
+    public static int abs(int x) {
+        return x < 0 ? -x : x;
+    }
+
+    /**
+     * long 绝对值
+     * 时间复杂度: O(1)
+     * 空间复杂度: O(1)
+     */
+    public static long absLong(long x) {
+        return x < 0L ? -x : x;
+    }
+
+    /**
+     * 将值限制在 [minVal, maxVal] 范围内
+     * 时间复杂度: O(1)
+     * 空间复杂度: O(1)
+     */
+    public static int clamp(int x, int minVal, int maxVal) {
+        if (x < minVal) return minVal;
+        if (x > maxVal) return maxVal;
+        return x;
+    }
+
+    /**
+     * 符号函数: -1, 0, 1
+     * 时间复杂度: O(1)
+     * 空间复杂度: O(1)
+     */
+    public static int sign(int x) {
+        if (x < 0) return -1;
+        if (x > 0) return 1;
+        return 0;
+    }
+
+    /* ============================================================================
+     * 幂与阶乘
+     * ============================================================================ */
+
+    /**
+     * 整数快速幂 (base^exp)
+     * 时间复杂度: O(log exp)
+     * 空间复杂度: O(1)
+     */
+    public static long power(int base, int exp) {
+        if (exp < 0) return 0L;
+        if (exp == 0) return 1L;
+        long result = 1L;
+        long b = (long)base;
+        int e = exp;
+        while (e > 0) {
+            if ((e & 1) == 1) {
+                result = result * b;
+            }
+            b = b * b;
+            e = e >> 1;
+        }
+        return result;
+    }
+
+    /**
+     * 整数阶乘
+     * 时间复杂度: O(n)
+     * 空间复杂度: O(1)
+     */
+    public static long factorial(int n) {
+        if (n < 0) return 0L;
+        if (n <= 1) return 1L;
+        long result = 1L;
+        for (int i = 2; i <= n; i++) {
+            result = result * (long)i;
+        }
+        return result;
+    }
+
+    /**
+     * 计算排列数 P(n, k) = n! / (n-k)!
+     * 时间复杂度: O(k)
+     * 空间复杂度: O(1)
+     */
+    public static long permutation(int n, int k) {
+        if (n < 0 || k < 0 || k > n) return 0L;
+        long result = 1L;
+        for (int i = 0; i < k; i++) {
+            result = result * (long)(n - i);
+        }
+        return result;
+    }
+
+    /**
+     * 计算组合数 C(n, k) = n! / (k! * (n-k)!)
+     * 使用递推避免溢出
+     * 时间复杂度: O(k)
+     * 空间复杂度: O(1)
+     */
+    public static long combination(int n, int k) {
+        if (n < 0 || k < 0 || k > n) return 0L;
+        if (k == 0 || k == n) return 1L;
+        if (k > n - k) k = n - k;
+        long result = 1L;
+        for (int i = 0; i < k; i++) {
+            result = result * (long)(n - i);
+            result = result / (long)(i + 1);
+        }
+        return result;
+    }
+
+    /* ============================================================================
+     * 累加与累乘
+     * ============================================================================ */
+
+    /**
+     * 数组元素累加和
+     * 时间复杂度: O(n)
+     * 空间复杂度: O(1)
+     */
+    public static long accumulate(int[] arr, int n) {
+        if (arr == null || n <= 0) return 0L;
+        if (n > arr.length) n = arr.length;
+        long sum = 0L;
+        for (int i = 0; i < n; i++) {
+            sum = sum + (long)arr[i];
+        }
+        return sum;
+    }
+
+    /**
+     * 数组元素累乘积
+     * 时间复杂度: O(n)
+     * 空间复杂度: O(1)
+     */
+    public static long product(int[] arr, int n) {
+        if (arr == null || n <= 0) return 0L;
+        if (n > arr.length) n = arr.length;
+        long prod = 1L;
+        for (int i = 0; i < n; i++) {
+            prod = prod * (long)arr[i];
+        }
+        return prod;
+    }
+
+    /**
+     * 带初始值的累加和
+     * 时间复杂度: O(n)
+     * 空间复杂度: O(1)
+     */
+    public static long accumulateWithInit(int[] arr, int n, long init) {
+        if (arr == null || n <= 0) return init;
+        if (n > arr.length) n = arr.length;
+        long sum = init;
+        for (int i = 0; i < n; i++) {
+            sum = sum + (long)arr[i];
+        }
+        return sum;
+    }
+
+    /* ============================================================================
+     * 数论算法
+     * ============================================================================ */
+
+    /**
+     * 最大公约数 (GCD) - 欧几里得算法
+     * 时间复杂度: O(log min(a, b))
+     * 空间复杂度: O(1)
+     */
+    public static int gcd(int a, int b) {
+        a = abs(a);
+        b = abs(b);
+        while (b != 0) {
+            int temp = b;
+            b = a % b;
+            a = temp;
+        }
+        return a;
+    }
+
+    /**
+     * 最小公倍数 (LCM)
+     * 时间复杂度: O(log min(a, b))
+     * 空间复杂度: O(1)
+     */
+    public static long lcm(int a, int b) {
+        if (a == 0 || b == 0) return 0L;
+        long absA = (long)abs(a);
+        long absB = (long)abs(b);
+        return (absA / (long)gcd(a, b)) * absB;
+    }
+
+    /**
+     * 判断素数
+     * 时间复杂度: O(sqrt(n))
+     * 空间复杂度: O(1)
+     */
+    public static boolean isPrime(int n) {
+        if (n < 2) return false;
+        if (n == 2) return true;
+        if (n % 2 == 0) return false;
+        int limit = (int)sqrtInt(n);
+        for (int i = 3; i <= limit; i = i + 2) {
+            if (n % i == 0) return false;
+        }
+        return true;
+    }
+
+    /**
+     * 整数平方根（向下取整）
+     * 时间复杂度: O(log n)
+     * 空间复杂度: O(1)
+     */
+    private static int sqrtInt(int n) {
+        if (n < 0) return 0;
+        if (n <= 1) return n;
+        int left = 1;
+        int right = n / 2;
+        int result = 1;
+        while (left <= right) {
+            int mid = left + (right - left) / 2;
+            if (mid <= n / mid) {
+                result = mid;
+                left = mid + 1;
+            } else {
+                right = mid - 1;
+            }
+        }
+        return result;
+    }
+
+    /**
+     * 统计 n 的约数个数
+     * 时间复杂度: O(sqrt(n))
+     * 空间复杂度: O(1)
+     */
+    public static int factorCount(int n) {
+        if (n <= 0) return 0;
+        int count = 0;
+        int limit = sqrtInt(n);
+        for (int i = 1; i <= limit; i++) {
+            if (n % i == 0) {
+                count = count + 1;
+                if (i != n / i) {
+                    count = count + 1;
+                }
+            }
+        }
+        return count;
+    }
+
+    /**
+     * 计算约数之和
+     * 时间复杂度: O(sqrt(n))
+     * 空间复杂度: O(1)
+     */
+    public static long sumOfDivisors(int n) {
+        if (n <= 0) return 0L;
+        long sum = 0L;
+        int limit = sqrtInt(n);
+        for (int i = 1; i <= limit; i++) {
+            if (n % i == 0) {
+                sum = sum + (long)i;
+                if (i != n / i) {
+                    sum = sum + (long)(n / i);
+                }
+            }
+        }
+        return sum;
+    }
+
+    /**
+     * 欧拉函数 phi(n) - 小于等于 n 且与 n 互质的正整数个数
+     * 时间复杂度: O(sqrt(n))
+     * 空间复杂度: O(1)
+     */
+    public static int eulerTotient(int n) {
+        if (n <= 0) return 0;
+        if (n == 1) return 1;
+        int result = n;
+        int temp = n;
+        for (int p = 2; p * p <= temp; p = p + 1) {
+            if (temp % p == 0) {
+                while (temp % p == 0) {
+                    temp = temp / p;
+                }
+                result = result - result / p;
+            }
+        }
+        if (temp > 1) {
+            result = result - result / temp;
+        }
+        return result;
+    }
+
+    /* ============================================================================
+     * 序列求和公式
+     * ============================================================================ */
+
+    /**
+     * 等差数列求和: 1 + 2 + ... + n
+     * 时间复杂度: O(1)
+     * 空间复杂度: O(1)
+     */
+    public static long sumArithmetic(int n) {
+        if (n < 0) return 0L;
+        long m = (long)n;
+        return m * (m + 1L) / 2L;
+    }
+
+    /**
+     * 等差数列求和: a + (a+d) + ... + (a+(n-1)*d)
+     * 时间复杂度: O(1)
+     * 空间复杂度: O(1)
+     */
+    public static long sumArithmeticSeries(long a, long d, int n) {
+        if (n <= 0) return 0L;
+        long m = (long)n;
+        return m * (2L * a + (m - 1L) * d) / 2L;
+    }
+
+    /**
+     * 等比数列求和: 1 + r + r^2 + ... + r^(n-1)
+     * 时间复杂度: O(1)
+     * 空间复杂度: O(1)
+     */
+    public static long sumGeometric(int r, int n) {
+        if (n <= 0) return 0L;
+        if (r == 1) return (long)n;
+        long rm = power(r, n);
+        return (rm - 1L) / (long)(r - 1);
+    }
+
+    /**
+     * 平方和: 1^2 + 2^2 + ... + n^2
+     * 时间复杂度: O(1)
+     * 空间复杂度: O(1)
+     */
+    public static long sumSquares(int n) {
+        if (n < 0) return 0L;
+        long m = (long)n;
+        return m * (m + 1L) * (2L * m + 1L) / 6L;
+    }
+
+    /**
+     * 立方和: 1^3 + 2^3 + ... + n^3
+     * 时间复杂度: O(1)
+     * 空间复杂度: O(1)
+     */
+    public static long sumCubes(int n) {
+        if (n < 0) return 0L;
+        long s = sumArithmetic(n);
+        return s * s;
+    }
+
+    /* ============================================================================
+     * 数位操作
+     * ============================================================================ */
+
+    /**
+     * 统计整数位数（十进制）
+     * 时间复杂度: O(log n)
+     * 空间复杂度: O(1)
+     */
+    public static int digitCount(int n) {
+        if (n == 0) return 1;
+        int count = 0;
+        int x = abs(n);
+        while (x > 0) {
+            count = count + 1;
+            x = x / 10;
+        }
+        return count;
+    }
+
+    /**
+     * 数位之和
+     * 时间复杂度: O(log n)
+     * 空间复杂度: O(1)
+     */
+    public static int digitSum(int n) {
+        int sum = 0;
+        int x = abs(n);
+        while (x > 0) {
+            sum = sum + x % 10;
+            x = x / 10;
+        }
+        return sum;
+    }
+
+    /**
+     * 反转整数
+     * 时间复杂度: O(log n)
+     * 空间复杂度: O(1)
+     */
+    public static int reverseInt(int n) {
+        int result = 0;
+        int x = n;
+        while (x != 0) {
+            int digit = x % 10;
+            result = result * 10 + digit;
+            x = x / 10;
+        }
+        return result;
+    }
+
+    /**
+     * 判断回文数
+     * 时间复杂度: O(log n)
+     * 空间复杂度: O(1)
+     */
+    public static boolean isPalindromeInt(int n) {
+        if (n < 0) return false;
+        return n == reverseInt(n);
+    }
+
+}
+
+} // namespace std
+
+#endif

@@ -1,0 +1,277 @@
+// std::algorithm 标准算法库测试
+#include <std/algorithm.cay>
+
+public class TestStdAlgorithm {
+
+    public static boolean arraysEqual(int[] a, int[] b, int n) {
+        for (int i = 0; i < n; i++) {
+            if (a[i] != b[i]) return false;
+        }
+        return true;
+    }
+
+    public static void printResult(String name, boolean pass) {
+        print(name);
+        if (pass) {
+            println(" - PASS");
+        } else {
+            println(" - FAIL");
+        }
+    }
+
+    public static void main() {
+        int passCount = 0;
+        int totalCount = 0;
+
+        // --- sort tests ---
+        {
+            int[] arr = {64, 34, 25, 12, 22, 11, 90};
+            int[] expected = {11, 12, 22, 25, 34, 64, 90};
+            std::algorithm.sort(arr, 7);
+            totalCount = totalCount + 1;
+            if (arraysEqual(arr, expected, 7)) passCount = passCount + 1;
+            printResult("sort", arraysEqual(arr, expected, 7));
+        }
+
+        // --- bubbleSort tests ---
+        {
+            int[] arr = {5, 1, 4, 2, 8};
+            int[] expected = {1, 2, 4, 5, 8};
+            std::algorithm.bubbleSort(arr, 5);
+            totalCount = totalCount + 1;
+            if (arraysEqual(arr, expected, 5)) passCount = passCount + 1;
+            printResult("bubbleSort", arraysEqual(arr, expected, 5));
+        }
+
+        // --- selectionSort tests ---
+        {
+            int[] arr = {64, 25, 12, 22, 11};
+            int[] expected = {11, 12, 22, 25, 64};
+            std::algorithm.selectionSort(arr, 5);
+            totalCount = totalCount + 1;
+            if (arraysEqual(arr, expected, 5)) passCount = passCount + 1;
+            printResult("selectionSort", arraysEqual(arr, expected, 5));
+        }
+
+        // --- insertionSort tests ---
+        {
+            int[] arr = {9, 5, 1, 4, 3};
+            int[] expected = {1, 3, 4, 5, 9};
+            std::algorithm.insertionSort(arr, 5);
+            totalCount = totalCount + 1;
+            if (arraysEqual(arr, expected, 5)) passCount = passCount + 1;
+            printResult("insertionSort", arraysEqual(arr, expected, 5));
+        }
+
+        // --- find tests ---
+        {
+            int[] arr = {10, 20, 30, 40, 50};
+            totalCount = totalCount + 1;
+            boolean pass = std::algorithm.find(arr, 5, 30) == 2;
+            pass = pass && std::algorithm.find(arr, 5, 99) == -1;
+            pass = pass && std::algorithm.find(arr, 5, 10) == 0;
+            if (pass) passCount = passCount + 1;
+            printResult("find", pass);
+        }
+
+        // --- binarySearch tests ---
+        {
+            int[] arr = {1, 3, 5, 7, 9, 11, 13};
+            totalCount = totalCount + 1;
+            boolean pass = std::algorithm.binarySearch(arr, 7, 5) == 2;
+            pass = pass && std::algorithm.binarySearch(arr, 7, 1) == 0;
+            pass = pass && std::algorithm.binarySearch(arr, 7, 13) == 6;
+            pass = pass && std::algorithm.binarySearch(arr, 7, 4) == -1;
+            if (pass) passCount = passCount + 1;
+            printResult("binarySearch", pass);
+        }
+
+        // --- lowerBound / upperBound tests ---
+        {
+            int[] arr = {1, 3, 5, 5, 7, 9};
+            totalCount = totalCount + 1;
+            boolean pass = std::algorithm.lowerBound(arr, 6, 5) == 2;
+            pass = pass && std::algorithm.upperBound(arr, 6, 5) == 4;
+            pass = pass && std::algorithm.lowerBound(arr, 6, 6) == 4;
+            pass = pass && std::algorithm.upperBound(arr, 6, 6) == 4;
+            if (pass) passCount = passCount + 1;
+            printResult("lower/upperBound", pass);
+        }
+
+        // --- reverse tests ---
+        {
+            int[] arr = {1, 2, 3, 4, 5};
+            int[] expected = {5, 4, 3, 2, 1};
+            std::algorithm.reverse(arr, 5);
+            totalCount = totalCount + 1;
+            if (arraysEqual(arr, expected, 5)) passCount = passCount + 1;
+            printResult("reverse", arraysEqual(arr, expected, 5));
+        }
+
+        // --- rotateLeft tests ---
+        {
+            int[] arr = {1, 2, 3, 4, 5};
+            int[] expected = {3, 4, 5, 1, 2};
+            std::algorithm.rotateLeft(arr, 5, 2);
+            totalCount = totalCount + 1;
+            if (arraysEqual(arr, expected, 5)) passCount = passCount + 1;
+            printResult("rotateLeft", arraysEqual(arr, expected, 5));
+        }
+
+        // --- rotateRight tests ---
+        {
+            int[] arr = {1, 2, 3, 4, 5};
+            int[] expected = {4, 5, 1, 2, 3};
+            std::algorithm.rotateRight(arr, 5, 2);
+            totalCount = totalCount + 1;
+            if (arraysEqual(arr, expected, 5)) passCount = passCount + 1;
+            printResult("rotateRight", arraysEqual(arr, expected, 5));
+        }
+
+        // --- fill tests ---
+        {
+            int[] arr = new int[5]();
+            std::algorithm.fill(arr, 5, 42);
+            totalCount = totalCount + 1;
+            boolean pass = true;
+            for (int i = 0; i < 5; i++) {
+                if (arr[i] != 42) pass = false;
+            }
+            if (pass) passCount = passCount + 1;
+            printResult("fill", pass);
+        }
+
+        // --- copy tests ---
+        {
+            int[] src = {1, 2, 3, 4};
+            int[] dst = new int[4]();
+            std::algorithm.copy(src, dst, 4);
+            totalCount = totalCount + 1;
+            if (arraysEqual(src, dst, 4)) passCount = passCount + 1;
+            printResult("copy", arraysEqual(src, dst, 4));
+        }
+
+        // --- swap tests ---
+        {
+            int[] arr = {1, 2, 3};
+            std::algorithm.swap(arr, 0, 2);
+            totalCount = totalCount + 1;
+            boolean pass = arr[0] == 3 && arr[2] == 1;
+            if (pass) passCount = passCount + 1;
+            printResult("swap", pass);
+        }
+
+        // --- min / max tests ---
+        {
+            totalCount = totalCount + 1;
+            boolean pass = std::algorithm.min(3, 7) == 3;
+            pass = pass && std::algorithm.max(3, 7) == 7;
+            pass = pass && std::algorithm.min3(1, 2, 3) == 1;
+            pass = pass && std::algorithm.max3(1, 2, 3) == 3;
+            if (pass) passCount = passCount + 1;
+            printResult("min/max", pass);
+        }
+
+        // --- minElement / maxElement tests ---
+        {
+            int[] arr = {5, 2, 8, 1, 9};
+            totalCount = totalCount + 1;
+            boolean pass = std::algorithm.minElement(arr, 5) == 3;
+            pass = pass && std::algorithm.maxElement(arr, 5) == 4;
+            if (pass) passCount = passCount + 1;
+            printResult("min/maxElement", pass);
+        }
+
+        // --- isSorted tests ---
+        {
+            int[] sortedArr = {1, 2, 3, 4, 5};
+            int[] unsortedArr = {1, 3, 2, 4, 5};
+            totalCount = totalCount + 1;
+            boolean pass = std::algorithm.isSorted(sortedArr, 5);
+            pass = pass && !std::algorithm.isSorted(unsortedArr, 5);
+            if (pass) passCount = passCount + 1;
+            printResult("isSorted", pass);
+        }
+
+        // --- uniqueCount tests ---
+        {
+            int[] arr = {1, 1, 2, 2, 3, 3, 3};
+            totalCount = totalCount + 1;
+            boolean pass = std::algorithm.uniqueCount(arr, 7) == 3;
+            if (pass) passCount = passCount + 1;
+            printResult("uniqueCount", pass);
+        }
+
+        // --- isPermutation tests ---
+        {
+            int[] a = {1, 2, 3};
+            int[] b = {3, 1, 2};
+            int[] c = {1, 2, 4};
+            totalCount = totalCount + 1;
+            boolean pass = std::algorithm.isPermutation(a, 3, b, 3);
+            pass = pass && !std::algorithm.isPermutation(a, 3, c, 3);
+            if (pass) passCount = passCount + 1;
+            printResult("isPermutation", pass);
+        }
+
+        // --- count tests ---
+        {
+            int[] arr = {1, 2, 2, 3, 2, 4};
+            totalCount = totalCount + 1;
+            boolean pass = std::algorithm.count(arr, 6, 2) == 3;
+            pass = pass && std::algorithm.count(arr, 6, 5) == 0;
+            if (pass) passCount = passCount + 1;
+            printResult("count", pass);
+        }
+
+        // --- contains tests ---
+        {
+            int[] arr = {10, 20, 30};
+            totalCount = totalCount + 1;
+            boolean pass = std::algorithm.contains(arr, 3, 20);
+            pass = pass && !std::algorithm.contains(arr, 3, 99);
+            if (pass) passCount = passCount + 1;
+            printResult("contains", pass);
+        }
+
+        // --- prefixSum / diff tests ---
+        {
+            int[] arr = {1, 2, 3, 4};
+            int[] pre = new int[4]();
+            std::algorithm.prefixSum(arr, 4, pre);
+            totalCount = totalCount + 1;
+            boolean pass = pre[0] == 1 && pre[1] == 3 && pre[2] == 6 && pre[3] == 10;
+
+            int[] d = new int[4]();
+            std::algorithm.diff(arr, 4, d);
+            pass = pass && d[0] == 1 && d[1] == 1 && d[2] == 1 && d[3] == 1;
+            if (pass) passCount = passCount + 1;
+            printResult("prefixSum/diff", pass);
+        }
+
+        // --- boundary: null / empty ---
+        {
+            totalCount = totalCount + 1;
+            int[] nullArr = null;
+            std::algorithm.sort(nullArr, 5);
+            boolean pass = std::algorithm.find(nullArr, 5, 1) == -1;
+            pass = pass && std::algorithm.minElement(nullArr, 5) == -1;
+            pass = pass && std::algorithm.isSorted(nullArr, 5);
+            if (pass) passCount = passCount + 1;
+            printResult("null/empty boundary", pass);
+        }
+
+        // --- summary ---
+        println("");
+        print("std::algorithm Test Suite: ");
+        print(passCount);
+        print(" / ");
+        print(totalCount);
+        println(" passed");
+        if (passCount == totalCount) {
+            println("std::algorithm Test Suite PASSED");
+        } else {
+            println("std::algorithm Test Suite FAILED");
+        }
+    }
+}

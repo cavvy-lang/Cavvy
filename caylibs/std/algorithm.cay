@@ -1,0 +1,562 @@
+/**
+ * std::algorithm - 标准算法库
+ *
+ * 提供全面的常用算法：
+ * - 排序算法: sort, bubbleSort, selectionSort, insertionSort
+ * - 查找算法: find, binarySearch, lowerBound, upperBound
+ * - 数组操作: reverse, rotate, fill, copy, swap
+ * - 极值统计: min, max, minElement, maxElement
+ * - 集合操作: uniqueCount, isSorted, isPermutation
+ *
+ * 版本: 0.5.3.2
+ * 时间复杂度: 标注于各方法
+ * 磁盘I/O: 无（纯计算）
+ */
+
+#ifndef CAY_STD_ALGORITHM_H
+#define CAY_STD_ALGORITHM_H
+
+namespace std {
+
+/* ============================================================================
+ * 排序算法
+ * ============================================================================ */
+
+public class algorithm {
+
+    /**
+     * 冒泡排序 - 稳定排序
+     * 时间复杂度: O(n^2) 最坏/平均, O(n) 最优
+     * 空间复杂度: O(1)
+     */
+    public static void bubbleSort(int[] arr, int n) {
+        if (arr == null || n <= 1) return;
+        if (n > arr.length) n = arr.length;
+        for (int i = 0; i < n - 1; i++) {
+            boolean swapped = false;
+            for (int j = 0; j < n - i - 1; j++) {
+                if (arr[j] > arr[j + 1]) {
+                    int temp = arr[j];
+                    arr[j] = arr[j + 1];
+                    arr[j + 1] = temp;
+                    swapped = true;
+                }
+            }
+            if (!swapped) break;
+        }
+    }
+
+    /**
+     * 选择排序 - 不稳定排序
+     * 时间复杂度: O(n^2)
+     * 空间复杂度: O(1)
+     */
+    public static void selectionSort(int[] arr, int n) {
+        if (arr == null || n <= 1) return;
+        if (n > arr.length) n = arr.length;
+        for (int i = 0; i < n - 1; i++) {
+            int minIdx = i;
+            for (int j = i + 1; j < n; j++) {
+                if (arr[j] < arr[minIdx]) {
+                    minIdx = j;
+                }
+            }
+            if (minIdx != i) {
+                int temp = arr[i];
+                arr[i] = arr[minIdx];
+                arr[minIdx] = temp;
+            }
+        }
+    }
+
+    /**
+     * 插入排序 - 稳定排序
+     * 时间复杂度: O(n^2) 最坏/平均, O(n) 最优
+     * 空间复杂度: O(1)
+     */
+    public static void insertionSort(int[] arr, int n) {
+        if (arr == null || n <= 1) return;
+        if (n > arr.length) n = arr.length;
+        for (int i = 1; i < n; i++) {
+            int key = arr[i];
+            int j = i - 1;
+            while (j >= 0 && arr[j] > key) {
+                arr[j + 1] = arr[j];
+                j = j - 1;
+            }
+            arr[j + 1] = key;
+        }
+    }
+
+    /**
+     * 快速排序辅助函数 - 分区
+     * 时间复杂度: O(n)
+     * 空间复杂度: O(1)
+     */
+    private static int quickSortPartition(int[] arr, int low, int high) {
+        int pivot = arr[high];
+        int i = low - 1;
+        for (int j = low; j < high; j++) {
+            if (arr[j] <= pivot) {
+                i = i + 1;
+                int t = arr[i];
+                arr[i] = arr[j];
+                arr[j] = t;
+            }
+        }
+        int pivotTemp = arr[i + 1];
+        arr[i + 1] = arr[high];
+        arr[high] = pivotTemp;
+        return i + 1;
+    }
+
+    /**
+     * 快速排序递归实现 - 不稳定排序
+     * 时间复杂度: O(n log n) 平均, O(n^2) 最坏
+     * 空间复杂度: O(log n)
+     */
+    private static void quickSortRec(int[] arr, int low, int high) {
+        if (low < high) {
+            int pi = quickSortPartition(arr, low, high);
+            quickSortRec(arr, low, pi - 1);
+            quickSortRec(arr, pi + 1, high);
+        }
+    }
+
+    /**
+     * 快速排序入口
+     * 时间复杂度: O(n log n) 平均
+     * 空间复杂度: O(log n)
+     */
+    public static void sort(int[] arr, int n) {
+        if (arr == null || n <= 1) return;
+        if (n > arr.length) n = arr.length;
+        quickSortRec(arr, 0, n - 1);
+    }
+
+    /* ============================================================================
+     * 查找算法
+     * ============================================================================ */
+
+    /**
+     * 线性查找
+     * 时间复杂度: O(n)
+     * 空间复杂度: O(1)
+     */
+    public static int find(int[] arr, int n, int target) {
+        if (arr == null || n <= 0) return -1;
+        if (n > arr.length) n = arr.length;
+        for (int i = 0; i < n; i++) {
+            if (arr[i] == target) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * 二分查找（要求数组已排序）
+     * 时间复杂度: O(log n)
+     * 空间复杂度: O(1)
+     */
+    public static int binarySearch(int[] arr, int n, int target) {
+        if (arr == null || n <= 0) return -1;
+        if (n > arr.length) n = arr.length;
+        int left = 0;
+        int right = n - 1;
+        while (left <= right) {
+            int mid = left + (right - left) / 2;
+            if (arr[mid] == target) {
+                return mid;
+            }
+            if (arr[mid] < target) {
+                left = mid + 1;
+            } else {
+                right = mid - 1;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * lowerBound - 第一个大于等于 target 的位置
+     * 时间复杂度: O(log n)
+     * 空间复杂度: O(1)
+     */
+    public static int lowerBound(int[] arr, int n, int target) {
+        if (arr == null || n <= 0) return 0;
+        if (n > arr.length) n = arr.length;
+        int left = 0;
+        int right = n;
+        while (left < right) {
+            int mid = left + (right - left) / 2;
+            if (arr[mid] < target) {
+                left = mid + 1;
+            } else {
+                right = mid;
+            }
+        }
+        return left;
+    }
+
+    /**
+     * upperBound - 第一个大于 target 的位置
+     * 时间复杂度: O(log n)
+     * 空间复杂度: O(1)
+     */
+    public static int upperBound(int[] arr, int n, int target) {
+        if (arr == null || n <= 0) return 0;
+        if (n > arr.length) n = arr.length;
+        int left = 0;
+        int right = n;
+        while (left < right) {
+            int mid = left + (right - left) / 2;
+            if (arr[mid] <= target) {
+                left = mid + 1;
+            } else {
+                right = mid;
+            }
+        }
+        return left;
+    }
+
+    /* ============================================================================
+     * 数组操作
+     * ============================================================================ */
+
+    /**
+     * 反转数组
+     * 时间复杂度: O(n)
+     * 空间复杂度: O(1)
+     */
+    public static void reverse(int[] arr, int n) {
+        if (arr == null || n <= 1) return;
+        if (n > arr.length) n = arr.length;
+        int left = 0;
+        int right = n - 1;
+        while (left < right) {
+            int temp = arr[left];
+            arr[left] = arr[right];
+            arr[right] = temp;
+            left = left + 1;
+            right = right - 1;
+        }
+    }
+
+    /**
+     * 数组左旋 k 位
+     * 时间复杂度: O(n)
+     * 空间复杂度: O(1)
+     */
+    public static void rotateLeft(int[] arr, int n, int k) {
+        if (arr == null || n <= 1) return;
+        if (n > arr.length) n = arr.length;
+        k = k % n;
+        if (k < 0) k = k + n;
+        if (k == 0) return;
+        reverse(arr, k);
+        reverseRange(arr, k, n - 1);
+        reverse(arr, n);
+    }
+
+    /**
+     * 数组右旋 k 位
+     * 时间复杂度: O(n)
+     * 空间复杂度: O(1)
+     */
+    public static void rotateRight(int[] arr, int n, int k) {
+        if (arr == null || n <= 1) return;
+        if (n > arr.length) n = arr.length;
+        k = k % n;
+        if (k < 0) k = k + n;
+        if (k == 0) return;
+        reverseRange(arr, 0, n - k - 1);
+        reverseRange(arr, n - k, n - 1);
+        reverse(arr, n);
+    }
+
+    /**
+     * 反转数组指定区间 [l, r]
+     * 时间复杂度: O(r - l)
+     * 空间复杂度: O(1)
+     */
+    private static void reverseRange(int[] arr, int l, int r) {
+        if (arr == null || l >= r) return;
+        if (l < 0) l = 0;
+        if (r >= arr.length) r = arr.length - 1;
+        while (l < r) {
+            int temp = arr[l];
+            arr[l] = arr[r];
+            arr[r] = temp;
+            l = l + 1;
+            r = r - 1;
+        }
+    }
+
+    /**
+     * 填充数组
+     * 时间复杂度: O(n)
+     * 空间复杂度: O(1)
+     */
+    public static void fill(int[] arr, int n, int value) {
+        if (arr == null || n <= 0) return;
+        if (n > arr.length) n = arr.length;
+        for (int i = 0; i < n; i++) {
+            arr[i] = value;
+        }
+    }
+
+    /**
+     * 复制数组
+     * 时间复杂度: O(n)
+     * 空间复杂度: O(1)（目标数组已分配）
+     */
+    public static void copy(int[] src, int[] dst, int n) {
+        if (src == null || dst == null || n <= 0) return;
+        if (n > src.length) n = src.length;
+        if (n > dst.length) n = dst.length;
+        for (int i = 0; i < n; i++) {
+            dst[i] = src[i];
+        }
+    }
+
+    /**
+     * 交换两个元素
+     * 时间复杂度: O(1)
+     * 空间复杂度: O(1)
+     */
+    public static void swap(int[] arr, int i, int j) {
+        if (arr == null || i < 0 || j < 0 || i >= arr.length || j >= arr.length) return;
+        int temp = arr[i];
+        arr[i] = arr[j];
+        arr[j] = temp;
+    }
+
+    /* ============================================================================
+     * 极值统计
+     * ============================================================================ */
+
+    /**
+     * 返回两个 int 中的较小值
+     * 时间复杂度: O(1)
+     * 空间复杂度: O(1)
+     */
+    public static int min(int a, int b) {
+        return a < b ? a : b;
+    }
+
+    /**
+     * 返回两个 int 中的较大值
+     * 时间复杂度: O(1)
+     * 空间复杂度: O(1)
+     */
+    public static int max(int a, int b) {
+        return a > b ? a : b;
+    }
+
+    /**
+     * 返回三个 int 中的最小值
+     * 时间复杂度: O(1)
+     * 空间复杂度: O(1)
+     */
+    public static int min3(int a, int b, int c) {
+        int m = a;
+        if (b < m) m = b;
+        if (c < m) m = c;
+        return m;
+    }
+
+    /**
+     * 返回三个 int 中的最大值
+     * 时间复杂度: O(1)
+     * 空间复杂度: O(1)
+     */
+    public static int max3(int a, int b, int c) {
+        int m = a;
+        if (b > m) m = b;
+        if (c > m) m = c;
+        return m;
+    }
+
+    /**
+     * 查找数组最小元素下标
+     * 时间复杂度: O(n)
+     * 空间复杂度: O(1)
+     */
+    public static int minElement(int[] arr, int n) {
+        if (arr == null || n <= 0) return -1;
+        if (n > arr.length) n = arr.length;
+        int minIdx = 0;
+        for (int i = 1; i < n; i++) {
+            if (arr[i] < arr[minIdx]) {
+                minIdx = i;
+            }
+        }
+        return minIdx;
+    }
+
+    /**
+     * 查找数组最大元素下标
+     * 时间复杂度: O(n)
+     * 空间复杂度: O(1)
+     */
+    public static int maxElement(int[] arr, int n) {
+        if (arr == null || n <= 0) return -1;
+        if (n > arr.length) n = arr.length;
+        int maxIdx = 0;
+        for (int i = 1; i < n; i++) {
+            if (arr[i] > arr[maxIdx]) {
+                maxIdx = i;
+            }
+        }
+        return maxIdx;
+    }
+
+    /* ============================================================================
+     * 集合性质判断
+     * ============================================================================ */
+
+    /**
+     * 判断数组是否已排序（非递减）
+     * 时间复杂度: O(n)
+     * 空间复杂度: O(1)
+     */
+    public static boolean isSorted(int[] arr, int n) {
+        if (arr == null || n <= 1) return true;
+        if (n > arr.length) n = arr.length;
+        for (int i = 1; i < n; i++) {
+            if (arr[i] < arr[i - 1]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * 判断数组是否已排序（严格递增）
+     * 时间复杂度: O(n)
+     * 空间复杂度: O(1)
+     */
+    public static boolean isStrictlySorted(int[] arr, int n) {
+        if (arr == null || n <= 1) return true;
+        if (n > arr.length) n = arr.length;
+        for (int i = 1; i < n; i++) {
+            if (arr[i] <= arr[i - 1]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * 统计去重后的元素个数（要求数组已排序）
+     * 时间复杂度: O(n)
+     * 空间复杂度: O(1)
+     */
+    public static int uniqueCount(int[] arr, int n) {
+        if (arr == null || n <= 0) return 0;
+        if (n > arr.length) n = arr.length;
+        if (n == 1) return 1;
+        int count = 1;
+        for (int i = 1; i < n; i++) {
+            if (arr[i] != arr[i - 1]) {
+                count = count + 1;
+            }
+        }
+        return count;
+    }
+
+    /**
+     * 判断两个数组是否为排列关系（元素相同，顺序可不同）
+     * 时间复杂度: O(n^2)
+     * 空间复杂度: O(1)
+     */
+    public static boolean isPermutation(int[] a, int nA, int[] b, int nB) {
+        if (a == null || b == null) return false;
+        if (nA != nB) return false;
+        if (nA > a.length) nA = a.length;
+        if (nB > b.length) nB = b.length;
+        for (int i = 0; i < nA; i++) {
+            boolean found = false;
+            for (int j = 0; j < nB; j++) {
+                if (a[i] == b[j]) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) return false;
+        }
+        for (int i = 0; i < nB; i++) {
+            boolean found = false;
+            for (int j = 0; j < nA; j++) {
+                if (b[i] == a[j]) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) return false;
+        }
+        return true;
+    }
+
+    /**
+     * 统计数组中等于 target 的元素个数
+     * 时间复杂度: O(n)
+     * 空间复杂度: O(1)
+     */
+    public static int count(int[] arr, int n, int target) {
+        if (arr == null || n <= 0) return 0;
+        if (n > arr.length) n = arr.length;
+        int c = 0;
+        for (int i = 0; i < n; i++) {
+            if (arr[i] == target) {
+                c = c + 1;
+            }
+        }
+        return c;
+    }
+
+    /**
+     * 判断数组中是否存在等于 target 的元素
+     * 时间复杂度: O(n)
+     * 空间复杂度: O(1)
+     */
+    public static boolean contains(int[] arr, int n, int target) {
+        return find(arr, n, target) >= 0;
+    }
+
+    /**
+     * 计算数组前缀和（结果存入 dst）
+     * 时间复杂度: O(n)
+     * 空间复杂度: O(1)（目标数组已分配）
+     */
+    public static void prefixSum(int[] arr, int n, int[] dst) {
+        if (arr == null || dst == null || n <= 0) return;
+        if (n > arr.length) n = arr.length;
+        if (n > dst.length) n = dst.length;
+        dst[0] = arr[0];
+        for (int i = 1; i < n; i++) {
+            dst[i] = dst[i - 1] + arr[i];
+        }
+    }
+
+    /**
+     * 计算数组差分（结果存入 dst）
+     * 时间复杂度: O(n)
+     * 空间复杂度: O(1)（目标数组已分配）
+     */
+    public static void diff(int[] arr, int n, int[] dst) {
+        if (arr == null || dst == null || n <= 0) return;
+        if (n > arr.length) n = arr.length;
+        if (n > dst.length) n = dst.length;
+        dst[0] = arr[0];
+        for (int i = 1; i < n; i++) {
+            dst[i] = arr[i] - arr[i - 1];
+        }
+    }
+
+}
+
+} // namespace std
+
+#endif

@@ -39,6 +39,28 @@ fn test_algo_dp_library() {
 }
 
 #[test]
+fn test_std_algorithm_library() {
+    let output = compile_and_run_eol("examples/test_std_algorithm.cay")
+        .expect("std::algorithm library should compile and run");
+    assert!(
+        output.contains("std::algorithm Test Suite PASSED"),
+        "std::algorithm library test should pass, got: {}",
+        output
+    );
+}
+
+#[test]
+fn test_std_numeric_library() {
+    let output = compile_and_run_eol("examples/test_std_numeric.cay")
+        .expect("std::numeric library should compile and run");
+    assert!(
+        output.contains("std::numeric Test Suite PASSED"),
+        "std::numeric library test should pass, got: {}",
+        output
+    );
+}
+
+#[test]
 fn test_math_operations() {
     let output = compile_and_run_eol("examples/test_math_operations.cay")
         .expect("math operations should compile and run");
