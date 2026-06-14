@@ -15,12 +15,22 @@ impl IRGenerator {
         let class_name = &new_expr.class_name;
 
         // 提取基础类名（不含泛型参数）用于类型注册表查找
-        // 例如: "Optional<T>" -> "Optional", "std::Optional<T>" -> "std::Optional"
         let base_class_name = if let Some(pos) = class_name.find('<') {
             class_name[..pos].to_string()
         } else {
             class_name.clone()
         };
+
+        // 检查是否是 struct 类型
+        let is_struct = self
+            .type_registry
+            .as_ref()
+            .and_then(|r| r.get_struct(&base_class_name))
+            .is_some();
+
+        if is_struct {
+            return self.generate_struct_new_expression(new_expr);
+        }
 
         // 如果类是命名空间限定的，解析到TypeRegistry中获取规范名称
         let registry_name = if base_class_name.contains("::") {
@@ -89,18 +99,14 @@ impl IRGenerator {
         ));
 
         // 存储 vtable 指针到 offset 8（type_id 之后）
-        // vtable 指针指向类的 vtable 全局常量
         let llvm_class = self.get_qualified_class_name(&registry_name);
         let vtable_name = format!("{}.vtable", llvm_class);
         let vtable_ptr_temp = self.new_temp();
-        // 计算 offset 8 的位置（i8* + 8）
         self.emit_line(&format!(
             "  {} = getelementptr i8, i8* {}, i64 8",
             vtable_ptr_temp, calloc_temp
         ));
-        // 将 vtable 指针存储到该位置
         let vtable_global_temp = self.new_temp();
-        // 获取 vtable 大小
         let vtable_size = self
             .type_registry
             .as_ref()
@@ -118,25 +124,21 @@ impl IRGenerator {
                 vtable_global_temp, vtable_ptr_temp
             ));
         } else {
-            // 无 vtable 时存储 null
             self.emit_line(&format!("  store i8* null, i8* {}", vtable_ptr_temp));
         }
 
-        // 调用构造函数（无论是否有参数）
-        // 先推断参数类型（作为回退），优先使用类型注册表中的真实构造函数参数类型
+        // 调用构造函数
         let fallback_types: Vec<String> = new_expr
             .args
             .iter()
             .map(|arg| self.infer_argument_type(arg))
             .collect();
-        // 使用基础类名查找构造函数参数类型
         let param_types = self.get_constructor_param_signatures(
             &registry_name,
             new_expr.args.len(),
             &fallback_types,
         );
 
-        // 获取构造函数信息以确定每个参数的类型（用于泛型类型擦除）
         let ctor_info_opt = self
             .type_registry
             .as_ref()
@@ -155,54 +157,33 @@ impl IRGenerator {
                     .cloned()
             });
 
-        // 生成参数值（处理泛型类型擦除）
         let mut arg_values = Vec::new();
         for (idx, arg) in new_expr.args.iter().enumerate() {
             let arg_val = self.generate_expression(arg)?;
-
-            // 检查构造函数参数是否是泛型参数类型
             let is_generic_param = ctor_info_opt
                 .as_ref()
                 .and_then(|ctor| ctor.params.get(idx))
                 .map(|p| matches!(p.param_type, crate::types::Type::GenericParam(_)))
                 .unwrap_or(false);
-
             if is_generic_param {
-                // 泛型参数需要装箱为 i8*
-                // 根据参数的实际类型进行不同的装箱操作
                 let inferred_type = self.infer_argument_type(arg);
                 let boxed_val = self.box_value_for_generic(&arg_val, &inferred_type)?;
                 arg_values.push(boxed_val);
             } else {
-                // 非泛型参数，直接使用
                 arg_values.push(arg_val);
             }
         }
 
-        // 生成构造函数名（使用类型注册表中的真实参数类型）
         let ctor_name =
             self.generate_constructor_call_name_with_types(&canonical_name, &param_types);
 
-        // struct (值类型) 如果无参构造，跳过构造函数调用（struct 默认值初始化即可）
-        let is_struct = self
-            .type_registry
-            .as_ref()
-            .and_then(|r| r.get_struct(&canonical_name))
-            .is_some();
-
-        // 非 struct 或有参构造才调用构造函数
-        if !is_struct || !param_types.is_empty() {
-            // 生成参数列表
-            let mut arg_strs = vec![format!("i8* {}", calloc_temp)];
-            arg_strs.extend(arg_values);
-
-            // 调用构造函数
-            self.emit_line(&format!(
-                "  call void @{}({})",
-                ctor_name,
-                arg_strs.join(", ")
-            ));
-        }
+        let mut arg_strs = vec![format!("i8* {}", calloc_temp)];
+        arg_strs.extend(arg_values);
+        self.emit_line(&format!(
+            "  call void @{}({})",
+            ctor_name,
+            arg_strs.join(", ")
+        ));
 
         let cast_temp = self.new_temp();
         self.emit_line(&format!(
@@ -222,6 +203,71 @@ impl IRGenerator {
             result_temp, new_result_slot
         ));
         Ok(format!("i8* {}", result_temp))
+    }
+
+    /// 生成 struct 的 new 表达式（栈分配，值类型）
+    ///
+    /// struct 是值类型：
+    /// 1. 使用 alloca 在栈上分配内存
+    /// 2. 不需要 type_id 和 vtable
+    /// 3. 调用构造函数初始化字段
+    /// 4. 返回 %struct.Name* 指针
+    fn generate_struct_new_expression(&mut self, new_expr: &NewExpr) -> cayResult<String> {
+        let struct_name = &new_expr.class_name;
+        let base_name = if let Some(pos) = struct_name.find('<') {
+            struct_name[..pos].to_string()
+        } else {
+            struct_name.clone()
+        };
+
+        // 获取 struct 布局信息
+        let struct_layout = self.get_struct_layout(&base_name);
+        let llvm_struct_type = format!("%struct.{}", base_name);
+
+        // 栈分配 struct
+        let alloca_temp = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = alloca {}",
+            alloca_temp, llvm_struct_type
+        ));
+
+        // 推断构造函数参数
+        let fallback_types: Vec<String> = new_expr
+            .args
+            .iter()
+            .map(|arg| self.infer_argument_type(arg))
+            .collect();
+        let param_types = self.get_constructor_param_signatures(
+            &base_name,
+            new_expr.args.len(),
+            &fallback_types,
+        );
+
+        // 生成参数值
+        let mut arg_values = Vec::new();
+        for arg in &new_expr.args {
+            let arg_val = self.generate_expression(arg)?;
+            arg_values.push(arg_val);
+        }
+
+        // 生成构造函数名
+        let ctor_name =
+            self.generate_constructor_call_name_with_types(struct_name, &param_types);
+
+        // 调用构造函数（传 struct 指针作为 this）
+        if !param_types.is_empty() {
+            let mut arg_strs = vec![format!("{}* {}", llvm_struct_type, alloca_temp)];
+            arg_strs.extend(arg_values);
+            self.emit_line(&format!(
+                "  call void @{}({})",
+                ctor_name,
+                arg_strs.join(", ")
+            ));
+        }
+        // 无参 struct 不调用构造函数（栈分配已清零，字段为默认值）
+
+        // 返回 struct 指针
+        Ok(format!("{}* {}", llvm_struct_type, alloca_temp))
     }
 
     /// 推断参数类型（返回类型签名）

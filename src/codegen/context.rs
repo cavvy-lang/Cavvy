@@ -37,6 +37,16 @@ pub struct InstanceFieldInfo {
     pub size: usize,                    // 大小（字节）
 }
 
+/// Struct 布局信息（值类型，无对象头）
+#[derive(Debug, Clone)]
+pub struct StructLayoutInfo {
+    pub struct_name: String,
+    pub total_size: usize,
+    pub fields: HashMap<String, InstanceFieldInfo>,
+    pub field_order: Vec<String>, // 字段定义顺序，用于 LLVM GEP 索引
+    pub llvm_type_def: String, // LLVM 类型定义: %struct.Point = type { i32, i32 }
+}
+
 /// 类实例布局信息
 #[derive(Debug, Clone)]
 pub struct ClassLayoutInfo {
@@ -215,6 +225,7 @@ pub struct IRGenerator {
     pub type_id_map: HashMap<String, TypeIdInfo>,
     pub type_id_counter: usize,
     pub class_layouts: HashMap<String, ClassLayoutInfo>, // 类实例布局信息
+    pub struct_layouts: HashMap<String, StructLayoutInfo>, // struct 值类型布局信息
     pub platform_config: Option<PlatformConfig>,
     pub extern_declarations: Vec<crate::ast::ExternDecl>, // FFI extern 声明
     pub extern_function_map: HashMap<String, usize>,      // 函数名 -> extern_declarations索引
@@ -297,6 +308,7 @@ impl IRGenerator {
             type_id_map: HashMap::new(),
             type_id_counter: 0,
             class_layouts: HashMap::new(),
+            struct_layouts: HashMap::new(),
             platform_config: None,
             extern_declarations: Vec::new(),
             extern_function_map: HashMap::new(),
@@ -1475,6 +1487,103 @@ impl IRGenerator {
         total_size
     }
 
+    /// 计算 struct 的布局（值类型，无对象头，无继承）
+    ///
+    /// 内存布局: [字段1...][字段2...]（从 offset 0 开始）
+    /// 同时生成 LLVM 类型定义: %struct.Name = type { field1_type, field2_type, ... }
+    /// 返回 struct 总大小（字节）
+    pub fn compute_struct_layout(
+        &mut self,
+        struct_name: &str,
+        fields: &[crate::ast::FieldDecl],
+    ) -> usize {
+        let mut current_offset = 0usize;
+        let mut field_map = HashMap::new();
+        let mut llvm_field_types = Vec::new();
+        let mut field_order = Vec::new();
+
+        for field in fields {
+            // 跳过静态字段（struct 中不应该有静态字段，但以防万一）
+            if field.modifiers.contains(&crate::ast::Modifier::Static) {
+                continue;
+            }
+
+            let llvm_type = self.type_to_llvm(&field.field_type);
+            let size = field.field_type.size_in_bytes();
+
+            // 对齐处理
+            let align = self.get_type_align(&llvm_type) as usize;
+            current_offset = (current_offset + align - 1) & !(align - 1);
+
+            let field_info = InstanceFieldInfo {
+                name: field.name.clone(),
+                llvm_type: llvm_type.clone(),
+                field_type: field.field_type.clone(),
+                offset: current_offset,
+                size,
+            };
+
+            field_map.insert(field.name.clone(), field_info);
+            llvm_field_types.push(llvm_type.clone());
+            field_order.push(field.name.clone());
+            current_offset += size;
+        }
+
+        // 最终对齐到 8 字节边界
+        let total_size = (current_offset + 7) & !7;
+
+        // 生成 LLVM 类型定义
+        let llvm_type_def = if llvm_field_types.is_empty() {
+            format!("%struct.{} = type {{ }}\n", struct_name)
+        } else {
+            format!(
+                "%struct.{} = type {{ {} }}\n",
+                struct_name,
+                llvm_field_types.join(", ")
+            )
+        };
+
+        let layout = StructLayoutInfo {
+            struct_name: struct_name.to_string(),
+            total_size,
+            fields: field_map,
+            field_order,
+            llvm_type_def,
+        };
+
+        self.struct_layouts.insert(struct_name.to_string(), layout);
+        total_size
+    }
+
+    /// 获取 struct 布局信息
+    pub fn get_struct_layout(&self, struct_name: &str) -> Option<&StructLayoutInfo> {
+        // 直接用传入的 struct 名查找
+        if let Some(layout) = self.struct_layouts.get(struct_name) {
+            return Some(layout);
+        }
+        // 简单名找不到，尝试用限定名
+        if let Some(ref registry) = self.type_registry {
+            if let Some(s) = registry.get_struct(struct_name) {
+                if let Some(layout) = self.struct_layouts.get(&s.name) {
+                    return Some(layout);
+                }
+            }
+        }
+        None
+    }
+
+    /// 生成所有 struct 的 LLVM 类型定义
+    pub fn emit_struct_type_definitions(&self) -> String {
+        let mut result = String::new();
+        for layout in self.struct_layouts.values() {
+            result.push_str(&layout.llvm_type_def);
+        }
+        if !result.is_empty() {
+            result.push('\n');
+        }
+        result
+    }
+
     /// 获取类布局信息
     pub fn get_class_layout(&self, class_name: &str) -> Option<&ClassLayoutInfo> {
         // 直接用传入的类名查找
@@ -1501,14 +1610,20 @@ impl IRGenerator {
         None
     }
 
-    /// 获取实例字段信息
+    /// 获取实例字段信息（支持 class 和 struct）
     pub fn get_instance_field(
         &self,
         class_name: &str,
         field_name: &str,
     ) -> Option<&InstanceFieldInfo> {
-        // 先用传入的类名直接查找
+        // 先用传入的类名直接查找 class 布局
         if let Some(layout) = self.class_layouts.get(class_name) {
+            if let Some(result) = layout.fields.get(field_name) {
+                return Some(result);
+            }
+        }
+        // 查找 struct 布局
+        if let Some(layout) = self.struct_layouts.get(class_name) {
             if let Some(result) = layout.fields.get(field_name) {
                 return Some(result);
             }
@@ -1520,12 +1635,78 @@ impl IRGenerator {
             }
             // struct 也按相同方式查找
             if let Some(s) = registry.get_struct(class_name) {
+                // 先查 struct_layouts
+                if let Some(layout) = self.struct_layouts.get(&s.name) {
+                    return layout.fields.get(field_name);
+                }
+                // 回退到 class_layouts（兼容旧代码）
                 if let Some(layout) = self.class_layouts.get(&s.name) {
                     return layout.fields.get(field_name);
                 }
             }
         }
         None
+    }
+
+    /// 检查给定名称是否是 struct 类型
+    pub fn is_struct_type(&self, name: &str) -> bool {
+        if let Some(ref registry) = self.type_registry {
+            if registry.get_struct(name).is_some() {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// 获取 struct 字段的 GEP 索引（字段在 struct 定义中的顺序）
+    /// 时间复杂度: O(n)，n 为字段数量
+    pub fn get_struct_field_index(&self, struct_name: &str, field_name: &str) -> usize {
+        if let Some(layout) = self.struct_layouts.get(struct_name) {
+            for (idx, name) in layout.field_order.iter().enumerate() {
+                if name == field_name {
+                    return idx;
+                }
+            }
+        }
+        // 回退：从类型注册表获取字段顺序
+        if let Some(ref registry) = self.type_registry {
+            if let Some(struct_info) = registry.get_struct(struct_name) {
+                for (idx, name) in struct_info.field_order.iter().enumerate() {
+                    if name == field_name {
+                        return idx;
+                    }
+                }
+            }
+        }
+        0 // 默认返回 0
+    }
+
+    /// 生成 struct 深拷贝代码（通过 llvm.memcpy）
+    /// 时间复杂度: O(1) IR 生成，运行时 O(size)
+    /// 空间复杂度: O(1) 额外临时变量
+    pub fn emit_struct_memcpy(
+        &mut self,
+        dest_ptr: &str,
+        src_ptr: &str,
+        struct_name: &str,
+    ) {
+        if let Some(layout) = self.get_struct_layout(struct_name) {
+            let size = layout.total_size;
+            let dest_i8 = self.new_temp();
+            let src_i8 = self.new_temp();
+            self.emit_line(&format!(
+                "  {} = bitcast {}* {} to i8*",
+                dest_i8, format!("%struct.{}", struct_name), dest_ptr
+            ));
+            self.emit_line(&format!(
+                "  {} = bitcast {}* {} to i8*",
+                src_i8, format!("%struct.{}", struct_name), src_ptr
+            ));
+            self.emit_line(&format!(
+                "  call void @llvm.memcpy.p0i8.p0i8.i64(i8* {}, i8* {}, i64 {}, i1 false)",
+                dest_i8, src_i8, size
+            ));
+        }
     }
 
     /// 获取类的父类名

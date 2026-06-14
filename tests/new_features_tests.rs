@@ -21,6 +21,8 @@ fn test_struct_declaration() {
             "p.y = 20",
             "p.getX() = 10",
             "p.getY() = 20",
+            "after p2.x = 99, p.x = 10",
+            "after p2.x = 99, p2.x = 99",
             "=== struct 测试通过 ===",
         ],
         "test_struct",

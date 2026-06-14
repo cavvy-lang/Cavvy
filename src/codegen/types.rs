@@ -37,6 +37,9 @@ impl IRGenerator {
                 if let Some(ref registry) = self.type_registry {
                     if registry.get_enum_by_name(name).is_some() {
                         "{ i32, i64 }".to_string()
+                    } else if registry.get_struct(name).is_some() {
+                        // struct 类型使用 %struct.Name* 指针
+                        format!("%struct.{}*", name)
                     } else {
                         "i8*".to_string()
                     }
@@ -80,7 +83,7 @@ impl IRGenerator {
                     format!("{}*", self.type_to_llvm(inner))
                 }
             }
-            Type::Struct(name) => format!("%struct.{}", name), // 命名结构体
+            Type::Struct(name) => format!("%struct.{}*", name), // 命名结构体指针（变量存储指针）
             // 泛型类型参数 - 查找特化映射，回退到 i8*
             Type::GenericParam(param_name) => {
                 if let Some(actual_type) = self.generic_type_args.get(param_name) {

@@ -37,6 +37,12 @@ public class StructTest {
         println("p.getX() = " + String.valueOf(p.getX()));
         println("p.getY() = " + String.valueOf(p.getY()));
         
+        // 测试 struct 赋值（深拷贝）
+        Point p2 = p;
+        p2.x = 99;
+        println("after p2.x = 99, p.x = " + String.valueOf(p.x));
+        println("after p2.x = 99, p2.x = " + String.valueOf(p2.x));
+        
         println("=== struct 测试通过 ===");
     }
 }

@@ -727,6 +727,7 @@ impl SemanticAnalyzer {
             let mut struct_info = crate::types::StructInfo {
                 name: struct_decl.name.clone(),
                 fields: std::collections::HashMap::new(),
+                field_order: Vec::new(),
                 methods: std::collections::HashMap::new(),
                 is_public: struct_decl
                     .modifiers
@@ -734,7 +735,7 @@ impl SemanticAnalyzer {
                     .any(|m| matches!(m, Modifier::Public)),
             };
 
-            // 收集字段
+            // 收集字段（保持定义顺序）
             for field in &struct_decl.fields {
                 let field_info = crate::types::FieldInfo {
                     name: field.name.clone(),
@@ -747,6 +748,7 @@ impl SemanticAnalyzer {
                     is_const_expr: false,
                 };
                 struct_info.fields.insert(field.name.clone(), field_info);
+                struct_info.field_order.push(field.name.clone());
             }
 
             // 收集方法

@@ -416,6 +416,19 @@ impl IRGenerator {
             self.is_instance_method(&class_name, &method_name)
         };
 
+        // 判断目标类型是否是 struct，决定 this 指针类型
+        let is_struct_target = self.is_struct_type(&class_name);
+        let this_llvm_type = if is_struct_target {
+            let base_name = if let Some(pos) = class_name.find('<') {
+                &class_name[..pos]
+            } else {
+                &class_name
+            };
+            format!("%struct.{}*", base_name)
+        } else {
+            "i8*".to_string()
+        };
+
         // 为实例方法添加 this 参数
         let mut final_args = Vec::new();
 
@@ -429,36 +442,44 @@ impl IRGenerator {
                         if let Some(this_llvm_name) = self.scope_manager.get_llvm_name("this") {
                             let this_temp = self.new_temp();
                             self.emit_line(&format!(
-                                "  {} = load i8*, i8** %{}, align 8",
-                                this_temp, this_llvm_name
+                                "  {} = load {}, {}* %{}, align 8",
+                                this_temp, this_llvm_type, this_llvm_type, this_llvm_name
                             ));
-                            final_args.push(format!("i8* {}", this_temp));
+                            final_args.push(format!("{} {}", this_llvm_type, this_temp));
                         } else {
-                            final_args.push("i8* null".to_string());
+                            final_args.push(format!("{} null", this_llvm_type));
                         }
                     } else {
                         // 通过对象表达式获取 this 指针（如 obj1.getId()）
                         let obj_result = self.generate_expression(obj)?;
-                        let (_, obj_val) = self.parse_typed_value(&obj_result);
-                        final_args.push(format!("i8* {}", obj_val));
+                        let (obj_type, obj_val) = self.parse_typed_value(&obj_result);
+                        if is_struct_target && obj_type.starts_with("%struct.") {
+                            final_args.push(format!("{} {}", obj_type, obj_val));
+                        } else {
+                            final_args.push(format!("{} {}", this_llvm_type, obj_val));
+                        }
                     }
                 } else {
                     // 通过对象表达式获取 this 指针（如 obj1.getId()）
                     let obj_result = self.generate_expression(obj)?;
-                    let (_, obj_val) = self.parse_typed_value(&obj_result);
-                    final_args.push(format!("i8* {}", obj_val));
+                    let (obj_type, obj_val) = self.parse_typed_value(&obj_result);
+                    if is_struct_target && obj_type.starts_with("%struct.") {
+                        final_args.push(format!("{} {}", obj_type, obj_val));
+                    } else {
+                        final_args.push(format!("{} {}", this_llvm_type, obj_val));
+                    }
                 }
             } else if let Some(this_llvm_name) = self.scope_manager.get_llvm_name("this") {
                 // 通过当前方法的 this 获取（如在实例方法中调用其他实例方法）
                 let this_temp = self.new_temp();
                 self.emit_line(&format!(
-                    "  {} = load i8*, i8** %{}, align 8",
-                    this_temp, this_llvm_name
+                    "  {} = load {}, {}* %{}, align 8",
+                    this_temp, this_llvm_type, this_llvm_type, this_llvm_name
                 ));
-                final_args.push(format!("i8* {}", this_temp));
+                final_args.push(format!("{} {}", this_llvm_type, this_temp));
             } else {
                 // 在静态方法中调用实例方法且没有对象表达式，使用 null 作为 this
-                final_args.push("i8* null".to_string());
+                final_args.push(format!("{} null", this_llvm_type));
             }
         }
 

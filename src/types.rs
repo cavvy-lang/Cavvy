@@ -84,6 +84,7 @@ pub struct InterfaceInfo {
 pub struct StructInfo {
     pub name: String,
     pub fields: HashMap<String, FieldInfo>,
+    pub field_order: Vec<String>, // 字段定义顺序，用于 LLVM GEP 索引
     pub methods: HashMap<String, Vec<MethodInfo>>, // 支持方法重载
     pub is_public: bool,
 }

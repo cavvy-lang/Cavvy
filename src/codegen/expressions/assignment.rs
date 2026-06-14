@@ -593,6 +593,18 @@ impl IRGenerator {
                 .generate_assignment_with_conversion(&var_type, &llvm_name, value_type, val);
         }
 
+        // 检查是否是 struct 类型赋值（需要深拷贝而非指针复制）
+        if let Some(struct_name) = self.extract_struct_name_from_ptr_type(&var_type) {
+            // struct 深拷贝：通过 llvm.memcpy 复制内容
+            let dest_ptr_temp = self.new_temp();
+            self.emit_line(&format!(
+                "  {} = load {}* {}** %{}",
+                dest_ptr_temp, var_type, var_type, llvm_name
+            ));
+            self.emit_struct_memcpy(&dest_ptr_temp, val, &struct_name);
+            return Ok(value.to_string());
+        }
+
         // 类型匹配，直接存储
         let align = self.get_type_align(&var_type);
         self.emit_line(&format!(
@@ -1076,5 +1088,19 @@ impl IRGenerator {
         ));
 
         Ok(value.to_string())
+    }
+
+    /// 从 LLVM 指针类型中提取 struct 名称
+    /// 例如 "%struct.Point*" -> Some("Point")
+    pub fn extract_struct_name_from_ptr_type(&self, llvm_type: &str) -> Option<String> {
+        if !llvm_type.starts_with("%struct.") || !llvm_type.ends_with("*") {
+            return None;
+        }
+        let inner = &llvm_type["%struct.".len()..llvm_type.len()-1];
+        if self.is_struct_type(inner) {
+            Some(inner.to_string())
+        } else {
+            None
+        }
     }
 }

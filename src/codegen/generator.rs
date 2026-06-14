@@ -234,7 +234,7 @@ impl IRGenerator {
             compute_layout_recursive(class, &classes, &mut computed, self);
         }
 
-        // 计算 struct 的布局（值类型，无继承）
+        // 计算 struct 的布局（值类型，无继承，无对象头）
         for struct_decl in &program.structs {
             let qname = if struct_decl.namespace_path.is_empty() {
                 struct_decl.name.clone()
@@ -246,7 +246,7 @@ impl IRGenerator {
                 )
             };
             let instance_fields: Vec<_> = struct_decl.fields.iter().cloned().collect();
-            self.compute_class_layout(&qname, &instance_fields, None);
+            self.compute_struct_layout(&qname, &instance_fields);
         }
 
         for class in &program.classes {
@@ -308,6 +308,13 @@ impl IRGenerator {
 
         self.emit_static_field_declarations();
         self.register_type_identifiers(&program);
+
+        // 生成 struct 类型定义（值类型，必须在函数定义之前）
+        let struct_type_defs = self.emit_struct_type_definitions();
+        if !struct_type_defs.is_empty() {
+            self.output.push_str("; Struct type definitions\n");
+            self.output.push_str(&struct_type_defs);
+        }
 
         // 生成 extern 函数声明
         for extern_decl in &program.extern_declarations {
@@ -1263,9 +1270,17 @@ impl IRGenerator {
 
         let mut params: Vec<String> = Vec::new();
 
+        // 判断是否是 struct 方法（决定 this 指针类型）
+        let is_struct_method = self.is_struct_type(class_name);
+        let this_llvm_type = if is_struct_method {
+            format!("%struct.{}", self.current_class)
+        } else {
+            "i8*".to_string()
+        };
+
         // 实例方法添加 this 参数
         if !is_static {
-            params.push("i8* %this".to_string());
+            params.push(format!("{}* %this", this_llvm_type));
         }
 
         for param in &method.params {
@@ -1296,10 +1311,10 @@ impl IRGenerator {
 
         // 实例方法声明 this 变量
         if !is_static {
-            let this_llvm_name = self.scope_manager.declare_var("this", "i8*");
-            self.emit_line(&format!("  %{} = alloca i8*", this_llvm_name));
-            self.emit_line(&format!("  store i8* %this, i8** %{}" , this_llvm_name));
-            self.var_types.insert("this".to_string(), "i8*".to_string());
+            let this_llvm_name = self.scope_manager.declare_var("this", &format!("{}*", this_llvm_type));
+            self.emit_line(&format!("  %{} = alloca {}*", this_llvm_name, this_llvm_type));
+            self.emit_line(&format!("  store {}* %this, {}** %{}", this_llvm_type, this_llvm_type, this_llvm_name));
+            self.var_types.insert("this".to_string(), format!("{}*", this_llvm_type));
             // 存储 this 的 Cavvy 类型信息，用于准确的类型推断
             let this_cay_type = crate::types::Type::Object(class_name.to_string());
             self.var_cay_types.insert("this".to_string(), this_cay_type);

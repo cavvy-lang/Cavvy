@@ -342,77 +342,126 @@ impl IRGenerator {
                 .cloned()
             {
                 // 实例字段访问
+                let is_struct = self.is_struct_type(&class_name);
 
-                // 获取对象指针
-                // 对于 this 和 super，从作用域管理器获取 this 的 LLVM 名称；对于其他变量，加载其值
-                let obj_ptr = if let Expr::Identifier(name) = &*member.object {
-                    if name == "this" || name == "super" {
-                        // 从作用域管理器获取 this 的 LLVM 名称，然后加载其值
-                        // super 也使用 this 指针，只是访问的类不同
-                        let this_llvm_name = self
-                            .scope_manager
-                            .get_llvm_name("this")
-                            .unwrap_or_else(|| "this_s1".to_string());
-                        let temp = self.new_temp();
-                        self.emit_line(&format!(
-                            "  {} = load i8*, i8** %{}, align 8",
-                            temp, this_llvm_name
-                        ));
-                        temp
+                if is_struct {
+                    // struct 字段访问：使用 getelementptr %struct.Name
+                    let llvm_struct_type = format!("%struct.{}", class_name);
+                    let obj_ptr = if let Expr::Identifier(name) = &*member.object {
+                        if name == "this" {
+                            // this 指针：从作用域管理器获取
+                            let this_llvm_name = self
+                                .scope_manager
+                                .get_llvm_name("this")
+                                .unwrap_or_else(|| "this_s1".to_string());
+                            let temp = self.new_temp();
+                            self.emit_line(&format!(
+                                "  {} = load {}*, {}** %{}, align 8",
+                                temp, llvm_struct_type, llvm_struct_type, this_llvm_name
+                            ));
+                            temp
+                        } else {
+                            // 其他变量：生成表达式
+                            let obj = self.generate_expression(&member.object)?;
+                            let (_, obj_val) = self.parse_typed_value(&obj);
+                            obj_val
+                        }
                     } else {
-                        // 其他变量：生成表达式并提取值
                         let obj = self.generate_expression(&member.object)?;
                         let (_, obj_val) = self.parse_typed_value(&obj);
                         obj_val
-                    }
-                } else {
-                    let obj = self.generate_expression(&member.object)?;
-                    let (obj_type, obj_val) = self.parse_typed_value(&obj);
-                    // 确保对象指针是 i8*，供后续 GEP 使用
-                    if obj_type == "i8*" {
-                        obj_val
+                    };
+
+                    // 计算字段索引（从 struct 布局中获取字段顺序）
+                    let field_idx = self.get_struct_field_index(&class_name, &member.member);
+                    let field_ptr = self.new_temp();
+                    let ptr_type = if field_info.llvm_type.ends_with('*') {
+                        field_info.llvm_type.clone()
                     } else {
-                        let cast_temp = self.new_temp();
-                        self.emit_line(&format!(
-                            "  {} = bitcast {} {} to i8*",
-                            cast_temp, obj_type, obj_val
-                        ));
-                        cast_temp
-                    }
-                };
+                        format!("{}*", field_info.llvm_type)
+                    };
+                    self.emit_line(&format!(
+                        "  {} = getelementptr inbounds {}, {}* {}, i32 0, i32 {}",
+                        field_ptr, llvm_struct_type, llvm_struct_type, obj_ptr, field_idx
+                    ));
 
-                // 计算字段地址: obj_ptr + offset
-                let field_ptr_i8 = self.new_temp();
-                self.emit_line(&format!(
-                    "  {} = getelementptr i8, i8* {}, i64 {}",
-                    field_ptr_i8, obj_ptr, field_info.offset
-                ));
+                    // 加载字段值
+                    let field_val = self.new_temp();
+                    self.emit_line(&format!(
+                        "  {} = load {}, {} {}, align {}",
+                        field_val,
+                        field_info.llvm_type,
+                        ptr_type,
+                        field_ptr,
+                        self.get_type_align(&field_info.llvm_type)
+                    ));
 
-                // 将字段指针转换为正确类型的指针
-                // 注意：如果llvm_type已经是指针类型（如i8**），则不需要再加*
-                let field_ptr = self.new_temp();
-                let ptr_type = if field_info.llvm_type.ends_with('*') {
-                    field_info.llvm_type.clone()
+                    return Ok(format!("{} {}", field_info.llvm_type, field_val));
                 } else {
-                    format!("{}*", field_info.llvm_type)
-                };
-                self.emit_line(&format!(
-                    "  {} = bitcast i8* {} to {}",
-                    field_ptr, field_ptr_i8, ptr_type
-                ));
+                    // class 字段访问（原有逻辑）：i8* + offset
+                    let obj_ptr = if let Expr::Identifier(name) = &*member.object {
+                        if name == "this" || name == "super" {
+                            let this_llvm_name = self
+                                .scope_manager
+                                .get_llvm_name("this")
+                                .unwrap_or_else(|| "this_s1".to_string());
+                            let temp = self.new_temp();
+                            self.emit_line(&format!(
+                                "  {} = load i8*, i8** %{}, align 8",
+                                temp, this_llvm_name
+                            ));
+                            temp
+                        } else {
+                            let obj = self.generate_expression(&member.object)?;
+                            let (_, obj_val) = self.parse_typed_value(&obj);
+                            obj_val
+                        }
+                    } else {
+                        let obj = self.generate_expression(&member.object)?;
+                        let (obj_type, obj_val) = self.parse_typed_value(&obj);
+                        if obj_type == "i8*" {
+                            obj_val
+                        } else {
+                            let cast_temp = self.new_temp();
+                            self.emit_line(&format!(
+                                "  {} = bitcast {} {} to i8*",
+                                cast_temp, obj_type, obj_val
+                            ));
+                            cast_temp
+                        }
+                    };
 
-                // 加载字段值
-                let field_val = self.new_temp();
-                self.emit_line(&format!(
-                    "  {} = load {}, {} {}, align {}",
-                    field_val,
-                    field_info.llvm_type,
-                    ptr_type,
-                    field_ptr,
-                    self.get_type_align(&field_info.llvm_type)
-                ));
+                    // 计算字段地址: obj_ptr + offset
+                    let field_ptr_i8 = self.new_temp();
+                    self.emit_line(&format!(
+                        "  {} = getelementptr i8, i8* {}, i64 {}",
+                        field_ptr_i8, obj_ptr, field_info.offset
+                    ));
 
-                return Ok(format!("{} {}", field_info.llvm_type, field_val));
+                    let field_ptr = self.new_temp();
+                    let ptr_type = if field_info.llvm_type.ends_with('*') {
+                        field_info.llvm_type.clone()
+                    } else {
+                        format!("{}*", field_info.llvm_type)
+                    };
+                    self.emit_line(&format!(
+                        "  {} = bitcast i8* {} to {}",
+                        field_ptr, field_ptr_i8, ptr_type
+                    ));
+
+                    // 加载字段值
+                    let field_val = self.new_temp();
+                    self.emit_line(&format!(
+                        "  {} = load {}, {} {}, align {}",
+                        field_val,
+                        field_info.llvm_type,
+                        ptr_type,
+                        field_ptr,
+                        self.get_type_align(&field_info.llvm_type)
+                    ));
+
+                    return Ok(format!("{} {}", field_info.llvm_type, field_val));
+                }
             }
         }
 

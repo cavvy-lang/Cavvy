@@ -681,7 +681,31 @@ impl IRGenerator {
                     }
                 } else {
                     // 类型匹配，直接存储
-                    self.emit_line(&format!("  store {}, {}* %{}", value, var_type, llvm_name));
+                    // 检查是否是 struct 类型赋值（需要深拷贝而非指针复制）
+                    if let Some(struct_name) = self.extract_struct_name_from_ptr_type(&var_type) {
+                        // struct 深拷贝：分配新栈空间并通过 llvm.memcpy 复制内容
+                        let src_ptr = val;
+                        let new_struct = self.new_temp();
+                        let llvm_struct_type = format!("%struct.{}", struct_name);
+                        self.emit_line(&format!(
+                            "  {} = alloca {}",
+                            new_struct, llvm_struct_type
+                        ));
+                        self.emit_struct_memcpy(
+                            &new_struct,
+                            &src_ptr,
+                            &struct_name,
+                        );
+                        self.emit_line(&format!(
+                            "  store {}* {}, {}** %{}, align {}",
+                            llvm_struct_type, new_struct, llvm_struct_type, llvm_name, align
+                        ));
+                    } else {
+                        self.emit_line(&format!(
+                            "  store {}, {}* %{}",
+                            value, var_type, llvm_name
+                        ));
+                    }
                 }
             }
         }
