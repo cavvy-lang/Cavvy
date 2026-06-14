@@ -855,7 +855,8 @@ public class TcpServer {
         timeout_val[1] = tv_usec;
         long timeout_ptr;
         __ir {
-            store i64 %timeout_val, i64* %timeout_ptr
+            %timeout_ptr_val = ptrtoint ptr %timeout_val to i64
+            store i64 %timeout_ptr_val, i64* %timeout_ptr
         }
         setsockopt((c_int)this.handle, SOL_SOCKET, SO_RCVTIMEO, (c_void*)timeout_ptr, 8);
         #endif
