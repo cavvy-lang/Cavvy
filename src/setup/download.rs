@@ -59,36 +59,62 @@ pub struct GitHubAsset {
 
 /// 使用 curl 调用 GitHub API 获取最新 release 信息
 /// 时间复杂度: O(1)（网络请求常数时间）
+/// 磁盘 IO: 无（纯内存操作）
 fn fetch_github_api_json(api_url: &str) -> SetupResult<String> {
-    let mut cmd = Command::new("curl");
-    cmd.arg("-s")
-        .arg("-L")
-        .arg("-H")
-        .arg("Accept: application/vnd.github+json")
-        .arg("-H")
-        .arg("User-Agent: cavvy-setup/1.0")
-        .arg("--connect-timeout")
-        .arg("30")
-        .arg("--max-time")
-        .arg("60")
-        .arg("-f")
-        .arg(api_url);
+    // 尝试策略：标准请求 -> 禁用 SSL 证书吊销检查 -> 跳过证书验证
+    let attempts = [
+        vec!["-s", "-L", "-f"],
+        vec!["-s", "-L", "-f", "--ssl-no-revoke"],
+        vec!["-s", "-L", "-f", "-k"],
+    ];
 
-    let output = cmd.output().map_err(|e| {
-        SetupError::CommandFailed(format!("curl 调用 GitHub API 失败: {}", e))
-    })?;
+    let mut last_error = String::new();
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(SetupError::CommandFailed(format!(
-            "GitHub API 请求失败 (exit code: {:?}): {}",
-            output.status.code(),
-            stderr.trim()
-        )));
+    for (idx, flags) in attempts.iter().enumerate() {
+        let mut cmd = Command::new("curl");
+        for flag in flags.iter() {
+            cmd.arg(*flag);
+        }
+        cmd.arg("-H")
+            .arg("Accept: application/vnd.github+json")
+            .arg("-H")
+            .arg("User-Agent: cavvy-setup/1.0")
+            .arg("--connect-timeout")
+            .arg("30")
+            .arg("--max-time")
+            .arg("60")
+            .arg(api_url);
+
+        match cmd.output() {
+            Ok(output) if output.status.success() => {
+                let body = String::from_utf8_lossy(&output.stdout);
+                return Ok(body.to_string());
+            }
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                last_error = format!(
+                    "尝试 {} 失败 (exit code: {:?}): {}",
+                    idx + 1,
+                    output.status.code(),
+                    stderr.trim()
+                );
+                // 仅在 SSL 相关错误码时继续重试
+                let code = output.status.code().unwrap_or(-1);
+                if ![35, 58, 60, 77].contains(&code) {
+                    break;
+                }
+            }
+            Err(e) => {
+                last_error = format!("尝试 {} curl 启动失败: {}", idx + 1, e);
+                break;
+            }
+        }
     }
 
-    let body = String::from_utf8_lossy(&output.stdout);
-    Ok(body.to_string())
+    Err(SetupError::CommandFailed(format!(
+        "GitHub API 请求失败。可能原因：网络代理、SSL 证书问题、或 GitHub 服务不可用。\n{}",
+        last_error
+    )))
 }
 
 /// 从 GitHub API JSON 响应中解析 release 信息
@@ -273,30 +299,59 @@ pub fn download_file(url: &str, dest: &Path, timeout_seconds: u64) -> SetupResul
 
     let temp_path = dest.with_extension("tmp");
 
-    // 策略1: curl
+    // 策略1: curl（带 SSL 错误自动重试）
     if is_command_available("curl") {
-        let mut cmd = Command::new("curl");
-        cmd.arg("-L")
-            .arg("-o")
-            .arg(&temp_path)
-            .arg("--connect-timeout")
-            .arg("30")
-            .arg("--max-time")
-            .arg(&timeout_seconds.to_string())
-            .arg("-f")
-            .arg(url);
+        let attempts = [
+            vec!["-L", "-f"],
+            vec!["-L", "-f", "--ssl-no-revoke"],
+            vec!["-L", "-f", "-k"],
+        ];
 
-        let output = cmd.output().map_err(|e| SetupError::CommandFailed(format!("curl 启动失败: {}", e)))?;
-        if !output.status.success() {
-            let _ = fs::remove_file(&temp_path);
-            return Err(SetupError::CommandFailed(format!(
-                "curl 下载失败 (exit code: {:?})",
-                output.status.code()
-            )));
+        for (idx, flags) in attempts.iter().enumerate() {
+            let mut cmd = Command::new("curl");
+            for flag in flags.iter() {
+                cmd.arg(*flag);
+            }
+            cmd.arg("-o")
+                .arg(&temp_path)
+                .arg("--connect-timeout")
+                .arg("30")
+                .arg("--max-time")
+                .arg(&timeout_seconds.to_string())
+                .arg(url);
+
+            match cmd.output() {
+                Ok(output) if output.status.success() => {
+                    atomic_rename(&temp_path, dest)?;
+                    return Ok(());
+                }
+                Ok(output) => {
+                    let _ = fs::remove_file(&temp_path);
+                    let code = output.status.code().unwrap_or(-1);
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    eprintln!(
+                        "[WARN] curl 下载尝试 {} 失败 (exit code: {}): {}",
+                        idx + 1,
+                        code,
+                        stderr.trim()
+                    );
+                    if ![35, 58, 60, 77].contains(&code) {
+                        return Err(SetupError::CommandFailed(format!(
+                            "curl 下载失败 (exit code: {:?})",
+                            output.status.code()
+                        )));
+                    }
+                }
+                Err(e) => {
+                    let _ = fs::remove_file(&temp_path);
+                    return Err(SetupError::CommandFailed(format!("curl 启动失败: {}", e)));
+                }
+            }
         }
 
-        atomic_rename(&temp_path, dest)?;
-        return Ok(());
+        return Err(SetupError::CommandFailed(
+            "curl 所有下载尝试均失败，可能原因：网络代理、SSL 证书问题、或 GitHub 服务不可用。".to_string()
+        ));
     }
 
     // 策略2: wget
