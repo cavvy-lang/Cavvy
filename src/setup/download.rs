@@ -710,6 +710,15 @@ pub fn download_and_install_llvm(
     // 验证
     verify_llvm_minimal(&install_dir, os)?;
 
+    // 自动将 llvm-minimal/bin 添加到 PATH
+    let bin_dir = install_dir.join("bin");
+    if bin_dir.exists() {
+        if let Err(e) = add_to_path(&bin_dir) {
+            eprintln!("[WARN] 无法自动添加 PATH: {}", e);
+            eprintln!("[INFO] 请手动将以下目录添加到 PATH: {}", bin_dir.display());
+        }
+    }
+
     eprintln!("[SUCCESS] LLVM minimal 安装完成: {}", install_dir.display());
     Ok(install_dir)
 }
@@ -928,10 +937,19 @@ pub fn install_cavvy_from_source(dest_dir: Option<&Path>) -> SetupResult<Vec<Pat
     Ok(installed)
 }
 
-/// 自动将目录添加到系统 PATH（持久化）
-/// Windows: 修改用户环境变量注册表
-/// Linux: 修改 ~/.bashrc 或 ~/.zshrc
+/// 自动将目录添加到系统 PATH（持久化 + 当前进程生效）
+/// Windows: 修改用户环境变量注册表，并设置当前进程 PATH
+/// Linux: 修改 ~/.bashrc 或 ~/.zshrc，并设置当前进程 PATH
 pub fn add_to_path(dir: &Path) -> SetupResult<()> {
+    // 1. 对当前进程立即生效
+    // SAFETY: cay-setup 为单线程程序，set_var 不会在并发环境下导致数据竞争
+    let dir_str = dir.to_string_lossy().to_string();
+    let current = std::env::var("PATH").unwrap_or_default();
+    let sep = if cfg!(target_os = "windows") { ';' } else { ':' };
+    let new_path = format!("{}{}{}", dir_str, sep, current);
+    unsafe { std::env::set_var("PATH", &new_path); }
+
+    // 2. 持久化到系统
     if cfg!(target_os = "windows") {
         add_to_path_windows(dir)
     } else {
@@ -941,7 +959,14 @@ pub fn add_to_path(dir: &Path) -> SetupResult<()> {
 
 /// Windows: 使用 PowerShell 修改用户 PATH 环境变量
 fn add_to_path_windows(dir: &Path) -> SetupResult<()> {
-    let dir_str = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf()).to_string_lossy().to_string();
+    let dir_str = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
+    let dir_str = dir_str.to_string_lossy().to_string();
+    // canonicalize 在 Windows 上会生成 \\?\ 前缀的 UNC 路径，需去除以保持 PATH 可读性
+    let dir_str = if dir_str.starts_with(r"\\?\") {
+        dir_str.trim_start_matches(r"\\?\").to_string()
+    } else {
+        dir_str
+    };
 
     // 使用 PowerShell 读取当前用户 PATH
     let ps_read = format!(
