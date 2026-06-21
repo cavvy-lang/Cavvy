@@ -307,6 +307,16 @@ fn main() {
                 }
             }
 
+            // 设置 CAY-SETUP 版本
+            if let Some(cay_setup_section) = verinfo.get("CAY-SETUP") {
+                if let Some(version) = cay_setup_section.get("version") {
+                    println!(
+                        "cargo:rustc-env=CAY_SETUP_VERSION={}",
+                        build_full_version(version)
+                    );
+                }
+            }
+
             // 设置通用版本（使用CAYC的版本）
             if let Some(cayc_section) = verinfo.get("CAYC") {
                 if let Some(version) = cayc_section.get("version") {
@@ -368,6 +378,10 @@ fn main() {
             );
             println!(
                 "cargo:rustc-env=CAY_RCPL_VERSION={}",
+                build_full_version(default_version)
+            );
+            println!(
+                "cargo:rustc-env=CAY_SETUP_VERSION={}",
                 build_full_version(default_version)
             );
             println!(

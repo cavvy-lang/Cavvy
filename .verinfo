@@ -46,6 +46,10 @@ build = 11
 version = "5.1.0"
 build = 11
 
+[CAY-SETUP]
+version = "5.1.0"
+build = 1
+
 [LLVM-MINIMAL]
 version = "22.1.6"
 

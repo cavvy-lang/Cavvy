@@ -73,6 +73,10 @@ path = "src/bin/cay-dt.rs"
 name = "cay-dp"
 path = "src/bin/cay-dp.rs"
 
+[[bin]]
+name = "cay-setup"
+path = "src/bin/cay-setup.rs"
+
 [features]
 default = []
 # 保留特性标志以向后兼容，但 llvm-sys 现在是默认依赖
