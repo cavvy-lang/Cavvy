@@ -427,11 +427,12 @@ pub fn download_file(url: &str, dest: &Path, timeout_seconds: u64) -> SetupResul
 }
 
 /// 检查命令是否可用
+/// 7-Zip 等工具不支持 `--version`，故只要能启动（exit code 存在）即认为可用
 fn is_command_available(cmd: &str) -> bool {
     Command::new(cmd)
         .arg("--version")
         .output()
-        .map(|o| o.status.success())
+        .map(|o| o.status.code().is_some())
         .unwrap_or(false)
 }
 
@@ -470,10 +471,11 @@ pub fn extract_tar_xz(archive: &Path, dest: &Path) -> SetupResult<()> {
     }
 
     // 策略2: 7z (Windows 常见)
+    // 注意：7-Zip 的 -o 参数必须紧贴目录路径，不能有空格：-o<dest>
     if cfg!(target_os = "windows") {
+        let out_switch = format!("-o{}", dest.to_str().unwrap_or_default());
         let output = Command::new("7z")
-            .args(&["x", archive.to_str().unwrap_or_default(), "-o"])
-            .arg(dest)
+            .args(&["x", archive.to_str().unwrap_or_default(), &out_switch, "-y"])
             .output()
             .map_err(|e| SetupError::CommandFailed(format!("7z 启动失败: {}", e)))?;
         if output.status.success() {
@@ -492,10 +494,11 @@ pub fn extract_7z(archive: &Path, dest: &Path) -> SetupResult<()> {
     fs::create_dir_all(dest)?;
 
     // 策略1: 7z 命令
+    // 注意：7-Zip 的 -o 参数必须紧贴目录路径，不能有空格：-o<dest>
     if is_command_available("7z") {
+        let out_switch = format!("-o{}", dest.to_str().unwrap_or_default());
         let output = Command::new("7z")
-            .args(&["x", archive.to_str().unwrap_or_default(), "-o"])
-            .arg(dest)
+            .args(&["x", archive.to_str().unwrap_or_default(), &out_switch, "-y"])
             .output()
             .map_err(|e| SetupError::CommandFailed(format!("7z 启动失败: {}", e)))?;
         if output.status.success() {
@@ -505,9 +508,9 @@ pub fn extract_7z(archive: &Path, dest: &Path) -> SetupResult<()> {
 
     // 策略2: 7za 命令 (p7zip 备用)
     if is_command_available("7za") {
+        let out_switch = format!("-o{}", dest.to_str().unwrap_or_default());
         let output = Command::new("7za")
-            .args(&["x", archive.to_str().unwrap_or_default(), "-o"])
-            .arg(dest)
+            .args(&["x", archive.to_str().unwrap_or_default(), &out_switch, "-y"])
             .output()
             .map_err(|e| SetupError::CommandFailed(format!("7za 启动失败: {}", e)))?;
         if output.status.success() {
