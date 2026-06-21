@@ -562,19 +562,122 @@ pub fn verify_llvm_minimal(install_dir: &Path, os: &str) -> SetupResult<()> {
     Ok(())
 }
 
+/// 查找 Cavvy 安装目录
+/// 通过搜索 PATH 中的 cayc/cayc.exe，推断安装目录（假设结构 <install_dir>/bin/cayc）
+/// 时间复杂度: O(PATH 条目数)
+/// 磁盘 IO: O(PATH 条目数)
+pub fn find_cavvy_install_dir() -> Option<PathBuf> {
+    let exe_name = if cfg!(target_os = "windows") {
+        "cayc.exe"
+    } else {
+        "cayc"
+    };
+
+    if let Ok(path_var) = std::env::var("PATH") {
+        let separator = if cfg!(target_os = "windows") { ';' } else { ':' };
+        for dir in path_var.split(separator) {
+            let candidate = PathBuf::from(dir).join(exe_name);
+            if candidate.exists() {
+                return candidate.parent().map(|p| p.to_path_buf());
+            }
+        }
+    }
+
+    None
+}
+
+/// 查找指定 Cavvy 工具的可执行文件路径
+/// 搜索顺序: PATH -> Cavvy 安装目录/bin -> 项目源码 target/release
+/// 时间复杂度: O(PATH 条目数)
+pub fn find_tool_path(name: &str) -> Option<PathBuf> {
+    let exe = if cfg!(target_os = "windows") {
+        format!("{}.exe", name)
+    } else {
+        name.to_string()
+    };
+
+    // 1. 搜索 PATH
+    if let Ok(path_var) = std::env::var("PATH") {
+        let sep = if cfg!(target_os = "windows") { ';' } else { ':' };
+        for dir in path_var.split(sep) {
+            let candidate = PathBuf::from(dir).join(&exe);
+            if candidate.exists() {
+                return Some(candidate);
+            }
+        }
+    }
+
+    // 2. 搜索 Cavvy 安装目录
+    if let Some(install_dir) = find_cavvy_install_dir() {
+        let candidate = install_dir.join(&exe);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+
+    // 3. 搜索项目源码 target/release
+    if let Some(root) = super::find_cavvy_root() {
+        let candidate = root.join("target/release").join(&exe);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+
+    None
+}
+
+/// 获取指定工具的路径和版本号
+/// 尝试 --version，失败则尝试 -V
+/// 返回 (路径, 版本首行)
+pub fn get_tool_version(name: &str) -> SetupResult<(PathBuf, String)> {
+    let path = find_tool_path(name)
+        .ok_or_else(|| SetupError::NotFound(format!("未找到工具: {}", name)))?;
+
+    let output = Command::new(&path)
+        .arg("--version")
+        .output()
+        .or_else(|_| Command::new(&path).arg("-V").output())
+        .map_err(|e| SetupError::CommandFailed(format!("无法运行 {}: {}", path.display(), e)))?;
+
+    if !output.status.success() {
+        return Ok((path, "未知".to_string()));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let line = if stdout.trim().is_empty() {
+        stderr.lines().next().unwrap_or("未知").to_string()
+    } else {
+        stdout.lines().next().unwrap_or("未知").to_string()
+    };
+
+    Ok((path, line))
+}
+
 /// 下载并安装 LLVM minimal
+/// target_dir: 显式指定的安装根目录（LLVM 将安装到 <target_dir>/llvm-minimal）
+/// 若未提供，优先使用 Cavvy 安装目录，其次回退到项目源码根目录
 pub fn download_and_install_llvm(
     version_info: &VersionInfo,
     config: &DownloadConfig,
+    target_dir: Option<&Path>,
 ) -> SetupResult<PathBuf> {
     let (os, arch) = detect_platform();
     let version = version_info
         .llvm_minimal_version()
         .ok_or_else(|| SetupError::Parse(".verinfo 中缺少 LLVM-MINIMAL 版本号".to_string()))?;
 
-    let root = find_cavvy_root()
-        .ok_or_else(|| SetupError::NotFound("未找到 Cavvy 项目根目录".to_string()))?;
-    let install_dir = root.join("llvm-minimal");
+    let (install_dir, download_root) = if let Some(dir) = target_dir {
+        let d = dir.join("llvm-minimal");
+        (d, dir.to_path_buf())
+    } else if let Some(cavvy_dir) = find_cavvy_install_dir() {
+        let d = cavvy_dir.join("llvm-minimal");
+        (d, cavvy_dir)
+    } else {
+        let root = find_cavvy_root()
+            .ok_or_else(|| SetupError::NotFound("未找到 Cavvy 项目根目录或安装目录".to_string()))?;
+        (root.join("llvm-minimal"), root)
+    };
 
     // 如果已安装且验证通过，直接返回
     if verify_llvm_minimal(&install_dir, os).is_ok() {
@@ -588,7 +691,7 @@ pub fn download_and_install_llvm(
     } else {
         format!("llvm-minimal-{}-{}-{}.tar.xz", version, os, arch)
     };
-    let archive_path = root.join(&archive_name);
+    let archive_path = download_root.join(&archive_name);
 
     eprintln!("[INFO] 下载 LLVM minimal {} 从 {}", version, url);
     download_file(&url, &archive_path, config.timeout_seconds)?;

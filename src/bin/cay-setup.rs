@@ -11,7 +11,10 @@ use std::path::PathBuf;
 use std::process;
 
 use cavvy::setup::check::{CheckStatus, run_full_check};
-use cavvy::setup::download::{DownloadConfig, install_cavvy_prebuilt, install_cavvy_from_source, download_and_install_llvm};
+use cavvy::setup::download::{
+    DownloadConfig, install_cavvy_prebuilt, install_cavvy_from_source,
+    download_and_install_llvm, find_cavvy_install_dir, get_tool_version,
+};
 use cavvy::setup::{SetupResult, VersionInfo, find_verinfo, parse_verinfo};
 
 const VERSION: &str = env!("CAY_SETUP_VERSION");
@@ -103,7 +106,7 @@ fn menu_download() -> SetupResult<()> {
                 println!("开始下载 LLVM minimal...");
                 let verinfo = load_verinfo()?;
                 let config = DownloadConfig::default();
-                let install_dir = download_and_install_llvm(&verinfo, &config)?;
+                let install_dir = download_and_install_llvm(&verinfo, &config, None)?;
                 println!();
                 println!("环境变量设置提示:");
                 cavvy::setup::download::print_env_setup_hint(&install_dir);
@@ -116,7 +119,7 @@ fn menu_download() -> SetupResult<()> {
                     let verinfo = load_verinfo()?;
                     let mut config = DownloadConfig::default();
                     config.use_full_llvm = true;
-                    let install_dir = download_and_install_llvm(&verinfo, &config)?;
+                    let install_dir = download_and_install_llvm(&verinfo, &config, None)?;
                     println!();
                     println!("环境变量设置提示:");
                     cavvy::setup::download::print_env_setup_hint(&install_dir);
@@ -215,6 +218,27 @@ fn menu_install() -> SetupResult<()> {
                 println!();
                 println!("[SUCCESS] Cavvy 工具链安装完成。");
                 println!("[INFO] 请重新打开终端或注销登录以使 PATH 变更生效。");
+
+                // 安装成功后，若 Cavvy 安装目录下缺少 llvm-minimal，提示用户下载
+                let cavvy_dir = dest_dir.clone().or_else(find_cavvy_install_dir);
+                if let Some(ref dir) = cavvy_dir {
+                    if !dir.join("llvm-minimal").exists() {
+                        println!();
+                        if ask_yn("检测到当前 Cavvy 安装目录缺少 LLVM minimal，是否立即下载", true) {
+                            println!();
+                            let verinfo = load_verinfo()?;
+                            let config = DownloadConfig::default();
+                            match download_and_install_llvm(&verinfo, &config, Some(dir)) {
+                                Ok(llvm_dir) => {
+                                    println!("[SUCCESS] LLVM minimal 已安装到: {}", llvm_dir.display());
+                                }
+                                Err(e) => {
+                                    eprintln!("[WARN] LLVM minimal 下载失败: {}", e);
+                                }
+                            }
+                        }
+                    }
+                }
             }
             Err(e) => {
                 eprintln!("[ERROR] 安装失败: {}", e);
@@ -242,6 +266,34 @@ fn menu_version() -> SetupResult<()> {
     Ok(())
 }
 
+fn menu_version_tools() -> SetupResult<()> {
+    println!("版本管理");
+    println!("{}", "-".repeat(50));
+
+    let tools = ["cayc", "cay-ir", "ir2exe", "cay-check", "cay-run", "cay-setup"];
+    let mut found_any = false;
+
+    for tool in &tools {
+        match get_tool_version(tool) {
+            Ok((path, version)) => {
+                found_any = true;
+                println!("  {:15} {}", tool, version);
+                println!("    路径: {}", path.display());
+            }
+            Err(_) => {
+                println!("  {:15} 未安装", tool);
+            }
+        }
+    }
+
+    if !found_any {
+        println!("未检测到任何 Cavvy 工具链二进制文件。");
+        println!("请运行主菜单 [3] 安装 Cavvy 工具链。");
+    }
+
+    Ok(())
+}
+
 fn menu_help() {
     println!("帮助信息");
     println!("{}", "-".repeat(50));
@@ -251,9 +303,10 @@ fn menu_help() {
     println!("  [1] 检查环境 - 检测 Git、Rust、LLVM 等依赖是否就绪");
     println!("  [2] 下载依赖 - 自动下载并安装 LLVM minimal 或完整包");
     println!("  [3] 安装工具链 - 自动下载或编译 Cavvy 并添加到 PATH");
-    println!("  [4] 版本信息 - 显示 Cavvy 各组件版本号");
-    println!("  [5] 帮助 - 显示此说明");
-    println!("  [6] 退出 - 退出程序");
+    println!("  [4] 版本信息 - 显示 .verinfo 中的组件版本号");
+    println!("  [5] 版本管理 - 显示 PATH 中各二进制文件路径及版本");
+    println!("  [6] 帮助 - 显示此说明");
+    println!("  [7] 退出 - 退出程序");
     println!();
     println!("提示:");
     println!("  - 首次使用建议依次执行 [1] -> [2] -> [3]");
@@ -267,10 +320,11 @@ fn run_interactive() {
         println!("[1] 检查当前环境");
         println!("[2] 下载并安装依赖 (LLVM minimal)");
         println!("[3] 安装 Cavvy 工具链");
-        println!("[4] 显示版本信息");
-        println!("[5] 帮助");
-        println!("[6] 退出");
-        print!("\n请输入选项编号 (1-6): ");
+        println!("[4] 显示版本信息 (.verinfo)");
+        println!("[5] 版本管理 (已安装二进制)");
+        println!("[6] 帮助");
+        println!("[7] 退出");
+        print!("\n请输入选项编号 (1-7): ");
         let _ = io::stdout().flush();
 
         let choice = read_line_trim();
@@ -281,11 +335,12 @@ fn run_interactive() {
             "2" => menu_download(),
             "3" => menu_install(),
             "4" => menu_version(),
-            "5" => {
+            "5" => menu_version_tools(),
+            "6" => {
                 menu_help();
                 Ok(())
             }
-            "6" | "q" | "quit" | "exit" => {
+            "7" | "q" | "quit" | "exit" => {
                 println!("感谢使用 Cavvy Setup，再见！");
                 process::exit(0);
             }

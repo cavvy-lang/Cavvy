@@ -156,68 +156,94 @@ fn check_cavvy_root() -> (String, CheckStatus) {
 }
 
 /// 检查 llvm-minimal 目录是否存在且包含关键二进制文件
+/// 优先检查 Cavvy 安装目录，其次检查项目源码根目录
 fn check_llvm_minimal() -> (String, CheckStatus) {
-    let root = match find_cavvy_root() {
-        Some(r) => r,
-        None => {
-            return (
-                "llvm-minimal 本地工具".to_string(),
-                CheckStatus::Warning("未找到 Cavvy 项目根目录".to_string()),
-            );
+    let candidates: Vec<PathBuf> = {
+        let mut v = Vec::new();
+        if let Some(install_dir) = super::download::find_cavvy_install_dir() {
+            v.push(install_dir.join("llvm-minimal"));
         }
+        if let Some(root) = find_cavvy_root() {
+            v.push(root.join("llvm-minimal"));
+        }
+        v
     };
 
-    let llvm_minimal = root.join("llvm-minimal");
-    if !llvm_minimal.exists() {
+    if candidates.is_empty() {
         return (
             "llvm-minimal 本地工具".to_string(),
-            CheckStatus::Warning(
-                "llvm-minimal 目录不存在，运行 'cay-setup download' 可自动下载".to_string(),
-            ),
+            CheckStatus::Warning("未找到 Cavvy 项目根目录或安装目录".to_string()),
         );
     }
 
-    let bin_dir = llvm_minimal.join("bin");
-    if !bin_dir.exists() {
-        return (
-            "llvm-minimal 本地工具".to_string(),
-            CheckStatus::Warning("llvm-minimal/bin 目录不存在".to_string()),
-        );
-    }
+    let mut last_status = CheckStatus::Warning(
+        "llvm-minimal 目录不存在，运行 'cay-setup download' 可自动下载".to_string(),
+    );
 
-    let essential = ["clang", "llc", "lld"];
-    let mut missing = Vec::new();
-    for bin in &essential {
-        let exe = if cfg!(target_os = "windows") {
-            format!("{}.exe", bin)
+    for llvm_minimal in &candidates {
+        if !llvm_minimal.exists() {
+            continue;
+        }
+
+        let bin_dir = llvm_minimal.join("bin");
+        if !bin_dir.exists() {
+            last_status = CheckStatus::Warning(format!(
+                "{} 下 bin 目录不存在",
+                llvm_minimal.display()
+            ));
+            continue;
+        }
+
+        let essential = ["clang", "llc", "lld"];
+        let mut missing = Vec::new();
+        for bin in &essential {
+            let exe = if cfg!(target_os = "windows") {
+                format!("{}.exe", bin)
+            } else {
+                bin.to_string()
+            };
+            if !bin_dir.join(&exe).exists() {
+                missing.push(bin.to_string());
+            }
+        }
+
+        if missing.is_empty() {
+            return (
+                "llvm-minimal 本地工具".to_string(),
+                CheckStatus::Ok,
+            );
         } else {
-            bin.to_string()
-        };
-        if !bin_dir.join(&exe).exists() {
-            missing.push(bin.to_string());
+            last_status = CheckStatus::Warning(format!(
+                "{} 缺少关键二进制文件: {}",
+                llvm_minimal.display(),
+                missing.join(", ")
+            ));
         }
     }
 
-    if missing.is_empty() {
-        (
-            "llvm-minimal 本地工具".to_string(),
-            CheckStatus::Ok,
-        )
-    } else {
-        (
-            "llvm-minimal 本地工具".to_string(),
-            CheckStatus::Warning(format!("缺少关键二进制文件: {}", missing.join(", "))),
-        )
-    }
+    ("llvm-minimal 本地工具".to_string(), last_status)
 }
 
 /// 查找 clang 可执行文件路径
-/// 搜索顺序: 系统 PATH -> 项目根目录下的 llvm-minimal/bin
+/// 搜索顺序: 系统 PATH -> Cavvy 安装目录下的 llvm-minimal/bin -> 项目源码根目录下的 llvm-minimal/bin
 /// 时间复杂度: O(1)
 pub fn find_clang() -> SetupResult<PathBuf> {
     if let Ok(output) = Command::new("clang").arg("--version").output() {
         if output.status.success() {
             return Ok(PathBuf::from("clang"));
+        }
+    }
+
+    // 检查 Cavvy 安装目录
+    if let Some(install_dir) = super::download::find_cavvy_install_dir() {
+        let bundled = install_dir.join("llvm-minimal/bin/clang");
+        let bundled_exe = if cfg!(target_os = "windows") {
+            bundled.with_extension("exe")
+        } else {
+            bundled
+        };
+        if bundled_exe.exists() {
+            return Ok(bundled_exe);
         }
     }
 
@@ -239,11 +265,24 @@ pub fn find_clang() -> SetupResult<PathBuf> {
 }
 
 /// 查找 llvm-config 可执行文件路径
-/// 搜索顺序: 系统 PATH -> 项目根目录下的 llvm-minimal/bin
+/// 搜索顺序: 系统 PATH -> Cavvy 安装目录下的 llvm-minimal/bin -> 项目源码根目录下的 llvm-minimal/bin
 pub fn find_llvm_config() -> SetupResult<PathBuf> {
     if let Ok(output) = Command::new("llvm-config").arg("--version").output() {
         if output.status.success() {
             return Ok(PathBuf::from("llvm-config"));
+        }
+    }
+
+    // 检查 Cavvy 安装目录
+    if let Some(install_dir) = super::download::find_cavvy_install_dir() {
+        let bundled = install_dir.join("llvm-minimal/bin/llvm-config");
+        let bundled_exe = if cfg!(target_os = "windows") {
+            bundled.with_extension("exe")
+        } else {
+            bundled
+        };
+        if bundled_exe.exists() {
+            return Ok(bundled_exe);
         }
     }
 
