@@ -191,6 +191,14 @@ pub fn compile_and_run_eol_with_timeout(
 /// assert!(error.contains("type mismatch"));
 /// ```
 pub fn compile_eol_expect_error(source_path: &str) -> Result<String, String> {
+    compile_eol_expect_error_with_features(source_path, &[])
+}
+
+/// 编译 EOL 文件，期望编译失败，支持特性标志
+pub fn compile_eol_expect_error_with_features(
+    source_path: &str,
+    features: &[&str],
+) -> Result<String, String> {
     // 使用唯一ID生成输出文件名，避免测试冲突
     let unique_id = format!("{}_{:?}", std::process::id(), std::thread::current().id());
     let exe_ext = get_exe_extension();
@@ -199,8 +207,12 @@ pub fn compile_eol_expect_error(source_path: &str) -> Result<String, String> {
 
     // 1. 编译 EOL -> EXE (使用 release 版本)
     let cayc_path = get_cayc_path();
+    let mut args = vec![source_path, &exe_path];
+    for f in features {
+        args.push(f);
+    }
     let output = Command::new(&cayc_path)
-        .args(&[source_path, &exe_path])
+        .args(&args)
         .output()
         .map_err(|e| format!("Failed to execute cayc: {}", e))?;
 

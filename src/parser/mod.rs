@@ -135,6 +135,8 @@ impl Parser {
                 // 检查是否是顶层函数: public 返回类型 函数名()
                 if self.check_top_level_function() {
                     top_level_functions.push(self.parse_top_level_function()?);
+                } else if self.check_top_level_fn_function() {
+                    top_level_functions.push(self.parse_top_level_fn_function()?);
                 } else {
                     // 否则可能是 public class
                     classes.push(self.parse_class()?);
@@ -142,6 +144,8 @@ impl Parser {
             } else if self.check_top_level_function_return_type() {
                 // 没有 public 修饰符的顶层函数
                 top_level_functions.push(self.parse_top_level_function_without_public()?);
+            } else if self.check_top_level_fn_function_without_public() {
+                top_level_functions.push(self.parse_top_level_fn_function_without_public()?);
             } else if self.check(&crate::lexer::Token::Extern) {
                 extern_declarations.push(self.parse_extern_declaration()?);
             } else if self.check(&crate::lexer::Token::Alias) {
@@ -581,6 +585,136 @@ impl Parser {
         )?;
 
         // 解析函数体
+        let body = self.parse_block()?;
+
+        Ok(crate::ast::TopLevelFunction {
+            name,
+            modifiers,
+            return_type,
+            params,
+            body,
+            namespace_path: Vec::new(),
+            loc,
+        })
+    }
+
+    /// 检查是否是 fn 关键字开头的顶层函数（带 public 修饰符）
+    /// 格式: public fn 函数名(参数列表) [返回类型] { 函数体 }
+    fn check_top_level_fn_function(&self) -> bool {
+        let mut pos = self.pos;
+        // 跳过 public
+        if pos >= self.tokens.len() {
+            return false;
+        }
+        pos += 1;
+
+        // 检查是否是 fn
+        if pos >= self.tokens.len() {
+            return false;
+        }
+        if !matches!(&self.tokens[pos].token, crate::lexer::Token::Fn) {
+            return false;
+        }
+        pos += 1;
+
+        // 检查是否是函数名（标识符后跟左括号）
+        if pos >= self.tokens.len() {
+            return false;
+        }
+        if !matches!(&self.tokens[pos].token, crate::lexer::Token::Identifier(_)) {
+            return false;
+        }
+        pos += 1;
+
+        // 检查后面是否是左括号
+        if pos >= self.tokens.len() {
+            return false;
+        }
+        matches!(&self.tokens[pos].token, crate::lexer::Token::LParen)
+    }
+
+    /// 检查是否是 fn 关键字开头的顶层函数（不带 public 修饰符）
+    /// 格式: fn 函数名(参数列表) [返回类型] { 函数体 }
+    fn check_top_level_fn_function_without_public(&self) -> bool {
+        let mut pos = self.pos;
+
+        // 检查是否是 fn
+        if pos >= self.tokens.len() {
+            return false;
+        }
+        if !matches!(&self.tokens[pos].token, crate::lexer::Token::Fn) {
+            return false;
+        }
+        pos += 1;
+
+        // 检查是否是函数名（标识符后跟左括号）
+        if pos >= self.tokens.len() {
+            return false;
+        }
+        if !matches!(&self.tokens[pos].token, crate::lexer::Token::Identifier(_)) {
+            return false;
+        }
+        pos += 1;
+
+        // 检查后面是否是左括号
+        if pos >= self.tokens.len() {
+            return false;
+        }
+        matches!(&self.tokens[pos].token, crate::lexer::Token::LParen)
+    }
+
+    /// 解析 fn 关键字开头的顶层函数（带 public 修饰符）
+    fn parse_top_level_fn_function(&mut self) -> cayResult<crate::ast::TopLevelFunction> {
+        let loc = self.current_loc();
+
+        self.consume(
+            &crate::lexer::Token::Public,
+            "期望 'public'\n提示: 顶层函数应以 public 开头，例如: public fn main() { ... }",
+        )?;
+
+        self.parse_top_level_fn_body(loc, vec![crate::ast::Modifier::Public])
+    }
+
+    /// 解析 fn 关键字开头的顶层函数（不带 public 修饰符）
+    fn parse_top_level_fn_function_without_public(
+        &mut self,
+    ) -> cayResult<crate::ast::TopLevelFunction> {
+        let loc = self.current_loc();
+        self.parse_top_level_fn_body(loc, vec![])
+    }
+
+    /// 解析 fn 关键字顶层函数的主体部分
+    fn parse_top_level_fn_body(
+        &mut self,
+        loc: crate::error::SourceLocation,
+        modifiers: Vec<crate::ast::Modifier>,
+    ) -> cayResult<crate::ast::TopLevelFunction> {
+        self.consume(
+            &crate::lexer::Token::Fn,
+            "期望 'fn'\n提示: 函数定义应以 fn 开头，例如: fn add(int a, int b) { ... }",
+        )?;
+
+        let name = self.consume_identifier(
+            "期望函数名\n提示: fn 后应跟函数名，例如: fn add(int a, int b) { ... }",
+        )?;
+
+        self.consume(
+            &crate::lexer::Token::LParen,
+            "期望 '('\n提示: 函数名后应跟 '(' 开始参数列表，例如: add(int a, int b)",
+        )?;
+        let params = self.parse_parameters()?;
+        self.consume(
+            &crate::lexer::Token::RParen,
+            "期望 ')'\n提示: 参数列表应以 ')' 结束",
+        )?;
+
+        // 解析可选的返回类型（类型后置式）
+        let return_type = if self.check(&crate::lexer::Token::LBrace) {
+            crate::types::Type::Auto
+        } else {
+            self.parse_type_or_fn_ptr()?
+        };
+
         let body = self.parse_block()?;
 
         Ok(crate::ast::TopLevelFunction {
@@ -1037,11 +1171,15 @@ impl Parser {
             } else if self.check(&crate::lexer::Token::Public) {
                 if self.check_top_level_function() {
                     top_level_functions.push(self.parse_top_level_function()?);
+                } else if self.check_top_level_fn_function() {
+                    top_level_functions.push(self.parse_top_level_fn_function()?);
                 } else {
                     classes.push(self.parse_class()?);
                 }
             } else if self.check_top_level_function_return_type() {
                 top_level_functions.push(self.parse_top_level_function_without_public()?);
+            } else if self.check_top_level_fn_function_without_public() {
+                top_level_functions.push(self.parse_top_level_fn_function_without_public()?);
             } else if self.check(&crate::lexer::Token::Extern) {
                 extern_declarations.push(self.parse_extern_declaration()?);
             } else if self.check(&crate::lexer::Token::Alias) {

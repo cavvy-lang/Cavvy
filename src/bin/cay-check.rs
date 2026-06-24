@@ -392,7 +392,7 @@ fn main() {
             println!("");
             println!("[3] 语义分析...");
             let mut analyzer = semantic::SemanticAnalyzer::new();
-            match analyzer.analyze(&ast) {
+            match analyzer.analyze(ast) {
                 Ok(_) => {
                     let elapsed = start_time.elapsed();
                     println!("  [+] 语义分析通过");

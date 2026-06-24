@@ -8,13 +8,57 @@ use crate::types::{ParameterInfo, Type};
 
 impl SemanticAnalyzer {
     /// 类型检查程序
-    pub fn type_check_program(&mut self, program: &Program) -> cayResult<()> {
-        for class in &program.classes {
+    pub fn type_check_program(&mut self, program: &mut Program) -> cayResult<()> {
+        // 先类型检查顶层函数，以便类方法调用时能看到已推断的返回类型
+        self.type_registry.current_namespace.clear();
+        for func in &mut program.top_level_functions {
+            self.current_class = None; // 顶层函数不属于任何类
+            self.current_method = Some(func.name.clone());
+            self.current_method_is_static = true; // 顶层函数都是静态的
+            self.current_method_is_constructor = false;
+            self.symbol_table.enter_scope();
+
+            // 添加参数到符号表
+            for param in &func.params {
+                self.symbol_table.declare(
+                    param.name.clone(),
+                    SemanticSymbolInfo {
+                        name: param.name.clone(),
+                        symbol_type: param.param_type.clone(),
+                        is_final: false,
+                        is_initialized: true,
+                    },
+                );
+            }
+
+            let is_auto = func.return_type == Type::Auto;
+            if is_auto {
+                self.current_inferring_return = Some(Type::Void);
+            }
+
+            // 类型检查函数体
+            self.type_check_statement(&Stmt::Block(func.body.clone()), Some(&func.return_type))?;
+
+            if is_auto {
+                if let Some(inferred) = self.current_inferring_return.take() {
+                    func.return_type = inferred;
+                }
+            }
+
+            self.symbol_table.exit_scope();
+            self.current_method = None;
+            self.current_method_is_static = false;
+        }
+
+        // 更新 self.program 以反映顶层函数的最新返回类型
+        self.program = Some(std::rc::Rc::new(program.clone()));
+
+        for class in &mut program.classes {
             self.current_class = Some(class.name.clone());
             self.current_class_type_params = class.type_params.clone();
             self.type_registry.current_namespace = class.namespace_path.clone();
 
-            for member in &class.members {
+            for member in &mut class.members {
                 match member {
                     ClassMember::Method(method) => {
                         self.current_method = Some(method.name.clone());
@@ -60,15 +104,35 @@ impl SemanticAnalyzer {
                         // 类型检查方法体
                         if let Some(body) = &method.body {
                             // 对泛型类的返回类型进行参数替换
-                            let return_type = if class.type_params.is_empty() {
+                            let mut return_type = if class.type_params.is_empty() {
                                 method.return_type.clone()
                             } else {
                                 self.replace_type_params(&method.return_type, &class.type_params)
                             };
+
+                            let is_auto = return_type == Type::Auto;
+                            if is_auto {
+                                self.current_inferring_return = Some(Type::Void);
+                            }
+
                             self.type_check_statement(
                                 &Stmt::Block(body.clone()),
                                 Some(&return_type),
                             )?;
+
+                            if is_auto {
+                                if let Some(inferred) = self.current_inferring_return.take() {
+                                    method.return_type = inferred.clone();
+                                    return_type = inferred.clone();
+                                    // 同步更新 type_registry 中该方法的返回类型
+                                    let _ = self.type_registry.update_method_return_type(
+                                        &class.name,
+                                        &method.name,
+                                        &method.params,
+                                        inferred,
+                                    );
+                                }
+                            }
                         }
 
                         self.symbol_table.exit_scope();
@@ -165,37 +229,6 @@ impl SemanticAnalyzer {
             self.current_class = None;
         }
 
-        // 类型检查顶层函数
-        // 重置命名空间上下文，防止从类处理中泄漏
-        self.type_registry.current_namespace.clear();
-        for func in &program.top_level_functions {
-            self.current_class = None; // 顶层函数不属于任何类
-            self.current_method = Some(func.name.clone());
-            self.current_method_is_static = true; // 顶层函数都是静态的
-            self.current_method_is_constructor = false;
-            self.symbol_table.enter_scope();
-
-            // 添加参数到符号表
-            for param in &func.params {
-                self.symbol_table.declare(
-                    param.name.clone(),
-                    SemanticSymbolInfo {
-                        name: param.name.clone(),
-                        symbol_type: param.param_type.clone(),
-                        is_final: false,
-                        is_initialized: true,
-                    },
-                );
-            }
-
-            // 类型检查函数体
-            self.type_check_statement(&Stmt::Block(func.body.clone()), Some(&func.return_type))?;
-
-            self.symbol_table.exit_scope();
-            self.current_method = None;
-            self.current_method_is_static = false;
-        }
-
         Ok(())
     }
 
@@ -287,8 +320,43 @@ impl SemanticAnalyzer {
                     Type::Void
                 };
 
+                // 自动推断返回类型（fn 关键字函数）
+                let conflict_msg = if let Some(ref mut inferring) = self.current_inferring_return {
+                    if *inferring == Type::Void {
+                        // 第一次遇到 return，设置推断类型
+                        *inferring = return_type.clone();
+                        None
+                    } else if *inferring != return_type {
+                        let msg = format!(
+                            "Conflicting return types: previous return was {}, but got {}",
+                            inferring, return_type
+                        );
+                        *inferring = return_type.clone();
+                        Some(msg)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+                if let Some(msg) = conflict_msg {
+                    let loc = if let Some(e) = expr {
+                        self.get_expr_source_location(e)
+                    } else {
+                        crate::error::SourceLocation::new(self.current_file.clone(), 0, 0)
+                    };
+                    self.errors.push(self.create_error_info_with_file(
+                        loc.file,
+                        loc.line,
+                        loc.column,
+                        msg,
+                    ));
+                }
+
                 if let Some(expected) = expected_return {
-                    if !self.types_compatible(&return_type, expected) {
+                    // fn 自动推断时，expected 为 Auto，跳过类型兼容性检查
+                    if *expected != Type::Auto && !self.types_compatible(&return_type, expected) {
                         // 尝试从表达式获取位置信息
                         let loc = if let Some(e) = expr {
                             self.get_expr_source_location(e)

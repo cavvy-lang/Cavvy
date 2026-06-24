@@ -1,0 +1,15 @@
+// 测试多个 return 类型冲突（应该编译失败）
+
+public fn bad(int x) {
+    if (x > 0) {
+        return x;
+    } else {
+        return "negative";
+    }
+}
+
+public class Main {
+    public static void main() {
+        println("Should not compile");
+    }
+}

@@ -117,8 +117,8 @@ fn compile_to_bytecode(source: &str, source_path: &str) -> Result<BytecodeModule
 
     // 3. 语义分析
     let mut analyzer = cavvy::semantic::SemanticAnalyzer::new();
-    analyzer
-        .analyze(&ast)
+    let ast = analyzer
+        .analyze(ast)
         .map_err(|e| format!("语义分析错误: {:?}", e))?;
 
     // 4. 生成字节码模块

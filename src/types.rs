@@ -338,6 +338,31 @@ impl ClassInfo {
             .push(method);
     }
 
+    /// 更新指定方法的返回类型（用于 fn 自动推断）
+    pub fn update_method_return_type(
+        &mut self,
+        method_name: &str,
+        params: &[ParameterInfo],
+        new_return_type: Type,
+    ) -> bool {
+        if let Some(methods) = self.methods.get_mut(method_name) {
+            for method in methods.iter_mut() {
+                if method.params.len() == params.len() {
+                    let params_match = method
+                        .params
+                        .iter()
+                        .zip(params.iter())
+                        .all(|(a, b)| a.param_type == b.param_type);
+                    if params_match {
+                        method.return_type = new_return_type;
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
     /// 根据方法名和参数类型查找方法（支持可变参数）
     pub fn find_method(&self, name: &str, arg_types: &[Type]) -> Option<&MethodInfo> {
         let methods = self.methods.get(name)?;
@@ -1280,6 +1305,21 @@ impl TypeRegistry {
             return self.classes.get_mut(&qualified);
         }
         None
+    }
+
+    /// 更新指定类方法的返回类型（用于 fn 自动推断）
+    pub fn update_method_return_type(
+        &mut self,
+        class_name: &str,
+        method_name: &str,
+        params: &[ParameterInfo],
+        new_return_type: Type,
+    ) -> bool {
+        if let Some(class_info) = self.get_class_mut(class_name) {
+            class_info.update_method_return_type(method_name, params, new_return_type)
+        } else {
+            false
+        }
     }
 
     /// 注册命名空间别名（用于 using 声明）

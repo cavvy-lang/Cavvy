@@ -32,6 +32,8 @@ pub struct SemanticAnalyzer {
     pub(super) features: Vec<String>,
     /// 当前类的泛型类型参数: <T, U, ...>
     pub(super) current_class_type_params: Vec<String>,
+    /// 当前正在推断的返回类型（用于 fn 自动推断）
+    pub(super) current_inferring_return: Option<Type>,
 }
 
 impl SemanticAnalyzer {
@@ -53,6 +55,7 @@ impl SemanticAnalyzer {
             source_map: None,
             features,
             current_class_type_params: Vec::new(),
+            current_inferring_return: None,
         };
 
         // 注册内置函数
@@ -66,9 +69,9 @@ impl SemanticAnalyzer {
         // print 可以接受任意类型参数
     }
 
-    pub fn analyze(&mut self, program: &Program) -> cayResult<()> {
+    pub fn analyze(&mut self, program: Program) -> cayResult<Program> {
         // 扁平化 namespace 声明：将块级 namespace 中的声明合并到主列表
-        let program = program.flatten_namespaces();
+        let mut program = program.flatten_namespaces();
 
         // 收集所有有效的 namespace 路径（从类的 namespace_path 中提取）
         let mut valid_namespaces: std::collections::HashSet<String> =
@@ -143,8 +146,8 @@ impl SemanticAnalyzer {
         // 计算所有类的 vtable 槽位分配
         self.compute_vtable_layouts();
 
-        // 第四遍：类型检查
-        self.type_check_program(&program)?;
+        // 第四遍：类型检查（可能修改 program 中的返回类型）
+        self.type_check_program(&mut program)?;
 
         if !self.errors.is_empty() {
             // 将所有错误转换为 cayError 并返回 MultipleErrors
@@ -161,7 +164,7 @@ impl SemanticAnalyzer {
             return Err(crate::error::cayError::MultipleErrors { errors: cay_errors });
         }
 
-        Ok(())
+        Ok(program)
     }
 
     /// 注册运行时函数到相应的类

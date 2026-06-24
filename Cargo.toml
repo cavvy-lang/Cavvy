@@ -76,6 +76,7 @@ path = "src/bin/cay-dp.rs"
 [[bin]]
 name = "cay-setup"
 path = "src/bin/cay-setup.rs"
+test = false
 
 [features]
 default = []

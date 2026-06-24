@@ -1,0 +1,12 @@
+// 测试 fn 自动推断返回类型（顶层函数）
+
+public fn add(int a, int b) {
+    return a + b;
+}
+
+public class Main {
+    public static void main() {
+        int result = add(10, 20);
+        println("Result: " + String.valueOf(result));
+    }
+}

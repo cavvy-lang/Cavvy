@@ -3,7 +3,10 @@
 //! 测试函数定义、调用、重载、返回值等
 
 mod common;
-use common::compile_and_run_eol;
+use common::{
+    compile_and_run_eol, compile_and_run_eol_with_features, compile_eol_expect_error,
+    compile_eol_expect_error_with_features,
+};
 
 #[test]
 fn test_function_factorial() {
@@ -289,5 +292,76 @@ fn test_read_functions_exist() {
     assert!(
         output.is_ok() || output.is_err(),
         "read functions should be recognized by compiler"
+    );
+}
+
+// ========== fn 关键字自动推断返回类型测试 ==========
+
+#[test]
+fn test_fn_auto_return_top_level() {
+    let output = compile_and_run_eol_with_features(
+        "examples/test_fn_auto_return.cay",
+        &["-F=top_level_function"],
+    )
+    .expect("fn auto return top-level should compile and run");
+    assert!(
+        output.contains("Result: 30"),
+        "fn auto return should infer int, got: {}",
+        output
+    );
+}
+
+#[test]
+fn test_fn_auto_return_class_method() {
+    let output = compile_and_run_eol("examples/test_fn_auto_return_class.cay")
+        .expect("fn auto return class method should compile and run");
+    assert!(
+        output.contains("Hello, World") && output.contains("Result: 30"),
+        "fn auto return class method should work, got: {}",
+        output
+    );
+}
+
+#[test]
+fn test_fn_trailing_return_type() {
+    let output = compile_and_run_eol_with_features(
+        "examples/test_fn_trailing_return.cay",
+        &["-F=top_level_function"],
+    )
+    .expect("fn trailing return type should compile and run");
+    assert!(
+        output.contains("Result: 30") && output.contains("Message: Hello, World"),
+        "fn trailing return type should work, got: {}",
+        output
+    );
+}
+
+#[test]
+fn test_fn_void_infer() {
+    let output = compile_and_run_eol_with_features(
+        "examples/test_fn_void_infer.cay",
+        &["-F=top_level_function"],
+    )
+    .expect("fn void infer should compile and run");
+    assert!(
+        output.contains("Hello, World"),
+        "fn void infer should work, got: {}",
+        output
+    );
+}
+
+#[test]
+fn test_fn_conflict_return_type() {
+    let error = compile_eol_expect_error_with_features(
+        "examples/test_fn_conflict_return.cay",
+        &["-F=top_level_function"],
+    )
+    .expect("should report conflicting return types");
+    assert!(
+        error.contains("Conflicting return types")
+            || error.contains("type mismatch")
+            || error.contains("Return type mismatch"),
+        "Expected conflicting return types error, got: {}",
+        error
     );
 }

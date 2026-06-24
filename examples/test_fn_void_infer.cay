@@ -1,0 +1,11 @@
+// 测试 fn 无 return 时自动推断为 void
+
+public fn greet(String name) {
+    println("Hello, " + name);
+}
+
+public class Main {
+    public static void main() {
+        greet("World");
+    }
+}

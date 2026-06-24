@@ -106,7 +106,7 @@ impl Compiler {
 
         // 3. 语义分析
         let mut analyzer = semantic::SemanticAnalyzer::with_features(self.options.features.clone());
-        analyzer.analyze(&ast)?;
+        let ast = analyzer.analyze(ast)?;
 
         // 4. 代码生成 - 生成LLVM IR（字符串常量已在生成器内处理）
         let mut ir_gen = codegen::IRGenerator::new();
@@ -236,7 +236,7 @@ impl Compiler {
         analyzer.set_current_file(main_file.clone());
         // 传递源映射表以支持多文件include场景下的正确错误定位
         analyzer.set_source_map(source_map_for_analyzer.clone());
-        analyzer.analyze(&ast)?;
+        let ast = analyzer.analyze(ast)?;
 
         // 4. 代码生成 - 生成LLVM IR（字符串常量已在生成器内处理）
         let mut ir_gen = codegen::IRGenerator::new();
@@ -424,7 +424,7 @@ public class Test {
         let tokens = lexer::lex(source)?;
         let ast = parser::parse_with_source(tokens, source.to_string())?;
         let mut analyzer = semantic::SemanticAnalyzer::new();
-        analyzer.analyze(&ast)
+        analyzer.analyze(ast).map(|_| ())
     }
 
     #[test]

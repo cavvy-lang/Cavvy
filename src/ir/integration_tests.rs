@@ -17,7 +17,7 @@ mod integration_tests {
         // 语义分析（启用顶层函数特性）
         let mut analyzer =
             semantic::SemanticAnalyzer::with_features(vec!["top_level_function".to_string()]);
-        analyzer.analyze(&ast).expect("Semantic analysis failed");
+        let ast = analyzer.analyze(ast).expect("Semantic analysis failed");
 
         // IR 构建
         let mut builder = IrBuilder::new();

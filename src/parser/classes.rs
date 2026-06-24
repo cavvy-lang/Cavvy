@@ -242,6 +242,17 @@ pub fn parse_class_member(parser: &mut Parser) -> cayResult<ClassMember> {
         }
     }
 
+    // 检查是否是 fn 关键字开头的方法（类型后置式/自动推断）: fn name(params) [ret] { ... }
+    if parser.check(&Token::Fn) {
+        let pos_after_fn = parser.pos + 1;
+        if pos_after_fn < parser.tokens.len()
+            && matches!(&parser.tokens[pos_after_fn].token, Token::Identifier(_))
+        {
+            parser.pos = checkpoint;
+            return Ok(ClassMember::Method(parse_fn_method(parser)?));
+        }
+    }
+
     // 检查是否是函数指针类型开头的方法: fn(...) -> ReturnType name(...)
     if parser.check(&Token::Fn) {
         parser.pos = checkpoint;
@@ -417,6 +428,60 @@ pub fn parse_method(parser: &mut Parser) -> cayResult<MethodDecl> {
         parser.consume(
             &Token::Semicolon,
             "期望 ';'\n提示: native/abstract 方法声明应以 ';' 结束，例如: native int foo();",
+        )?;
+        None
+    } else {
+        Some(parse_block(parser)?)
+    };
+
+    Ok(MethodDecl {
+        name,
+        modifiers,
+        return_type,
+        params,
+        body,
+        loc,
+    })
+}
+
+/// 解析 fn 关键字开头的方法声明（类型后置式/自动推断）
+/// 格式: [modifiers] fn name(params) [return_type] { body }
+/// 或: [modifiers] fn name(params) [return_type] ;
+pub fn parse_fn_method(parser: &mut Parser) -> cayResult<MethodDecl> {
+    let loc = parser.current_loc();
+    let modifiers = parse_modifiers(parser)?;
+
+    parser.consume(
+        &Token::Fn,
+        "期望 'fn'\n提示: 方法定义应以 fn 开头，例如: fn calculate(int a, int b) { ... }",
+    )?;
+
+    let name = parser.consume_identifier(
+        "期望方法名\n提示: fn 后应跟方法名，例如: fn calculate(int a, int b) { ... }",
+    )?;
+
+    parser.consume(
+        &Token::LParen,
+        "期望 '('\n提示: 方法名后应跟 '(' 开始参数列表，例如: calculate(int a, int b)",
+    )?;
+    let params = parse_parameters(parser)?;
+    parser.consume(&Token::RParen, "期望 ')'\n提示: 参数列表应以 ')' 结束")?;
+
+    // 解析可选的返回类型（类型后置式）
+    let return_type = if parser.check(&Token::LBrace) || parser.check(&Token::Semicolon) {
+        crate::types::Type::Auto
+    } else {
+        parser.parse_type_or_fn_ptr()?
+    };
+
+    // 检查是否是native方法或abstract方法（这两种都可以没有方法体）
+    let is_native = modifiers.contains(&Modifier::Native);
+    let is_abstract = modifiers.contains(&Modifier::Abstract);
+
+    let body = if is_native || is_abstract {
+        parser.consume(
+            &Token::Semicolon,
+            "期望 ';'\n提示: native/abstract 方法声明应以 ';' 结束，例如: native fn foo();",
         )?;
         None
     } else {

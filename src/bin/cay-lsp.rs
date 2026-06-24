@@ -469,7 +469,7 @@ impl CavvyLanguageServer {
 
         // 4. 语义分析
         let mut analyzer = semantic::SemanticAnalyzer::new();
-        if let Err(e) = analyzer.analyze(&ast) {
+        if let Err(e) = analyzer.analyze(ast) {
             if let Some(diagnostic) =
                 error_to_diagnostic_with_source_map(&e, content, &source_map, file_path)
             {
@@ -561,7 +561,7 @@ impl CavvyLanguageServer {
         let mut analyzer = semantic::SemanticAnalyzer::new();
 
         // 运行语义分析（忽略错误，我们只关心 type_registry 中的符号）
-        let _ = analyzer.analyze(&ast);
+        let _ = analyzer.analyze(ast);
 
         // 从 TypeRegistry 提取类和方法
         for (class_name, class_info) in analyzer.type_registry().classes.iter() {

@@ -1,0 +1,20 @@
+// 测试 fn 自动推断返回类型（类方法）
+
+public class Calculator {
+    public fn add(int a, int b) {
+        return a + b;
+    }
+
+    public fn greet(String name) {
+        println("Hello, " + name);
+    }
+}
+
+public class Main {
+    public static void main() {
+        Calculator calc = new Calculator();
+        int result = calc.add(10, 20);
+        calc.greet("World");
+        println("Result: " + String.valueOf(result));
+    }
+}
