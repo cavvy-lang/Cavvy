@@ -116,14 +116,14 @@ declaration = class_declaration
 top_level_function = [ modifiers ], ( type | "void" ), identifier, 
                      "(", [ parameter_list ], ")", block
                    | [ modifiers ], "fn", identifier, 
-                     "(", [ parameter_list ], ")", [ type ], block;
+                     "(", [ parameter_list ], ")", [ "->", type ], block;
 
 (* 顶层 main 函数示例：
  *   public int main() { return 0; }
  *   public int main(String[] args) { return 0; }
  *   int add(int a, int b) { return a + b; }
  *   public fn add(int a, int b) { return a + b; }    (* 自动推断返回类型 *)
- *   fn multiply(int a, int b) int { return a * b; } (* 类型后置式 *)
+ *   fn multiply(int a, int b) -> int { return a * b; } (* 类型后置式 *)
  *)
 
 (* 类型别名声明 - type Name = Type; *)
@@ -229,7 +229,7 @@ method_declaration = [ modifiers ], ( type | "void" ), identifier,
                      "(", [ parameter_list ], ")", 
                      ( block | ";" )
                    | [ modifiers ], "fn", identifier, 
-                     "(", [ parameter_list ], ")", [ type ], 
+                     "(", [ parameter_list ], ")", [ "->", type ], 
                      ( block | ";" );
 
 (* 方法重载示例：
@@ -238,7 +238,7 @@ method_declaration = [ modifiers ], ( type | "void" ), identifier,
  *   public static int add(int a, int b) { return a + b; }
  *   public static double add(double a, double b) { return a + b; }
  *   public static fn add(int a, int b) { return a + b; }    (* 自动推断返回类型 *)
- *   static fn multiply(int a, int b) int { return a * b; } (* 类型后置式 *)
+ *   static fn multiply(int a, int b) -> int { return a * b; } (* 类型后置式 *)
  *)
 
 parameter_list = parameter, { ",", parameter } 

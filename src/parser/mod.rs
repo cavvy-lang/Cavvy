@@ -709,10 +709,11 @@ impl Parser {
         )?;
 
         // 解析可选的返回类型（类型后置式）
-        let return_type = if self.check(&crate::lexer::Token::LBrace) {
-            crate::types::Type::Auto
-        } else {
+        let return_type = if self.check(&crate::lexer::Token::Arrow) {
+            self.advance();
             self.parse_type_or_fn_ptr()?
+        } else {
+            crate::types::Type::Auto
         };
 
         let body = self.parse_block()?;

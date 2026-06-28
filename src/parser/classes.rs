@@ -468,10 +468,11 @@ pub fn parse_fn_method(parser: &mut Parser) -> cayResult<MethodDecl> {
     parser.consume(&Token::RParen, "期望 ')'\n提示: 参数列表应以 ')' 结束")?;
 
     // 解析可选的返回类型（类型后置式）
-    let return_type = if parser.check(&Token::LBrace) || parser.check(&Token::Semicolon) {
-        crate::types::Type::Auto
-    } else {
+    let return_type = if parser.check(&Token::Arrow) {
+        parser.advance();
         parser.parse_type_or_fn_ptr()?
+    } else {
+        crate::types::Type::Auto
     };
 
     // 检查是否是native方法或abstract方法（这两种都可以没有方法体）
