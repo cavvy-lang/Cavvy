@@ -714,7 +714,7 @@ pub fn parse_inline_ir_statement(parser: &mut Parser) -> cayResult<Stmt> {
         "期望 '{'\n提示: __ir 后应跟 '{' 开始 IR 块",
     )?;
 
-    // 从token流解析内联IR（更可靠的方法）
+    // 从 token 流解析内联 IR（基于 token，不受预处理器行号映射影响）
     let raw_lines = parse_inline_ir_from_tokens(parser)?;
 
     Ok(Stmt::InlineIr(InlineIrStmt { raw_lines, loc }))
@@ -722,97 +722,7 @@ pub fn parse_inline_ir_statement(parser: &mut Parser) -> cayResult<Stmt> {
 
 /// 跳过内联IR块中的所有token，直到匹配的RBrace
 /// 注意：调用此函数时，当前token应该是块内的第一个token（LBrace已经被consume消耗）
-fn skip_inline_ir_tokens(parser: &mut Parser) {
-    let mut brace_depth = 1; // 已经消耗了一个LBrace
-
-    while !parser.is_at_end() && brace_depth > 0 {
-        match parser.current_token() {
-            crate::lexer::Token::LBrace => {
-                brace_depth += 1;
-                parser.advance();
-            }
-            crate::lexer::Token::RBrace => {
-                brace_depth -= 1;
-                parser.advance();
-                // 当brace_depth变为0时，循环会自动结束
-            }
-            _ => {
-                parser.advance();
-            }
-        }
-    }
-}
-
-/// 从源代码直接提取内联IR文本
-///
-/// 通过定位__ir关键字和匹配的{}来提取原始IR文本
-fn extract_inline_ir_from_source(
-    source: &str,
-    start_loc: &crate::error::SourceLocation,
-) -> cayResult<Vec<String>> {
-    // 找到起始位置（__ir后的{）
-    let mut line_num = 1;
-    let mut pos = 0;
-
-    // 定位到正确的行
-    for (idx, ch) in source.char_indices() {
-        if line_num >= start_loc.line {
-            pos = idx;
-            break;
-        }
-        if ch == '\n' {
-            line_num += 1;
-        }
-    }
-
-    // 从当前位置查找 '__ir'
-    if let Some(ir_pos) = source[pos..].find("__ir") {
-        pos += ir_pos;
-
-        // 查找 '{'
-        if let Some(lbrace_pos) = source[pos..].find('{') {
-            pos += lbrace_pos + 1; // 跳过 '{'
-
-            // 提取内容直到匹配的 '}'
-            let mut brace_depth = 1;
-            let content_start = pos;
-            let mut content_end = pos;
-
-            for (idx, ch) in source[pos..].char_indices() {
-                match ch {
-                    '{' => brace_depth += 1,
-                    '}' => {
-                        brace_depth -= 1;
-                        if brace_depth == 0 {
-                            content_end = pos + idx;
-                            break;
-                        }
-                    }
-                    _ => {}
-                }
-            }
-
-            // 提取内容并按行分割
-            let content = &source[content_start..content_end];
-            let lines: Vec<String> = content
-                .lines()
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect();
-
-            return Ok(lines);
-        }
-    }
-
-    // 如果直接提取失败，返回错误
-    Err(crate::error::parser_error(
-        start_loc.line,
-        start_loc.column,
-        "无法从源代码提取内联IR块",
-    ))
-}
-
-/// 从token流解析内联IR（回退方案）
+/// 从token流解析内联IR
 fn parse_inline_ir_from_tokens(parser: &mut Parser) -> cayResult<Vec<String>> {
     let mut raw_lines: Vec<String> = Vec::new();
     let mut current_line: Vec<String> = Vec::new();
@@ -878,11 +788,11 @@ fn parse_inline_ir_from_tokens(parser: &mut Parser) -> cayResult<Vec<String>> {
                     }
                     crate::lexer::Token::Int => {
                         parser.advance();
-                        "int".to_string()
+                        "i32".to_string()
                     }
                     crate::lexer::Token::Long => {
                         parser.advance();
-                        "long".to_string()
+                        "i64".to_string()
                     }
                     crate::lexer::Token::Float => {
                         parser.advance();
@@ -1093,11 +1003,27 @@ fn parse_inline_ir_from_tokens(parser: &mut Parser) -> cayResult<Vec<String>> {
                 parser.advance();
             }
             crate::lexer::Token::Int => {
-                current_line.push("int".to_string());
+                current_line.push("i32".to_string());
                 parser.advance();
             }
             crate::lexer::Token::Long => {
-                current_line.push("long".to_string());
+                current_line.push("i64".to_string());
+                parser.advance();
+            }
+            crate::lexer::Token::LBracket => {
+                current_line.push("[".to_string());
+                parser.advance();
+            }
+            crate::lexer::Token::RBracket => {
+                current_line.push("]".to_string());
+                parser.advance();
+            }
+            crate::lexer::Token::Lt => {
+                current_line.push("<".to_string());
+                parser.advance();
+            }
+            crate::lexer::Token::Gt => {
+                current_line.push(">".to_string());
                 parser.advance();
             }
             crate::lexer::Token::Bool => {

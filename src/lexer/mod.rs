@@ -18,8 +18,10 @@ pub enum Token {
     BlockComment(Option<usize>),
     // 关键字
     #[token("public")]
+    #[token("pub")]
     Public,
     #[token("private")]
+    #[token("priv")]
     Private,
     #[token("protected")]
     Protected,
@@ -51,12 +53,16 @@ pub enum Token {
     #[token("void")]
     Void,
     #[token("int")]
+    #[token("i32")]
     Int,
     #[token("long")]
+    #[token("i64")]
     Long,
     #[token("float")]
+    #[token("f32")]
     Float,
     #[token("double")]
+    #[token("f64")]
     Double,
     #[token("bool")]
     #[token("boolean")]
@@ -181,6 +187,7 @@ pub enum Token {
     #[token("alias")]
     Alias,
     #[token("fn")]
+    #[token("function")]
     Fn,
 
     // extern 别名关键字

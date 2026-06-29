@@ -203,7 +203,8 @@ modifier = access_modifier
          | "native"
          | "Override";
 
-access_modifier = "public" | "private" | "protected";
+(* 访问修饰符支持现代化别名：pub/priv *)
+access_modifier = "public" | "pub" | "private" | "priv" | "protected";
 
 (* ============================================================================
  * 4. 字段声明（支持静态字段、final 字段）
@@ -288,15 +289,13 @@ type = primitive_type
      | function_type;
 
 (* 基本类型 *)
-primitive_type = "int" 
-               | "long" 
-               | "float" 
-               | "double" 
-               | "bool" 
-               | "boolean"
-               | "char" 
-               | "byte"
-               | "short"
+(* 支持现代化别名：i32/i64/f32/f64 *)
+primitive_type = "int" | "i32"
+               | "long" | "i64"
+               | "float" | "f32"
+               | "double" | "f64"
+               | "bool" | "boolean"
+               | "char"
                | "void"
                | "auto";
 

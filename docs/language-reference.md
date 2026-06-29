@@ -57,13 +57,15 @@ public class Main {
 | 类型                    | 位数 | 描述            | 默认值 |
 | ----------------------- | ---- | --------------- | ------ |
 | `void`                | 0    | 无返回值        | —     |
-| `int`                 | 32   | 有符号整数      | 0      |
-| `long`                | 64   | 有符号整数      | 0L     |
-| `float`               | 32   | IEEE 754 浮点数 | 0.0f   |
-| `double`              | 64   | IEEE 754 浮点数 | 0.0    |
+| `int` / `i32`         | 32   | 有符号整数      | 0      |
+| `long` / `i64`        | 64   | 有符号整数      | 0L     |
+| `float` / `f32`       | 32   | IEEE 754 浮点数 | 0.0f   |
+| `double` / `f64`      | 64   | IEEE 754 浮点数 | 0.0    |
 | `bool` / `boolean`  | 8    | 布尔值          | false  |
 | `char`                | 16   | UTF-16 字符     | '\0'   |
 | `string` / `String` | —   | 不可变字符串    | null   |
+
+> **注意**：`i32`、`i64`、`f32`、`f64` 是类型关键字的别名，**不能用作标识符**（如变量名、类型别名名）。例如 `alias i32 = int;` 是非法的，应使用 `alias MyInt = int;`。
 
 ### 复合类型
 
@@ -98,11 +100,11 @@ public class Main {
 创建类型别名：
 
 ```cay
-alias i32 = int;
+alias MyInt = int;
 
 class Main {
     public static void main() {
-        i32 a = 1;
+        MyInt a = 1;
         print(a);
     }
 }
