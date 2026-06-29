@@ -365,3 +365,20 @@ fn test_fn_conflict_return_type() {
         error
     );
 }
+
+#[test]
+fn test_modern_aliases() {
+    let output = compile_and_run_eol_with_features(
+        "examples/test_modern_aliases.cay",
+        &[],
+    )
+    .expect("modern aliases should compile and run");
+    assert!(
+        output.contains("i32=10")
+            && output.contains("i64=20")
+            && output.contains("f32=1.5")
+            && output.contains("f64=3.14"),
+        "modern aliases should work, got: {}",
+        output
+    );
+}

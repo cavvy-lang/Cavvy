@@ -1,0 +1,9 @@
+pub i32 main() {
+    i32 a = 10;
+    i64 b = 20L;
+    f32 c = 1.5f;
+    f64 d = 3.14;
+    println("i32=" + a.toString() + ", i64=" + b.toString());
+    println("f32=" + c.toString() + ", f64=" + d.toString());
+    return 0;
+}

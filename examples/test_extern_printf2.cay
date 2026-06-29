@@ -1,0 +1,6 @@
+extern int printf(string fmt, ...);
+
+public int main() {
+    printf("Hello %s\n", "world");
+    return 0;
+}
