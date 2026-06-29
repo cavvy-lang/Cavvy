@@ -274,6 +274,16 @@ impl SemanticAnalyzer {
                 }
             }
 
+            // 处理基本类型的 toString() 方法调用
+            if matches!(
+                obj_type,
+                Type::Int32 | Type::Int64 | Type::Float32 | Type::Float64 | Type::Bool | Type::Char
+            ) {
+                if member.member == "toString" && call.args.is_empty() {
+                    return Ok(Type::String);
+                }
+            }
+
             // 处理类实例方法调用 - 支持方法重载
             // 获取类名（支持 Type::Object 和 Type::Generic）
             // 对于泛型类型如 "Wrapper<int>"，需要解析出基础类名 "Wrapper"

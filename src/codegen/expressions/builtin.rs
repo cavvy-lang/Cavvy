@@ -51,7 +51,7 @@ impl IRGenerator {
                     "  {} = getelementptr [{} x i8], [{} x i8]* {}, i64 0, i64 0",
                     fmt_ptr, fmt_len, fmt_len, fmt_name
                 ));
-                self.emit_line(&format!("  call i32 (i8*, ...) @printf(i8* {})", fmt_ptr));
+self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_ret_type("printf", "i32"), fmt_ptr));
             }
             return Ok("void".to_string());
         }
@@ -89,8 +89,8 @@ impl IRGenerator {
                     ));
 
                     self.emit_line(&format!(
-                        "  call i32 (i8*, ...) @printf(i8* {}, i8* {})",
-                        fmt_ptr, str_ptr
+                        "  call {} (i8*, ...) @printf(i8* {}, i8* {})",
+                        self.get_extern_ret_type("printf", "i32"), fmt_ptr, str_ptr
                     ));
                 }
                 LiteralValue::Int32(_) | LiteralValue::Int64(_) => {
@@ -123,8 +123,8 @@ impl IRGenerator {
                     };
 
                     self.emit_line(&format!(
-                        "  call i32 (i8*, ...) @printf(i8* {}, i64 {})",
-                        fmt_ptr, final_val
+                        "  call {} (i8*, ...) @printf(i8* {}, i64 {})",
+                        self.get_extern_ret_type("printf", "i32"), fmt_ptr, final_val
                     ));
                 }
                 _ => {
@@ -141,8 +141,8 @@ impl IRGenerator {
                             fmt_ptr, fmt_len, fmt_len, fmt_name
                         ));
                         self.emit_line(&format!(
-                            "  call i32 (i8*, ...) @printf(i8* {}, i8* {})",
-                            fmt_ptr, val
+                            "  call {} (i8*, ...) @printf(i8* {}, i8* {})",
+                            self.get_extern_ret_type("printf", "i32"), fmt_ptr, val
                         ));
                     } else if type_str == "i1" {
                         // 布尔类型：调用 __cay_bool_to_string 转换为字符串后打印
@@ -160,8 +160,8 @@ impl IRGenerator {
                             fmt_ptr, fmt_len, fmt_len, fmt_name
                         ));
                         self.emit_line(&format!(
-                            "  call i32 (i8*, ...) @printf(i8* {}, i8* {})",
-                            fmt_ptr, str_temp
+                            "  call {} (i8*, ...) @printf(i8* {}, i8* {})",
+                            self.get_extern_ret_type("printf", "i32"), fmt_ptr, str_temp
                         ));
                     } else if type_str.starts_with("i") && !type_str.ends_with("*") {
                         let i64_fmt = self.get_i64_format_specifier();
@@ -190,8 +190,8 @@ impl IRGenerator {
                         };
 
                         self.emit_line(&format!(
-                            "  call i32 (i8*, ...) @printf(i8* {}, i64 {})",
-                            fmt_ptr, final_val
+                            "  call {} (i8*, ...) @printf(i8* {}, i64 {})",
+                            self.get_extern_ret_type("printf", "i32"), fmt_ptr, final_val
                         ));
                     } else if type_str == "double" || type_str == "float" {
                         let fmt_str = if newline { "%f\n" } else { "%f" };
@@ -215,8 +215,8 @@ impl IRGenerator {
                         };
 
                         self.emit_line(&format!(
-                            "  call i32 (i8*, ...) @printf(i8* {}, double {})",
-                            fmt_ptr, final_val
+                            "  call {} (i8*, ...) @printf(i8* {}, double {})",
+                            self.get_extern_ret_type("printf", "i32"), fmt_ptr, final_val
                         ));
                     } else {
                         let fmt_str = if newline { "%s\n" } else { "%s" };
@@ -228,8 +228,8 @@ impl IRGenerator {
                             fmt_ptr, fmt_len, fmt_len, fmt_name
                         ));
                         self.emit_line(&format!(
-                            "  call i32 (i8*, ...) @printf(i8* {}, {})",
-                            fmt_ptr, value
+                            "  call {} (i8*, ...) @printf(i8* {}, {})",
+                            self.get_extern_ret_type("printf", "i32"), fmt_ptr, value
                         ));
                     }
                 }
@@ -248,8 +248,8 @@ impl IRGenerator {
                         fmt_ptr, fmt_len, fmt_len, fmt_name
                     ));
                     self.emit_line(&format!(
-                        "  call i32 (i8*, ...) @printf(i8* {}, i8* {})",
-                        fmt_ptr, val
+                        "  call {} (i8*, ...) @printf(i8* {}, i8* {})",
+                        self.get_extern_ret_type("printf", "i32"), fmt_ptr, val
                     ));
                 } else if type_str == "i1" {
                     // 布尔类型：调用 __cay_bool_to_string 转换为字符串后打印
@@ -267,8 +267,8 @@ impl IRGenerator {
                         fmt_ptr, fmt_len, fmt_len, fmt_name
                     ));
                     self.emit_line(&format!(
-                        "  call i32 (i8*, ...) @printf(i8* {}, i8* {})",
-                        fmt_ptr, str_temp
+                        "  call {} (i8*, ...) @printf(i8* {}, i8* {})",
+                        self.get_extern_ret_type("printf", "i32"), fmt_ptr, str_temp
                     ));
                 } else if type_str.starts_with("i") && !type_str.ends_with("*") {
                     let i64_fmt = self.get_i64_format_specifier();
@@ -297,8 +297,8 @@ impl IRGenerator {
                     };
 
                     self.emit_line(&format!(
-                        "  call i32 (i8*, ...) @printf(i8* {}, i64 {})",
-                        fmt_ptr, final_val
+                        "  call {} (i8*, ...) @printf(i8* {}, i64 {})",
+                        self.get_extern_ret_type("printf", "i32"), fmt_ptr, final_val
                     ));
                 } else if type_str == "double" || type_str == "float" {
                     let fmt_str = if newline { "%f\n" } else { "%f" };
@@ -319,8 +319,8 @@ impl IRGenerator {
                     };
 
                     self.emit_line(&format!(
-                        "  call i32 (i8*, ...) @printf(i8* {}, double {})",
-                        fmt_ptr, final_val
+                        "  call {} (i8*, ...) @printf(i8* {}, double {})",
+                        self.get_extern_ret_type("printf", "i32"), fmt_ptr, final_val
                     ));
                 } else {
                     let fmt_str = if newline { "%s\n" } else { "%s" };
@@ -332,8 +332,8 @@ impl IRGenerator {
                         fmt_ptr, fmt_len, fmt_len, fmt_name
                     ));
                     self.emit_line(&format!(
-                        "  call i32 (i8*, ...) @printf(i8* {}, {})",
-                        fmt_ptr, value
+                        "  call {} (i8*, ...) @printf(i8* {}, {})",
+                        self.get_extern_ret_type("printf", "i32"), fmt_ptr, value
                     ));
                 }
             }
@@ -429,8 +429,8 @@ impl IRGenerator {
         }
 
         self.emit_line(&format!(
-            "  call i32 (i8*, ...) @printf({})",
-            call_args.join(", ")
+            "  call {} (i8*, ...) @printf({})",
+            self.get_extern_ret_type("printf", "i32"), call_args.join(", ")
         ));
 
         Ok("i64 0".to_string())

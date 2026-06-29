@@ -2238,8 +2238,13 @@ impl IRGenerator {
         self.output
             .push_str("; ============================================================\n\n");
 
-        // 声明 printf 函数
-        self.output.push_str("declare i32 @printf(i8*, ...) #0\n\n");
+        // 声明 printf 函数（根据用户 extern 声明动态适配返回类型）
+        let printf_ret = self.get_extern_ret_type("printf", "i32");
+        if printf_ret == "void" {
+            self.output.push_str("declare void @printf(i8*, ...) #0\n\n");
+        } else {
+            self.output.push_str("declare i32 @printf(i8*, ...) #0\n\n");
+        }
 
         // 生成测试入口函数
         self.output.push_str("define i32 @__cavvy_test_main() {\n");
@@ -2257,8 +2262,8 @@ impl IRGenerator {
         self.output.push_str("  ; Print header\n");
         let header_len = self.escape_test_str("running %d tests...\\n").len() + 1;
         self.output.push_str(&format!(
-            "  call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([{} x i8], [{} x i8]* @str_test_header, i64 0, i64 0), i32 {})\n",
-            header_len, header_len, test_count
+            "  call {} (i8*, ...) @printf(i8* getelementptr inbounds ([{} x i8], [{} x i8]* @str_test_header, i64 0, i64 0), i32 {})\n",
+            printf_ret, header_len, header_len, test_count
         ));
 
         // 为每个 @Test 方法生成调用
@@ -2276,8 +2281,8 @@ impl IRGenerator {
 
             // 打印 "ok"
             self.output.push_str(&format!(
-                "  call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([{} x i8], [{} x i8]* {}, i64 0, i64 0))\n",
-                ok_len, ok_len, ok_global
+                "  call {} (i8*, ...) @printf(i8* getelementptr inbounds ([{} x i8], [{} x i8]* {}, i64 0, i64 0))\n",
+                printf_ret, ok_len, ok_len, ok_global
             ));
 
             // 增加 passed 计数
@@ -2298,8 +2303,8 @@ impl IRGenerator {
             .len()
             + 1;
         self.output.push_str(&format!(
-            "  call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([{} x i8], [{} x i8]* @str_test_summary, i64 0, i64 0), i32 %final_passed, i32 %final_failed)\n",
-            summary_len, summary_len
+            "  call {} (i8*, ...) @printf(i8* getelementptr inbounds ([{} x i8], [{} x i8]* @str_test_summary, i64 0, i64 0), i32 %final_passed, i32 %final_failed)\n",
+            printf_ret, summary_len, summary_len
         ));
 
         // 返回 0（成功）或 1（有失败）

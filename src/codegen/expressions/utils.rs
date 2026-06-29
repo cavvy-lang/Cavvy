@@ -309,7 +309,7 @@ impl IRGenerator {
         self.emit_line(&format!("{}:", error_label));
         // 输出错误信息到 stderr
         let error_msg = self.get_or_create_string_constant("Error: Division by zero\n");
-        self.emit_line(&format!("  call i32 (i8*, ...) @printf(i8* {})", error_msg));
+        self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_ret_type("printf", "i32"), error_msg));
         // 调用 exit 退出程序
         self.emit_line("  call void @exit(i32 1)");
         self.emit_line("  unreachable");

@@ -406,6 +406,14 @@ impl IRGenerator {
         self.get_extern_function(func_name).map(|f| f.name.clone())
     }
 
+    /// 获取extern函数的LLVM返回类型（用户声明优先，否则返回默认值）
+    /// 通用方法，不特化任何函数
+    pub fn get_extern_ret_type(&self, func_name: &str, default: &str) -> String {
+        self.get_extern_function(func_name)
+            .map(|f| self.type_to_llvm(&f.return_type))
+            .unwrap_or_else(|| default.to_string())
+    }
+
     /// 检查是否是顶层函数
     pub fn is_top_level_function(&self, func_name: &str) -> bool {
         self.top_level_functions.iter().any(|f| f.name == func_name)

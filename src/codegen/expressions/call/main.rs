@@ -67,6 +67,60 @@ impl IRGenerator {
                     return self.generate_integer_parseint_call(&call.args, &call.loc);
                 }
             }
+
+            // 处理基本类型的 toString() 方法调用
+            if member.member == "toString" && call.args.is_empty() {
+                if let Some(obj_type) = self.get_expression_type(&member.object) {
+                    let obj_val = self.generate_expression(&member.object)?;
+                    let (_, val) = self.parse_typed_value(&obj_val);
+                    let temp = self.new_temp();
+                    match obj_type {
+                        crate::types::Type::Int32 => {
+                            self.emit_line(&format!(
+                                "  {} = call i8* @__cay_int_to_string(i32 {})",
+                                temp, val
+                            ));
+                            return Ok(format!("i8* {}", temp));
+                        }
+                        crate::types::Type::Int64 => {
+                            self.emit_line(&format!(
+                                "  {} = call i8* @__cay_long_to_string(i64 {})",
+                                temp, val
+                            ));
+                            return Ok(format!("i8* {}", temp));
+                        }
+                        crate::types::Type::Float32 => {
+                            self.emit_line(&format!(
+                                "  {} = call i8* @__cay_float_to_string(float {})",
+                                temp, val
+                            ));
+                            return Ok(format!("i8* {}", temp));
+                        }
+                        crate::types::Type::Float64 => {
+                            self.emit_line(&format!(
+                                "  {} = call i8* @__cay_double_to_string(double {})",
+                                temp, val
+                            ));
+                            return Ok(format!("i8* {}", temp));
+                        }
+                        crate::types::Type::Bool => {
+                            self.emit_line(&format!(
+                                "  {} = call i8* @__cay_bool_to_string(i1 {})",
+                                temp, val
+                            ));
+                            return Ok(format!("i8* {}", temp));
+                        }
+                        crate::types::Type::Char => {
+                            self.emit_line(&format!(
+                                "  {} = call i8* @__cay_char_to_string(i8 {})",
+                                temp, val
+                            ));
+                            return Ok(format!("i8* {}", temp));
+                        }
+                        _ => {}
+                    }
+                }
+            }
         }
 
         // 处理 extern 函数调用

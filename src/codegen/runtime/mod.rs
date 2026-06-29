@@ -55,13 +55,18 @@ impl IRGenerator {
         self.emit_debug_header();
 
         // 声明外部函数 (printf 和标准C库函数)
-        if !self.is_extern_emitted("printf@i32@i8*@...") {
-            self.emit_raw("declare i32 @printf(i8*, ...)");
-            self.mark_extern_emitted("printf@i32@i8*@...".to_string());
+        // 若用户已声明同名 extern 函数，跳过运行时预声明，由用户声明覆盖
+        if !self.extern_function_map.contains_key("printf") {
+            if !self.is_extern_emitted("printf@i32@i8*@...") {
+                self.emit_raw("declare i32 @printf(i8*, ...)");
+                self.mark_extern_emitted("printf@i32@i8*@...".to_string());
+            }
         }
-        if !self.is_extern_emitted("scanf@i32@i8*@...") {
-            self.emit_raw("declare i32 @scanf(i8*, ...)");
-            self.mark_extern_emitted("scanf@i32@i8*@...".to_string());
+        if !self.extern_function_map.contains_key("scanf") {
+            if !self.is_extern_emitted("scanf@i32@i8*@...") {
+                self.emit_raw("declare i32 @scanf(i8*, ...)");
+                self.mark_extern_emitted("scanf@i32@i8*@...".to_string());
+            }
         }
 
         // 根据平台配置声明平台特定函数
