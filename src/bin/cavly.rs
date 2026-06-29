@@ -3,6 +3,10 @@ use std::process;
 
 use anyhow::{Context, Result};
 
+use cavvy::cavly::audit::{AuditLogEntry, AuditLogger, SecurityEventType};
+use cavvy::cavly::registry::SecureRegistry;
+use cavvy::cavly::security::{sha256_hex, SecurityLevel};
+
 // Cavly 版本 - 与 Cavvy 版本保持一致
 const VERSION: &str = env!("CAVLY_VERSION");
 
@@ -32,6 +36,9 @@ fn print_usage() {
     println!("  info              显示项目信息");
     println!("  add <库>          添加系统库依赖");
     println!("  ffi <名称> <库>   添加 FFI 库配置");
+    println!("  verify <包名>     验证包的安全证书和完整性");
+    println!("  trust <公钥B64>   添加可信公钥到配置");
+    println!("  audit-log         显示安全审计日志");
     println!("  help              显示此帮助信息");
     println!();
     println!("示例:");
@@ -91,6 +98,9 @@ fn main() {
         "info" => cmd_info(),
         "add" => cmd_add(&args),
         "ffi" => cmd_ffi(&args),
+        "verify" => cmd_verify(&args),
+        "trust" => cmd_trust(&args),
+        "audit-log" => cmd_audit_log(),
         "help" | "-h" | "--help" => {
             print_usage();
             Ok(())
@@ -422,6 +432,141 @@ fn cmd_ffi(args: &[String]) -> Result<()> {
         .ok_or_else(|| anyhow::anyhow!("当前目录不是 Cavly 项目（找不到 cavly.toml）"))?;
 
     cavvy::cavly::project::Project::add_ffi_lib(&project_root, name, lib)?;
+
+    Ok(())
+}
+
+/// 验证包的安全证书和完整性 (ESSO-10430)
+///
+/// # 复杂度
+/// - 时间: O(n) 网络 + O(m) 哈希，m 为包大小
+/// - 空间: O(m)
+fn cmd_verify(args: &[String]) -> Result<()> {
+    let package_name = args
+        .get(2)
+        .ok_or_else(|| anyhow::anyhow!("请指定包名，例如: cavly verify my-pkg"))?;
+
+    println!("正在验证包 '{}' 的安全证书...", package_name);
+
+    let mut registry = SecureRegistry::new()?;
+    let pkg = registry.find_package(package_name)?;
+
+    println!("  包名: {}", pkg.name);
+    println!("  指纹: {}", pkg.fingerprint);
+    println!("  最新版本: {}", pkg.latest_version);
+    println!("  仓库: {}", pkg.repository);
+
+    // 获取元信息和证书
+    let meta = registry.fetch_fingerprint_metadata(&pkg.fingerprint)?;
+    let cert = registry.fetch_certificate(&pkg.fingerprint)?;
+
+    println!("  发布者: {}", cert.publisher);
+    println!("  证书时间: {}", cert.certified_at);
+    println!("  包 SHA-256: {}", cert.package_sha256);
+
+    // 如果本地存在包文件，验证完整性
+    let current_dir = env::current_dir()?;
+    let package_path = current_dir
+        .join(".cavvy")
+        .join("cache")
+        .join("registry")
+        .join(format!("{}-{}", pkg.name, pkg.latest_version));
+
+    if package_path.exists() {
+        let data = std::fs::read(&package_path)?;
+        let hash = sha256_hex(&data);
+        if hash == cert.package_sha256 {
+            println!("  本地包完整性: 通过");
+        } else {
+            println!("  本地包完整性: 失败 (预期 {}, 实际 {})", cert.package_sha256, hash);
+        }
+    } else {
+        println!("  本地包: 未下载");
+    }
+
+    println!("验证完成。");
+    Ok(())
+}
+
+/// 添加可信公钥到项目配置
+///
+/// # 复杂度
+/// - 时间: O(1)
+/// - 空间: O(1)
+fn cmd_trust(args: &[String]) -> Result<()> {
+    let public_key_b64 = args
+        .get(2)
+        .ok_or_else(|| anyhow::anyhow!("请指定 Base64 编码的 Ed25519 公钥"))?;
+
+    // 验证公钥格式
+    let pk = cavvy::cavly::security::Ed25519PublicKey::from_base64("trusted", public_key_b64)?;
+    let fingerprint = cavvy::cavly::security::compute_key_fingerprint(&pk.bytes);
+
+    let current_dir = env::current_dir()?;
+    let project_root = cavvy::cavly::find_project_root(&current_dir)
+        .ok_or_else(|| anyhow::anyhow!("当前目录不是 Cavly 项目（找不到 cavly.toml）"))?;
+
+    let config_path = project_root.join("cavly.toml");
+    let mut config = cavvy::cavly::config::CavlyConfig::from_file(&config_path)?;
+
+    if config.security.trusted_keys.contains(public_key_b64) {
+        println!("公钥已在信任列表中");
+        return Ok(());
+    }
+
+    config.security.trusted_keys.push(public_key_b64.clone());
+    config.to_file(&config_path)?;
+
+    println!("已添加可信公钥 (指纹: {})", fingerprint);
+
+    // 审计日志
+    let logger = AuditLogger::new().unwrap_or_default();
+    logger.log_silent(
+        &AuditLogEntry::new(SecurityEventType::UserConfirmed, "cmd_trust")
+            .with_details(&format!("添加可信公钥，指纹: {}", fingerprint)),
+    );
+
+    Ok(())
+}
+
+/// 显示安全审计日志
+///
+/// # 复杂度
+/// - 时间: O(n)，n 为日志条目数
+/// - 空间: O(n)
+fn cmd_audit_log() -> Result<()> {
+    let logger = AuditLogger::new()?;
+    let entries = logger.read_all()?;
+
+    if entries.is_empty() {
+        println!("审计日志为空");
+        return Ok(());
+    }
+
+    println!("安全审计日志 (共 {} 条):", entries.len());
+    println!();
+
+    for entry in &entries {
+        let pkg_info = match (&entry.package_name, &entry.package_version) {
+            (Some(name), Some(ver)) => format!(" [{}@{}]", name, ver),
+            (Some(name), None) => format!(" [{}]", name),
+            _ => String::new(),
+        };
+        println!(
+            "[{}] {:?} | {}{} | {}",
+            entry.timestamp,
+            entry.event_type,
+            entry.operation,
+            pkg_info,
+            entry.verification_result.as_deref().unwrap_or("-")
+        );
+        if let Some(ref details) = entry.details {
+            println!("  详情: {}", details);
+        }
+        if let Some(ref decision) = entry.user_decision {
+            println!("  用户决策: {}", decision);
+        }
+    }
 
     Ok(())
 }

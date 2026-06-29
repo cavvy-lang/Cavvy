@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use super::security::SecurityLevel;
+
 /// 项目类型
 #[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -59,6 +61,10 @@ pub struct CavlyConfig {
     /// 自定义配置段
     #[serde(flatten)]
     pub extra: HashMap<String, toml::Value>,
+
+    /// 安全验证配置 (ESSO-10400 / ESSO-10430)
+    #[serde(default)]
+    pub security: SecurityConfig,
 }
 
 /// 包信息配置
@@ -451,6 +457,75 @@ pub struct PlatformConfig {
     /// 额外链接选项
     #[serde(default)]
     pub ldflags: Vec<String>,
+}
+
+/// 安全验证配置 (ESSO-10400 / ESSO-10430)
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SecurityConfig {
+    /// 安全等级: general, standard, critical (默认 standard)
+    #[serde(default)]
+    pub level: SecurityLevel,
+
+    /// 官方根公钥 (Base64 编码的 Ed25519 32 字节公钥)
+    #[serde(default)]
+    pub root_public_key: Option<String>,
+
+    /// 是否允许降级（安全系统故障时继续）
+    #[serde(default)]
+    pub allow_downgrade: bool,
+
+    /// 是否缓存证书和索引
+    #[serde(default = "default_true")]
+    pub cache_enabled: bool,
+
+    /// 证书缓存目录（空则使用默认 ~/.cavvy/cache/registry）
+    #[serde(default)]
+    pub cache_dir: Option<PathBuf>,
+
+    /// 安全警告偏好: error, warn, silent
+    #[serde(default)]
+    pub warning_preference: SecurityWarningPreference,
+
+    /// 是否启用审计日志
+    #[serde(default = "default_true")]
+    pub audit_log: bool,
+
+    /// 审计日志路径（空则使用默认 ~/.cavvy/audit/security.log）
+    #[serde(default)]
+    pub audit_log_path: Option<PathBuf>,
+
+    /// 可信公钥列表（Base64 编码）
+    #[serde(default)]
+    pub trusted_keys: Vec<String>,
+}
+
+impl Default for SecurityConfig {
+    fn default() -> Self {
+        Self {
+            level: SecurityLevel::default(),
+            root_public_key: None,
+            allow_downgrade: false,
+            cache_enabled: true,
+            cache_dir: None,
+            warning_preference: SecurityWarningPreference::default(),
+            audit_log: true,
+            audit_log_path: None,
+            trusted_keys: Vec::new(),
+        }
+    }
+}
+
+/// 安全警告偏好
+#[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum SecurityWarningPreference {
+    /// 将警告视为错误，阻断操作
+    Error,
+    /// 打印警告但允许继续（默认）
+    #[default]
+    Warn,
+    /// 完全静默，不显示警告
+    Silent,
 }
 
 /// 依赖配置

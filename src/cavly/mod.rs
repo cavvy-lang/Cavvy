@@ -1,7 +1,10 @@
+pub mod audit;
 pub mod builder;
 pub mod config;
 pub mod ffi;
 pub mod project;
+pub mod registry;
+pub mod security;
 pub mod tester;
 pub mod workspace;
 

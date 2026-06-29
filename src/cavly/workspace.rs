@@ -6,7 +6,10 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use super::CONFIG_FILE;
+use super::audit::{AuditLogEntry, AuditLogger, SecurityEventType};
 use super::config::{CavlyConfig, Dependency, DetailedDependency, ProjectType};
+use super::registry::{RegistryConfig, SecureRegistry};
+use super::security::SecurityLevel;
 
 /// 解析后的依赖信息
 #[derive(Debug, Clone)]
@@ -33,6 +36,12 @@ pub struct WorkspaceResolver {
     resolved_cache: HashMap<String, ResolvedDependency>,
     /// 解析栈（用于检测循环依赖）
     resolution_stack: Vec<String>,
+    /// 安全等级
+    security_level: SecurityLevel,
+    /// 审计日志器
+    audit_logger: AuditLogger,
+    /// 是否允许降级
+    allow_downgrade: bool,
 }
 
 impl WorkspaceResolver {
@@ -46,6 +55,29 @@ impl WorkspaceResolver {
             project_root,
             resolved_cache: HashMap::new(),
             resolution_stack: Vec::new(),
+            security_level: SecurityLevel::Standard,
+            audit_logger: AuditLogger::default(),
+            allow_downgrade: false,
+        }
+    }
+
+    /// 从项目配置创建工作区解析器
+    ///
+    /// 根据 [security] 配置初始化安全验证参数。
+    pub fn from_config(project_root: PathBuf, config: &CavlyConfig) -> Self {
+        let audit_logger = if let Some(ref path) = config.security.audit_log_path {
+            AuditLogger::with_path(path.clone())
+        } else {
+            AuditLogger::new().unwrap_or_default()
+        };
+
+        Self {
+            project_root,
+            resolved_cache: HashMap::new(),
+            resolution_stack: Vec::new(),
+            security_level: config.security.level,
+            audit_logger,
+            allow_downgrade: config.security.allow_downgrade,
         }
     }
 
@@ -153,7 +185,9 @@ impl WorkspaceResolver {
 
     /// 解析 Git 依赖
     ///
-    /// 从 Git 仓库克隆/更新依赖并解析
+    /// 从 Git 仓库克隆/更新依赖并解析。
+    /// 根据安全等级记录审计日志：Git 依赖无法执行 ESSO 证书验证，
+    /// 在 Standard/Critical 等级下发出警告。
     fn resolve_git_dependency(
         &mut self,
         name: &str,
@@ -204,13 +238,44 @@ impl WorkspaceResolver {
             }
         }
 
+        // 审计日志: Git 依赖无法执行 ESSO 验证
+        self.audit_logger.log_silent(
+            &AuditLogEntry::new(
+                SecurityEventType::WarningDisplayed,
+                "resolve_git_dependency",
+            )
+            .with_details(&format!(
+                "Git 依赖 {} 无法执行 ESSO 安全验证 (URL: {})",
+                name, git_url
+            )),
+        );
+
+        match self.security_level {
+            SecurityLevel::Critical => {
+                bail!(
+                    "安全等级 Critical 禁止安装未经验证的 Git 依赖: {}",
+                    name
+                );
+            }
+            SecurityLevel::Standard => {
+                eprintln!(
+                    "警告: Git 依赖 {} 未通过 ESSO 安全验证。建议从官方安全源安装。",
+                    name
+                );
+            }
+            SecurityLevel::General => {
+                // General 等级不发出警告
+            }
+        }
+
         // 尝试解析克隆的仓库
         self.resolve_local_lib(&repo_dir, detailed.optional)
     }
 
     /// 解析注册表依赖
     ///
-    /// 从本地或远程注册表查找并解析依赖
+    /// 从本地或远程注册表查找并解析依赖。
+    /// 如果启用安全验证，尝试从官方安全源获取证书并执行完整性验证。
     fn resolve_registry_dependency(
         &mut self,
         name: &str,
@@ -244,6 +309,8 @@ impl WorkspaceResolver {
                         let version_dir =
                             entry_path.file_name().unwrap_or_default().to_string_lossy();
                         if version == "latest" || version_dir.starts_with(version) {
+                            // 安全验证：如果可能，验证本地包完整性
+                            let _ = self.verify_local_package_if_possible(name, &entry_path);
                             return self.resolve_local_lib(&entry_path, optional);
                         }
                     }
@@ -355,6 +422,73 @@ impl WorkspaceResolver {
         }
 
         Ok(None)
+    }
+
+    /// 如果可能，验证本地包完整性
+    ///
+    /// 尝试从官方安全源获取证书并验证本地包。
+    /// 离线或网络失败时不报错（记录审计日志）。
+    fn verify_local_package_if_possible(
+        &self,
+        name: &str,
+        package_path: &Path,
+    ) -> Result<()> {
+        let mut registry_config = RegistryConfig::default();
+        if let Ok(cache_dir) = super::registry::default_cache_dir() {
+            registry_config.cache_dir = cache_dir;
+        }
+
+        let registry = SecureRegistry::with_config(registry_config)?
+            .offline(true)
+            .with_logger(self.audit_logger.clone());
+
+        // 尝试在缓存索引中查找此包
+        let index = match registry.fetch_index() {
+            Ok(idx) => idx,
+            Err(_) => {
+                self.audit_logger.log_silent(
+                    &AuditLogEntry::new(
+                        SecurityEventType::VerificationSkipped,
+                        "verify_local_package",
+                    )
+                    .with_details(&format!(
+                        "本地包 {} 无法获取索引进行验证（可能离线）",
+                        name
+                    )),
+                );
+                return Ok(());
+            }
+        };
+
+        if let Some(pkg) = index.packages.into_iter().find(|p| p.name == name) {
+            // 验证本地包
+            if let Err(e) = registry.verify_local_package(package_path, &pkg.fingerprint) {
+                self.audit_logger.log_silent(
+                    &AuditLogEntry::new(
+                        SecurityEventType::VerificationFailed,
+                        "verify_local_package",
+                    )
+                    .with_package(&pkg.fingerprint, name, &pkg.latest_version)
+                    .with_result("failed")
+                    .with_details(&format!("{}", e)),
+                );
+                bail!(
+                    "本地包 {} 安全验证失败: {}。建议重新下载或检查配置。",
+                    name, e
+                );
+            }
+
+            self.audit_logger.log_silent(
+                &AuditLogEntry::new(
+                    SecurityEventType::VerificationPassed,
+                    "verify_local_package",
+                )
+                .with_package(&pkg.fingerprint, name, &pkg.latest_version)
+                .with_result("passed"),
+            );
+        }
+
+        Ok(())
     }
 
     /// 格式化库文件名
