@@ -556,3 +556,93 @@ fn test_canonicalize_jcs_array_of_objects() {
     let s = String::from_utf8(canonical).unwrap();
     assert_eq!(s, r#"[{"a":1,"b":2},{"c":3,"d":4}]"#);
 }
+
+// ============================================================
+// 依赖添加功能测试
+// ============================================================
+
+#[test]
+fn test_add_system_lib_to_config() {
+    let temp = TempDir::new().unwrap();
+    let mut config = CavlyConfig::default();
+    config.package.name = "test".to_string();
+    config.package.version = "1.0.0".to_string();
+    config.to_file(&temp.path().join("cavly.toml")).unwrap();
+
+    cavvy::cavly::project::Project::add_system_lib(temp.path(), "ws2_32").unwrap();
+
+    let loaded = CavlyConfig::from_file(&temp.path().join("cavly.toml")).unwrap();
+    assert!(loaded.ffi.system_libs.contains(&"ws2_32".to_string()));
+}
+
+#[test]
+fn test_add_git_dependency_to_config() {
+    let temp = TempDir::new().unwrap();
+    let mut config = CavlyConfig::default();
+    config.package.name = "test".to_string();
+    config.package.version = "1.0.0".to_string();
+    config.to_file(&temp.path().join("cavly.toml")).unwrap();
+
+    cavvy::cavly::project::Project::add_git_dependency(
+        temp.path(),
+        "my-lib",
+        "https://github.com/user/my-lib",
+        Some("main"),
+        None,
+    )
+    .unwrap();
+
+    let loaded = CavlyConfig::from_file(&temp.path().join("cavly.toml")).unwrap();
+    assert!(loaded.dependencies.contains_key("my-lib"));
+}
+
+#[test]
+fn test_add_path_dependency_to_config() {
+    let temp = TempDir::new().unwrap();
+    let mut config = CavlyConfig::default();
+    config.package.name = "test".to_string();
+    config.package.version = "1.0.0".to_string();
+    config.to_file(&temp.path().join("cavly.toml")).unwrap();
+
+    cavvy::cavly::project::Project::add_path_dependency(
+        temp.path(),
+        "local-helper",
+        "../local-helper",
+    )
+    .unwrap();
+
+    let loaded = CavlyConfig::from_file(&temp.path().join("cavly.toml")).unwrap();
+    assert!(loaded.dependencies.contains_key("local-helper"));
+}
+
+#[test]
+fn test_add_duplicate_dependency_fails() {
+    let temp = TempDir::new().unwrap();
+    let mut config = CavlyConfig::default();
+    config.package.name = "test".to_string();
+    config.package.version = "1.0.0".to_string();
+    config.to_file(&temp.path().join("cavly.toml")).unwrap();
+
+    cavvy::cavly::project::Project::add_system_lib(temp.path(), "m").unwrap();
+    let result = cavvy::cavly::project::Project::add_system_lib(temp.path(), "m");
+    // 第二次添加应提示已存在，但不会报错
+    assert!(result.is_ok());
+
+    // Git 依赖重复应报错
+    cavvy::cavly::project::Project::add_git_dependency(
+        temp.path(),
+        "dup",
+        "https://example.com",
+        None,
+        None,
+    )
+    .unwrap();
+    let result = cavvy::cavly::project::Project::add_git_dependency(
+        temp.path(),
+        "dup",
+        "https://example.com",
+        None,
+        None,
+    );
+    assert!(result.is_err());
+}

@@ -426,6 +426,139 @@ public class BuildScript {
 
         Ok(())
     }
+
+    /// 添加注册表依赖并从安全源下载包
+    ///
+    /// # 流程
+    /// 1. 在安全源索引中查找包
+    /// 2. 下载并验证包
+    /// 3. 将包安装到 .cavvy/registry/<name>/<version>/
+    /// 4. 更新 cavly.toml 的 [dependencies]
+    ///
+    /// # 复杂度
+    /// - 时间: O(n) 网络 + O(m) 哈希，m 为包大小
+    /// - 空间: O(m)
+    pub fn add_registry_dependency(path: &Path, name: &str, version: &str) -> Result<()> {
+        use crate::cavly::config::Dependency;
+        use crate::cavly::registry::SecureRegistry;
+
+        let config_path = path.join(CONFIG_FILE);
+        let mut config = CavlyConfig::from_file(&config_path)?;
+
+        // 检查是否已存在同名依赖
+        if config.dependencies.contains_key(name) {
+            bail!("依赖 '{}' 已存在于 cavly.toml 中", name);
+        }
+
+        println!("正在从安全源查找包 '{}'...", name);
+
+        let registry = SecureRegistry::new()
+            .with_context(|| "创建安全注册表客户端失败")?;
+
+        let pkg = registry.find_package(name)
+            .with_context(|| format!("在官方索引中找不到包: {}", name))?;
+
+        println!("  找到包: {} v{} (指纹: {})", pkg.name, pkg.latest_version, pkg.fingerprint);
+        println!("  仓库: {}", pkg.repository);
+
+        // 确定安装目录
+        let registry_dir = path.join(".cavvy").join("registry").join(name);
+        let install_dir = registry_dir.join(&pkg.latest_version);
+        std::fs::create_dir_all(&install_dir)
+            .with_context(|| format!("创建安装目录失败: {}", install_dir.display()))?;
+
+        // 下载并验证包
+        println!("  正在下载并验证安全证书...");
+        let package_path = registry.download_and_verify(&pkg, &install_dir)
+            .with_context(|| format!("下载并验证包 '{}' 失败", name))?;
+
+        println!("  包已下载到: {}", package_path.display());
+
+        // 添加到依赖配置
+        let dep = if version == "latest" {
+            Dependency::Simple(pkg.latest_version.clone())
+        } else {
+            Dependency::Detailed(crate::cavly::config::DetailedDependency {
+                version: Some(version.to_string()),
+                ..Default::default()
+            })
+        };
+
+        config.add_dependency(name, dep);
+        config.to_file(&config_path)?;
+
+        println!("已将 '{}' 添加到 [dependencies] 并安装到本地注册表", name);
+        Ok(())
+    }
+
+    /// 添加 Git 依赖
+    ///
+    /// # 复杂度
+    /// - 时间: O(1) 配置更新
+    /// - 空间: O(1)
+    pub fn add_git_dependency(
+        path: &Path,
+        name: &str,
+        git_url: &str,
+        branch: Option<&str>,
+        tag: Option<&str>,
+    ) -> Result<()> {
+        use crate::cavly::config::{Dependency, DetailedDependency};
+
+        let config_path = path.join(CONFIG_FILE);
+        let mut config = CavlyConfig::from_file(&config_path)?;
+
+        if config.dependencies.contains_key(name) {
+            bail!("依赖 '{}' 已存在于 cavly.toml 中", name);
+        }
+
+        let dep = Dependency::Detailed(DetailedDependency {
+            git: Some(git_url.to_string()),
+            branch: branch.map(String::from),
+            tag: tag.map(String::from),
+            ..Default::default()
+        });
+
+        config.add_dependency(name, dep);
+        config.to_file(&config_path)?;
+
+        println!("已添加 Git 依赖: {} ({})", name, git_url);
+        if let Some(b) = branch {
+            println!("  分支: {}", b);
+        }
+        if let Some(t) = tag {
+            println!("  标签: {}", t);
+        }
+
+        Ok(())
+    }
+
+    /// 添加本地路径依赖
+    ///
+    /// # 复杂度
+    /// - 时间: O(1)
+    /// - 空间: O(1)
+    pub fn add_path_dependency(path: &Path, name: &str, dep_path: &str) -> Result<()> {
+        use crate::cavly::config::{Dependency, DetailedDependency};
+
+        let config_path = path.join(CONFIG_FILE);
+        let mut config = CavlyConfig::from_file(&config_path)?;
+
+        if config.dependencies.contains_key(name) {
+            bail!("依赖 '{}' 已存在于 cavly.toml 中", name);
+        }
+
+        let dep = Dependency::Detailed(DetailedDependency {
+            path: Some(std::path::PathBuf::from(dep_path)),
+            ..Default::default()
+        });
+
+        config.add_dependency(name, dep);
+        config.to_file(&config_path)?;
+
+        println!("已添加本地路径依赖: {} (路径: {})", name, dep_path);
+        Ok(())
+    }
 }
 
 /// 项目信息

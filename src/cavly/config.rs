@@ -731,6 +731,15 @@ impl CavlyConfig {
             .extend(other.workspace.lib_paths.clone());
     }
 
+    /// 添加依赖到配置
+    ///
+    /// # 复杂度m
+    /// - 时间: O(1)
+    /// - 空间: O(1)
+    pub fn add_dependency(&mut self, name: &str, dep: Dependency) {
+        self.dependencies.insert(name.to_string(), dep);
+    }
+
     /// 获取库输出文件名（仅用于 lib 类型项目）
     pub fn lib_output_filename(&self) -> String {
         let base_name = self
