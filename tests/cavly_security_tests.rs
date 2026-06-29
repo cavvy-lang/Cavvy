@@ -575,25 +575,108 @@ fn test_add_system_lib_to_config() {
     assert!(loaded.ffi.system_libs.contains(&"ws2_32".to_string()));
 }
 
+/// 创建本地测试用 Git 仓库（无需网络）
+///
+/// # 复杂度
+/// - 时间: O(1)
+/// - 空间: O(1)
+fn create_local_git_repo(path: &std::path::Path, project_type: &str) -> anyhow::Result<()> {
+    use std::process::Command;
+
+    std::fs::create_dir_all(path)?;
+
+    // git init
+    let status = Command::new("git")
+        .args(&["init", &path.to_string_lossy()])
+        .status()?;
+    if !status.success() {
+        anyhow::bail!("git init 失败");
+    }
+
+    // 配置 git 用户（commit 需要）
+    Command::new("git")
+        .args(&["-C", &path.to_string_lossy(), "config", "user.email", "test@test.com"])
+        .status()?;
+    Command::new("git")
+        .args(&["-C", &path.to_string_lossy(), "config", "user.name", "Test User"])
+        .status()?;
+
+    // 创建 cavly.toml
+    let cay_config = format!(
+        r#"[package]
+name = "my-lib"
+version = "0.1.0"
+project_type = "{}"
+main = "lib.cay"
+src_dir = "src"
+target_dir = "target"
+"#,
+        project_type
+    );
+    std::fs::write(path.join("cavly.toml"), cay_config)?;
+
+    // 创建 src 目录和空 lib.cay
+    std::fs::create_dir_all(path.join("src"))?;
+    std::fs::write(path.join("src").join("lib.cay"), "// lib\n")?;
+
+    // git add + commit
+    Command::new("git")
+        .args(&["-C", &path.to_string_lossy(), "add", "."])
+        .status()?;
+    let status = Command::new("git")
+        .args(&["-C", &path.to_string_lossy(), "commit", "-m", "init"])
+        .status()?;
+    if !status.success() {
+        anyhow::bail!("git commit 失败");
+    }
+
+    Ok(())
+}
+
 #[test]
 fn test_add_git_dependency_to_config() {
+    // 跳过测试如果 git 不可用
+    if std::process::Command::new("git").arg("--version").status().is_err() {
+        eprintln!("警告: git 不可用，跳过 test_add_git_dependency_to_config");
+        return;
+    }
+
     let temp = TempDir::new().unwrap();
     let mut config = CavlyConfig::default();
     config.package.name = "test".to_string();
     config.package.version = "1.0.0".to_string();
     config.to_file(&temp.path().join("cavly.toml")).unwrap();
 
+    // 创建本地 Git 仓库
+    let repo_path = temp.path().join("remote-my-lib");
+    create_local_git_repo(&repo_path, "lib").unwrap();
+
+    let repo_url = repo_path.to_string_lossy().to_string();
+
     cavvy::cavly::project::Project::add_git_dependency(
         temp.path(),
         "my-lib",
-        "https://github.com/user/my-lib",
-        Some("main"),
+        &repo_url,
+        Some("master"),
         None,
     )
     .unwrap();
 
     let loaded = CavlyConfig::from_file(&temp.path().join("cavly.toml")).unwrap();
     assert!(loaded.dependencies.contains_key("my-lib"));
+
+    // 验证本地路径已设置
+    let dep = loaded.dependencies.get("my-lib").unwrap();
+    match dep {
+        cavvy::cavly::config::Dependency::Detailed(detailed) => {
+            assert!(detailed.path.is_some());
+            assert_eq!(detailed.git.as_deref(), Some(repo_url.as_str()));
+        }
+        _ => panic!("期望 Detailed 依赖"),
+    }
+
+    // 验证仓库已克隆到本地
+    assert!(temp.path().join(".cavvy").join("git").join("my-lib").join("cavly.toml").exists());
 }
 
 #[test]
@@ -628,21 +711,27 @@ fn test_add_duplicate_dependency_fails() {
     // 第二次添加应提示已存在，但不会报错
     assert!(result.is_ok());
 
-    // Git 依赖重复应报错
-    cavvy::cavly::project::Project::add_git_dependency(
-        temp.path(),
-        "dup",
-        "https://example.com",
-        None,
-        None,
-    )
-    .unwrap();
-    let result = cavvy::cavly::project::Project::add_git_dependency(
-        temp.path(),
-        "dup",
-        "https://example.com",
-        None,
-        None,
-    );
-    assert!(result.is_err());
+    // Git 依赖重复应报错（使用本地 Git 仓库测试）
+    if std::process::Command::new("git").arg("--version").status().is_ok() {
+        let repo_path = temp.path().join("remote-dup");
+        create_local_git_repo(&repo_path, "lib").unwrap();
+        let repo_url = repo_path.to_string_lossy().to_string();
+
+        cavvy::cavly::project::Project::add_git_dependency(
+            temp.path(),
+            "dup",
+            &repo_url,
+            Some("master"),
+            None,
+        )
+        .unwrap();
+        let result = cavvy::cavly::project::Project::add_git_dependency(
+            temp.path(),
+            "dup",
+            &repo_url,
+            Some("master"),
+            None,
+        );
+        assert!(result.is_err());
+    }
 }

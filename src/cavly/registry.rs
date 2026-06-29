@@ -312,7 +312,12 @@ impl SecureRegistry {
 
     /// 下载包数据
     ///
-    /// 尝试从 GitHub release 或直接从仓库下载构建产物。
+    /// 从 GitHub release 自动生成的源码 tar.gz 下载包。
+    /// 统一使用 tar.gz 格式（zip 的 SHA-256 与证书中记录的不一致）。
+    ///
+    /// # 复杂度
+    /// - 时间: O(n) 网络 + O(n) 磁盘，n 为包大小
+    /// - 空间: O(n)
     fn download_package_data(
         &self,
         pkg: &super::security::IndexPackage,
@@ -324,13 +329,14 @@ impl SecureRegistry {
 
         let repo = pkg.repository.trim_end_matches(".git");
 
-        // 策略1: 从 GitHub release 下载 .tar.xz
+        // GitHub 自动生成 release 源码 tar.gz 的标准 URL
+        // 策略1: 带 refs/tags/ 前缀
         let url = format!(
-            "{}/releases/download/v{}/{}-v{}.tar.xz",
-            repo, pkg.latest_version, pkg.name, pkg.latest_version
+            "{}/archive/refs/tags/v{}.tar.gz",
+            repo, pkg.latest_version
         );
         let dest = dest_dir.join(format!(
-            "{}-{}.tar.xz",
+            "{}-{}.tar.gz",
             pkg.name, pkg.latest_version
         ));
 
@@ -342,26 +348,22 @@ impl SecureRegistry {
                 return Ok(dest);
             }
             Err(_) => {
-                // 策略2: 尝试 .zip
-                let url_zip = format!(
-                    "{}/releases/download/v{}/{}-v{}.zip",
-                    repo, pkg.latest_version, pkg.name, pkg.latest_version
+                // 策略2: 不带 refs/tags/ 前缀（兼容旧格式）
+                let url_alt = format!(
+                    "{}/archive/v{}.tar.gz",
+                    repo, pkg.latest_version
                 );
-                let dest_zip = dest_dir.join(format!(
-                    "{}-{}.zip",
-                    pkg.name, pkg.latest_version
-                ));
-                if let Ok(data) = http_get(&url_zip, self.config.timeout_secs) {
-                    std::fs::write(&dest_zip, &data).with_context(|| {
-                        format!("写入包文件失败: {}", dest_zip.display())
+                if let Ok(data) = http_get(&url_alt, self.config.timeout_secs) {
+                    std::fs::write(&dest, &data).with_context(|| {
+                        format!("写入包文件失败: {}", dest.display())
                     })?;
-                    return Ok(dest_zip);
+                    return Ok(dest);
                 }
             }
         }
 
         bail!(
-            "包 {}@{} 下载失败，无法从 release 页面获取",
+            "包 {}@{} 下载失败，无法从 release 页面获取 (tar.gz)",
             pkg.name,
             pkg.latest_version
         )

@@ -474,28 +474,71 @@ public class BuildScript {
 
         println!("  包已下载到: {}", package_path.display());
 
-        // 添加到依赖配置
-        let dep = if version == "latest" {
-            Dependency::Simple(pkg.latest_version.clone())
+        // 解压 tar.gz 到安装目录（去掉顶层目录如 caysdlib-0.1.0/）
+        println!("  正在解压包到安装目录...");
+        let tar_status = std::process::Command::new("tar")
+            .args(&[
+                "-xzf",
+                &package_path.to_string_lossy(),
+                "-C",
+                &install_dir.to_string_lossy(),
+                "--strip-components=1",
+            ])
+            .status()
+            .with_context(|| "无法执行 tar 命令，请确保系统支持 tar")?;
+
+        if !tar_status.success() {
+            bail!("解压包 '{}' 失败", package_path.display());
+        }
+
+        // 验证解压后的目录包含 cavly.toml
+        let dep_cay_config = install_dir.join(CONFIG_FILE);
+        if !dep_cay_config.exists() {
+            std::fs::remove_dir_all(&install_dir).ok();
+            bail!("下载的包 '{}' 缺少 cavly.toml，不是有效的 Cavvy 项目", name);
+        }
+
+        println!("  包已安装到: {}", install_dir.display());
+
+        // 添加到依赖配置（同时记录版本和本地 path，构建时可直接使用）
+        let actual_version = if version == "latest" {
+            pkg.latest_version.clone()
         } else {
-            Dependency::Detailed(crate::cavly::config::DetailedDependency {
-                version: Some(version.to_string()),
-                ..Default::default()
-            })
+            version.to_string()
         };
 
+        let rel_path = PathBuf::from(".cavvy")
+            .join("registry")
+            .join(name)
+            .join(&actual_version);
+
+        let dep = Dependency::Detailed(crate::cavly::config::DetailedDependency {
+            version: Some(actual_version),
+            path: Some(rel_path),
+            ..Default::default()
+        });
+
         config.add_dependency(name, dep);
-        config.to_file(&config_path)?;
+        config.to_file(&config_path)
+            .with_context(|| "写入 cavly.toml 失败")?;
 
         println!("已将 '{}' 添加到 [dependencies] 并安装到本地注册表", name);
         Ok(())
     }
 
-    /// 添加 Git 依赖
+    /// 添加 Git 依赖并立即克隆仓库
+    ///
+    /// # 流程
+    /// 1. 检查 cavly.toml 中是否已存在同名依赖
+    /// 2. 克隆 Git 仓库到 .cavvy/git/<name>/
+    /// 3. 如果指定分支/标签，执行 checkout
+    /// 4. 验证克隆的仓库为有效 Cavvy 库项目
+    /// 5. 更新 cavly.toml，同时记录 git URL 和本地 path
+    /// 6. 记录审计日志
     ///
     /// # 复杂度
-    /// - 时间: O(1) 配置更新
-    /// - 空间: O(1)
+    /// - 时间: O(n) 网络 + O(m) 磁盘，m 为仓库大小
+    /// - 空间: O(m)
     pub fn add_git_dependency(
         path: &Path,
         name: &str,
@@ -504,6 +547,7 @@ public class BuildScript {
         tag: Option<&str>,
     ) -> Result<()> {
         use crate::cavly::config::{Dependency, DetailedDependency};
+        use crate::cavly::audit::{AuditLogEntry, AuditLogger, SecurityEventType};
 
         let config_path = path.join(CONFIG_FILE);
         let mut config = CavlyConfig::from_file(&config_path)?;
@@ -512,17 +556,105 @@ public class BuildScript {
             bail!("依赖 '{}' 已存在于 cavly.toml 中", name);
         }
 
+        // 确定克隆目录
+        let git_dir = path.join(".cavvy").join("git").join(name);
+        if git_dir.exists() {
+            std::fs::remove_dir_all(&git_dir)
+                .with_context(|| format!("删除已存在的 Git 目录失败: {}", git_dir.display()))?;
+        }
+        std::fs::create_dir_all(&git_dir.parent().unwrap())
+            .with_context(|| "创建 .cavvy/git 目录失败")?;
+
+        println!("正在克隆 Git 仓库 '{}'...", git_url);
+
+        // 执行 git clone
+        let mut cmd = std::process::Command::new("git");
+        cmd.arg("clone");
+
+        // 如果指定了分支，使用浅克隆加速
+        if let Some(b) = branch {
+            cmd.args(&["--branch", b, "--single-branch"]);
+        }
+
+        cmd.args(&["--depth", "1"]);
+        cmd.arg(git_url);
+        cmd.arg(&git_dir);
+
+        let status = cmd.status()
+            .with_context(|| "无法执行 git 命令，请确保 git 已安装并加入 PATH")?;
+
+        if !status.success() {
+            bail!("Git 克隆失败 (退出码: {:?}): {}", status.code(), git_url);
+        }
+
+        // 如果指定了标签，需要拉取完整历史并 checkout 标签
+        // （浅克隆默认不包含标签指向的 commit，除非标签在分支上）
+        if let Some(t) = tag {
+            println!("  正在检出标签 '{}'...", t);
+            let fetch_status = std::process::Command::new("git")
+                .args(&["-C", &git_dir.to_string_lossy(), "fetch", "--tags"])
+                .status()
+                .with_context(|| "执行 git fetch --tags 失败")?;
+
+            if !fetch_status.success() {
+                bail!("获取标签失败: {}", t);
+            }
+
+            let checkout_status = std::process::Command::new("git")
+                .args(&["-C", &git_dir.to_string_lossy(), "checkout", t])
+                .status()
+                .with_context(|| format!("检出标签 '{}' 失败", t))?;
+
+            if !checkout_status.success() {
+                bail!("检出标签 '{}' 失败", t);
+            }
+        }
+
+        // 验证克隆的仓库是否为有效 Cavvy 库项目
+        let dep_config_path = git_dir.join(CONFIG_FILE);
+        if !dep_config_path.exists() {
+            std::fs::remove_dir_all(&git_dir).ok();
+            bail!(
+                "克隆的仓库 '{}' 缺少 cavly.toml，不是有效的 Cavvy 项目",
+                name
+            );
+        }
+
+        let dep_config = CavlyConfig::from_file(&dep_config_path)
+            .with_context(|| format!("解析依赖 '{}' 的配置文件失败", name))?;
+
+        if dep_config.package.project_type != ProjectType::Lib {
+            std::fs::remove_dir_all(&git_dir).ok();
+            bail!("Git 依赖 '{}' 不是库项目 (project_type = {:?})", name, dep_config.package.project_type);
+        }
+
+        // 计算相对路径写入 cavly.toml（使项目可移植）
+        let rel_path = PathBuf::from(".cavvy").join("git").join(name);
+
         let dep = Dependency::Detailed(DetailedDependency {
             git: Some(git_url.to_string()),
             branch: branch.map(String::from),
             tag: tag.map(String::from),
+            path: Some(rel_path),
             ..Default::default()
         });
 
         config.add_dependency(name, dep);
-        config.to_file(&config_path)?;
+        config.to_file(&config_path)
+            .with_context(|| "写入 cavly.toml 失败")?;
+
+        // 审计日志
+        if let Ok(logger) = AuditLogger::new() {
+            logger.log_silent(
+                &AuditLogEntry::new(SecurityEventType::SecureSourceInstall, "add_git_dependency")
+                    .with_package("git", name, &dep_config.package.version)
+                    .with_details(&format!("从 {} 克隆 Git 依赖", git_url)),
+            );
+        }
 
         println!("已添加 Git 依赖: {} ({})", name, git_url);
+        println!("  本地路径: {}", git_dir.display());
+        println!("  库版本: {}", dep_config.package.version);
         if let Some(b) = branch {
             println!("  分支: {}", b);
         }
