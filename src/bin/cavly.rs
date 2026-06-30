@@ -26,7 +26,8 @@ fn print_usage() {
     println!("命令:");
     println!("  init [名称]       初始化新可执行项目");
     println!("  init --lib [名称] 初始化新库项目");
-    println!("  build             构建项目（默认构建所有 bin）");
+    println!("  install           安装所有缺失的依赖");
+    println!("  build             构建项目（默认构建所有 bin，自动安装缺失依赖）");
     println!("  build --bin <名称> 只构建指定的二进制目标");
     println!("  clean             清理构建产物");
     println!("  run               构建并运行项目");
@@ -34,7 +35,7 @@ fn print_usage() {
     println!("  test              编译并运行所有测试");
     println!("  test --filter <名称> 按名称过滤测试");
     println!("  info              显示项目信息");
-    println!("  add <名称>        添加依赖（注册表/Git/路径/系统库）");
+    println!("  add <名称>        添加依赖（注册表/Git/路径/系统库/自定义源）");
     println!("  ffi <名称> <库>   添加 FFI 库配置");
     println!("  verify <包名>     验证包的安全证书和完整性");
     println!("  trust <公钥B64>   添加可信公钥到配置");
@@ -44,6 +45,8 @@ fn print_usage() {
     println!("示例:");
     println!("  cavly init my-project");
     println!("  cavly init --lib my-library");
+    println!("  cavly install");
+    println!("  cavly install -v");
     println!("  cavly build");
     println!("  cavly build -v");
     println!("  cavly build --bin my-tool");
@@ -55,6 +58,7 @@ fn print_usage() {
     println!("  cavly add my-net-lib");
     println!("  cavly add my-lib --git https://github.com/user/my-lib");
     println!("  cavly add local-helper --path ../local-helper");
+    println!("  cavly add my-custom-lib --source https://custom.registry.net");
     println!("  cavly ffi sdl2 SDL2");
 }
 
@@ -99,6 +103,7 @@ fn main() {
             cmd_test(verbose, filter)
         }
         "info" => cmd_info(),
+        "install" => cmd_install(verbose),
         "add" => cmd_add(&args),
         "ffi" => cmd_ffi(&args),
         "verify" => cmd_verify(&args),
@@ -178,6 +183,10 @@ fn cmd_build(verbose: bool, bin_name: Option<String>) -> Result<()> {
     if verbose {
         println!("Cavly: 项目根目录: {}", project_root.display());
     }
+
+    // 自动安装缺失依赖
+    println!("Cavly: 检查依赖...");
+    cavvy::cavly::project::Project::install_dependencies(&project_root, verbose)?;
 
     // 加载配置
     let config_path = project_root.join("cavly.toml");
@@ -397,13 +406,38 @@ fn cmd_info() -> Result<()> {
     Ok(())
 }
 
-/// 添加依赖（系统库、注册表包、Git、本地路径）
+/// 安装所有依赖
+///
+/// 遍历 cavly.toml 中的 [dependencies]，自动检查并下载安装缺失的依赖。
+/// 支持 A 类（官方安全源）、B 类（Git）、C 类（自定义源）三种方式。
+///
+/// # 复杂度
+/// - 时间: O(n * (网络 + 磁盘))，n 为依赖数量
+/// - 空间: O(m)，m 为最大包大小
+fn cmd_install(verbose: bool) -> Result<()> {
+    println!("Cavvy 包管理器 {}", VERSION);
+    println!("版权所有 (c) 2026, Ethernos Studio");
+    println!("使用 GNU 通用公共许可证 版本三 协议开源");
+
+    let current_dir = env::current_dir()?;
+    let project_root = cavvy::cavly::find_project_root(&current_dir)
+        .ok_or_else(|| anyhow::anyhow!("当前目录不是 Cavly 项目（找不到 cavly.toml）"))?;
+
+    println!("正在安装依赖...");
+    cavvy::cavly::project::Project::install_dependencies(&project_root, verbose)?;
+    println!("所有依赖已就绪。");
+
+    Ok(())
+}
+
+/// 添加依赖（系统库、注册表包、Git、本地路径、自定义源）
 ///
 /// 用法:
-///   cavly add <name>                  # 从安全注册表添加最新版本
-///   cavly add <name> --version <ver>  # 从安全注册表添加指定版本
-///   cavly add <name> --git <url>      # 添加 Git 依赖
+///   cavly add <name>                  # 从安全注册表添加最新版本 (A类)
+///   cavly add <name> --version <ver>  # 从安全注册表添加指定版本 (A类)
+///   cavly add <name> --git <url>      # 添加 Git 依赖 (B类)
 ///   cavly add <name> --path <path>    # 添加本地路径依赖
+///   cavly add <name> --source <url>   # 添加自定义源依赖 (C类)
 ///   cavly add --system <lib>          # 添加系统库（如 ws2_32, pthread）
 ///
 /// # 复杂度
@@ -411,7 +445,7 @@ fn cmd_info() -> Result<()> {
 /// - 空间: O(1)
 fn cmd_add(args: &[String]) -> Result<()> {
     if args.len() < 3 {
-        anyhow::bail!("用法: cavly add <名称> [选项]\n\n选项:\n  --version <版本>   指定注册表版本\n  --git <url>        指定 Git 仓库\n  --branch <分支>    Git 分支\n  --tag <标签>       Git 标签\n  --path <路径>      本地路径\n  --system <库>      系统库（如 ws2_32, pthread, m）");
+        anyhow::bail!("用法: cavly add <名称> [选项]\n\n选项:\n  --version <版本>   指定注册表版本\n  --git <url>        指定 Git 仓库\n  --branch <分支>    Git 分支\n  --tag <标签>       Git 标签\n  --path <路径>      本地路径\n  --source <url>     自定义源服务器\n  --system <库>      系统库（如 ws2_32, pthread, m）");
     }
 
     let current_dir = env::current_dir()?;
@@ -422,6 +456,7 @@ fn cmd_add(args: &[String]) -> Result<()> {
     let system_lib = extract_flag_value(args, "--system");
     let git_url = extract_flag_value(args, "--git");
     let path_str = extract_flag_value(args, "--path");
+    let source_url = extract_flag_value(args, "--source");
     let version = extract_flag_value(args, "--version");
     let branch = extract_flag_value(args, "--branch");
     let tag = extract_flag_value(args, "--tag");
@@ -442,7 +477,7 @@ fn cmd_add(args: &[String]) -> Result<()> {
         anyhow::bail!("请指定依赖名称，例如: cavly add my-pkg");
     }
 
-    // Git 依赖
+    // Git 依赖 (B类)
     if let Some(url) = git_url {
         return cavvy::cavly::project::Project::add_git_dependency(
             &project_root, &name, &url, branch.as_deref(), tag.as_deref(),
@@ -454,7 +489,14 @@ fn cmd_add(args: &[String]) -> Result<()> {
         return cavvy::cavly::project::Project::add_path_dependency(&project_root, &name, &p);
     }
 
-    // 注册表依赖（默认）
+    // 自定义源依赖 (C类)
+    if let Some(src) = source_url {
+        return cavvy::cavly::project::Project::add_source_dependency(
+            &project_root, &name, &src, version.as_deref(),
+        );
+    }
+
+    // 注册表依赖（默认，A类）
     let ver = version.as_deref().unwrap_or("latest");
     cavvy::cavly::project::Project::add_registry_dependency(&project_root, &name, ver)
 }

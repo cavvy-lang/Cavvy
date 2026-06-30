@@ -556,6 +556,9 @@ pub struct DetailedDependency {
     /// 本地路径
     pub path: Option<PathBuf>,
 
+    /// 自定义源服务器地址 (ESSO-11420 C 类)
+    pub source: Option<String>,
+
     /// 是否可选
     #[serde(default)]
     pub optional: bool,

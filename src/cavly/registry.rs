@@ -444,7 +444,7 @@ impl SecureRegistry {
 /// # 复杂度
 /// - 时间: O(n) 网络 + O(n) IO
 /// - 空间: O(n)
-fn http_get(url: &str, timeout_secs: u64) -> Result<Vec<u8>> {
+pub(crate) fn http_get(url: &str, timeout_secs: u64) -> Result<Vec<u8>> {
     // 尝试使用 curl
     let curl_result = std::process::Command::new("curl")
         .args(&[

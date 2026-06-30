@@ -497,6 +497,48 @@ pub fn load_root_public_key_from_config(config_pk: Option<&str>) -> Option<Ed255
     official_root_public_key()
 }
 
+/// 检测当前是否在交互式终端中
+///
+/// 检查 stdin 是否为终端设备，用于判断是否可以阻塞等待用户输入。
+pub fn is_interactive() -> bool {
+    std::io::IsTerminal::is_terminal(&std::io::stdin())
+}
+
+/// 自定义源阻塞警告（ESSO-11420 第 8.2 节）
+///
+/// 在交互式环境中向用户展示阻塞警告，要求显式确认。
+/// 默认安全：直接回车或输入无效内容时取消安装。
+pub fn blocking_warning_custom_source(source_url: &str, package_name: &str) -> Result<()> {
+    use std::io::{self, Write};
+
+    eprintln!();
+    eprintln!("[SECURITY WARNING]");
+    eprintln!("You are about to install a package from a custom source server.");
+    eprintln!();
+    eprintln!("Source Server: {}", source_url);
+    eprintln!("Package Name: {}", package_name);
+    eprintln!("This source server is NOT part of the Ethernos official secure source network.");
+    eprintln!("Packages from this server have not been certified by Ethernos.");
+    eprintln!();
+    eprintln!("Risks include but are not limited to:");
+    eprintln!("  - Untrusted package metadata");
+    eprintln!("  - Potential man-in-the-middle attacks");
+    eprintln!("  - Absence of official integrity verification");
+    eprintln!();
+    eprint!("To proceed, explicitly confirm your understanding of these risks (yes/no): ");
+    io::stdout().flush().ok();
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).ok();
+    let trimmed = input.trim().to_lowercase();
+
+    if trimmed == "yes" || trimmed == "y" {
+        Ok(())
+    } else {
+        bail!("用户取消了自定义源安装");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

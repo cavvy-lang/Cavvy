@@ -691,6 +691,336 @@ public class BuildScript {
         println!("已添加本地路径依赖: {} (路径: {})", name, dep_path);
         Ok(())
     }
+
+    /// 安装所有缺失的依赖
+    ///
+    /// 遍历 cavly.toml 中的 [dependencies]，检查每个依赖的本地 path 是否存在。
+    /// 若缺失，根据依赖类型自动下载并安装：
+    /// - A 类（纯包名，有 version 无 git/source）：从官方安全源下载
+    /// - B 类（git URL）：克隆 Git 仓库
+    /// - C 类（自定义 source）：从自定义源服务器下载（当前按未验证来源处理）
+    ///
+    /// # 复杂度
+    /// - 时间: O(n * (网络 + 磁盘))，n 为依赖数量
+    /// - 空间: O(m)，m 为最大包大小
+    pub fn install_dependencies(path: &Path, verbose: bool) -> Result<()> {
+        use crate::cavly::config::{Dependency, DetailedDependency};
+        use crate::cavly::registry::SecureRegistry;
+        use crate::cavly::audit::{AuditLogEntry, AuditLogger, SecurityEventType};
+
+        let config_path = path.join(CONFIG_FILE);
+        let config = CavlyConfig::from_file(&config_path)?;
+
+        if config.dependencies.is_empty() {
+            if verbose {
+                println!("没有需要安装的依赖。");
+            }
+            return Ok(());
+        }
+
+        let mut installed = 0;
+        let mut already_exist = 0;
+        let mut skipped = 0;
+
+        for (name, dep) in &config.dependencies {
+            let detailed = match dep {
+                Dependency::Simple(version) => {
+                    DetailedDependency {
+                        version: Some(version.clone()),
+                        ..Default::default()
+                    }
+                }
+                Dependency::Detailed(d) => d.clone(),
+            };
+
+            // 检查本地路径是否已存在
+            let is_installed = if let Some(ref p) = detailed.path {
+                path.join(p).join(CONFIG_FILE).exists()
+            } else {
+                false
+            };
+
+            if is_installed {
+                if verbose {
+                    println!("  [已安装] {}", name);
+                }
+                already_exist += 1;
+                continue;
+            }
+
+            if detailed.optional {
+                if verbose {
+                    println!("  [跳过可选] {}", name);
+                }
+                skipped += 1;
+                continue;
+            }
+
+            println!("  正在安装 {}...", name);
+
+            // B 类: Git 依赖
+            if let Some(ref git_url) = detailed.git {
+                Self::install_git_dependency(path, name, git_url, detailed.branch.as_deref(), detailed.tag.as_deref(), verbose)?;
+                installed += 1;
+                continue;
+            }
+
+            // C 类: 自定义源依赖
+            if let Some(ref source_url) = detailed.source {
+                Self::install_source_dependency(path, name, source_url, detailed.version.as_deref(), verbose)?;
+                installed += 1;
+                continue;
+            }
+
+            // A 类: 注册表依赖（纯包名 + 版本）
+            let version = detailed.version.as_deref().unwrap_or("latest");
+            Self::install_registry_dependency(path, name, version, verbose)?;
+            installed += 1;
+        }
+
+        println!();
+        println!("依赖安装完成: {} 个新安装, {} 个已存在, {} 个跳过", installed, already_exist, skipped);
+        Ok(())
+    }
+
+    /// 内部: 从官方安全源下载并安装单个包（不修改 cavly.toml）
+    fn install_registry_dependency(
+        path: &Path,
+        name: &str,
+        version: &str,
+        verbose: bool,
+    ) -> Result<()> {
+        use crate::cavly::registry::SecureRegistry;
+
+        let registry = SecureRegistry::new()
+            .with_context(|| "创建安全注册表客户端失败")?;
+
+        let pkg = registry.find_package(name)
+            .with_context(|| format!("在官方索引中找不到包: {}", name))?;
+
+        if verbose {
+            println!("    找到包: {} v{} (指纹: {})", pkg.name, pkg.latest_version, pkg.fingerprint);
+            println!("    仓库: {}", pkg.repository);
+        }
+
+        let registry_dir = path.join(".cavvy").join("registry").join(name);
+        let install_dir = registry_dir.join(&pkg.latest_version);
+        std::fs::create_dir_all(&install_dir)
+            .with_context(|| format!("创建安装目录失败: {}", install_dir.display()))?;
+
+        let package_path = registry.download_and_verify(&pkg, &install_dir)
+            .with_context(|| format!("下载并验证包 '{}' 失败", name))?;
+
+        // 解压 tar.gz
+        let tar_status = std::process::Command::new("tar")
+            .args(&[
+                "-xzf",
+                &package_path.to_string_lossy(),
+                "-C",
+                &install_dir.to_string_lossy(),
+                "--strip-components=1",
+            ])
+            .status()
+            .with_context(|| "无法执行 tar 命令，请确保系统支持 tar")?;
+
+        if !tar_status.success() {
+            bail!("解压包 '{}' 失败", package_path.display());
+        }
+
+        let dep_cay_config = install_dir.join(CONFIG_FILE);
+        if !dep_cay_config.exists() {
+            std::fs::remove_dir_all(&install_dir).ok();
+            bail!("下载的包 '{}' 缺少 cavly.toml，不是有效的 Cavvy 项目", name);
+        }
+
+        if verbose {
+            println!("    包已安装到: {}", install_dir.display());
+        }
+        Ok(())
+    }
+
+    /// 内部: 克隆 Git 仓库（不修改 cavly.toml）
+    fn install_git_dependency(
+        path: &Path,
+        name: &str,
+        git_url: &str,
+        branch: Option<&str>,
+        tag: Option<&str>,
+        verbose: bool,
+    ) -> Result<()> {
+        let git_dir = path.join(".cavvy").join("git").join(name);
+        if git_dir.exists() {
+            std::fs::remove_dir_all(&git_dir)
+                .with_context(|| format!("删除已存在的 Git 目录失败: {}", git_dir.display()))?;
+        }
+        std::fs::create_dir_all(&git_dir.parent().unwrap())
+            .with_context(|| "创建 .cavvy/git 目录失败")?;
+
+        if verbose {
+            println!("    正在克隆 {} ...", git_url);
+        }
+
+        let mut cmd = std::process::Command::new("git");
+        cmd.arg("clone");
+        if let Some(b) = branch {
+            cmd.args(&["--branch", b, "--single-branch"]);
+        }
+        cmd.args(&["--depth", "1"]);
+        cmd.arg(git_url);
+        cmd.arg(&git_dir);
+
+        let status = cmd.status()
+            .with_context(|| "无法执行 git 命令，请确保 git 已安装并加入 PATH")?;
+
+        if !status.success() {
+            bail!("Git 克隆失败 (退出码: {:?}): {}", status.code(), git_url);
+        }
+
+        if let Some(t) = tag {
+            let fetch_status = std::process::Command::new("git")
+                .args(&["-C", &git_dir.to_string_lossy(), "fetch", "--tags"])
+                .status()?;
+            if fetch_status.success() {
+                let checkout_status = std::process::Command::new("git")
+                    .args(&["-C", &git_dir.to_string_lossy(), "checkout", t])
+                    .status()?;
+                if !checkout_status.success() {
+                    bail!("检出标签 '{}' 失败", t);
+                }
+            }
+        }
+
+        let dep_config_path = git_dir.join(CONFIG_FILE);
+        if !dep_config_path.exists() {
+            std::fs::remove_dir_all(&git_dir).ok();
+            bail!("克隆的仓库 '{}' 缺少 cavly.toml", name);
+        }
+
+        if verbose {
+            println!("    Git 依赖已克隆到: {}", git_dir.display());
+        }
+        Ok(())
+    }
+
+    /// 内部: 从自定义源下载并安装（ESSO-11420 C 类，当前按未验证来源处理）
+    fn install_source_dependency(
+        path: &Path,
+        name: &str,
+        source_url: &str,
+        version: Option<&str>,
+        verbose: bool,
+    ) -> Result<()> {
+        use crate::cavly::security::{blocking_warning_custom_source, is_interactive};
+        use crate::cavly::audit::{AuditLogEntry, AuditLogger, SecurityEventType};
+
+        // 阻塞警告（ESSO-11420 第 8 节）
+        if is_interactive() {
+            blocking_warning_custom_source(source_url, name)?;
+        } else {
+            // 非交互环境：若未关闭阻塞，则失败
+            if std::env::var("ESSO_UNVERIFIED_SOURCE_NO_BLOCK").unwrap_or_default() != "1" {
+                bail!("非交互环境中安装自定义源依赖需要显式确认，请设置环境变量 ESSO_UNVERIFIED_SOURCE_NO_BLOCK=1");
+            }
+            eprintln!("[SECURITY NOTICE] Installing from custom source server: {}. Package: {}. Official secure source verification not applicable. This installation is not covered by Ethernos secure source guarantees.", source_url, name);
+        }
+
+        // 审计日志
+        if let Ok(logger) = AuditLogger::new() {
+            logger.log_silent(
+                &AuditLogEntry::new(SecurityEventType::UnverifiedSourceInstall, "install_source_dependency")
+                    .with_package(source_url, name, version.unwrap_or("latest"))
+                    .with_details(&format!("从自定义源 {} 安装包 {}", source_url, name)),
+            );
+        }
+
+        // 构造下载 URL: {source_url}/{name}/{version}/package.tar.gz
+        let ver = version.unwrap_or("latest");
+        let download_url = format!("{}/{}/{}/package.tar.gz", source_url.trim_end_matches('/'), name, ver);
+
+        let install_dir = path.join(".cavvy").join("registry").join(name).join(ver);
+        std::fs::create_dir_all(&install_dir)?;
+
+        let package_path = install_dir.join("package.tar.gz");
+
+        if verbose {
+            println!("    正在从自定义源下载: {}", download_url);
+        }
+
+        // 使用 http_get 下载
+        let data = crate::cavly::registry::http_get(&download_url, 60)
+            .with_context(|| format!("从自定义源下载失败: {}", download_url))?;
+
+        std::fs::write(&package_path, &data)
+            .with_context(|| format!("保存下载包失败: {}", package_path.display()))?;
+
+        // 解压
+        let tar_status = std::process::Command::new("tar")
+            .args(&[
+                "-xzf",
+                &package_path.to_string_lossy(),
+                "-C",
+                &install_dir.to_string_lossy(),
+                "--strip-components=1",
+            ])
+            .status()
+            .with_context(|| "无法执行 tar 命令")?;
+
+        if !tar_status.success() {
+            bail!("解压包 '{}' 失败", package_path.display());
+        }
+
+        let dep_cay_config = install_dir.join(CONFIG_FILE);
+        if !dep_cay_config.exists() {
+            std::fs::remove_dir_all(&install_dir).ok();
+            bail!("下载的包 '{}' 缺少 cavly.toml，不是有效的 Cavvy 项目", name);
+        }
+
+        if verbose {
+            println!("    包已从自定义源安装到: {}", install_dir.display());
+        }
+        Ok(())
+    }
+
+    /// 添加自定义源依赖（C 类）
+    pub fn add_source_dependency(
+        path: &Path,
+        name: &str,
+        source_url: &str,
+        version: Option<&str>,
+    ) -> Result<()> {
+        use crate::cavly::config::{Dependency, DetailedDependency};
+
+        let config_path = path.join(CONFIG_FILE);
+        let mut config = CavlyConfig::from_file(&config_path)?;
+
+        if config.dependencies.contains_key(name) {
+            bail!("依赖 '{}' 已存在于 cavly.toml 中", name);
+        }
+
+        // 先执行安装（触发阻塞警告和审计日志）
+        Self::install_source_dependency(path, name, source_url, version, true)?;
+
+        // 写入配置
+        let ver = version.unwrap_or("latest").to_string();
+        let rel_path = PathBuf::from(".cavvy")
+            .join("registry")
+            .join(name)
+            .join(&ver);
+
+        let dep = Dependency::Detailed(DetailedDependency {
+            version: Some(ver),
+            source: Some(source_url.to_string()),
+            path: Some(rel_path),
+            ..Default::default()
+        });
+
+        config.add_dependency(name, dep);
+        config.to_file(&config_path)
+            .with_context(|| "写入 cavly.toml 失败")?;
+
+        println!("已将 '{}' 添加到 [dependencies]（自定义源: {}）", name, source_url);
+        Ok(())
+    }
 }
 
 /// 项目信息
