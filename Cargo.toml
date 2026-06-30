@@ -26,6 +26,7 @@ tempfile = "3.0"
 sha2 = "0.10"
 ed25519-dalek = "2.1"
 base64 = "0.22"
+serde_jcs = "0.2"
 
 # LLVM 嵌入式支持 (用于 --use-embedded-llc)
 # llvm-sys 版本与 LLVM 版本对应关系: 221 = LLVM 22.1.x

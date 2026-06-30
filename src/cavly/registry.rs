@@ -464,18 +464,29 @@ fn http_get(url: &str, timeout_secs: u64) -> Result<Vec<u8>> {
     }
 
     // 回退到 PowerShell (Windows)
+    // 使用 -OutFile 保存到临时文件，避免二进制数据在 stdout 传输中被损坏
     if cfg!(target_os = "windows") {
+        let temp_file = std::env::temp_dir()
+            .join(format!("cavvy_http_{}.tmp", std::process::id()));
         let ps_cmd = format!(
-            "try {{ $r = Invoke-WebRequest -Uri '{}' -UseBasicParsing -MaximumRedirection 5 -TimeoutSec {}; [System.Text.Encoding]::UTF8.GetBytes($r.Content) }} catch {{ exit 1 }}",
-            url, timeout_secs
+            "try {{ Invoke-WebRequest -Uri '{}' -UseBasicParsing -MaximumRedirection 5 -TimeoutSec {} -OutFile '{}'; exit 0 }} catch {{ exit 1 }}",
+            url, timeout_secs, temp_file.display()
         );
         let output = std::process::Command::new("powershell")
             .args(&["-NoProfile", "-Command", &ps_cmd])
             .output();
 
         if let Ok(output) = output {
-            if output.status.success() && !output.stdout.is_empty() {
-                return Ok(output.stdout);
+            if output.status.success() {
+                let data = std::fs::read(&temp_file);
+                std::fs::remove_file(&temp_file).ok();
+                if let Ok(data) = data {
+                    if !data.is_empty() {
+                        return Ok(data);
+                    }
+                }
+            } else {
+                std::fs::remove_file(&temp_file).ok();
             }
         }
     }

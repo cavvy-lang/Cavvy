@@ -167,6 +167,7 @@ pub struct VersionCertificate {
     pub package_sha256: String,
     pub certified_at: String,
     pub expires_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub dependencies: Option<Vec<CertDependency>>,
     pub signatures: DualSignatures,
 }
@@ -273,37 +274,15 @@ pub fn base64_encode(data: &[u8]) -> String {
 
 /// RFC 8785 JSON Canonicalization Scheme (JCS)
 ///
-/// 对 JSON 值进行规范化：对象键按 Unicode 码点排序，无多余空白。
+/// 使用 serde_jcs 实现符合规范的 JSON 规范化：
+/// 对象键按 Unicode 码点排序，数字按 IEEE 754 规范序列化，
+/// 字符串转义规范化，无多余空白。
 ///
 /// # 复杂度
 /// - 时间: O(n log n)，n 为对象键数量（排序开销）
 /// - 空间: O(n)
 pub fn canonicalize_jcs(value: &Value) -> Result<Vec<u8>> {
-    let canonical = canonicalize_value(value)?;
-    Ok(canonical.to_string().into_bytes())
-}
-
-fn canonicalize_value(value: &Value) -> Result<Value> {
-    match value {
-        Value::Object(map) => {
-            let mut btree: BTreeMap<String, Value> = BTreeMap::new();
-            for (k, v) in map.iter() {
-                btree.insert(k.clone(), canonicalize_value(v)?);
-            }
-            Ok(Value::Object(btree.into_iter().collect()))
-        }
-        Value::Array(arr) => {
-            let mut new_arr = Vec::new();
-            for v in arr {
-                new_arr.push(canonicalize_value(v)?);
-            }
-            Ok(Value::Array(new_arr))
-        }
-        // 基础类型直接返回
-        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {
-            Ok(value.clone())
-        }
-    }
+    serde_jcs::to_vec(value).context("JCS 规范化失败")
 }
 
 /// 构造签名载荷：移除 signatures 字段，JCS 规范化
@@ -829,5 +808,18 @@ mod tests {
         };
         let result = verify_certificate_chain(&cert, &meta, b"test", None);
         assert!(result.is_err());
+    }
+
+    /// 使用真实 caysdlib 证书验证签名计算路径（回归测试）
+    #[test]
+    fn test_real_caysdlib_signature() {
+        let cert_json = r#"{"esso_version":"1.0.0","fingerprint":"54274058-c8bf-485b-a71e-d7bdee8b3b0f","version":"0.1.0","name":"caysdlib","publisher":"Ethernos Studio","repository":"https://github.com/cavvy-lang/caysdlib","commit_hash":"a7ea8dcc48de6649f8101b64efa4403c6e04239d","package_sha256":"ced1e7182690910be5a18c30f3d96f3cb3719004980ac9ee50cfff43f9ca4979","certified_at":"2026-06-29T13:12:30Z","expires_at":"2031-06-29T13:12:30Z","signatures":{"publisher":{"key_id":"7a1a00b49d394f65d0a7f6031a1b2692","algorithm":"Ed25519","signature":"9eBxjlvd6mS2xutnI1Y5o2JzRRgHVBxQ/LBeds814gzumo6Ytj2J51LUR7D6Ht89ZdgVI2nxf8p91+xC/FfJBQ=="},"authority":{"key_id":"a3d59261417db6d1b8c3398465274d5e","algorithm":"Ed25519","signature":"NsriHQWLDERowOLqt5p7c8ao+123MHJLI01IlXmnqQXAclNNNwJFL8RUhPR6mBNvMuRXeRLNUuwolsbwAOYdDA=="}}}"#;
+        let cert: VersionCertificate = serde_json::from_str(cert_json).unwrap();
+        let cert_value = serde_json::to_value(&cert).unwrap();
+        let payload = build_signing_payload(&cert_value).unwrap();
+
+        let pk = Ed25519PublicKey::from_base64("pub", "RTfAQ4kW+D+2LpOQlrglBE0ZsPjIhLlR1+cAymRbx2U=").unwrap();
+        let result = verify_ed25519(&payload, "9eBxjlvd6mS2xutnI1Y5o2JzRRgHVBxQ/LBeds814gzumo6Ytj2J51LUR7D6Ht89ZdgVI2nxf8p91+xC/FfJBQ==", &pk);
+        assert!(result.is_ok());
     }
 }
