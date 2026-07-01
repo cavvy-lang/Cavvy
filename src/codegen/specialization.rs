@@ -265,6 +265,10 @@ impl SpecializationCollector {
             }
             Expr::MemberAccess(member) => {
                 self.collect_from_expr(&member.object);
+                // 检查 object 是否是泛型类型标识，如 FileResult<File>
+                if let Expr::Identifier(id) = &*member.object {
+                    self.collect_generic_class_name(&id.name);
+                }
             }
             Expr::ArrayAccess(arr) => {
                 self.collect_from_expr(&arr.array);

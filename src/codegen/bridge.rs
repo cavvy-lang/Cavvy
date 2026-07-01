@@ -114,6 +114,7 @@ impl InlineIrBridge {
                 column: 0,
                 message: format!("Inline IR parse error: {}", e),
                 suggestion: "Check your inline IR syntax and variable references".to_string(),
+                is_warning: false,
             }
         })?;
 

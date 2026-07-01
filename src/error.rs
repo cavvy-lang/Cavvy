@@ -32,7 +32,7 @@ pub enum cayError {
         suggestion: String,
     },
 
-    #[error("代码生成错误 [{}:{line}:{column}]: {message}", file.as_deref().unwrap_or("<unknown>"))]
+    #[error("{} [{}:{line}:{column}]: {message}", if *is_warning { "代码生成警告" } else { "代码生成错误" }, file.as_deref().unwrap_or("<unknown>"))]
     CodeGen {
         code: String,
         file: Option<String>,
@@ -40,6 +40,7 @@ pub enum cayError {
         column: usize,
         message: String,
         suggestion: String,
+        is_warning: bool,
     },
 
     #[error("IO错误 [{}]: {message}", file.as_deref().unwrap_or("<unknown>"))]
@@ -261,12 +262,19 @@ impl From<cayError> for CompilerError {
                 column,
                 message,
                 suggestion,
+                is_warning,
             } => {
                 // line 为 0 时退回到 1，确保诊断显示有源码上下文
                 let display_line = if *line == 0 { 1 } else { *line };
                 let display_column = if *column == 0 { 1 } else { *column };
-                crate::diagnostic::Diagnostic::error(
+                let severity = if *is_warning {
+                    crate::diagnostic::Severity::Warning
+                } else {
+                    crate::diagnostic::Severity::Error
+                };
+                crate::diagnostic::Diagnostic::new(
                     code.clone(),
+                    severity,
                     crate::diagnostic::CompilationPhase::CodeGen,
                     message.clone(),
                     SourceLocation {
@@ -429,6 +437,7 @@ impl From<CompilerError> for cayError {
                 column: d.location.column,
                 message,
                 suggestion,
+                is_warning: d.severity == crate::diagnostic::Severity::Warning,
             },
         }
     }
@@ -642,6 +651,18 @@ pub fn codegen_error_at(loc: SourceLocation, message: impl Into<String>) -> cayE
     };
     CompilerError(CavvyDiagnostic::error(
         code,
+        CompilationPhase::CodeGen,
+        msg,
+        loc,
+    ))
+    .into()
+}
+
+// 代码生成警告（带源码位置）
+pub fn codegen_warning_at(loc: SourceLocation, message: impl Into<String>) -> cayError {
+    let msg = message.into();
+    CompilerError(CavvyDiagnostic::warning(
+        crate::diagnostic::ErrorCodes::CODEGEN_INVALID_OPERATION,
         CompilationPhase::CodeGen,
         msg,
         loc,

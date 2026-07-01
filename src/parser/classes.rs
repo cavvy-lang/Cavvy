@@ -1060,6 +1060,47 @@ pub fn parse_enum(parser: &mut Parser) -> cayResult<EnumDecl> {
     })
 }
 
+/// 解析显式特化类声明: specialize class Box<int> { ... }
+pub fn parse_specialize_class(parser: &mut Parser) -> cayResult<SpecializeClassDecl> {
+    let loc = parser.current_loc();
+
+    parser.consume(
+        &Token::Specialize,
+        "期望关键字 'specialize'\n提示: 显式特化声明应以 'specialize' 开头",
+    )?;
+    parser.consume(
+        &Token::Class,
+        "期望关键字 'class'\n提示: specialize 后应跟 'class'，例如: specialize class Box<int> { ... }",
+    )?;
+
+    let base_name = parser.consume_identifier(
+        "期望类名\n提示: 在 'specialize class' 后应跟类名",
+    )?;
+
+    // 解析特化类型参数 <int> 或 <int, String>
+    let type_args = parse_generic_type_args(parser)?;
+
+    parser.consume(
+        &Token::LBrace,
+        "期望 '{'\n提示: 显式特化声明后应跟类体",
+    )?;
+
+    let mut members = Vec::new();
+    while !parser.check(&Token::RBrace) && !parser.is_at_end() {
+        members.push(parse_class_member(parser)?);
+    }
+
+    parser.consume(&Token::RBrace, "期望 '}'")?;
+
+    Ok(SpecializeClassDecl {
+        base_name,
+        type_args,
+        members,
+        namespace_path: Vec::new(),
+        loc,
+    })
+}
+
 /// 解析泛型类型参数 <T, U, V, ...>
 pub fn parse_generic_type_params(parser: &mut Parser) -> cayResult<Vec<String>> {
     let mut params = Vec::new();

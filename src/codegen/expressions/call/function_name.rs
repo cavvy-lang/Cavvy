@@ -21,6 +21,19 @@ impl IRGenerator {
             return "__cay_buffer_to_string".to_string();
         }
 
+        // 特化泛型类的方法调用：调用名必须与特化定义（generate_method_name）
+        // 完全一致——即「特化类前缀 + 注册表方法签名」，其中未解析的泛型参数保留
+        // 为 gT。否则会解析到类型擦除的基础模板 Optional_T_ 而链接失败。
+        if class_name.contains('<') {
+            if let Some(name) = self.specialized_generic_method_name(
+                class_name,
+                method_name,
+                processed_args.len(),
+            ) {
+                return name;
+            }
+        }
+
         // 获取实际参数的类型签名
         // 找到可变参数在形参列表中的位置（用于正确标记数组参数）
         let varargs_param_index = self.get_varargs_index(class_name, method_name);
@@ -167,8 +180,52 @@ impl IRGenerator {
         }
     }
 
+    /// 为特化泛型类的方法调用生成与定义完全一致的函数名。
+    ///
+    /// 特化方法的定义（见 `generate_method_name`）命名为「特化类前缀 +
+    /// 注册表方法签名」，签名中的泛型参数按 `type_to_signature` 保留为 `gT`
+    /// （不经 `generic_type_args` 解析）。调用点必须产生完全相同的名字，
+    /// 才能链接到已生成的单态化版本，而非类型擦除的基础模板。
+    ///
+    /// 仅当 `class_name` 是泛型类的特化名（其基础类含类型参数）时返回 `Some`。
+    fn specialized_generic_method_name(
+        &self,
+        class_name: &str,
+        method_name: &str,
+        arg_count: usize,
+    ) -> Option<String> {
+        let registry = self.type_registry.as_ref()?;
+        let base = class_name.split('<').next().unwrap_or(class_name);
+        let class_info = registry.get_class(base)?;
+        if class_info.type_params.is_empty() {
+            return None;
+        }
+        let methods = class_info.methods.get(method_name)?;
+        // 按参数数量选择重载（可变参数方法或数量匹配者）
+        let method_info = methods
+            .iter()
+            .find(|m| m.params.len() == arg_count || m.params.iter().any(|p| p.is_varargs))
+            .or_else(|| methods.first())?;
+        let cls = self.get_qualified_class_name(class_name);
+        if method_info.params.is_empty() {
+            Some(format!("{}.{}", cls, method_name))
+        } else {
+            let sigs: Vec<String> = method_info
+                .params
+                .iter()
+                .map(|p| {
+                    if p.is_varargs {
+                        self.varargs_type_to_signature(&p.param_type)
+                    } else {
+                        self.type_to_signature(&p.param_type)
+                    }
+                })
+                .collect();
+            Some(format!("{}.__{}_{}", cls, method_name, sigs.join("_")))
+        }
+    }
+
     /// 根据方法定义的参数类型构建函数名
-    /// 从方法信息构建函数名
     ///
     /// # Arguments
     /// * `class_name` - 类名

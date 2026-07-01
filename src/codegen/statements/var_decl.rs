@@ -374,7 +374,8 @@ impl IRGenerator {
                 ));
             }
         } else {
-            var.var_type.clone()
+            // 单态化上下文下，将泛型参数替换为实际类型
+            self.resolve_type_arg_concrete(&var.var_type)
         };
 
         let var_type = self.type_to_llvm(&actual_type);
@@ -398,10 +399,27 @@ impl IRGenerator {
                 self.var_class_map
                     .insert(var.name.clone(), class_name.clone());
             }
-            Type::Generic(class_name, _) => {
-                // 泛型类型：记录基础类名
-                self.var_class_map
-                    .insert(var.name.clone(), class_name.clone());
+            Type::Generic(class_name, type_args) => {
+                // 编译期单态化：将类型参数经 generic_type_args 替换为具体类型，
+                // 若全部具体则记录特化类名（如 "Optional<double>"），使字段访问
+                // 解析到特化布局而非基础布局；否则退回基础类名。
+                let resolved: Vec<Type> = type_args
+                    .iter()
+                    .map(|t| self.resolve_type_arg_concrete(t))
+                    .collect();
+                let all_concrete = !resolved.is_empty()
+                    && resolved.iter().all(|t| self.type_arg_is_concrete(t));
+                if all_concrete {
+                    let args_str: Vec<String> =
+                        resolved.iter().map(|t| format!("{}", t)).collect();
+                    self.var_class_map.insert(
+                        var.name.clone(),
+                        format!("{}<{}>", class_name, args_str.join(", ")),
+                    );
+                } else {
+                    self.var_class_map
+                        .insert(var.name.clone(), class_name.clone());
+                }
             }
             _ => {}
         }
@@ -429,7 +447,17 @@ impl IRGenerator {
                     self.emit_line(&format!("  store {}, {}* %{}", value, var_type, llvm_name));
                 }
             } else {
+                // 对于泛型类型变量的初始化，传递期望目标类型以便单态化：
+                // - `Box<int> b = new Box(42)`：将 new 解析到 Box<int> 特化版本；
+                // - `Optional<int> o = Optional.of(42)`：将静态工厂调用解析到
+                //   Optional<int> 单态化版本（而非类型擦除的基础模板）。
+                let is_generic_init = matches!(actual_type, Type::Generic(_, _))
+                    && matches!(init, Expr::New(_) | Expr::Call(_));
+                if is_generic_init {
+                    self.pending_new_expected_type = Some(actual_type.clone());
+                }
                 let value = self.generate_expression(init)?;
+                self.pending_new_expected_type = None;
                 let (value_type, val) = self.parse_typed_value(&value);
 
                 // 如果值类型与变量类型不匹配，需要转换

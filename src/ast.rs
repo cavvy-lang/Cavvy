@@ -29,6 +29,7 @@ pub struct Program {
     pub namespace_decls: Vec<NamespaceDecl>,  // 块级 namespace 声明
     pub using_decls: Vec<UsingDecl>,          // using 声明
     pub link_libraries: Vec<LinkLibraryDecl>, // #link 声明的链接库
+    pub specialize_classes: Vec<SpecializeClassDecl>, // 显式特化类声明
 }
 
 /// namespace 块级声明 - namespace std { ... }
@@ -153,6 +154,16 @@ pub struct ClassDecl {
     pub interfaces: Vec<String>, // 实现的接口列表
     pub members: Vec<ClassMember>,
     pub namespace_path: Vec<String>, // 所属命名空间路径
+    pub loc: SourceLocation,
+}
+
+/// 显式特化类声明 - specialize class Box<int> { ... }
+#[derive(Debug, Clone)]
+pub struct SpecializeClassDecl {
+    pub base_name: String,       // 基础类名，如 "Box"
+    pub type_args: Vec<Type>,    // 特化类型参数，如 [int]
+    pub members: Vec<ClassMember>, // 特化版本的成员（可覆盖原方法）
+    pub namespace_path: Vec<String>,
     pub loc: SourceLocation,
 }
 
@@ -850,6 +861,7 @@ impl Program {
             namespace_decls: Vec::new(),
             using_decls: self.using_decls.clone(),
             link_libraries: self.link_libraries.clone(),
+            specialize_classes: self.specialize_classes.clone(),
         }
     }
 }
@@ -868,6 +880,7 @@ impl Default for Program {
             namespace_decls: Vec::new(),
             using_decls: Vec::new(),
             link_libraries: Vec::new(),
+            specialize_classes: Vec::new(),
         }
     }
 }

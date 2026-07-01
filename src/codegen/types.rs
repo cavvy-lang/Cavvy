@@ -84,15 +84,42 @@ impl IRGenerator {
                 }
             }
             Type::Struct(name) => format!("%struct.{}*", name), // 命名结构体指针（变量存储指针）
-            // 泛型类型参数 - 查找特化映射，回退到 i8*
+            // 泛型类型参数 - 编译期单态化
+            // 注：在正确的单态化流程中，所有 GenericParam 应在代码生成前被替换为具体类型
+            // 若到达此处，说明单态化阶段有遗漏，返回 i8* 作为安全回退并记录警告
             Type::GenericParam(param_name) => {
                 if let Some(actual_type) = self.generic_type_args.get(param_name) {
                     self.type_to_llvm(actual_type)
                 } else {
+                    let warning = crate::error::codegen_warning_at(
+                        crate::error::SourceLocation::new(Some(self.source_file.clone()), self.source_line, self.source_column),
+                        format!("泛型类型参数 '{}' 未在单态化上下文中解析，将使用 i8*。", param_name)
+                    );
+                    self.warnings.borrow_mut().push(warning);
                     "i8*".to_string()
                 }
             }
-            Type::Generic(_, _) => "i8*".to_string(),
+            Type::Generic(class_name, type_args) => {
+                // 泛型类型实例（如 Box<int>）。类实例在本编译器中统一用不透明指针 i8*
+                // 表示，enum/struct 有各自的表示。此处按基础类名分类解析，避免误报警告。
+                let base_name = class_name
+                    .split('<')
+                    .next()
+                    .unwrap_or(class_name)
+                    .trim_end();
+                if let Some(ref registry) = self.type_registry {
+                    if registry.get_enum_by_name(base_name).is_some() {
+                        return "{ i32, i64 }".to_string();
+                    }
+                    if registry.get_struct(base_name).is_some() {
+                        // struct 特化仍使用基础名的命名结构体指针
+                        return format!("%struct.{}*", base_name);
+                    }
+                }
+                // 未使用的 type_args 变量占位（类实例为不透明指针，无需展开）
+                let _ = type_args;
+                "i8*".to_string()
+            }
         }
     }
 

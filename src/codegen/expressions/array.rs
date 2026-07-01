@@ -13,12 +13,14 @@ impl IRGenerator {
     /// # Arguments
     /// * `arr` - 数组创建表达式
     pub fn generate_array_creation(&mut self, arr: &ArrayCreationExpr) -> cayResult<String> {
+        // 单态化上下文下，将泛型参数 T 替换为实际类型
+        let element_type = self.resolve_type_arg_concrete(&arr.element_type);
         if arr.sizes.len() == 1 {
             // 一维数组
-            self.generate_1d_array_creation(&arr.element_type, &arr.sizes[0], &arr.loc)
+            self.generate_1d_array_creation(&element_type, &arr.sizes[0], &arr.loc)
         } else {
             // 多维数组
-            self.generate_md_array_creation(&arr.element_type, &arr.sizes, &arr.loc)
+            self.generate_md_array_creation(&element_type, &arr.sizes, &arr.loc)
         }
     }
 

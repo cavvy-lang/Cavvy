@@ -857,6 +857,7 @@ impl IrBuilder {
                 column: 0,
                 message: "Inline IR block has no lines".to_string(),
                 suggestion: "Check parser implementation".to_string(),
+                is_warning: false,
             });
         }
 
@@ -881,6 +882,7 @@ impl IrBuilder {
                     column: 0,
                     message: format!("Inline IR error: {}", e),
                     suggestion: "Check your inline IR syntax".to_string(),
+                    is_warning: false,
                 })?;
 
         // 将内联IR块转换为IR指令

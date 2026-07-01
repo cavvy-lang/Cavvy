@@ -167,6 +167,30 @@ fn test_generics_syntax() {
 }
 
 // ============================================================
+// 编译期单态化测试
+// ============================================================
+
+#[test]
+fn test_monomorphization() {
+    let output = compile_and_run_eol("examples/test_monomorphization.cay")
+        .expect("test_monomorphization.cay should compile and run");
+    assert_output_contains(
+        &output,
+        &[
+            "=== 编译期单态化测试 ===",
+            "Box<int>(42).get() = 42",
+            "Box<String>(\"Hello Mono\").get() = Hello Mono",
+            "Box<int>.describe() = Box<int> specialized",
+            "Box<String>.describe() = Generic Box",
+            "Container<int>(100).getItem() = 100",
+            "Container<String>(\"World\").getItem() = World",
+            "=== 编译期单态化测试通过 ===",
+        ],
+        "test_monomorphization",
+    );
+}
+
+// ============================================================
 // 已有 Optional 测试回归
 // ============================================================
 

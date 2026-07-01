@@ -156,7 +156,8 @@ impl IRGenerator {
 
         // 尝试作为实例字段访问（隐式 this）
         if !self.current_class.is_empty() {
-            if let Some(field_info) = self.get_instance_field(&self.current_class, name).cloned() {
+            let field_lookup_class = self.this_field_class_name();
+            if let Some(field_info) = self.get_instance_field(&field_lookup_class, name).cloned() {
                 let is_struct = self.is_struct_type(&self.current_class);
                 let this_llvm_name = self
                     .scope_manager

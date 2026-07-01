@@ -92,12 +92,8 @@ public class vector<T> {
     }
 
     private static void copy_slots(T[] dest, T[] src, int count) {
-        __ir {
-            %dest_i8 = bitcast i8** %dest to i8*
-            %src_i8 = bitcast i8** %src to i8*
-            %count64 = sext i32 %count to i64
-            %bytes = mul i64 %count64, 8
-            call void @llvm.memcpy.p0i8.p0i8.i64(i8* %dest_i8, i8* %src_i8, i64 %bytes, i1 false)
+        for (int i = 0; i < count; i = i + 1) {
+            dest[i] = src[i];
         }
     }
 
@@ -106,16 +102,8 @@ public class vector<T> {
             return;
         }
 
-        __ir {
-            %idx64 = sext i32 %index to i64
-            %cnt64 = sext i32 %count to i64
-            %dst_slot = getelementptr i8*, i8** %data, i64 %idx64
-            %src_idx = add i64 %idx64, 1
-            %src_slot = getelementptr i8*, i8** %data, i64 %src_idx
-            %dst_i8 = bitcast i8** %dst_slot to i8*
-            %src_i8 = bitcast i8** %src_slot to i8*
-            %bytes = mul i64 %cnt64, 8
-            call void @llvm.memmove.p0i8.p0i8.i64(i8* %dst_i8, i8* %src_i8, i64 %bytes, i1 false)
+        for (int i = 0; i < count; i = i + 1) {
+            data[index + i - 1] = data[index + i];
         }
     }
 
@@ -124,13 +112,8 @@ public class vector<T> {
             return;
         }
 
-        __ir {
-            %idx64 = sext i32 %index to i64
-            %cnt64 = sext i32 %count to i64
-            %slot = getelementptr i8*, i8** %data, i64 %idx64
-            %slot_i8 = bitcast i8** %slot to i8*
-            %bytes = mul i64 %cnt64, 8
-            call void @llvm.memset.p0i8.i64(i8* %slot_i8, i8 0, i64 %bytes, i1 false)
+        for (int i = 0; i < count; i = i + 1) {
+            data[index + i] = 0;
         }
     }
 

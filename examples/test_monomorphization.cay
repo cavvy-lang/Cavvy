@@ -1,0 +1,101 @@
+/**
+ * 编译期单态化与显式特化集成测试
+ *
+ * 测试内容:
+ * - 泛型类编译期单态化: class Box<T> -> Box<int>, Box<String>
+ * - 显式特化语法: specialize class Box<int> { ... }
+ * - 显式特化覆盖原方法实现
+ */
+
+// 泛型类 Box<T>
+public class Box<T> {
+    private T value;
+    private boolean hasValue;
+
+    public Box() {
+        this.hasValue = false;
+    }
+
+    public Box(T value) {
+        this.value = value;
+        this.hasValue = true;
+    }
+
+    public T get() {
+        return this.value;
+    }
+
+    public void set(T value) {
+        this.value = value;
+        this.hasValue = true;
+    }
+
+    public boolean isPresent() {
+        return this.hasValue;
+    }
+
+    public boolean isEmpty() {
+        return !this.hasValue;
+    }
+
+    // 用于测试显式特化覆盖的方法
+    public String describe() {
+        return "Generic Box";
+    }
+}
+
+// 显式特化 Box<int> - 覆盖 describe 方法
+specialize class Box<int> {
+    public String describe() {
+        return "Box<int> specialized";
+    }
+}
+
+// 泛型类 Container<T>
+public class Container<T> {
+    private T item;
+
+    public Container(T item) {
+        this.item = item;
+    }
+
+    public T getItem() {
+        return this.item;
+    }
+}
+
+public class MonomorphizationTest {
+    public static void main() {
+        println("=== 编译期单态化测试 ===");
+
+        // 测试 Box<int> 单态化
+        Box<int> intBox = new Box(42);
+        if (intBox.isPresent()) {
+            println("Box<int>(42).get() = " + String.valueOf(intBox.get()));
+        }
+
+        // 测试 Box<String> 单态化
+        Box<String> strBox = new Box("Hello Mono");
+        if (strBox.isPresent()) {
+            println("Box<String>(\"Hello Mono\").get() = " + String.valueOf(strBox.get()));
+        }
+
+        // 测试显式特化覆盖的方法
+        String desc = intBox.describe();
+        println("Box<int>.describe() = " + desc);
+
+        // 测试未特化的 Box<String> 仍使用原始实现
+        String strDesc = strBox.describe();
+        println("Box<String>.describe() = " + strDesc);
+
+        // 测试 Container<int> 单态化
+        Container<int> intContainer = new Container(100);
+        println("Container<int>(100).getItem() = " + String.valueOf(intContainer.getItem()));
+
+        // 测试 Container<String> 单态化
+        Container<String> strContainer = new Container("World");
+        println("Container<String>(\"World\").getItem() = " + String.valueOf(strContainer.getItem()));
+
+        println("=== 编译期单态化测试通过 ===");
+    }
+}

@@ -6,6 +6,29 @@ use crate::ast::*;
 use crate::codegen::context::IRGenerator;
 use crate::error::cayResult;
 
+/// 将类型中的泛型参数（`GenericParam` 或裸 `Object("T")`）替换为具体类型实参。
+/// 用于将构造函数形参在 new 单态化时解析为具体类型。
+fn substitute_generic_param(
+    ty: &crate::types::Type,
+    type_args: &[crate::types::Type],
+    type_params: &[String],
+) -> crate::types::Type {
+    use crate::types::Type;
+    let name = match ty {
+        Type::GenericParam(n) => Some(n),
+        Type::Object(n) => Some(n),
+        _ => None,
+    };
+    if let Some(name) = name {
+        if let Some(idx) = type_params.iter().position(|p| p == name) {
+            if let Some(arg) = type_args.get(idx) {
+                return arg.clone();
+            }
+        }
+    }
+    ty.clone()
+}
+
 impl IRGenerator {
     /// 生成 new 表达式代码
     ///
@@ -13,6 +36,9 @@ impl IRGenerator {
     /// * `new_expr` - new 表达式
     pub fn generate_new_expression(&mut self, new_expr: &NewExpr) -> cayResult<String> {
         let class_name = &new_expr.class_name;
+
+        // 消费期望目标类型（单次使用，避免泄漏到参数中的嵌套 new 表达式）
+        let expected_type = self.pending_new_expected_type.take();
 
         // 提取基础类名（不含泛型参数）用于类型注册表查找
         let base_class_name = if let Some(pos) = class_name.find('<') {
@@ -47,8 +73,70 @@ impl IRGenerator {
             base_class_name.clone()
         };
 
-        // 使用完整的泛型类名用于代码生成（确保构造函数名一致）
-        let canonical_name = class_name.clone();
+        // 单态化：解析该 new 表达式的具体类型参数。
+        // 优先使用 new 表达式自带的显式类型参数（如 `new Box<int>()`），
+        // 否则回退到期望目标类型（如变量声明 `Box<int> b = new Box(42)`）。
+        let concrete_type_args: Option<Vec<crate::types::Type>> = {
+            let class_type_params = self
+                .type_registry
+                .as_ref()
+                .and_then(|r| r.get_class(&base_class_name))
+                .map(|c| c.type_params.clone())
+                .unwrap_or_default();
+            if class_type_params.is_empty() {
+                None
+            } else {
+                // 候选类型实参：优先期望目标类型（如变量声明 Optional<int>），
+                // 其次退回类型参数在当前 generic_type_args 中的映射（特化方法体内
+                // 声明类型仍写作 Optional<T> 的情况）。
+                let candidate: Option<Vec<crate::types::Type>> =
+                    if let Some(crate::types::Type::Generic(exp_base, exp_args)) = &expected_type {
+                        let exp_base_simple = exp_base
+                            .split('<')
+                            .next()
+                            .unwrap_or(exp_base)
+                            .rsplit("::")
+                            .next()
+                            .unwrap_or(exp_base);
+                        if exp_base_simple == base_class_name && !exp_args.is_empty() {
+                            Some(exp_args.clone())
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                    .or_else(|| {
+                        let m: Vec<crate::types::Type> = class_type_params
+                            .iter()
+                            .filter_map(|p| self.generic_type_args.get(p).cloned())
+                            .collect();
+                        if m.len() == class_type_params.len() {
+                            Some(m)
+                        } else {
+                            None
+                        }
+                    });
+                // 将候选实参经 generic_type_args 解析为具体类型（如 Object("T") -> int），
+                // 仅当全部具体时才单态化，否则退回类型擦除基础模板。
+                candidate
+                    .map(|args| {
+                        args.iter()
+                            .map(|t| self.resolve_type_arg_concrete(t))
+                            .collect::<Vec<_>>()
+                    })
+                    .filter(|args| args.iter().all(|t| self.type_arg_is_concrete(t)))
+            }
+        };
+
+        // 计算用于代码生成的规范类名：若已解析出具体类型参数，则使用特化名
+        // （如 Box<int>），使构造函数名、vtable 与已生成的特化版本保持一致。
+        let canonical_name = if let Some(ref args) = concrete_type_args {
+            let args_str: Vec<String> = args.iter().map(|t| format!("{}", t)).collect();
+            format!("{}<{}>", base_class_name, args_str.join(", "))
+        } else {
+            class_name.clone()
+        };
         let type_id_value = self.get_type_id_value(&registry_name).unwrap_or(0);
 
         // 获取类布局信息，确定对象大小（使用基础类名查找）
@@ -99,7 +187,8 @@ impl IRGenerator {
         ));
 
         // 存储 vtable 指针到 offset 8（type_id 之后）
-        let llvm_class = self.get_qualified_class_name(&registry_name);
+        // 使用完整特化类名生成独立 vtable（如 Box<int>）
+        let llvm_class = self.get_qualified_class_name(&canonical_name);
         let vtable_name = format!("{}.vtable", llvm_class);
         let vtable_ptr_temp = self.new_temp();
         self.emit_line(&format!(
@@ -157,6 +246,14 @@ impl IRGenerator {
                     .cloned()
             });
 
+        // 类的类型参数名列表（用于将构造函数参数中的泛型参数替换为具体类型）
+        let class_type_params: Vec<String> = self
+            .type_registry
+            .as_ref()
+            .and_then(|r| r.get_class(&registry_name))
+            .map(|c| c.type_params.clone())
+            .unwrap_or_default();
+
         let mut arg_values = Vec::new();
         for (idx, arg) in new_expr.args.iter().enumerate() {
             let arg_val = self.generate_expression(arg)?;
@@ -165,7 +262,23 @@ impl IRGenerator {
                 .and_then(|ctor| ctor.params.get(idx))
                 .map(|p| matches!(p.param_type, crate::types::Type::GenericParam(_)))
                 .unwrap_or(false);
-            if is_generic_param {
+            // 已单态化（已知具体类型参数）时，构造函数形参已是具体类型，
+            // 直接按具体类型传参，无需装箱为 i8*。
+            let concrete_param = if is_generic_param {
+                concrete_type_args.as_ref().and_then(|type_args| {
+                    ctor_info_opt
+                        .as_ref()
+                        .and_then(|ctor| ctor.params.get(idx))
+                        .map(|p| substitute_generic_param(&p.param_type, type_args, &class_type_params))
+                })
+            } else {
+                None
+            };
+            if let Some(concrete_ty) = concrete_param {
+                let concrete_llvm = self.type_to_llvm(&concrete_ty);
+                let (arg_ty, arg_v) = self.parse_typed_value(&arg_val);
+                arg_values.push(self.convert_arg_type(&arg_ty, &arg_v, &concrete_llvm));
+            } else if is_generic_param {
                 let inferred_type = self.infer_argument_type(arg);
                 let boxed_val = self.box_value_for_generic(&arg_val, &inferred_type)?;
                 arg_values.push(boxed_val);

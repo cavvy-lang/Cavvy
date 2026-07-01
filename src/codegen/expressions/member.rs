@@ -280,7 +280,7 @@ impl IRGenerator {
         let class_name_opt: Option<String> = if let Expr::Identifier(name) = &*member.object {
             let name_str = name.as_ref();
             if name_str == "this" {
-                Some(self.current_class.clone())
+                Some(self.this_field_class_name())
             } else if name_str == "super" {
                 // super 访问父类的成员
                 if let Some(parent_class) = self.get_parent_class(&self.current_class) {
@@ -506,7 +506,7 @@ impl IRGenerator {
         let class_name_opt: Option<String> = if let Expr::Identifier(name) = &*member.object {
             let name_str = name.as_ref();
             if name_str == "this" {
-                Some(self.current_class.clone())
+                Some(self.this_field_class_name())
             } else if name_str == "super" {
                 self.get_parent_class(&self.current_class)
             } else {

@@ -209,6 +209,11 @@ pub struct IRGenerator {
     pub global_counter: usize,
     pub current_function: String,
     pub current_class: String,
+    /// 当前正在生成的方法所属类的特化布局键（含命名空间与类型实参），
+    /// 如 "std::Optional<double>"。仅当处于泛型特化方法体内时为 `Some`。
+    /// `current_class` 被裁剪为裸类名（用于参数命名），无法定位特化布局；
+    /// 此字段保留完整特化名，使 `this`/隐式字段访问能解析到已单态化的字段类型。
+    pub current_class_specialized: Option<String>,
     pub current_return_type: String,
     pub var_types: HashMap<String, String>,
     pub var_cay_types: HashMap<String, crate::types::Type>, // 变量名到Cavvy类型的映射
@@ -257,6 +262,9 @@ pub struct IRGenerator {
     pub lambda_counter: usize,                // Lambda函数名计数器，确保唯一性
     // 泛型特化：当前类型参数映射（如 {"T" -> Type::Int32}）
     pub generic_type_args: HashMap<String, crate::types::Type>,
+    // 泛型特化：new 表达式的期望目标类型（如变量声明 `Box<int> b = new Box(42)`
+    // 中的 `Box<int>`），用于将无显式类型参数的 new 单态化到具体特化版本。
+    pub pending_new_expected_type: Option<crate::types::Type>,
     // 泛型特化：已收集的特化实例（基础类名 -> 实例集合）
     pub specializations: HashMap<String, HashSet<crate::codegen::specialization::SpecializationInstance>>,
     // 泛型特化：已生成的特化方法名（避免重复生成）
@@ -265,6 +273,12 @@ pub struct IRGenerator {
     pub generated_vtables: HashSet<String>,
     // 已生成的方法定义（避免重复生成）
     pub generated_methods: HashSet<String>,
+    // 代码生成阶段收集的警告（使用 RefCell 允许在 &self 方法中修改）
+    pub warnings: std::cell::RefCell<Vec<crate::error::cayError>>,
+    // 类定义缓存（用于显式特化查找原始类）
+    pub classes_cache: std::collections::HashMap<String, crate::ast::ClassDecl>,
+    // 显式特化类型组合记录（基础类名 -> 特化类型参数列表集合）
+    pub explicit_specializations: std::collections::HashMap<String, std::collections::HashSet<String>>,
 }
 
 /// DWARF 子程序元数据
@@ -292,6 +306,7 @@ impl IRGenerator {
             global_counter: 0,
             current_function: String::new(),
             current_class: String::new(),
+            current_class_specialized: None,
             current_return_type: String::new(),
             var_types: HashMap::new(),
             var_cay_types: HashMap::new(),
@@ -338,10 +353,14 @@ impl IRGenerator {
             lambda_envs: HashMap::new(),
             lambda_counter: 0,
             generic_type_args: HashMap::new(),
+            pending_new_expected_type: None,
             specializations: HashMap::new(),
             generated_specializations: HashSet::new(),
             generated_vtables: HashSet::new(),
             generated_methods: HashSet::new(),
+            warnings: std::cell::RefCell::new(Vec::new()),
+            classes_cache: std::collections::HashMap::new(),
+            explicit_specializations: std::collections::HashMap::new(),
         }
     }
 
@@ -747,6 +766,66 @@ impl IRGenerator {
         }
     }
 
+    /// 将泛型类型实参经 `generic_type_args` 递归替换为具体类型。
+    /// 兼容解析器为裸类型参数发出的 `Type::Object("T")` 与语义分析产生的
+    /// `Type::GenericParam("T")` 两种表示。
+    pub fn resolve_type_arg_concrete(&self, ty: &crate::types::Type) -> crate::types::Type {
+        self.resolve_type_arg_concrete_depth(ty, 0)
+    }
+
+    fn resolve_type_arg_concrete_depth(&self, ty: &crate::types::Type, depth: usize) -> crate::types::Type {
+        use crate::types::Type;
+        // 深度上限防止自映射（如 T -> Object("T")）导致的无限递归
+        if depth > 16 {
+            return ty.clone();
+        }
+        match ty {
+            Type::GenericParam(name) | Type::Object(name) => {
+                if let Some(actual) = self.generic_type_args.get(name) {
+                    // 若映射到自身则停止，避免死循环
+                    let maps_to_self = matches!(actual,
+                        Type::GenericParam(n) | Type::Object(n) if n == name);
+                    if maps_to_self {
+                        ty.clone()
+                    } else {
+                        self.resolve_type_arg_concrete_depth(actual, depth + 1)
+                    }
+                } else {
+                    ty.clone()
+                }
+            }
+            Type::Array(inner) => {
+                Type::Array(Box::new(self.resolve_type_arg_concrete_depth(inner, depth + 1)))
+            }
+            Type::Pointer(inner) => {
+                Type::Pointer(Box::new(self.resolve_type_arg_concrete_depth(inner, depth + 1)))
+            }
+            Type::Generic(base, args) => Type::Generic(
+                base.clone(),
+                args.iter().map(|a| self.resolve_type_arg_concrete_depth(a, depth + 1)).collect(),
+            ),
+            _ => ty.clone(),
+        }
+    }
+
+    /// 判断类型实参是否为具体类型（非未解析的泛型参数）。
+    /// `GenericParam` 恒为非具体；`Object(name)` 仅当 `name` 是已注册的类时才算
+    /// 具体（未注册的短名如 "T" 视为未解析参数）。
+    pub fn type_arg_is_concrete(&self, ty: &crate::types::Type) -> bool {
+        use crate::types::Type;
+        match ty {
+            Type::GenericParam(_) => false,
+            Type::Object(name) => self
+                .type_registry
+                .as_ref()
+                .map(|r| r.get_class(name).is_some() || r.get_interface(name).is_some())
+                .unwrap_or(false),
+            Type::Array(inner) | Type::Pointer(inner) => self.type_arg_is_concrete(inner),
+            Type::Generic(_, args) => args.iter().all(|a| self.type_arg_is_concrete(a)),
+            _ => true,
+        }
+    }
+
     /// 获取表达式的类型
     /// 用于在代码生成期间推断表达式类型
     pub fn get_expression_type(&self, expr: &crate::ast::Expr) -> Option<crate::types::Type> {
@@ -956,9 +1035,18 @@ impl IRGenerator {
         let processed_name = if let Some(ref registry) = self.type_registry {
             if let Some(class_info) = registry.get_class(base_name) {
                 if !class_info.type_params.is_empty() {
-                    // 这是泛型类，使用原始类型参数名（如 T）
-                    let type_param_suffix = class_info.type_params.join("_");
-                    format!("{}_{}_", base_name, type_param_suffix)
+                    if class_name.contains('<') {
+                        // 这是特化版本（如 Box<int>），使用实际类型参数生成独立名称
+                        class_name
+                            .replace("<", "_")
+                            .replace(">", "_")
+                            .replace(",", "_")
+                            .replace(" ", "_")
+                    } else {
+                        // 这是原始泛型类（如 Box），使用类型参数名（如 T）
+                        let type_param_suffix = class_info.type_params.join("_");
+                        format!("{}_{}_", base_name, type_param_suffix)
+                    }
                 } else {
                     // 不是泛型类，正常处理
                     if class_name.contains('<') {
@@ -1025,14 +1113,6 @@ impl IRGenerator {
     ) -> String {
         let cls = self.get_qualified_class_name(class_name);
 
-        // 对泛型特化版本，使用基础类名作为前缀（与调用端一致）
-        let base_cls = if class_name.contains('<') {
-            let base_name = class_name.split('<').next().unwrap_or(class_name);
-            self.get_qualified_class_name(base_name)
-        } else {
-            cls.clone()
-        };
-
         // 只对泛型类尝试从类型注册表获取方法信息
         // 因为类型注册表中的 MethodInfo 已经将泛型参数替换为 GenericParam 类型
         if class_name.contains('<') {
@@ -1052,7 +1132,7 @@ impl IRGenerator {
                                 if method_info.params.len() == method.params.len() {
                                     // 使用 MethodInfo 中的参数类型（已替换泛型参数）
                                     if method_info.params.is_empty() {
-                                        return format!("{}.{}", base_cls, method.name);
+                                        return format!("{}.{}", cls, method.name);
                                     } else {
                                         let param_types: Vec<String> = method_info
                                             .params
@@ -1067,7 +1147,7 @@ impl IRGenerator {
                                             .collect();
                                         return format!(
                                             "{}.__{}_{}",
-                                            base_cls,
+                                            cls,
                                             method.name,
                                             param_types.join("_")
                                         );
@@ -1082,7 +1162,7 @@ impl IRGenerator {
 
         // 回退：使用 AST 中的参数类型
         if method.params.is_empty() {
-            format!("{}.{}", base_cls, method.name)
+            format!("{}.{}", cls, method.name)
         } else {
             let param_types: Vec<String> = method
                 .params
@@ -1095,7 +1175,7 @@ impl IRGenerator {
                     }
                 })
                 .collect();
-            format!("{}.__{}_{}", base_cls, method.name, param_types.join("_"))
+            format!("{}.__{}_{}", cls, method.name, param_types.join("_"))
         }
     }
 
@@ -1168,7 +1248,7 @@ impl IRGenerator {
 
     /// 将可变参数类型转换为签名
     /// 可变参数在内部表示为 Array(ElementType)，需要提取元素类型
-    fn varargs_type_to_signature(&self, ty: &crate::types::Type) -> String {
+    pub fn varargs_type_to_signature(&self, ty: &crate::types::Type) -> String {
         use crate::types::Type;
         // 可变参数类型是 Array(ElementType)，提取元素类型
         match ty {
@@ -1619,12 +1699,23 @@ impl IRGenerator {
     }
 
     /// 获取实例字段信息（支持 class 和 struct）
+    /// 返回用于 `this`/隐式字段访问的类布局键。
+    ///
+    /// 在泛型特化方法体内，`current_class` 被裁剪为裸类名（如 "Optional"），
+    /// 其字段布局是类型擦除的（`value: i8*`）。此时应改用完整特化名
+    /// （如 "std::Optional<double>"），从而解析到已单态化的字段类型
+    /// （`value: double`），使 `return value;` 加载/返回正确的具体类型。
+    pub fn this_field_class_name(&self) -> String {
+        self.current_class_specialized
+            .clone()
+            .unwrap_or_else(|| self.current_class.clone())
+    }
+
     pub fn get_instance_field(
         &self,
         class_name: &str,
         field_name: &str,
-    ) -> Option<&InstanceFieldInfo> {
-        // 先用传入的类名直接查找 class 布局
+    ) -> Option<&InstanceFieldInfo> {        // 先用传入的类名直接查找 class 布局
         if let Some(layout) = self.class_layouts.get(class_name) {
             if let Some(result) = layout.fields.get(field_name) {
                 return Some(result);
@@ -1804,6 +1895,11 @@ impl IRGenerator {
 
     /// 将当前简单类名解析为限定名（如 "HttpHeaders" → "http::HttpHeaders"）
     pub fn resolve_current_qualified_class(&self) -> String {
+        // 泛型特化方法体内，`this` 字段写入必须使用特化布局（字段类型已单态化），
+        // 与读取侧（this_field_class_name）保持一致，避免读写偏移不一致。
+        if let Some(ref specialized) = self.current_class_specialized {
+            return specialized.clone();
+        }
         if let Some(ref registry) = self.type_registry {
             if let Some(qname) = registry.find_qualified_class(&self.current_class) {
                 return qname;

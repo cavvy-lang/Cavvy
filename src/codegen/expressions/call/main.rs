@@ -13,6 +13,13 @@ impl IRGenerator {
     /// # Arguments
     /// * `call` - 函数调用表达式
     pub fn generate_call_expression(&mut self, call: &CallExpr) -> cayResult<String> {
+        // 捕获变量声明为泛型静态工厂调用（如 `Optional<int> x = Optional.of(42)`）设置的
+        // 期望类型，供下方将静态方法调用特化到具体单态化版本时推断类型参数。
+        // 在生成任何子表达式（可能清除该字段）之前读取。
+        let expected_static_type = self.pending_new_expected_type.clone();
+        // 进入本次调用前的泛型类型参数映射快照。下方静态工厂特化与接收者泛型安装
+        // 都会修改该映射，调用结束时恢复到此快照，避免类型参数泄漏到后续代码。
+        let entry_generic_args = self.generic_type_args.clone();
         // 处理 print 和 println 函数
         if let Expr::Identifier(name) = call.callee.as_ref() {
             match name.as_str() {
@@ -166,8 +173,13 @@ impl IRGenerator {
                     // 顶层函数没有类名前缀
                     (String::new(), name_str.to_string(), None, false)
                 } else if !self.current_class.is_empty() {
+                    // 泛型特化方法体内使用完整特化类名，确保隐式静态/实例调用链接到
+                    // 已单态化的特化版本，而非类型擦除的基础模板。
+                    let class_name = self.current_class_specialized
+                        .clone()
+                        .unwrap_or_else(|| self.current_class.clone());
                     (
-                        self.current_class.clone(),
+                        class_name,
                         name_str.to_string(),
                         None,
                         false,
@@ -195,8 +207,11 @@ impl IRGenerator {
                             )
                         } else if obj_name_str == "this" {
                             // this.methodName() - 首先检查是否是函数指针字段
+                            let class_name = self.current_class_specialized
+                                .clone()
+                                .unwrap_or_else(|| self.current_class.clone());
                             if let Some(field_type) =
-                                self.get_field_type(&self.current_class, &member.member)
+                                self.get_field_type(&class_name, &member.member)
                             {
                                 if matches!(field_type, crate::types::Type::Function(_)) {
                                     // 是函数指针字段调用
@@ -210,7 +225,7 @@ impl IRGenerator {
                             }
                             // 不是函数指针字段，按普通方法处理
                             (
-                                self.current_class.clone(),
+                                class_name,
                                 member.member.clone(),
                                 Some(member.object.clone()),
                                 false,
@@ -366,6 +381,9 @@ impl IRGenerator {
                                             }
                                         }
                                     }
+                                    // 构建完整特化类名（如 Box<int>）用于方法查找与生成
+                                    let type_args_str: Vec<String> = type_args.iter().map(|t| format!("{}", t)).collect();
+                                    let specialized_class_name = format!("{}<{}>", class_name, type_args_str.join(", "));
                                     // 首先检查是否是函数指针字段
                                     if let Some(field_type) =
                                         self.get_field_type(&class_name, &member.member)
@@ -382,7 +400,7 @@ impl IRGenerator {
                                     }
                                     // 不是函数指针字段，按普通方法处理
                                     (
-                                        class_name,
+                                        specialized_class_name,
                                         member.member.clone(),
                                         Some(member.object.clone()),
                                         false,
@@ -417,6 +435,45 @@ impl IRGenerator {
                 ));
             }
         };
+
+        // 泛型静态工厂调用的单态化：形如 `Optional<int> x = Optional.of(42)`，
+        // 调用点的 class_name 只有裸类名 "Optional"，若不特化则解析到未定义的
+        // 类型擦除基础模板 Optional_T_.of。此处依据变量声明的期望类型 Optional<int>
+        // 推断类型参数（T=int），将 class_name 特化为 "Optional<int>" 并安装类型映射，
+        // 使调用解析到单态化版本 Optional_int_.of。
+        let mut class_name = class_name;
+        if is_static_call && !class_name.contains('<') {
+            if let Some(crate::types::Type::Generic(exp_base, exp_args)) = &expected_static_type {
+                if !exp_args.is_empty() {
+                    let exp_base_bare = exp_base.rsplit("::").next().unwrap_or(exp_base);
+                    let cn_bare = class_name.rsplit("::").next().unwrap_or(&class_name).to_string();
+                    if exp_base_bare == cn_bare {
+                        let type_params = self
+                            .type_registry
+                            .as_ref()
+                            .and_then(|r| r.get_class(&cn_bare))
+                            .map(|c| c.type_params.clone());
+                        if let Some(params) = type_params {
+                            if !params.is_empty() {
+                                for (idx, param) in params.iter().enumerate() {
+                                    if let Some(arg) = exp_args.get(idx) {
+                                        self.generic_type_args.insert(param.clone(), arg.clone());
+                                    }
+                                }
+                                let args_str: Vec<String> =
+                                    exp_args.iter().map(|t| format!("{}", t)).collect();
+                                class_name = format!("{}<{}>", cn_bare, args_str.join(", "));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 安装接收者的具体泛型类型参数映射，使方法签名中的泛型参数（如参数/返回
+        // 类型 T）能在参数类型解析与转换之前就解析为具体类型。静态泛型工厂调用的
+        // 映射已在上文按期望类型安装。调用结束后恢复到进入本函数时的快照。
+        self.install_receiver_generic_args(&obj_expr);
 
         // 检查是否有命名参数需要重排
         let has_named_args = call.args.iter().any(|a| matches!(a, Expr::NamedArg(_)));
@@ -627,7 +684,7 @@ impl IRGenerator {
         let needs_vtable_dispatch =
             is_instance_method && resolved_this_val.is_some() && has_dispatch_slot && !is_private;
 
-        if needs_vtable_dispatch {
+        let call_result = if needs_vtable_dispatch {
             let this_val = resolved_this_val.unwrap();
 
             // 计算 vtable 指针位置（this + 8）
@@ -721,6 +778,10 @@ impl IRGenerator {
                 ));
                 Ok(format!("{} {}", llvm_ret_type, temp))
             }
-        }
+        };
+
+        // 恢复调用前的泛型类型参数映射
+        self.generic_type_args = entry_generic_args;
+        call_result
     }
 }

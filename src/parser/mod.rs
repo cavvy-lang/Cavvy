@@ -73,6 +73,7 @@ impl Parser {
         let mut namespace_path: Option<Vec<String>> = None;
         let mut namespace_decls = Vec::new();
         let mut using_decls = Vec::new();
+        let mut specialize_classes = Vec::new();
 
         // 检查文件级 namespace 声明 (必须是文件第一个非注释/空行的语句)
         // 需要 lookahead 区分: namespace path; (文件级) vs namespace path { (块级)
@@ -102,6 +103,8 @@ impl Parser {
                 namespace_decls.push(self.parse_namespace_block()?);
             } else if self.check(&crate::lexer::Token::Using) {
                 using_decls.push(self.parse_using_declaration()?);
+            } else if self.check(&crate::lexer::Token::Specialize) {
+                specialize_classes.push(self.parse_specialize_class()?);
             } else if self.check(&crate::lexer::Token::Interface)
                 || (self.check(&crate::lexer::Token::Public)
                     && self.check_next(&crate::lexer::Token::Interface))
@@ -237,6 +240,7 @@ impl Parser {
             namespace_decls,
             using_decls,
             link_libraries: Vec::new(), // 链接库信息由预处理器收集，在编译阶段合并
+            specialize_classes,
         })
     }
 
@@ -258,6 +262,10 @@ impl Parser {
     }
 
     /// 解析泛型类型参数 <T, U, ...>
+    fn parse_specialize_class(&mut self) -> cayResult<crate::ast::SpecializeClassDecl> {
+        classes::parse_specialize_class(self)
+    }
+
     fn parse_generic_type_params(&mut self) -> cayResult<Vec<String>> {
         classes::parse_generic_type_params(self)
     }

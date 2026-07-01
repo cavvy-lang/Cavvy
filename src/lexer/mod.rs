@@ -186,6 +186,8 @@ pub enum Token {
     // 类型别名关键字
     #[token("alias")]
     Alias,
+    #[token("specialize")]
+    Specialize,
     #[token("fn")]
     #[token("function")]
     Fn,
@@ -1004,6 +1006,7 @@ pub fn token_name(token: &Token) -> &'static str {
         Token::Extern => "extern",
         Token::Namespace => "namespace",
         Token::Using => "using",
+        Token::Specialize => "specialize",
         Token::Scope => "scope",
         Token::InlineIr => "__ir",
         Token::CInt => "c_int",

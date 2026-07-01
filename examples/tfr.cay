@@ -1,0 +1,52 @@
+
+#include <std/ffi.cay>
+#include <File.cay>
+
+using std::File;
+using std::FileMode;
+
+public class FileTest {
+    public static int main() {
+        String path = "test_basic.txt";
+        String content = "Hello, File.cay!";
+        
+        // 写入文件
+        File writeFile = new File();
+        if (!writeFile.open(path, FileMode.write())) {
+            println("Failed to open file for writing");
+            return 1;
+        }
+        if (!writeFile.writeString(content)) {
+            println("Failed to write content");
+            return 1;
+        }
+        writeFile.close();
+        
+        // 读取文件
+        File readFile = new File();
+        if (!readFile.open(path, FileMode.read())) {
+            println("Failed to open file for reading");
+            return 1;
+        }
+        String readContent = readFile.readAllText();
+        readFile.close();
+        
+        // 验证内容
+        if (readContent == null) {
+            println("readAllText returned null");
+            return 1;
+        }
+        
+        // 验证长度
+        if (readContent.length() != content.length()) {
+            println("Content length mismatch");
+            return 1;
+        }
+        
+        // 清理
+        File.delete(path);
+        
+        println("File basic read/write test passed!");
+        return 0;
+    }
+}

@@ -5,6 +5,67 @@
 use crate::codegen::context::IRGenerator;
 
 impl IRGenerator {
+    /// 将类名规范化为类型注册表可查询的名称。
+    ///
+    /// 隐式单态化的特化类（如 `Optional<int>`）不会注册到类型注册表，
+    /// 而其基础类（`Optional`）已注册。若特化名未注册，则回退到去除泛型
+    /// 实参的基础类名，使 `is_instance_method`、`class_has_vtable`、
+    /// `get_vtable_slot` 等按基础类查询仍能成功（this 传递、vtable 分派）。
+    /// 显式特化（已注册特化名）则原样返回，保持既有行为。
+    pub fn resolved_class_lookup_name(&self, class_name: &str) -> String {
+        if let Some(ref registry) = self.type_registry {
+            if registry.get_class(class_name).is_some()
+                || registry.get_interface(class_name).is_some()
+                || registry.get_struct(class_name).is_some()
+            {
+                return class_name.to_string();
+            }
+        }
+        if let Some(pos) = class_name.find('<') {
+            class_name[..pos].to_string()
+        } else {
+            class_name.to_string()
+        }
+    }
+
+    /// 根据方法调用接收者表达式的具体泛型类型，将类型参数映射安装到
+    /// `generic_type_args`，以便在调用点解析方法签名中的泛型参数
+    /// （例如 `Box<int>.get()` 的返回类型 `T` 解析为 `int`）。
+    ///
+    /// 主循环上下文（如 main 方法）中 `generic_type_args` 为空，若不安装映射，
+    /// 泛型方法的返回/参数类型会被降级为 i8*，既产生警告又导致类型不匹配。
+    /// 调用方应在方法调用代码生成结束后恢复调用前的映射快照。
+    pub fn install_receiver_generic_args(
+        &mut self,
+        obj_expr: &Option<Box<crate::ast::Expr>>,
+    ) {
+        use crate::types::Type;
+        let Some(obj) = obj_expr else {
+            return;
+        };
+        let Some(Type::Generic(base, args)) = self.get_expression_type(obj) else {
+            return;
+        };
+        if args.is_empty() {
+            return;
+        }
+        // 提取基础类名（去除泛型参数与命名空间前缀）
+        let base_name = base.split('<').next().unwrap_or(&base);
+        let base_name = base_name.rsplit("::").next().unwrap_or(base_name).to_string();
+        let type_params = self
+            .type_registry
+            .as_ref()
+            .and_then(|r| r.get_class(&base_name))
+            .map(|c| c.type_params.clone());
+        if let Some(params) = type_params {
+            for (idx, param) in params.iter().enumerate() {
+                if let Some(arg) = args.get(idx) {
+                    self.generic_type_args.insert(param.clone(), arg.clone());
+                }
+            }
+        }
+    }
+
     /// 获取方法的返回类型
     /// 支持继承查找：如果在当前类中找不到方法，会递归查找父类
     pub fn get_method_return_type(
@@ -29,6 +90,8 @@ impl IRGenerator {
         class_name: &str,
         method_name: &str,
     ) -> Option<Vec<crate::types::ParameterInfo>> {
+        let class_name = self.resolved_class_lookup_name(class_name);
+        let class_name = class_name.as_str();
         if let Some(ref registry) = self.type_registry {
             if let Some(interface_info) = registry.get_interface(class_name) {
                 if let Some(method) = interface_info.methods.get(method_name) {
@@ -79,6 +142,8 @@ impl IRGenerator {
     /// 检查方法是否是可变参数方法
     /// 查询类型注册表来确定方法是否真的是可变参数方法
     pub fn is_varargs_method(&self, class_name: &str, method_name: &str) -> bool {
+        let class_name = self.resolved_class_lookup_name(class_name);
+        let class_name = class_name.as_str();
         // 查询类型注册表
         if let Some(ref registry) = self.type_registry {
             if let Some(interface_info) = registry.get_interface(class_name) {
@@ -115,6 +180,8 @@ impl IRGenerator {
 
     /// 检查方法是否是实例方法（非静态方法）- 支持继承
     pub fn is_instance_method(&self, class_name: &str, method_name: &str) -> bool {
+        let class_name = self.resolved_class_lookup_name(class_name);
+        let class_name = class_name.as_str();
         // 查询类型注册表，支持继承查找
         if let Some(ref registry) = self.type_registry {
             if let Some(interface_info) = registry.get_interface(class_name) {
@@ -173,6 +240,8 @@ impl IRGenerator {
 
     /// 检查方法是否是 private 方法
     pub fn is_private_method(&self, class_name: &str, method_name: &str) -> bool {
+        let class_name = self.resolved_class_lookup_name(class_name);
+        let class_name = class_name.as_str();
         if let Some(ref registry) = self.type_registry {
             let mut current_class_name = class_name.to_string();
             loop {
@@ -216,6 +285,8 @@ impl IRGenerator {
 
     /// 检查类是否有 vtable（用于动态分派）
     pub fn class_has_vtable(&self, class_name: &str) -> bool {
+        let class_name = self.resolved_class_lookup_name(class_name);
+        let class_name = class_name.as_str();
         if let Some(ref registry) = self.type_registry {
             if let Some(class_info) = registry.get_class(class_name) {
                 // final 类没有 vtable（不能被继承，不需要动态分派）
@@ -262,6 +333,8 @@ impl IRGenerator {
         method_name: &str,
         arg_types: &[crate::types::Type],
     ) -> usize {
+        let class_name = self.resolved_class_lookup_name(class_name);
+        let class_name = class_name.as_str();
         // 构建方法签名：方法名(参数类型1,参数类型2,...)
         let param_type_strs: Vec<String> = arg_types.iter().map(|t| format!("{:?}", t)).collect();
         let method_sig = if param_type_strs.is_empty() {
