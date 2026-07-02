@@ -377,3 +377,13 @@ int32_t __cay_string_compareto(const char* str1, const char* str2) {
     if (cmp > 0) return 1;
     return 0;
 }
+
+/** 字符串哈希值 (Java String.hashCode 算法: s[0]*31^(n-1) + ... + s[n-1]) */
+int32_t __cay_string_hashcode(const char* str) {
+    if (!str) return 0;
+    int32_t h = 0;
+    for (const char* p = str; *p; ++p) {
+        h = h * 31 + (int32_t)(unsigned char)(*p);
+    }
+    return h;
+}

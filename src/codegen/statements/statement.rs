@@ -59,6 +59,10 @@ impl IRGenerator {
                 self.set_source_from_loc(&for_stmt.loc, &source_file);
                 self.generate_for_statement(for_stmt)?;
             }
+            Stmt::ForEach(for_each_stmt) => {
+                self.set_source_from_loc(&for_each_stmt.loc, &source_file);
+                self.generate_for_each_statement(for_each_stmt)?;
+            }
             Stmt::DoWhile(do_while_stmt) => {
                 self.set_source_from_loc(&do_while_stmt.loc, &source_file);
                 self.generate_do_while_statement(do_while_stmt)?;

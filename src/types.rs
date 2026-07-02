@@ -49,16 +49,23 @@ pub struct FunctionType {
     pub is_closure: bool, // 是否是闭包（有捕获变量）
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct TypeParamInfo {
+    pub name: String,
+    pub bound: Option<String>,      // 类型边界（暂不强制检查）
+    pub default_type: Option<Type>, // 默认类型
+}
+
 #[derive(Debug, Clone)]
 pub struct ClassInfo {
     pub name: String,
-    pub type_params: Vec<String>, // 泛型类型参数: <T, U, ...>
+    pub type_params: Vec<TypeParamInfo>, // 泛型类型参数: <T, U, ...>
     pub methods: HashMap<String, Vec<MethodInfo>>, // 支持方法重载：同名方法可以有多个
     pub fields: HashMap<String, FieldInfo>,
     pub constructors: Vec<ConstructorInfo>, // 构造函数列表
     pub has_destructor: bool,               // 是否有析构函数
     pub parent: Option<String>,
-    pub interfaces: Vec<String>,             // 实现的接口列表
+    pub interfaces: Vec<Type>,               // 实现的接口列表（支持泛型实参）
     pub is_abstract: bool,                   // 是否是抽象类
     pub is_final: bool,                      // 是否是final类（禁止继承）
     pub vtable_layout: Option<VTableLayout>, // vtable 布局信息
@@ -76,6 +83,7 @@ pub struct ConstructorInfo {
 #[derive(Debug, Clone)]
 pub struct InterfaceInfo {
     pub name: String,
+    pub type_params: Vec<TypeParamInfo>, // 泛型类型参数: <T, U, ...>
     pub methods: HashMap<String, MethodInfo>,
 }
 
@@ -316,7 +324,7 @@ impl StructInfo {
 #[derive(Debug, Clone)]
 pub struct EnumInfo {
     pub name: String,
-    pub type_params: Vec<String>, // 泛型类型参数
+    pub type_params: Vec<TypeParamInfo>, // 泛型类型参数
     pub variants: Vec<EnumVariantInfo>,
     pub methods: HashMap<String, Vec<MethodInfo>>, // 支持方法重载
     pub is_public: bool,
@@ -862,6 +870,9 @@ impl TypeRegistry {
             current_namespace: Vec::new(),
         };
 
+        // 注册内置根类 Object（所有类的隐式父类）
+        registry.register_builtin_object_class();
+
         // 注册内置类 String（用于支持 String.valueOf() 等静态方法调用）
         registry.register_builtin_string_class();
 
@@ -869,6 +880,74 @@ impl TypeRegistry {
         registry.register_builtin_integer_class();
 
         registry
+    }
+
+    /// 注册内置 Object 根类
+    /// 时间复杂度: O(1)，空间复杂度: O(1)
+    fn register_builtin_object_class(&mut self) {
+        let mut object_class = ClassInfo {
+            name: "Object".to_string(),
+            type_params: Vec::new(),
+            methods: HashMap::new(),
+            fields: HashMap::new(),
+            constructors: Vec::new(),
+            has_destructor: false,
+            parent: None,
+            interfaces: Vec::new(),
+            is_abstract: false,
+            is_final: false,
+            vtable_layout: None,
+        };
+
+        // int hashCode()：默认基于对象身份（地址）的哈希码
+        object_class.add_method(MethodInfo {
+            name: "hashCode".to_string(),
+            class_name: "Object".to_string(),
+            params: Vec::new(),
+            return_type: Type::Int32,
+            is_static: false,
+            is_public: true,
+            is_private: false,
+            is_protected: false,
+            is_native: true,
+            is_abstract: false,
+            is_final: false,
+            is_override: false,
+            is_test: false,
+            vtable_slot: None,
+        });
+
+        // bool equals(Object other)：默认基于对象身份（地址）的相等性
+        object_class.add_method(MethodInfo {
+            name: "equals".to_string(),
+            class_name: "Object".to_string(),
+            params: vec![ParameterInfo {
+                name: "other".to_string(),
+                param_type: Type::Object("Object".to_string()),
+                is_varargs: false,
+            }],
+            return_type: Type::Bool,
+            is_static: false,
+            is_public: true,
+            is_private: false,
+            is_protected: false,
+            is_native: true,
+            is_abstract: false,
+            is_final: false,
+            is_override: false,
+            is_test: false,
+            vtable_slot: None,
+        });
+
+        // Object 默认构造函数：无参数，无字段初始化
+        object_class.constructors.push(ConstructorInfo {
+            params: Vec::new(),
+            is_public: true,
+            is_private: false,
+            is_protected: false,
+        });
+
+        self.classes.insert("Object".to_string(), object_class);
     }
 
     /// 注册内置 String 类
@@ -881,12 +960,52 @@ impl TypeRegistry {
             fields: HashMap::new(),
             constructors: Vec::new(),
             has_destructor: false,
-            parent: None,
+            parent: Some("Object".to_string()), // String 继承 Object
             interfaces: Vec::new(),
             is_abstract: false,
             is_final: true, // String 是 final 类，不能被继承
             vtable_layout: None,
         };
+
+        // 覆盖 Object.hashCode()：基于字符串内容计算哈希码（native，代码生成器特化处理）
+        string_class.add_method(MethodInfo {
+            name: "hashCode".to_string(),
+            class_name: "String".to_string(),
+            params: Vec::new(),
+            return_type: Type::Int32,
+            is_static: false,
+            is_public: true,
+            is_private: false,
+            is_protected: false,
+            is_native: true,
+            is_abstract: false,
+            is_final: true,
+            is_override: true,
+            is_test: false,
+            vtable_slot: None,
+        });
+
+        // 覆盖 Object.equals(Object other)
+        string_class.add_method(MethodInfo {
+            name: "equals".to_string(),
+            class_name: "String".to_string(),
+            params: vec![ParameterInfo {
+                name: "other".to_string(),
+                param_type: Type::Object("Object".to_string()),
+                is_varargs: false,
+            }],
+            return_type: Type::Bool,
+            is_static: false,
+            is_public: true,
+            is_private: false,
+            is_protected: false,
+            is_native: true,
+            is_abstract: false,
+            is_final: true,
+            is_override: true,
+            is_test: false,
+            vtable_slot: None,
+        });
 
         // 添加 String.valueOf() 方法（各种重载版本）
         // valueOf(int)
@@ -1057,7 +1176,7 @@ impl TypeRegistry {
             fields: HashMap::new(),
             constructors: Vec::new(),
             has_destructor: false,
-            parent: None,
+            parent: Some("Object".to_string()), // Integer 继承 Object
             interfaces: Vec::new(),
             is_abstract: false,
             is_final: true, // Integer 是 final 类，不能被继承
@@ -1823,7 +1942,15 @@ impl TypeRegistry {
         }
         // 查找实现了该接口且拥有该方法的类
         for (_, class_info) in &self.classes {
-            if class_info.interfaces.iter().any(|i| i == interface_name) {
+            if class_info.interfaces.iter().any(|i| {
+                let bare_name = match i {
+                    Type::Object(name) | Type::Generic(name, _) => {
+                        name.split('<').next().unwrap_or(name)
+                    }
+                    _ => &format!("{}", i),
+                };
+                bare_name == interface_name
+            }) {
                 if class_info.methods.contains_key(method_name) {
                     return Some(class_info);
                 }
@@ -1879,6 +2006,7 @@ impl InterfaceInfo {
     pub fn new(name: String) -> Self {
         Self {
             name,
+            type_params: Vec::new(),
             methods: HashMap::new(),
         }
     }

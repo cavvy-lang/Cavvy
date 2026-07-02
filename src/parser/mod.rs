@@ -266,7 +266,7 @@ impl Parser {
         classes::parse_specialize_class(self)
     }
 
-    fn parse_generic_type_params(&mut self) -> cayResult<Vec<String>> {
+    fn parse_generic_type_params(&mut self) -> cayResult<Vec<crate::ast::TypeParam>> {
         classes::parse_generic_type_params(self)
     }
 

@@ -1,3 +1,4 @@
+use cavvy::ast::*;
 use cavvy::bytecode::constant_pool::ConstantPool;
 use cavvy::bytecode::instructions::{Instruction, Opcode};
 use cavvy::bytecode::{BytecodeModule, CodeBody, obfuscator, serializer};
@@ -200,7 +201,7 @@ fn generate_bytecode_from_ast(
 
         let mut interface_indices = Vec::new();
         for interface in &class.interfaces {
-            interface_indices.push(module.constant_pool.add_utf8(interface));
+            interface_indices.push(module.constant_pool.add_utf8(&format!("{}", interface)));
         }
 
         let modifiers = TypeModifiers {

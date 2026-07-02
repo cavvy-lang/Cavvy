@@ -271,7 +271,7 @@ impl IRGenerator {
                 // 如果是，使用泛型参数名（如 T）而不是具体类型
                 match &resolved_type {
                     crate::types::Type::Object(name) => {
-                        if class_type_params.contains(name) {
+                        if class_type_params.iter().any(|p| &p.name == name) {
                             // 这是泛型参数 - 检查是否有特化映射
                             if let Some(actual_type) = self.generic_type_args.get(name) {
                                 self.param_type_to_signature(actual_type, is_param_varargs)

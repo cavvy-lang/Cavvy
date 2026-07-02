@@ -89,7 +89,13 @@ impl IRGenerator {
             // 若到达此处，说明单态化阶段有遗漏，返回 i8* 作为安全回退并记录警告
             Type::GenericParam(param_name) => {
                 if let Some(actual_type) = self.generic_type_args.get(param_name) {
-                    self.type_to_llvm(actual_type)
+                    // 防御：若类型参数解析到自身，说明单态化上下文不完整
+                    // （如收集到未替换的泛型实例）。直接回退到 i8*，避免
+                    // type_to_llvm 无限递归导致栈溢出。
+                    match actual_type {
+                        Type::GenericParam(inner) if inner == param_name => "i8*".to_string(),
+                        _ => self.type_to_llvm(actual_type),
+                    }
                 } else {
                     let warning = crate::error::codegen_warning_at(
                         crate::error::SourceLocation::new(Some(self.source_file.clone()), self.source_line, self.source_column),

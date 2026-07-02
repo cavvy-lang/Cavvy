@@ -1,0 +1,12 @@
+#include <std/hashmap.cay>
+#include <c/stdio.cay>
+
+using std::HashMap;
+
+public int main() {
+    HashMap<String, int> scores = new HashMap<String, int>();
+    scores.put("Alice", 90);
+    println("Alice = " + String.valueOf(scores.get("Alice")));
+    println("HashMap minimal tests passed");
+    return 0;
+}

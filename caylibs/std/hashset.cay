@@ -1,0 +1,68 @@
+/*
+ * Cavvy 哈希集合标准库 - 0.5.2.x
+ *
+ * 泛型单态化实现：HashSet<T, A: Allocator = GlobalAlloc>
+ * 底层基于 HashMap<T, bool>。
+ */
+
+#pragma once
+
+#include <Allocator.cay>
+#include <std/hashmap.cay>
+#include <std/arraylist.cay>
+#include <std/iterator.cay>
+
+namespace std {
+
+/**
+ * 泛型哈希集合。
+ */
+public class HashSet<T, A: Allocator = GlobalAlloc> {
+    private HashMap<T, bool, A> map;
+
+    public HashSet() {
+        this.map = new HashMap<T, bool, A>();
+    }
+
+    public HashSet(int initialCapacity) {
+        this.map = new HashMap<T, bool, A>(initialCapacity);
+    }
+
+    public HashSet(A allocator) {
+        this.map = new HashMap<T, bool, A>(allocator);
+    }
+
+    public int size() {
+        return this.map.size();
+    }
+
+    public bool isEmpty() {
+        return this.map.isEmpty();
+    }
+
+    public void add(T value) {
+        this.map.put(value, true);
+    }
+
+    public bool contains(T value) {
+        return this.map.containsKey(value);
+    }
+
+    public void remove(T value) {
+        this.map.remove(value);
+    }
+
+    public void clear() {
+        this.map.clear();
+    }
+
+    public ArrayList<T> toList() {
+        return this.map.keySet();
+    }
+
+    public Iterator<T> iterator() {
+        return this.map.iterator();
+    }
+}
+
+} // namespace std

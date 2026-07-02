@@ -1,3 +1,5 @@
+#pragma once
+
 extern {
     // 内存分配
     c_void* malloc(size_t size);

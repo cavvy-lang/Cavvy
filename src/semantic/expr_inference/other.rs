@@ -114,12 +114,14 @@ impl SemanticAnalyzer {
                 if let Some(ref params) = type_params {
                     // 检查每个类型参数是否合法
                     for param in params {
-                        let is_valid_param = class_info.type_params.contains(param)
+                        let is_valid_param = class_info.type_params.iter().any(|p| &p.name == param)
+                            // 允许使用当前类的泛型类型参数（如 HashMap<K,V,A> 中创建 ArrayList<K>）
+                            || self.current_class_type_params.iter().any(|p| &p.name == param)
                             || self.type_registry.class_exists(param)
                             || self.type_registry.get_struct(param).is_some()
                             || matches!(
                                 param.as_str(),
-                                "int" | "long" | "float" | "double" | "boolean" | "char" | "String"
+                                "int" | "long" | "float" | "double" | "bool" | "boolean" | "char" | "String" | "string"
                             );
 
                         if !is_valid_param {
@@ -139,6 +141,10 @@ impl SemanticAnalyzer {
                 // 非泛型类
                 Ok(Type::Object(base_class_name))
             }
+        } else if self.current_class_type_params.iter().any(|p| &p.name == &base_class_name) {
+            // new A() where A is a type parameter of the current class.
+            // The concrete type will be substituted during monomorphization.
+            Ok(Type::Object(new_expr.class_name.clone()))
         } else if self.type_registry.get_struct(&base_class_name).is_some() {
             // struct 是值类型，用 Object 包装
             Ok(Type::Object(new_expr.class_name.clone()))
@@ -355,13 +361,13 @@ impl SemanticAnalyzer {
     pub(crate) fn substitute_type_params(
         &self,
         ty: &Type,
-        type_params: &[String],
+        type_params: &[crate::types::TypeParamInfo],
         type_args: &[Type],
     ) -> Type {
         match ty {
             Type::GenericParam(name) => {
                 // 查找泛型参数在列表中的位置
-                if let Some(idx) = type_params.iter().position(|p| p == name) {
+                if let Some(idx) = type_params.iter().position(|p| &p.name == name) {
                     if idx < type_args.len() {
                         return type_args[idx].clone();
                     }

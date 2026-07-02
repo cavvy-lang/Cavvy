@@ -136,8 +136,14 @@ type_alias_declaration = "alias", identifier, "=", type, ";";
 
 (* 类声明 *)
 class_declaration = [ annotation ], [ modifiers ], "class", identifier, 
-                    [ inheritance_clause ], [ implementation_clause ], 
+                    [ generic_type_params ], [ inheritance_clause ], [ implementation_clause ], 
                     "{", { class_member }, "}";
+
+(* 泛型类型参数声明 *)
+generic_type_params = "<", type_param, { ",", type_param }, ">";
+
+(* 类型参数：支持边界与默认值 *)
+type_param = identifier, [ ":", identifier ], [ "=", type ];
 
 (* 继承声明 - 支持 extends 关键字或 : 符号 *)
 inheritance_clause = "extends", qualified_name
@@ -148,7 +154,7 @@ implementation_clause = "implements", qualified_name, { ",", qualified_name };
 
 (* 接口声明 *)
 interface_declaration = [ modifiers ], "interface", identifier, 
-                        [ interface_extends_clause ],
+                        [ generic_type_params ], [ interface_extends_clause ],
                         "{", { interface_member_declaration }, "}";
 
 interface_extends_clause = "extends", qualified_name, { ",", qualified_name };

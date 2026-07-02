@@ -5,6 +5,7 @@ use super::expressions::parse_expression;
 use super::types::{is_primitive_type_token, parse_type};
 use crate::ast::*;
 use crate::error::cayResult;
+use crate::types::Type;
 
 /// 给语句添加标签
 fn add_label_to_stmt(stmt: Stmt, label: String) -> Stmt {
@@ -337,6 +338,10 @@ pub fn parse_while_statement(parser: &mut Parser) -> cayResult<Stmt> {
 }
 
 /// 解析 for 语句
+///
+/// 支持两种形式：
+/// - 传统 for 循环: `for (init; cond; update) body`
+/// - 增强 for 循环: `for (type var : iterable) body`
 pub fn parse_for_statement(parser: &mut Parser) -> cayResult<Stmt> {
     let loc = parser.current_loc();
     parser.advance(); // consume 'for'
@@ -345,6 +350,41 @@ pub fn parse_for_statement(parser: &mut Parser) -> cayResult<Stmt> {
         &crate::lexer::Token::LParen,
         "期望 '('\n提示: for 后应跟 '(' 开始循环头，例如: for (int i = 0; i < 10; i++) { ... }",
     )?;
+
+    // 预读判断是否为增强 for 循环: `type identifier : expression`
+    let saved_pos = parser.pos;
+    let enhanced_decl: Option<(Type, String)> = (|| -> cayResult<_> {
+        let var_type = super::types::parse_type(parser)?;
+        let var_name = parser.consume_identifier(
+            "期望变量名\n提示: 增强 for 循环应为 for (type var : iterable) { ... }",
+        )?;
+        parser.consume(
+            &crate::lexer::Token::Colon,
+            "期望 ':'\n提示: 增强 for 循环应为 for (type var : iterable) { ... }",
+        )?;
+        Ok((var_type, var_name))
+    })()
+    .ok();
+    if enhanced_decl.is_none() {
+        parser.pos = saved_pos;
+    }
+
+    if let Some((var_type, var_name)) = enhanced_decl {
+        let iterable = parse_expression(parser)?;
+        parser.consume(
+            &crate::lexer::Token::RParen,
+            "期望 ')'\n提示: 增强 for 循环头应以 ')' 结束，例如: for (int x : arr) { ... }",
+        )?;
+        let body = Box::new(parse_statement(parser)?);
+        return Ok(Stmt::ForEach(ForEachStmt {
+            var_type,
+            var_name,
+            iterable,
+            body,
+            label: None,
+            loc,
+        }));
+    }
 
     let init = if parser.check(&crate::lexer::Token::Semicolon) {
         parser.advance(); // consume ';'

@@ -194,4 +194,102 @@ impl IRGenerator {
 
         Ok(())
     }
+
+    /// 生成增强 for 语句代码
+    ///
+    /// 将 `for (T x : iterable) body` 解糖为：
+    /// ```cay
+    /// {
+    ///     Iterator<T> __cay_iter = iterable.iterator();
+    ///     while (__cay_iter.hasNext()) {
+    ///         T x = __cay_iter.next();
+    ///         body
+    ///     }
+    /// }
+    /// ```
+    pub fn generate_for_each_statement(&mut self, for_each: &ForEachStmt) -> cayResult<()> {
+        let iter_idx = self.temp_counter;
+        self.temp_counter += 1;
+        let iter_var = format!("__cay_iter_{}", iter_idx);
+        let loc = for_each.loc.clone();
+
+        // 构造 iterable.iterator() 方法调用表达式
+        let iterator_call = Expr::Call(CallExpr {
+            callee: Box::new(Expr::MemberAccess(MemberAccessExpr {
+                object: Box::new(for_each.iterable.clone()),
+                member: "iterator".to_string(),
+                loc: loc.clone(),
+            })),
+            args: vec![],
+            loc: loc.clone(),
+        });
+
+        // 使用 auto 推断迭代器具体类型，避免依赖 Iterator<T> 接口赋值
+        let iterator_type = Type::Auto;
+
+        // 构造迭代器变量声明: auto __cay_iter = iterable.iterator();
+        let iter_decl = Stmt::VarDecl(VarDecl {
+            name: iter_var.clone(),
+            var_type: iterator_type,
+            initializer: Some(iterator_call),
+            is_final: true,
+            loc: loc.clone(),
+        });
+
+        let iter_identifier = Expr::Identifier(IdentifierExpr {
+            name: iter_var.clone(),
+            loc: loc.clone(),
+        });
+
+        // 构造 __cay_iter.hasNext() 条件表达式
+        let has_next_expr = Expr::Call(CallExpr {
+            callee: Box::new(Expr::MemberAccess(MemberAccessExpr {
+                object: Box::new(iter_identifier.clone()),
+                member: "hasNext".to_string(),
+                loc: loc.clone(),
+            })),
+            args: vec![],
+            loc: loc.clone(),
+        });
+
+        // 构造 T x = __cay_iter.next();
+        let next_call = Expr::Call(CallExpr {
+            callee: Box::new(Expr::MemberAccess(MemberAccessExpr {
+                object: Box::new(iter_identifier),
+                member: "next".to_string(),
+                loc: loc.clone(),
+            })),
+            args: vec![],
+            loc: loc.clone(),
+        });
+        let var_decl = Stmt::VarDecl(VarDecl {
+            name: for_each.var_name.clone(),
+            var_type: for_each.var_type.clone(),
+            initializer: Some(next_call),
+            is_final: true,
+            loc: loc.clone(),
+        });
+
+        // 构造循环体：先声明变量，再执行原 body
+        let body_block = Stmt::Block(Block {
+            statements: vec![var_decl, (*for_each.body).clone()],
+            loc: loc.clone(),
+        });
+
+        // 构造 while 循环
+        let while_stmt = Stmt::While(WhileStmt {
+            condition: has_next_expr,
+            body: Box::new(body_block),
+            label: for_each.label.clone(),
+            loc: loc.clone(),
+        });
+
+        // 包装成 block 以避免迭代器变量泄漏到外部作用域
+        let desugared = Stmt::Block(Block {
+            statements: vec![iter_decl, while_stmt],
+            loc: loc.clone(),
+        });
+
+        self.generate_statement(&desugared)
+    }
 }

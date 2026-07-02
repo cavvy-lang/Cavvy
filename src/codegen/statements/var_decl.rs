@@ -314,7 +314,7 @@ impl IRGenerator {
                 // 获取类的泛型参数定义
                 if let Some(class_info) = registry.get_class(class_name) {
                     // 找到泛型参数的位置
-                    if let Some(pos) = class_info.type_params.iter().position(|p| p == param_name) {
+                    if let Some(pos) = class_info.type_params.iter().position(|p| &p.name == param_name) {
                         // 返回对应的类型参数
                         return type_args.get(pos).cloned();
                     }

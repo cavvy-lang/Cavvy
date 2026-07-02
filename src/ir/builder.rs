@@ -823,6 +823,7 @@ impl IrBuilder {
             Stmt::If(if_stmt) => self.build_if(if_stmt)?,
             Stmt::While(while_stmt) => self.build_while(while_stmt)?,
             Stmt::For(for_stmt) => self.build_for(for_stmt)?,
+            Stmt::ForEach(for_each) => self.build_for_each(for_each)?,
             Stmt::DoWhile(do_while) => self.build_do_while(do_while)?,
             Stmt::Switch(switch) => self.build_switch(switch)?,
             Stmt::Scope(scope) => {
@@ -1112,6 +1113,91 @@ impl IrBuilder {
         self.new_block(end_label)?;
         self.loop_stack.pop();
         Ok(())
+    }
+
+    /// 生成增强 for 语句代码
+    ///
+    /// 将 `for (T x : iterable) body` 解糖为普通 while 循环。
+    fn build_for_each(&mut self, for_each: &ForEachStmt) -> cayResult<()> {
+        use crate::types::Type;
+
+        let iter_idx = self.temp_counter;
+        self.temp_counter += 1;
+        let iter_var = format!("__cay_iter_{}", iter_idx);
+        let loc = for_each.loc.clone();
+
+        let iterator_call = Expr::Call(CallExpr {
+            callee: Box::new(Expr::MemberAccess(MemberAccessExpr {
+                object: Box::new(for_each.iterable.clone()),
+                member: "iterator".to_string(),
+                loc: loc.clone(),
+            })),
+            args: vec![],
+            loc: loc.clone(),
+        });
+
+        // 使用 auto 推断迭代器具体类型，避免依赖 Iterator<T> 接口赋值
+        let iterator_type = Type::Auto;
+
+        let iter_decl = Stmt::VarDecl(VarDecl {
+            name: iter_var.clone(),
+            var_type: iterator_type,
+            initializer: Some(iterator_call),
+            is_final: true,
+            loc: loc.clone(),
+        });
+
+        let iter_identifier = Expr::Identifier(IdentifierExpr {
+            name: iter_var.clone(),
+            loc: loc.clone(),
+        });
+
+        let has_next_expr = Expr::Call(CallExpr {
+            callee: Box::new(Expr::MemberAccess(MemberAccessExpr {
+                object: Box::new(iter_identifier.clone()),
+                member: "hasNext".to_string(),
+                loc: loc.clone(),
+            })),
+            args: vec![],
+            loc: loc.clone(),
+        });
+
+        let next_call = Expr::Call(CallExpr {
+            callee: Box::new(Expr::MemberAccess(MemberAccessExpr {
+                object: Box::new(iter_identifier),
+                member: "next".to_string(),
+                loc: loc.clone(),
+            })),
+            args: vec![],
+            loc: loc.clone(),
+        });
+
+        let var_decl = Stmt::VarDecl(VarDecl {
+            name: for_each.var_name.clone(),
+            var_type: for_each.var_type.clone(),
+            initializer: Some(next_call),
+            is_final: true,
+            loc: loc.clone(),
+        });
+
+        let body_block = Stmt::Block(Block {
+            statements: vec![var_decl, (*for_each.body).clone()],
+            loc: loc.clone(),
+        });
+
+        let while_stmt = Stmt::While(WhileStmt {
+            condition: has_next_expr,
+            body: Box::new(body_block),
+            label: for_each.label.clone(),
+            loc: loc.clone(),
+        });
+
+        let desugared = Stmt::Block(Block {
+            statements: vec![iter_decl, while_stmt],
+            loc: loc.clone(),
+        });
+
+        self.build_statement(&desugared)
     }
 
     fn build_do_while(&mut self, do_while: &DoWhileStmt) -> cayResult<()> {
@@ -2346,7 +2432,12 @@ impl IrBuilder {
             if let Some(class_info) = registry.get_class(base_name) {
                 if !class_info.type_params.is_empty() {
                     // 这是泛型类，使用原始类型参数名（如 T）
-                    let type_param_suffix = class_info.type_params.join("_");
+                    let type_param_suffix = class_info
+                        .type_params
+                        .iter()
+                        .map(|p| p.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join("_");
                     format!("{}_{}_", base_name, type_param_suffix)
                 } else {
                     // 不是泛型类，正常处理

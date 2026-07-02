@@ -373,10 +373,12 @@ impl IRGenerator {
                                     if let Some(ref registry) = self.type_registry {
                                         if let Some(class_info) = registry.get_class(&class_name) {
                                             if !class_info.type_params.is_empty() && !type_args.is_empty() {
-                                                for (idx, param_name) in class_info.type_params.iter().enumerate() {
-                                                    if let Some(type_arg) = type_args.get(idx) {
-                                                        self.generic_type_args.insert(param_name.clone(), type_arg.clone());
-                                                    }
+                                                for (idx, param) in class_info.type_params.iter().enumerate() {
+                                                    let resolved_arg = type_args.get(idx)
+                                                        .cloned()
+                                                        .or_else(|| param.default_type.clone())
+                                                        .unwrap_or_else(|| crate::types::Type::GenericParam(param.name.clone()));
+                                                    self.generic_type_args.insert(param.name.clone(), resolved_arg);
                                                 }
                                             }
                                         }
@@ -456,9 +458,11 @@ impl IRGenerator {
                         if let Some(params) = type_params {
                             if !params.is_empty() {
                                 for (idx, param) in params.iter().enumerate() {
-                                    if let Some(arg) = exp_args.get(idx) {
-                                        self.generic_type_args.insert(param.clone(), arg.clone());
-                                    }
+                                    let resolved_arg = exp_args.get(idx)
+                                        .cloned()
+                                        .or_else(|| param.default_type.clone())
+                                        .unwrap_or_else(|| crate::types::Type::GenericParam(param.name.clone()));
+                                    self.generic_type_args.insert(param.name.clone(), resolved_arg);
                                 }
                                 let args_str: Vec<String> =
                                     exp_args.iter().map(|t| format!("{}", t)).collect();

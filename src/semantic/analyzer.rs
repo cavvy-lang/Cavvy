@@ -31,7 +31,7 @@ pub struct SemanticAnalyzer {
     /// 启用的语言特性
     pub(super) features: Vec<String>,
     /// 当前类的泛型类型参数: <T, U, ...>
-    pub(super) current_class_type_params: Vec<String>,
+    pub(super) current_class_type_params: Vec<TypeParam>,
     /// 当前正在推断的返回类型（用于 fn 自动推断）
     pub(super) current_inferring_return: Option<Type>,
 }

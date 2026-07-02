@@ -59,9 +59,11 @@ impl IRGenerator {
             .map(|c| c.type_params.clone());
         if let Some(params) = type_params {
             for (idx, param) in params.iter().enumerate() {
-                if let Some(arg) = args.get(idx) {
-                    self.generic_type_args.insert(param.clone(), arg.clone());
-                }
+                let resolved_arg = args.get(idx)
+                    .cloned()
+                    .or_else(|| param.default_type.clone())
+                    .unwrap_or_else(|| Type::GenericParam(param.name.clone()));
+                self.generic_type_args.insert(param.name.clone(), resolved_arg);
             }
         }
     }

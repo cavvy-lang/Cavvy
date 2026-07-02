@@ -19,27 +19,43 @@ public interface Allocator {
 
 public class GlobalAlloc implements Allocator {
     private static bool initialized = false;
-    
+
     public static GlobalAlloc getInstance() {
         if (!initialized) {
             initialized = true;
         }
         return new GlobalAlloc();
     }
-    
+
     public long allocate(long size) {
-        return malloc(size);
+        long result;
+        __ir {
+            %p = call i8* @malloc(i64 %size)
+            %v = ptrtoint i8* %p to i64
+            store i64 %v, i64* %result
+        }
+        return result;
     }
-    
+
     public long allocateAligned(long size, long alignBytes) {
-        long raw = malloc(size + alignBytes);
+        long total = size + alignBytes;
+        long raw;
+        __ir {
+            %total_val = load i64, i64* %total
+            %p = call i8* @malloc(i64 %total_val)
+            %v = ptrtoint i8* %p to i64
+            store i64 %v, i64* %raw
+        }
         long mask = alignBytes - 1;
         long aligned = (raw + mask) & ~mask;
         return aligned;
     }
-    
+
     public void deallocate(long ptr) {
-        free(ptr);
+        __ir {
+            %p = inttoptr i64 %ptr to i8*
+            call void @free(i8* %p)
+        }
     }
 }
 
@@ -52,9 +68,15 @@ public class Arena implements Allocator {
     public static Arena create(long cap) {
         Arena arena = new Arena();
         capacity = cap;
-        buffer = malloc(cap);
-        current = buffer;
-        end = buffer + cap;
+        long buf;
+        __ir {
+            %p = call i8* @malloc(i64 %Arena.cap)
+            %v = ptrtoint i8* %p to i64
+            store i64 %v, i64* %buf
+        }
+        buffer = buf;
+        current = buf;
+        end = buf + cap;
         return arena;
     }
     

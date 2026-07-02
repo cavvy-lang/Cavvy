@@ -846,7 +846,10 @@ impl IRGenerator {
             Expr::Identifier(name) => {
                 // 首先从Cavvy类型映射中查找（更准确）
                 if let Some(cay_type) = self.var_cay_types.get(name.as_ref()) {
-                    return Some(cay_type.clone());
+                    // 单态化：变量声明类型可能是泛型参数（如方法形参 `K key`），
+                    // 经当前特化上下文的 generic_type_args 解析为具体类型，
+                    // 否则方法调用等下游逻辑会误将参数名当作类名。
+                    return Some(self.resolve_type_arg_concrete(cay_type));
                 }
                 // 回退到LLVM类型映射
                 if let Some(llvm_type) = self.var_types.get(name.as_ref()) {
@@ -1044,7 +1047,12 @@ impl IRGenerator {
                             .replace(" ", "_")
                     } else {
                         // 这是原始泛型类（如 Box），使用类型参数名（如 T）
-                        let type_param_suffix = class_info.type_params.join("_");
+                        let type_param_suffix = class_info
+                            .type_params
+                            .iter()
+                            .map(|p| p.name.as_str())
+                            .collect::<Vec<_>>()
+                            .join("_");
                         format!("{}_{}_", base_name, type_param_suffix)
                     }
                 } else {
@@ -1415,11 +1423,13 @@ impl IRGenerator {
     }
 
     /// 注册类型标识符
+    ///
+    /// 接口类型支持泛型实参，但类型 ID 只记录接口基础名用于运行时 instanceof 判断。
     pub fn register_type_id(
         &mut self,
         class_name: &str,
         parent_name: Option<&str>,
-        interfaces: Vec<String>,
+        interfaces: Vec<crate::types::Type>,
     ) -> String {
         let llvm_name = self.get_qualified_class_name(class_name);
         let type_id = format!("@__type_id_{}", llvm_name);
@@ -1428,12 +1438,23 @@ impl IRGenerator {
         let type_id_value = self.type_id_counter as i32;
         self.type_id_counter += 1;
 
+        // 从接口类型中提取基础名（如 Iterator<T> -> Iterator）
+        let interface_names: Vec<String> = interfaces
+            .iter()
+            .map(|t| match t {
+                crate::types::Type::Object(name) | crate::types::Type::Generic(name, _) => {
+                    name.split('<').next().unwrap_or(name).to_string()
+                }
+                _ => format!("{}", t),
+            })
+            .collect();
+
         self.type_id_map.insert(
             class_name.to_string(),
             TypeIdInfo {
                 class_name: class_name.to_string(),
                 parent_type_id,
-                interfaces,
+                interfaces: interface_names,
                 type_id_value,
             },
         );

@@ -29,23 +29,66 @@ fn substitute_generic_param(
     ty.clone()
 }
 
+/// 从具体类型中提取用于查找的类名字符串。
+/// 用于单态化时将泛型类型参数（如 `A`）解析到的具体类型（如 `GlobalAlloc`）
+/// 还原为可用于构造函数查找的类名。
+fn generic_arg_class_name(ty: &crate::types::Type) -> Option<String> {
+    use crate::types::Type;
+    match ty {
+        Type::Object(n) | Type::Struct(n) => Some(n.clone()),
+        Type::Generic(base, _) => {
+            Some(base.split('<').next().unwrap_or(base).trim_end().to_string())
+        }
+        _ => None,
+    }
+}
+
+/// 简单解析类型实参字符串（用于从 new 表达式类名中提取泛型实参）。
+/// 与 SpecializationCollector 的 parse_type_str 语义对齐，支持基本类型别名。
+fn parse_type_arg_from_str(s: &str) -> crate::types::Type {
+    use crate::types::Type;
+    if s.ends_with("[]") {
+        return Type::Array(Box::new(parse_type_arg_from_str(&s[..s.len() - 2],
+        )));
+    }
+    match s {
+        "int" => Type::Int32,
+        "long" => Type::Int64,
+        "float" => Type::Float32,
+        "double" => Type::Float64,
+        "bool" | "boolean" => Type::Bool,
+        "string" | "String" => Type::String,
+        "char" => Type::Char,
+        _ => Type::Object(s.to_string()),
+    }
+}
+
 impl IRGenerator {
     /// 生成 new 表达式代码
     ///
     /// # Arguments
     /// * `new_expr` - new 表达式
     pub fn generate_new_expression(&mut self, new_expr: &NewExpr) -> cayResult<String> {
-        let class_name = &new_expr.class_name;
-
         // 消费期望目标类型（单次使用，避免泄漏到参数中的嵌套 new 表达式）
         let expected_type = self.pending_new_expected_type.take();
 
         // 提取基础类名（不含泛型参数）用于类型注册表查找
-        let base_class_name = if let Some(pos) = class_name.find('<') {
-            class_name[..pos].to_string()
+        let mut base_class_name = if let Some(pos) = new_expr.class_name.find('<') {
+            new_expr.class_name[..pos].to_string()
         } else {
-            class_name.clone()
+            new_expr.class_name.clone()
         };
+
+        // 单态化：若基础类名本身是当前上下文的泛型类型参数（如 HashMap<K,V,A>
+        // 方法体内的 `new A()`），先经 generic_type_args 解析为具体类型名。
+        // 否则会生成对未定义构造函数 `@_ZN1AE.__ctor` 的调用。
+        let mut class_name = new_expr.class_name.clone();
+        if let Some(concrete) = self.generic_type_args.get(&base_class_name).cloned() {
+            if let Some(concrete_name) = generic_arg_class_name(&concrete) {
+                base_class_name = concrete_name.clone();
+                class_name = concrete_name;
+            }
+        }
 
         // 检查是否是 struct 类型
         let is_struct = self
@@ -107,9 +150,33 @@ impl IRGenerator {
                         None
                     }
                     .or_else(|| {
+                        // 优先从 new 表达式显式书写的类型实参解析（如
+                        // `new HashMap<T, bool, A>()`）。这在泛型类体内比按目标类
+                        // 类型参数名查找更通用，因为实参可能是外层类类型参数
+                        // （如 HashSet<T,A> 中的 T/A），与目标类参数名（K,V,A）不同。
+                        if let Some(lt_pos) = class_name.find('<') {
+                            let gt_pos = class_name.rfind('>').unwrap_or(class_name.len());
+                            let args_str = &class_name[lt_pos + 1..gt_pos];
+                            let parsed: Vec<crate::types::Type> =
+                                crate::codegen::specialization::split_top_level_type_args(args_str)
+                                    .iter()
+                                    .map(|s| parse_type_arg_from_str(s.trim()))
+                                    .collect();
+                            let resolved: Vec<_> = parsed
+                                .iter()
+                                .map(|t| self.resolve_type_arg_concrete(t))
+                                .collect();
+                            if resolved.iter().all(|t| self.type_arg_is_concrete(t))
+                                && resolved.len() == class_type_params.len()
+                            {
+                                return Some(resolved);
+                            }
+                        }
+
+                        // 原有回退：按目标类类型参数名从 generic_type_args 查找
                         let m: Vec<crate::types::Type> = class_type_params
                             .iter()
-                            .filter_map(|p| self.generic_type_args.get(p).cloned())
+                            .filter_map(|p| self.generic_type_args.get(&p.name).cloned())
                             .collect();
                         if m.len() == class_type_params.len() {
                             Some(m)
@@ -251,7 +318,7 @@ impl IRGenerator {
             .type_registry
             .as_ref()
             .and_then(|r| r.get_class(&registry_name))
-            .map(|c| c.type_params.clone())
+            .map(|c| c.type_params.iter().map(|p| p.name.clone()).collect())
             .unwrap_or_default();
 
         let mut arg_values = Vec::new();

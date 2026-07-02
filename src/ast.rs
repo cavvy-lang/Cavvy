@@ -108,6 +108,7 @@ pub enum CallingConvention {
 pub struct InterfaceDecl {
     pub name: String,
     pub modifiers: Vec<Modifier>,
+    pub type_params: Vec<TypeParam>, // 泛型类型参数: <T, U, ...>
     pub methods: Vec<MethodDecl>,
     pub namespace_path: Vec<String>, // 所属命名空间路径
     pub loc: SourceLocation,
@@ -125,13 +126,22 @@ pub struct StructDecl {
     pub loc: SourceLocation,
 }
 
+/// 泛型类型参数声明
+/// 支持: T, T: Bound, T = Default, T: Bound = Default
+#[derive(Debug, Clone)]
+pub struct TypeParam {
+    pub name: String,
+    pub bound: Option<String>, // 类型边界（如 Allocator），暂不强制语义检查
+    pub default_type: Option<Type>, // 默认类型（如 GlobalAlloc）
+}
+
 /// 用户自定义 enum 声明 - tagged union / ADT
 /// enum Option<T> { Some(T), None }
 #[derive(Debug, Clone)]
 pub struct EnumDecl {
     pub name: String,
     pub modifiers: Vec<Modifier>,
-    pub type_params: Vec<String>, // 泛型类型参数：["T"]
+    pub type_params: Vec<TypeParam>, // 泛型类型参数
     pub variants: Vec<EnumVariant>,
     pub namespace_path: Vec<String>, // 所属命名空间路径
     pub loc: SourceLocation,
@@ -149,9 +159,9 @@ pub struct EnumVariant {
 pub struct ClassDecl {
     pub name: String,
     pub modifiers: Vec<Modifier>,
-    pub type_params: Vec<String>, // 泛型类型参数: <T, U, ...>
+    pub type_params: Vec<TypeParam>, // 泛型类型参数: <T, U, ...>
     pub parent: Option<String>,
-    pub interfaces: Vec<String>, // 实现的接口列表
+    pub interfaces: Vec<Type>, // 实现的接口列表（支持泛型实参，如 Iterator<T>）
     pub members: Vec<ClassMember>,
     pub namespace_path: Vec<String>, // 所属命名空间路径
     pub loc: SourceLocation,
@@ -250,6 +260,7 @@ pub enum Stmt {
     If(IfStmt),
     While(WhileStmt),
     For(ForStmt),
+    ForEach(ForEachStmt),
     DoWhile(DoWhileStmt),
     Switch(SwitchStmt),
     Block(Block),
@@ -304,6 +315,18 @@ pub struct ForStmt {
     pub init: Option<Box<Stmt>>,
     pub condition: Option<Expr>,
     pub update: Option<Expr>,
+    pub body: Box<Stmt>,
+    pub label: Option<String>,
+    pub loc: SourceLocation,
+}
+
+/// 增强 for 循环语句 - 5.2.0
+/// 例如：for (int x : arr) { ... }
+#[derive(Debug, Clone)]
+pub struct ForEachStmt {
+    pub var_type: Type,
+    pub var_name: String,
+    pub iterable: Expr,
     pub body: Box<Stmt>,
     pub label: Option<String>,
     pub loc: SourceLocation,

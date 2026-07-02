@@ -95,14 +95,26 @@ impl SemanticAnalyzer {
         // 首先收集接口定义
         for interface in &program.interfaces {
             let mut interface_info = crate::types::InterfaceInfo::new(interface.name.clone());
+            interface_info.type_params = interface
+                .type_params
+                .iter()
+                .map(|p| crate::types::TypeParamInfo {
+                    name: p.name.clone(),
+                    bound: p.bound.clone(),
+                    default_type: p.default_type.clone(),
+                })
+                .collect();
 
-            // 收集接口方法
+            // 收集接口方法，并将接口类型参数名替换为 GenericParam 类型，
+            // 以便与实现类的方法签名进行统一比较。
             for method in &interface.methods {
+                let params = self.replace_params_type_params(&method.params, &interface.type_params);
+                let return_type = self.replace_type_params(&method.return_type, &interface.type_params);
                 let method_info = MethodInfo {
                     name: method.name.clone(),
                     class_name: interface.name.clone(),
-                    params: method.params.clone(),
-                    return_type: method.return_type.clone(),
+                    params,
+                    return_type,
                     is_public: true, // 接口方法默认是public
                     is_private: false,
                     is_protected: false,
@@ -133,12 +145,24 @@ impl SemanticAnalyzer {
             let is_final = class.modifiers.contains(&Modifier::Final);
             let mut class_info = ClassInfo {
                 name: class.name.clone(),
-                type_params: class.type_params.clone(),
+                type_params: class
+                    .type_params
+                    .iter()
+                    .map(|p| crate::types::TypeParamInfo {
+                        name: p.name.clone(),
+                        bound: p.bound.clone(),
+                        default_type: p.default_type.clone(),
+                    })
+                    .collect(),
                 methods: std::collections::HashMap::new(),
                 fields: std::collections::HashMap::new(),
                 constructors: Vec::new(),
                 has_destructor: false,
-                parent: class.parent.clone(),
+                // 未显式指定父类时，默认继承 Object 根类
+                parent: class
+                    .parent
+                    .clone()
+                    .or(Some("Object".to_string())),
                 interfaces: class.interfaces.clone(),
                 is_abstract,
                 is_final,
@@ -234,10 +258,10 @@ impl SemanticAnalyzer {
 
     /// 将类型中的泛型参数名替换为 GenericParam 类型
     /// 例如：Object("T") -> GenericParam("T")
-    pub fn replace_type_params(&self, ty: &Type, type_params: &[String]) -> Type {
+    pub fn replace_type_params(&self, ty: &Type, type_params: &[crate::ast::TypeParam]) -> Type {
         match ty {
             Type::Object(name) => {
-                if type_params.contains(name) {
+                if type_params.iter().any(|p| &p.name == name) {
                     Type::GenericParam(name.clone())
                 } else {
                     ty.clone()
@@ -259,7 +283,7 @@ impl SemanticAnalyzer {
     fn replace_params_type_params(
         &self,
         params: &[ParameterInfo],
-        type_params: &[String],
+        type_params: &[crate::ast::TypeParam],
     ) -> Vec<ParameterInfo> {
         params
             .iter()
@@ -440,9 +464,13 @@ impl SemanticAnalyzer {
     }
 
     /// 检查类是否实现了其声明的所有接口方法
+    ///
+    /// 支持泛型接口实参的替换：例如 ArrayListIterator<T> implements Iterator<T> 时，
+    /// 将 Iterator 方法签名中的 T 替换为 ArrayListIterator 的 T 后再进行比较。
     fn check_interface_implementations(&self, class: &crate::ast::ClassDecl) -> cayResult<()> {
-        for interface_name in &class.interfaces {
-            let interface_info = match self.type_registry.get_interface(interface_name) {
+        for interface_type in &class.interfaces {
+            let interface_name = interface_type_name(interface_type);
+            let interface_info = match self.type_registry.get_interface(&interface_name) {
                 Some(info) => info,
                 None => {
                     return Err(semantic_error_with_file(
@@ -457,13 +485,49 @@ impl SemanticAnalyzer {
                 }
             };
 
+            // 建立接口类型参数到类类型实参的映射。
+            // 类实参中可能包含类自身的泛型参数名（如 ArrayListIterator<T> implements Iterator<T>），
+            // 需要将这些标识符也统一替换为 GenericParam，以便与方法签名中的类型一致。
+            let type_args: Vec<crate::types::Type> = match interface_type {
+                crate::types::Type::Generic(_, args) => args
+                    .iter()
+                    .map(|a| self.replace_type_params(a, &class.type_params))
+                    .collect(),
+                crate::types::Type::Object(_) => interface_info
+                    .type_params
+                    .iter()
+                    .map(|p| crate::types::Type::GenericParam(p.name.clone()))
+                    .collect(),
+                _ => continue,
+            };
+
             for (method_name, interface_method) in &interface_info.methods {
+                // 替换接口方法签名中的类型参数为类提供的实参
+                let substituted_params: Vec<crate::types::ParameterInfo> = interface_method
+                    .params
+                    .iter()
+                    .map(|p| crate::types::ParameterInfo {
+                        name: p.name.clone(),
+                        param_type: substitute_interface_type(
+                            &p.param_type,
+                            &interface_info.type_params,
+                            &type_args,
+                        ),
+                        is_varargs: p.is_varargs,
+                    })
+                    .collect();
+                let substituted_return = substitute_interface_type(
+                    &interface_method.return_type,
+                    &interface_info.type_params,
+                    &type_args,
+                );
+
                 // 检查当前类或其祖先中是否存在匹配的方法实现
                 if !self.method_exists_in_class_or_ancestors(
                     &class.name,
                     method_name,
-                    &interface_method.params,
-                    &interface_method.return_type,
+                    &substituted_params,
+                    &substituted_return,
                 ) {
                     return Err(semantic_error_with_file(
                         class.loc.file.clone(),
@@ -498,7 +562,7 @@ impl SemanticAnalyzer {
                         let expected_param_types: Vec<Type> =
                             params.iter().map(|p| p.param_type.clone()).collect();
                         if self.types_match(&class_param_types, &expected_param_types)
-                            && method.return_type == *return_type
+                            && self.method_return_matches(&method.return_type, return_type)
                         {
                             return true;
                         }
@@ -712,6 +776,46 @@ impl SemanticAnalyzer {
         Ok(())
     }
 
+    /// 检查方法返回类型是否兼容。
+    ///
+    /// 支持返回类型协变：当期望类型是接口时，实际返回类型可以是实现该接口的类。
+    /// 例如 Iterable<T>.iterator() 期望返回 Iterator<T>，而 ArrayListIterator<T>
+    /// 实现了 Iterator<T>，因此兼容。
+    fn method_return_matches(&self, actual: &Type, expected: &Type) -> bool {
+        if actual == expected {
+            return true;
+        }
+
+        let expected_name = match expected {
+            Type::Object(name) | Type::Generic(name, _) => name,
+            _ => return false,
+        };
+        let actual_name = match actual {
+            Type::Object(name) | Type::Generic(name, _) => name,
+            _ => return false,
+        };
+
+        // 期望类型必须是接口
+        if !self.type_registry.interface_exists(expected_name) {
+            return false;
+        }
+
+        // 实际类型必须是类，且实现了期望接口
+        if let Some(class_info) = self.type_registry.get_class(actual_name) {
+            return class_info.interfaces.iter().any(|i| {
+                let bare_name = match i {
+                    Type::Object(name) | Type::Generic(name, _) => {
+                        name.split('<').next().unwrap_or(name)
+                    }
+                    _ => &format!("{}", i),
+                };
+                bare_name == expected_name
+            });
+        }
+
+        false
+    }
+
     /// 检查类型列表是否匹配
     fn types_match(&self, types1: &[Type], types2: &[Type]) -> bool {
         if types1.len() != types2.len() {
@@ -815,7 +919,15 @@ impl SemanticAnalyzer {
 
             let enum_info = crate::types::EnumInfo {
                 name: enum_decl.name.clone(),
-                type_params: enum_decl.type_params.clone(),
+                type_params: enum_decl
+                    .type_params
+                    .iter()
+                    .map(|p| crate::types::TypeParamInfo {
+                        name: p.name.clone(),
+                        bound: p.bound.clone(),
+                        default_type: p.default_type.clone(),
+                    })
+                    .collect(),
                 variants,
                 methods: std::collections::HashMap::new(),
                 is_public: enum_decl
@@ -1116,7 +1228,7 @@ impl SemanticAnalyzer {
 
         while let Some(class_info) = self.type_registry.get_class(&current) {
             for interface in &class_info.interfaces {
-                interfaces.insert(interface.clone());
+                interfaces.insert(interface_type_name(interface));
             }
             if let Some(parent) = &class_info.parent {
                 current = parent.clone();
@@ -1128,5 +1240,47 @@ impl SemanticAnalyzer {
         let mut result: Vec<String> = interfaces.into_iter().collect();
         result.sort();
         result
+    }
+}
+
+/// 从接口类型中提取基础接口名（如 Iterator<T> -> Iterator）。
+fn interface_type_name(interface_type: &crate::types::Type) -> String {
+    match interface_type {
+        crate::types::Type::Object(name) | crate::types::Type::Generic(name, _) => {
+            name.split('<').next().unwrap_or(name).to_string()
+        }
+        _ => format!("{}", interface_type),
+    }
+}
+
+/// 将接口方法签名中的类型参数替换为类提供的具体实参。
+///
+/// 时间复杂度 O(k)，k 为类型 AST 节点数；空间复杂度 O(k)（递归创建新类型节点）。
+fn substitute_interface_type(
+    ty: &crate::types::Type,
+    interface_type_params: &[crate::types::TypeParamInfo],
+    type_args: &[crate::types::Type],
+) -> crate::types::Type {
+    match ty {
+        crate::types::Type::GenericParam(name) => {
+            if let Some(idx) = interface_type_params.iter().position(|p| &p.name == name) {
+                type_args.get(idx).cloned().unwrap_or(ty.clone())
+            } else {
+                ty.clone()
+            }
+        }
+        crate::types::Type::Generic(name, args) => crate::types::Type::Generic(
+            name.clone(),
+            args.iter()
+                .map(|a| substitute_interface_type(a, interface_type_params, type_args))
+                .collect(),
+        ),
+        crate::types::Type::Array(elem) => crate::types::Type::Array(Box::new(
+            substitute_interface_type(elem, interface_type_params, type_args),
+        )),
+        crate::types::Type::Pointer(inner) => crate::types::Type::Pointer(Box::new(
+            substitute_interface_type(inner, interface_type_params, type_args),
+        )),
+        _ => ty.clone(),
     }
 }

@@ -42,12 +42,12 @@ pub fn parse_class(parser: &mut Parser) -> cayResult<ClassDecl> {
         None
     };
 
-    // 解析实现的接口
+    // 解析实现的接口（支持泛型实参，如 implements Iterator<T>）
     let mut interfaces = Vec::new();
     if parser.match_token(&Token::Implements) {
         loop {
-            let interface_name = parser.consume_identifier("期望接口名\n提示: 在 'implements' 后应跟接口名，例如: class MyClass implements Interface1, Interface2 { ... }")?;
-            interfaces.push(interface_name);
+            let interface_type = parse_type(parser)?;
+            interfaces.push(interface_type);
             if !parser.match_token(&Token::Comma) {
                 break;
             }
@@ -91,6 +91,9 @@ pub fn parse_interface(parser: &mut Parser) -> cayResult<InterfaceDecl> {
         "期望接口名\n提示: 在 'interface' 后应跟接口名，例如: interface MyInterface { ... }",
     )?;
 
+    // 解析泛型类型参数
+    let type_params = parse_generic_type_params(parser)?;
+
     parser.consume(
         &Token::LBrace,
         "期望 '{'\n提示: 接口声明后应跟接口体，使用 '{' 开始，例如: interface MyInterface { ... }",
@@ -107,6 +110,7 @@ pub fn parse_interface(parser: &mut Parser) -> cayResult<InterfaceDecl> {
     Ok(InterfaceDecl {
         name,
         modifiers,
+        type_params,
         methods,
         namespace_path: Vec::new(),
         loc,
@@ -1102,7 +1106,8 @@ pub fn parse_specialize_class(parser: &mut Parser) -> cayResult<SpecializeClassD
 }
 
 /// 解析泛型类型参数 <T, U, V, ...>
-pub fn parse_generic_type_params(parser: &mut Parser) -> cayResult<Vec<String>> {
+/// 支持: T, T: Bound, T = Default, T: Bound = Default
+pub fn parse_generic_type_params(parser: &mut Parser) -> cayResult<Vec<crate::ast::TypeParam>> {
     let mut params = Vec::new();
 
     if parser.match_token(&Token::Lt) {
@@ -1110,7 +1115,28 @@ pub fn parse_generic_type_params(parser: &mut Parser) -> cayResult<Vec<String>> 
             let param_name = parser.consume_identifier(
                 "期望泛型类型参数名\n提示: 泛型类型参数应为标识符，例如: <T> 或 <T, U>",
             )?;
-            params.push(param_name);
+
+            // 可选的类型边界: T: Bound
+            let bound = if parser.match_token(&Token::Colon) {
+                Some(parser.consume_identifier(
+                    "期望类型边界名\n提示: 类型边界格式为 'T: Bound'",
+                )?)
+            } else {
+                None
+            };
+
+            // 可选的默认类型: T = Default
+            let default_type = if parser.match_token(&Token::Assign) {
+                Some(super::types::parse_type(parser)?)
+            } else {
+                None
+            };
+
+            params.push(crate::ast::TypeParam {
+                name: param_name,
+                bound,
+                default_type,
+            });
 
             if !parser.match_token(&Token::Comma) {
                 break;

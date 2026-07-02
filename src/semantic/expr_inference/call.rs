@@ -297,6 +297,14 @@ impl SemanticAnalyzer {
                     }
                 }
                 Type::Generic(class_name, _) => Some(class_name.clone()),
+                Type::GenericParam(param_name) => {
+                    // 泛型类型参数：使用 bound（默认为 Object）查找方法
+                    self.current_class_type_params
+                        .iter()
+                        .find(|p| &p.name == param_name)
+                        .and_then(|p| p.bound.clone())
+                        .or(Some("Object".to_string()))
+                }
                 _ => None,
             };
 

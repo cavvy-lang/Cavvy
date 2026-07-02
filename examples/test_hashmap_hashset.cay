@@ -1,0 +1,39 @@
+#include <std/hashmap.cay>
+#include <std/hashset.cay>
+#include <c/stdio.cay>
+
+using std::HashMap;
+using std::HashSet;
+
+public int main() {
+    HashMap<String, int> scores = new HashMap<String, int>();
+    scores.put("Alice", 90);
+    scores.put("Bob", 85);
+    scores.put("Charlie", 88);
+
+    println("Alice = " + String.valueOf(scores.get("Alice")));
+    println("Bob = " + String.valueOf(scores.get("Bob")));
+    println("size = " + String.valueOf(scores.size()));
+    println("contains Alice = " + String.valueOf(scores.containsKey("Alice")));
+
+    scores.remove("Bob");
+    println("size after remove = " + String.valueOf(scores.size()));
+    println("contains Bob = " + String.valueOf(scores.containsKey("Bob")));
+
+    int keySum = 0;
+    for (String key : scores) {
+        keySum = keySum + scores.get(key);
+    }
+    println("keySum = " + String.valueOf(keySum));
+
+    HashSet<String> tags = new HashSet<String>();
+    tags.add("cavvy");
+    tags.add("compiler");
+    tags.add("cavvy");
+    println("set size = " + String.valueOf(tags.size()));
+    println("contains cavvy = " + String.valueOf(tags.contains("cavvy")));
+    println("contains java = " + String.valueOf(tags.contains("java")));
+
+    println("HashMap HashSet tests passed");
+    return 0;
+}

@@ -1,0 +1,37 @@
+#include <std/arraylist.cay>
+#include <c/stdio.cay>
+
+using std::ArrayList;
+
+public int main() {
+    ArrayList<int> list = new ArrayList<int>();
+    list.add(10);
+    list.add(20);
+    list.add(30);
+
+    int sum = 0;
+    for (int x : list) {
+        sum = sum + x;
+    }
+    println("sum = " + String.valueOf(sum));
+
+    ArrayList<String> words = new ArrayList<String>();
+    words.add("hello");
+    words.add("world");
+
+    String concat = "";
+    for (String s : words) {
+        concat = concat + s;
+    }
+    println("concat = " + concat);
+
+    println("size = " + String.valueOf(list.size()));
+    println("capacity = " + String.valueOf(list.capacity()));
+    println("isEmpty = " + String.valueOf(list.isEmpty()));
+
+    ArrayList<int> withCap = new ArrayList<int>(10);
+    println("reserved capacity = " + String.valueOf(withCap.capacity()));
+
+    println("ArrayList foreach tests passed");
+    return 0;
+}

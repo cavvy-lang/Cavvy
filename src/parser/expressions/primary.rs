@@ -660,7 +660,7 @@ fn type_to_string(ty: &Type) -> String {
         Type::Int64 => "long".to_string(),
         Type::Float32 => "float".to_string(),
         Type::Float64 => "double".to_string(),
-        Type::Bool => "boolean".to_string(),
+        Type::Bool => "bool".to_string(),
         Type::String => "String".to_string(),
         Type::Char => "char".to_string(),
         Type::Object(name) => name.clone(),

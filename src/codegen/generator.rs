@@ -4,10 +4,10 @@ use crate::error::cayResult;
 use crate::types::Type;
 
 /// 泛型特化：替换类型中的泛型参数为实际类型
-fn substitute_type_params(ty: &Type, type_args: &[Type], type_params: &[String]) -> Type {
+fn substitute_type_params(ty: &Type, type_args: &[Type], type_params: &[crate::types::TypeParamInfo]) -> Type {
     match ty {
         Type::GenericParam(name) => {
-            if let Some(idx) = type_params.iter().position(|p| p == name) {
+            if let Some(idx) = type_params.iter().position(|p| &p.name == name) {
                 if let Some(type_arg) = type_args.get(idx) {
                     return type_arg.clone();
                 }
@@ -19,7 +19,7 @@ fn substitute_type_params(ty: &Type, type_args: &[Type], type_params: &[String])
         // 因此这里必须同样处理 Object 形式，否则特化方法/字段/构造函数会保留 "T"
         // 并被降级为 i8*，导致 Box<int>.get() 返回 i8* 而非 i32。
         Type::Object(name) => {
-            if let Some(idx) = type_params.iter().position(|p| p == name) {
+            if let Some(idx) = type_params.iter().position(|p| &p.name == name) {
                 if let Some(type_arg) = type_args.get(idx) {
                     return type_arg.clone();
                 }
@@ -229,16 +229,26 @@ impl IRGenerator {
                         instances.extend(extra.iter().cloned());
                     }
                 }
+                let type_param_infos: Vec<crate::types::TypeParamInfo> = class
+                    .type_params
+                    .iter()
+                    .map(|p| crate::types::TypeParamInfo {
+                        name: p.name.clone(),
+                        bound: p.bound.clone(),
+                        default_type: p.default_type.clone(),
+                    })
+                    .collect();
                 for instance in instances {
                     let specialized_name = instance.specialized_name();
                     // 设置类型参数映射
-                    let mapping = instance.type_param_mapping(&class.type_params);
+                    let mapping = instance.type_param_mapping(&type_param_infos);
                     let old_mapping = std::mem::replace(&mut generator.generic_type_args, mapping);
+                    let resolved_type_args = instance.resolve_type_args(&type_param_infos);
 
                     // 计算特化版本的布局（字段类型已替换）
                     let specialized_fields: Vec<_> = instance_fields.iter().map(|f| {
                         let mut field = f.clone();
-                        field.field_type = substitute_type_params(&field.field_type, &instance.type_args, &class.type_params);
+                        field.field_type = substitute_type_params(&field.field_type, &resolved_type_args, &type_param_infos);
                         field
                     }).collect();
                     generator.compute_class_layout(&specialized_name, &specialized_fields, class.parent.as_deref());
@@ -355,6 +365,9 @@ impl IRGenerator {
                 .or_insert_with(std::collections::HashSet::new)
                 .insert(spec_key);
         }
+
+        // 为内置 Object 根类生成默认构造函数（无 AST 定义，但所有类默认继承它）
+        self.generate_default_constructor("Object")?;
 
         for class in &program.classes {
             self.generate_class(class)?;
@@ -732,17 +745,11 @@ impl IRGenerator {
                 crate::ast::LiteralValue::Int32(n) => Some(n.to_string()),
                 crate::ast::LiteralValue::Int64(n) => Some(n.to_string()),
                 crate::ast::LiteralValue::Float32(f) => {
-                    if f.is_nan() {
-                        Some("0x7FC00000".to_string())
-                    } else if f.is_infinite() {
-                        if *f > 0.0 {
-                            Some("0x7F800000".to_string())
-                        } else {
-                            Some("0xFF800000".to_string())
-                        }
-                    } else {
-                        Some(format!("{:.6e}", f))
-                    }
+                    // LLVM 要求 float 常量若以十进制书写必须在单精度下精确可表示，
+                    // 否则（如 0.7f）会报 "floating point constant invalid for type"。
+                    // 统一采用 LLVM 的十六进制浮点格式：将 float 扩展为 double 后取其
+                    // 64 位比特模式，形如 0xXXXXXXXXXXXXXXXX，对所有值都合法。
+                    Some(format!("0x{:016X}", (*f as f64).to_bits()))
                 }
                 crate::ast::LiteralValue::Float64(f) => {
                     if f.is_nan() {
@@ -883,7 +890,12 @@ impl IRGenerator {
         let full_class_name = if class.type_params.is_empty() {
             class.name.clone()
         } else {
-            format!("{}<{}>", class.name, class.type_params.join(", "))
+            let type_param_names: Vec<String> = class
+                .type_params
+                .iter()
+                .map(|p| p.name.clone())
+                .collect();
+            format!("{}<{}>", class.name, type_param_names.join(", "))
         };
 
         // 构建限定名（用于 LLVM 名称改编）
@@ -975,9 +987,19 @@ impl IRGenerator {
                     instances.extend(extra.iter().cloned());
                 }
             }
+            let type_param_infos: Vec<crate::types::TypeParamInfo> = class
+                .type_params
+                .iter()
+                .map(|p| crate::types::TypeParamInfo {
+                    name: p.name.clone(),
+                    bound: p.bound.clone(),
+                    default_type: p.default_type.clone(),
+                })
+                .collect();
             for instance in instances {
                 let specialized_name = instance.specialized_name();
                 let llvm_specialized = instance.llvm_specialized_name();
+                let resolved_type_args = instance.resolve_type_args(&type_param_infos);
 
                 // 检查是否已生成过此特化版本
                 let spec_key = format!("{}", llvm_specialized);
@@ -986,7 +1008,7 @@ impl IRGenerator {
                 }
 
                 // 检查是否有显式特化覆盖此类型组合
-                let type_args_str: Vec<String> = instance.type_args.iter().map(|t| format!("{}", t)).collect();
+                let type_args_str: Vec<String> = resolved_type_args.iter().map(|t| format!("{}", t)).collect();
                 let explicit_key = type_args_str.join(", ");
                 if let Some(explicit_set) = self.explicit_specializations.get(&class.name) {
                     if explicit_set.contains(&explicit_key) {
@@ -998,7 +1020,7 @@ impl IRGenerator {
                 self.generated_specializations.insert(spec_key);
 
                 // 设置类型参数映射
-                let mapping = instance.type_param_mapping(&class.type_params);
+                let mapping = instance.type_param_mapping(&type_param_infos);
                 let old_mapping = std::mem::replace(&mut self.generic_type_args, mapping);
 
                 // 生成特化版本的 vtable
@@ -1015,16 +1037,16 @@ impl IRGenerator {
                                 let mut specialized_method = method.clone();
                                 specialized_method.return_type = substitute_type_params(
                                     &method.return_type,
-                                    &instance.type_args,
-                                    &class.type_params,
+                                    &resolved_type_args,
+                                    &type_param_infos,
                                 );
                                 specialized_method.params = method.params.iter().map(|p| {
                                     crate::types::ParameterInfo {
                                         name: p.name.clone(),
                                         param_type: substitute_type_params(
                                             &p.param_type,
-                                            &instance.type_args,
-                                            &class.type_params,
+                                            &resolved_type_args,
+                                            &type_param_infos,
                                         ),
                                         is_varargs: p.is_varargs,
                                     }
@@ -1039,8 +1061,8 @@ impl IRGenerator {
                                     name: p.name.clone(),
                                     param_type: substitute_type_params(
                                         &p.param_type,
-                                        &instance.type_args,
-                                        &class.type_params,
+                                        &resolved_type_args,
+                                        &type_param_infos,
                                     ),
                                     is_varargs: p.is_varargs,
                                 }
@@ -1081,10 +1103,6 @@ impl IRGenerator {
             registry.current_namespace = spec.namespace_path.clone();
         }
 
-        // 构建特化类名，如 Box<int>
-        let type_args_str: Vec<String> = spec.type_args.iter().map(|t| format!("{}", t)).collect();
-        let specialized_name = format!("{}<{}>", spec.base_name, type_args_str.join(", "));
-
         // 查找原始泛型类
         let base_class = match self.classes_cache.get(&spec.base_name) {
             Some(c) => c.clone(),
@@ -1096,11 +1114,37 @@ impl IRGenerator {
             }
         };
 
+        // 将 AST 类型参数声明转换为内部类型参数信息
+        let type_param_infos: Vec<crate::types::TypeParamInfo> = base_class
+            .type_params
+            .iter()
+            .map(|p| crate::types::TypeParamInfo {
+                name: p.name.clone(),
+                bound: p.bound.clone(),
+                default_type: p.default_type.clone(),
+            })
+            .collect();
+
+        // 解析最终类型参数（填充默认值）
+        let resolved_type_args: Vec<Type> = type_param_infos.iter().enumerate().map(|(idx, param)| {
+            if let Some(type_arg) = spec.type_args.get(idx) {
+                type_arg.clone()
+            } else if let Some(default) = &param.default_type {
+                default.clone()
+            } else {
+                Type::GenericParam(param.name.clone())
+            }
+        }).collect();
+
+        // 构建特化类名，如 Box<int>
+        let type_args_str: Vec<String> = resolved_type_args.iter().map(|t| format!("{}", t)).collect();
+        let specialized_name = format!("{}<{}>", spec.base_name, type_args_str.join(", "));
+
         // 构建类型参数映射
         let mut mapping = std::collections::HashMap::new();
-        for (idx, param) in base_class.type_params.iter().enumerate() {
-            if let Some(type_arg) = spec.type_args.get(idx) {
-                mapping.insert(param.clone(), type_arg.clone());
+        for (idx, param) in type_param_infos.iter().enumerate() {
+            if let Some(type_arg) = resolved_type_args.get(idx) {
+                mapping.insert(param.name.clone(), type_arg.clone());
             }
         }
         let old_mapping = std::mem::replace(&mut self.generic_type_args, mapping);
@@ -1152,16 +1196,16 @@ impl IRGenerator {
                         let mut specialized_method = method.clone();
                         specialized_method.return_type = substitute_type_params(
                             &method.return_type,
-                            &spec.type_args,
-                            &base_class.type_params,
+                            &resolved_type_args,
+                            &type_param_infos,
                         );
                         specialized_method.params = method.params.iter().map(|p| {
                             crate::types::ParameterInfo {
                                 name: p.name.clone(),
                                 param_type: substitute_type_params(
                                     &p.param_type,
-                                    &spec.type_args,
-                                    &base_class.type_params,
+                                    &resolved_type_args,
+                                    &type_param_infos,
                                 ),
                                 is_varargs: p.is_varargs,
                             }
@@ -1176,8 +1220,8 @@ impl IRGenerator {
                             name: p.name.clone(),
                             param_type: substitute_type_params(
                                 &p.param_type,
-                                &spec.type_args,
-                                &base_class.type_params,
+                                &resolved_type_args,
+                                &type_param_infos,
                             ),
                             is_varargs: p.is_varargs,
                         }

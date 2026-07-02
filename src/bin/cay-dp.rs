@@ -282,7 +282,8 @@ fn print_class(class: &ClassDecl, options: &Options, indent: usize) {
     };
 
     let implements = if !class.interfaces.is_empty() {
-        format!(" implements {}", class.interfaces.join(", "))
+        let names: Vec<String> = class.interfaces.iter().map(|t| format!("{}", t)).collect();
+        format!(" implements {}", names.join(", "))
     } else {
         String::new()
     };

@@ -169,8 +169,7 @@ impl SemanticAnalyzer {
             (Type::Float32, Type::Float64) => true,
             (Type::Float64, Type::Float32) => true, // 允许double到float转换（可能有精度损失）
             // 泛型类型兼容性：Type::Generic 和 Type::Object 之间的兼容
-            (Type::Generic(from_name, _), Type::Object(to_name))
-            | (Type::Object(to_name), Type::Generic(from_name, _)) => {
+            (Type::Generic(from_name, _), Type::Object(to_name)) => {
                 // 解析泛型类名: "Optional<T>" -> "Optional"
                 let from_base = if let Some(pos) = from_name.find('<') {
                     &from_name[..pos]
@@ -188,6 +187,24 @@ impl SemanticAnalyzer {
                 }
                 // 否则检查继承关系：from_name 是否是 to_name 的子类
                 self.is_subtype_of(from_name, to_name)
+            }
+            (Type::Object(from_name), Type::Generic(to_name, _)) => {
+                // Object 与 Generic 混合时，提取基础名后检查子类型关系。
+                // 例如 Object("ArrayListIterator<T>") 可赋值给 Generic("Iterator", [T])。
+                let from_base = if let Some(pos) = from_name.find('<') {
+                    &from_name[..pos]
+                } else {
+                    from_name.as_str()
+                };
+                let to_base = if let Some(pos) = to_name.find('<') {
+                    &to_name[..pos]
+                } else {
+                    to_name.as_str()
+                };
+                if from_base == to_base {
+                    return true;
+                }
+                self.is_subtype_of(from_base, to_base)
             }
             (Type::Generic(from_name, _), Type::Generic(to_name, _)) => {
                 // 两个泛型类型：检查基础类名是否相同
@@ -318,7 +335,20 @@ impl SemanticAnalyzer {
                     };
                 ret_compatible && params_count_match && params_compatible
             }
-            _ => false,
+            _ => {
+                // 兜底：检查接口子类型关系。例如实现类 ArrayListIterator<T>
+                // 可以赋值给接口类型 Iterator<T>。
+                if let (Some(from_name), Some(to_name)) =
+                    (type_base_name(from), type_base_name(to))
+                {
+                    if self.type_registry.interface_exists(&to_name)
+                        && self.is_subtype_of(&from_name, &to_name)
+                    {
+                        return true;
+                    }
+                }
+                false
+            }
         }
     }
 
@@ -384,7 +414,7 @@ impl SemanticAnalyzer {
         // 检查 subtype 是否实现了 supertype 接口
         if self.type_registry.interface_exists(supertype) {
             if let Some(class_info) = self.type_registry.get_class(subtype) {
-                if class_info.interfaces.iter().any(|i| i == supertype) {
+                if class_info.interfaces.iter().any(|i| interface_bare_name(i) == supertype) {
                     return true;
                 }
             }
@@ -403,7 +433,7 @@ impl SemanticAnalyzer {
             if let Some(class_info) = self.type_registry.get_class(&current) {
                 // 检查当前类是否实现了目标接口
                 if self.type_registry.interface_exists(supertype) {
-                    if class_info.interfaces.iter().any(|i| i == supertype) {
+                    if class_info.interfaces.iter().any(|i| interface_bare_name(i) == supertype) {
                         return true;
                     }
                 }
@@ -1182,5 +1212,23 @@ impl SemanticAnalyzer {
                 format!("Unknown String method '{}'", method_name),
             )),
         }
+    }
+}
+
+/// 从接口类型中提取基础接口名（如 Iterator<T> -> Iterator）。
+fn interface_bare_name(interface_type: &Type) -> &str {
+    match interface_type {
+        Type::Object(name) | Type::Generic(name, _) => name.split('<').next().unwrap_or(name),
+        _ => "",
+    }
+}
+
+/// 从引用类型中提取基础类型名（如 Iterator<T> -> Iterator）。
+fn type_base_name(ty: &Type) -> Option<String> {
+    match ty {
+        Type::Object(name) | Type::Generic(name, _) => {
+            name.split('<').next().map(|s| s.to_string())
+        }
+        _ => None,
     }
 }

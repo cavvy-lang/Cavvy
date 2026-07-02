@@ -284,7 +284,7 @@ impl IRGenerator {
                                                             if let Some(idx) = class_info
                                                                 .type_params
                                                                 .iter()
-                                                                .position(|p| p == param_name)
+                                                                .position(|p| &p.name == param_name)
                                                             {
                                                                 if let Some(type_arg) =
                                                                     type_args.get(idx)
@@ -366,7 +366,7 @@ impl IRGenerator {
                 // 如果有类型参数，返回第一个
                 if let Some(first_param) = class_info.type_params.first() {
                     // 根据参数名推断类型签名
-                    return match first_param.as_str() {
+                    return match first_param.name.as_str() {
                         "int" => "i".to_string(),
                         "long" => "l".to_string(),
                         "float" => "f".to_string(),

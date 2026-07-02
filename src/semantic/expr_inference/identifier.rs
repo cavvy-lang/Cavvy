@@ -242,7 +242,7 @@ impl SemanticAnalyzer {
     pub(crate) fn specialize_method_info(
         &self,
         method_info: &crate::types::MethodInfo,
-        type_params: &[String],
+        type_params: &[crate::types::TypeParamInfo],
         type_args: Option<&[Type]>,
     ) -> crate::types::MethodInfo {
         let Some(type_args) = type_args else {

@@ -1,0 +1,268 @@
+/*
+ * Cavvy 哈希表标准库 - 0.5.2.x
+ *
+ * 泛型单态化实现：HashMap<K, V, A: Allocator = GlobalAlloc>
+ * 采用开放寻址法（带删除标记），负载因子 0.7。
+ *
+ * 当前要求键类型 K 提供：
+ *   int hashCode()
+ *   bool equals(K other)
+ */
+
+#pragma once
+
+#include <Allocator.cay>
+#include <std/iterator.cay>
+#include <std/arraylist.cay>
+
+namespace std {
+
+/**
+ * HashMap 键值对迭代器。
+ */
+public class HashMapIterator<K, V> implements Iterator<K> {
+    private K[] keys;
+    private V[] values;
+    private char[] states;
+    private int capacity;
+    private int index;
+
+    public HashMapIterator(K[] keys, V[] values, char[] states, int capacity) {
+        this.keys = keys;
+        this.values = values;
+        this.states = states;
+        this.capacity = capacity;
+        this.index = 0;
+    }
+
+    public bool hasNext() {
+        while (this.index < this.capacity) {
+            if (this.states[this.index] == 1) {
+                return true;
+            }
+            this.index = this.index + 1;
+        }
+        return false;
+    }
+
+    public K next() {
+        while (this.index < this.capacity) {
+            if (this.states[this.index] == 1) {
+                K key = this.keys[this.index];
+                this.index = this.index + 1;
+                return key;
+            }
+            this.index = this.index + 1;
+        }
+        return this.keys[0];
+    }
+}
+
+/**
+ * 泛型哈希表。
+ */
+public class HashMap<K, V, A: Allocator = GlobalAlloc> {
+    private K[] keys;
+    private V[] values;
+    private char[] states;
+    private int size;
+    private int capacity;
+    private A allocator;
+
+    private static final float LOAD_FACTOR = 0.7f;
+    private static final char EMPTY = 0;
+    private static final char OCCUPIED = 1;
+    private static final char DELETED = 2;
+
+    public HashMap() {
+        this.allocator = new A();
+        this.capacity = 8;
+        this.keys = new K[this.capacity];
+        this.values = new V[this.capacity];
+        this.states = new char[this.capacity];
+        this.size = 0;
+    }
+
+    public HashMap(int initialCapacity) {
+        this.allocator = new A();
+        if (initialCapacity < 1) {
+            initialCapacity = 1;
+        }
+        this.capacity = this.nextPowerOfTwo(initialCapacity);
+        this.keys = new K[this.capacity];
+        this.values = new V[this.capacity];
+        this.states = new char[this.capacity];
+        this.size = 0;
+    }
+
+    public HashMap(A allocator) {
+        this.allocator = allocator;
+        this.capacity = 8;
+        this.keys = new K[this.capacity];
+        this.values = new V[this.capacity];
+        this.states = new char[this.capacity];
+        this.size = 0;
+    }
+
+    public int size() {
+        return this.size;
+    }
+
+    public bool isEmpty() {
+        return this.size == 0;
+    }
+
+    public void clear() {
+        for (int i = 0; i < this.capacity; i = i + 1) {
+            this.states[i] = EMPTY;
+        }
+        this.size = 0;
+    }
+
+    public void put(K key, V value) {
+        if ((this.size + 1) > (int)(this.capacity * LOAD_FACTOR)) {
+            this.resize(this.capacity * 2);
+        }
+
+        int index = this.findInsertIndex(key);
+        if (this.states[index] != OCCUPIED) {
+            this.size = this.size + 1;
+        }
+        this.keys[index] = key;
+        this.values[index] = value;
+        this.states[index] = OCCUPIED;
+    }
+
+    public V get(K key) {
+        int index = this.findIndex(key);
+        if (index < 0) {
+            return this.values[0];
+        }
+        return this.values[index];
+    }
+
+    public bool containsKey(K key) {
+        return this.findIndex(key) >= 0;
+    }
+
+    public void remove(K key) {
+        int index = this.findIndex(key);
+        if (index >= 0) {
+            this.states[index] = DELETED;
+            this.size = this.size - 1;
+        }
+    }
+
+    public ArrayList<K> keySet() {
+        ArrayList<K> list = new ArrayList<K>(this.size);
+        for (int i = 0; i < this.capacity; i = i + 1) {
+            if (this.states[i] == OCCUPIED) {
+                list.add(this.keys[i]);
+            }
+        }
+        return list;
+    }
+
+    public ArrayList<V> values() {
+        ArrayList<V> list = new ArrayList<V>(this.size);
+        for (int i = 0; i < this.capacity; i = i + 1) {
+            if (this.states[i] == OCCUPIED) {
+                list.add(this.values[i]);
+            }
+        }
+        return list;
+    }
+
+    public Iterator<K> iterator() {
+        return new HashMapIterator<K, V>(this.keys, this.values, this.states, this.capacity);
+    }
+
+    private int hash(K key) {
+        int h = key.hashCode();
+        if (h < 0) {
+            h = -h;
+        }
+        return h;
+    }
+
+    private bool keyEquals(K a, K b) {
+        return a.equals(b);
+    }
+
+    private int findIndex(K key) {
+        int h = this.hash(key);
+        int index = h % this.capacity;
+        for (int i = 0; i < this.capacity; i = i + 1) {
+            char state = this.states[index];
+            if (state == EMPTY) {
+                return -1;
+            }
+            if (state == OCCUPIED && this.keyEquals(this.keys[index], key)) {
+                return index;
+            }
+            index = (index + 1) % this.capacity;
+        }
+        return -1;
+    }
+
+    private int findInsertIndex(K key) {
+        int h = this.hash(key);
+        int index = h % this.capacity;
+        int firstDeleted = -1;
+        for (int i = 0; i < this.capacity; i = i + 1) {
+            char state = this.states[index];
+            if (state == EMPTY) {
+                if (firstDeleted >= 0) {
+                    return firstDeleted;
+                }
+                return index;
+            }
+            if (state == OCCUPIED && this.keyEquals(this.keys[index], key)) {
+                return index;
+            }
+            if (state == DELETED && firstDeleted < 0) {
+                firstDeleted = index;
+            }
+            index = (index + 1) % this.capacity;
+        }
+        if (firstDeleted >= 0) {
+            return firstDeleted;
+        }
+        return index;
+    }
+
+    private void resize(int newCapacity) {
+        if (newCapacity < 8) {
+            newCapacity = 8;
+        }
+        int oldCapacity = this.capacity;
+        K[] oldKeys = this.keys;
+        V[] oldValues = this.values;
+        char[] oldStates = this.states;
+
+        this.capacity = this.nextPowerOfTwo(newCapacity);
+        this.keys = new K[this.capacity];
+        this.values = new V[this.capacity];
+        this.states = new char[this.capacity];
+        this.size = 0;
+
+        for (int i = 0; i < oldCapacity; i = i + 1) {
+            if (oldStates[i] == OCCUPIED) {
+                this.put(oldKeys[i], oldValues[i]);
+            }
+        }
+    }
+
+    private int nextPowerOfTwo(int n) {
+        if (n < 1) {
+            return 1;
+        }
+        int power = 1;
+        while (power < n) {
+            power = power * 2;
+        }
+        return power;
+    }
+}
+
+} // namespace std

@@ -3,7 +3,7 @@
 use super::analyzer::SemanticAnalyzer;
 use super::symbol_table::SemanticSymbolInfo;
 use crate::ast::*;
-use crate::error::cayResult;
+use crate::error::{SourceLocation, cayResult};
 use crate::types::{ParameterInfo, Type};
 
 impl SemanticAnalyzer {
@@ -245,7 +245,44 @@ impl SemanticAnalyzer {
         }
     }
 
-    /// 类型检查语句
+/// 验证类型是否可迭代
+///
+/// 当前接受以下可迭代对象：
+/// - 数组类型（内置支持）
+/// - 实现 `iterator()` 方法的对象
+/// - 实现 `Iterable<T>` 接口的对象
+fn validate_iterable(&mut self, iterable_type: &Type, loc: &SourceLocation) {
+    match iterable_type {
+        Type::Array(_) => {}
+        Type::Object(name) | Type::Generic(name, _) => {
+            let bare_name = name.split('<').next().unwrap_or(name);
+            let has_iterator = self.type_registry.get_method(name, "iterator").is_some()
+                || self.type_registry.get_method(bare_name, "iterator").is_some();
+            if !has_iterator {
+                self.errors.push(self.create_error_info_with_file(
+                    loc.file.clone(),
+                    loc.line,
+                    loc.column,
+                    format!(
+                        "Type '{}' is not iterable: missing iterator() method",
+                        iterable_type
+                    ),
+                ));
+            }
+        }
+        Type::Pointer(inner) => self.validate_iterable(inner, loc),
+        _ => {
+            self.errors.push(self.create_error_info_with_file(
+                loc.file.clone(),
+                loc.line,
+                loc.column,
+                format!("Type '{}' is not iterable", iterable_type),
+            ));
+        }
+    }
+}
+
+/// 类型检查语句
     pub fn type_check_statement(
         &mut self,
         stmt: &Stmt,
@@ -422,6 +459,25 @@ impl SemanticAnalyzer {
                     self.infer_expr_type_collect_errors(update);
                 }
                 self.type_check_statement(&for_stmt.body, expected_return)?;
+                self.symbol_table.exit_scope();
+            }
+            Stmt::ForEach(for_each) => {
+                self.symbol_table.enter_scope();
+                // 推断 iterable 表达式类型
+                let iterable_type = self.infer_expr_type_collect_errors(&for_each.iterable);
+                // 检查 iterable 是否实现 Iterable 或具有 iterator() 方法
+                self.validate_iterable(&iterable_type, &for_each.iterable.location());
+                // 声明循环变量
+                self.symbol_table.declare(
+                    for_each.var_name.clone(),
+                    SemanticSymbolInfo {
+                        name: for_each.var_name.clone(),
+                        symbol_type: for_each.var_type.clone(),
+                        is_final: true,
+                        is_initialized: true,
+                    },
+                );
+                self.type_check_statement(&for_each.body, expected_return)?;
                 self.symbol_table.exit_scope();
             }
             Stmt::DoWhile(do_while_stmt) => {

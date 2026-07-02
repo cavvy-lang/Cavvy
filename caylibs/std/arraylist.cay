@@ -1,0 +1,175 @@
+/*
+ * Cavvy 动态数组标准库 - 0.5.2.x
+ *
+ * 泛型单态化实现：ArrayList<T, A: Allocator = GlobalAlloc>
+ */
+
+#pragma once
+
+#include <Allocator.cay>
+#include <std/iterator.cay>
+
+namespace std {
+
+/**
+ * ArrayList 迭代器实现。
+ */
+public class ArrayListIterator<T> implements Iterator<T> {
+    private T[] data;
+    private int size;
+    private int index;
+
+    public ArrayListIterator(T[] data, int size) {
+        this.data = data;
+        this.size = size;
+        this.index = 0;
+    }
+
+    public bool hasNext() {
+        return this.index < this.size;
+    }
+
+    public T next() {
+        T value = this.data[this.index];
+        this.index = this.index + 1;
+        return value;
+    }
+}
+
+/**
+ * 动态数组，支持泛型类型参数 T 与分配器参数 A。
+ *
+ * 默认分配器为 GlobalAlloc，可通过构造函数显式指定 Arena 等。
+ * 当前实现使用 Cavvy 内置 T[] 数组作为存储；分配器参数 A 保留在
+ * 签名中以保持 API 兼容性。
+ */
+public class ArrayList<T, A: Allocator = GlobalAlloc> implements Iterable<T> {
+    private T[] data;
+    private int size;
+
+    /**
+     * 默认构造，使用 GlobalAlloc。
+     */
+    public ArrayList() {
+        this.data = new T[0];
+        this.size = 0;
+    }
+
+    /**
+     * 指定初始容量，使用 GlobalAlloc。
+     */
+    public ArrayList(int initialCapacity) {
+        if (initialCapacity < 0) {
+            initialCapacity = 0;
+        }
+        this.data = new T[initialCapacity];
+        this.size = 0;
+    }
+
+    /**
+     * 指定分配器。
+     */
+    public ArrayList(A allocator) {
+        this.data = new T[0];
+        this.size = 0;
+    }
+
+    /**
+     * 指定初始容量与分配器。
+     */
+    public ArrayList(int initialCapacity, A allocator) {
+        if (initialCapacity < 0) {
+            initialCapacity = 0;
+        }
+        this.data = new T[initialCapacity];
+        this.size = 0;
+    }
+
+    /**
+     * 预分配容量。
+     */
+    public void reserve(int capacity) {
+        if (capacity <= this.data.length) {
+            return;
+        }
+        T[] newData = new T[capacity];
+        for (int i = 0; i < this.size; i = i + 1) {
+            newData[i] = this.data[i];
+        }
+        this.data = newData;
+    }
+
+    /**
+     * 追加元素。
+     */
+    public void add(T value) {
+        if (this.size >= this.data.length) {
+            int newCapacity = this.data.length * 2;
+            if (newCapacity < 1) {
+                newCapacity = 1;
+            }
+            this.reserve(newCapacity);
+        }
+        this.data[this.size] = value;
+        this.size = this.size + 1;
+    }
+
+    /**
+     * 获取指定位置元素。
+     */
+    public T get(int index) {
+        return this.data[index];
+    }
+
+    /**
+     * 设置指定位置元素。
+     */
+    public void set(int index, T value) {
+        this.data[index] = value;
+    }
+
+    /**
+     * 返回元素数量。
+     */
+    public int size() {
+        return this.size;
+    }
+
+    /**
+     * 返回当前容量。
+     */
+    public int capacity() {
+        return this.data.length;
+    }
+
+    /**
+     * 是否为空。
+     */
+    public bool isEmpty() {
+        return this.size == 0;
+    }
+
+    /**
+     * 清空列表。
+     */
+    public void clear() {
+        this.size = 0;
+    }
+
+    /**
+     * 移除并返回末尾元素。
+     */
+    public T removeLast() {
+        this.size = this.size - 1;
+        return this.data[this.size];
+    }
+
+    /**
+     * 返回迭代器。
+     */
+    public Iterator<T> iterator() {
+        return new ArrayListIterator<T>(this.data, this.size);
+    }
+}
+
+} // namespace std

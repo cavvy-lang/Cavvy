@@ -432,6 +432,20 @@ impl IRGenerator {
                 ));
                 Ok(Some(format!("i32 {}", temp)))
             }
+            "hashCode" => {
+                // hashCode() - 无参数，返回 i32（Java String.hashCode 算法）
+                if !args.is_empty() {
+                    return Err(codegen_error_at(
+                        member.loc.clone(),
+                        "String.hashCode() takes no arguments".to_string(),
+                    ));
+                }
+                self.emit_line(&format!(
+                    "  {} = call i32 @__cay_string_hashcode(i8* {})",
+                    temp, obj_val
+                ));
+                Ok(Some(format!("i32 {}", temp)))
+            }
             _ => Ok(None), // 不是已知的 String 方法
         }
     }

@@ -271,6 +271,9 @@ impl IRGenerator {
         if !should_skip(self, "__cay_string_compareto") {
             self.emit_raw("declare i32 @__cay_string_compareto(i8*, i8*)");
         }
+        if !should_skip(self, "__cay_string_hashcode") {
+            self.emit_raw("declare i32 @__cay_string_hashcode(i8*)");
+        }
 
         // 类型转换
         if !should_skip(self, "__cay_int_to_string") {

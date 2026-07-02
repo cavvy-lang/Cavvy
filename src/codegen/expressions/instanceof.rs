@@ -172,16 +172,23 @@ impl IRGenerator {
                 .classes
                 .values()
                 .filter(|c| {
-                    if c.interfaces.contains(&interface_name.to_string()) {
+                    let matches_interface = |i: &crate::types::Type| {
+                        let bare_name = match i {
+                            crate::types::Type::Object(name)
+                            | crate::types::Type::Generic(name, _) => {
+                                name.split('<').next().unwrap_or(name)
+                            }
+                            _ => &format!("{}", i),
+                        };
+                        bare_name == interface_name
+                    };
+                    if c.interfaces.iter().any(matches_interface) {
                         return true;
                     }
                     let mut current = c.parent.as_ref().map(|p| p.as_str());
                     while let Some(parent_name) = current {
                         if let Some(parent_class) = registry.get_class(parent_name) {
-                            if parent_class
-                                .interfaces
-                                .contains(&interface_name.to_string())
-                            {
+                            if parent_class.interfaces.iter().any(matches_interface) {
                                 return true;
                             }
                             current = parent_class.parent.as_ref().map(|p| p.as_str());

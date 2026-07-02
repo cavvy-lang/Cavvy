@@ -1,0 +1,31 @@
+/*
+ * Cavvy 迭代器协议标准库 - 0.5.2.x
+ *
+ * 提供 Iterator<T> / Iterable<T> 接口，支持增强 for 循环解糖。
+ */
+
+#pragma once
+
+namespace std {
+
+/**
+ * 迭代器接口。
+ *
+ * 实现该接口的对象可被增强 for 循环遍历：
+ *   for (T item : iterable) { ... }
+ */
+public interface Iterator<T> {
+    bool hasNext();
+    T next();
+}
+
+/**
+ * 可迭代接口。
+ *
+ * 实现该接口的对象可通过 iterator() 获取迭代器。
+ */
+public interface Iterable<T> {
+    Iterator<T> iterator();
+}
+
+} // namespace std
