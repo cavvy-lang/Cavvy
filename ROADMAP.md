@@ -482,7 +482,7 @@ public class Optional<T> {
   ```
 
   </details>
-- [ ] **迭代器协议** - 基础迭代器接口，支持范围 for 循环
+- [X] **迭代器协议** - 基础迭代器接口，支持范围 for 循环
 
   ```java
   public interface Iterator<T> {
