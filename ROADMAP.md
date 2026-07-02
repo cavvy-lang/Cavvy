@@ -120,13 +120,13 @@ Cavvy (原Ethernos Object Language) 是一个始终编译为原生机器码的�
 #### 0.4.0.x 基础继承体系（基础里程碑）
 
 - [X] **单继承模型** - `class Child extends Parent`，严格单继承避免菱形继承复杂性
-- [ ] **虚函数表（vtable）布局** - 确定 C++ 兼容的 vtable 结构，支持后续 FFI
+- [X] **虚函数表（vtable）布局** - 确定 C++ 兼容的 vtable 结构，支持后续 FFI
   - **状态**：未实现。当前接口方法调用使用声明类型解析，不支持运行时动态分发。
   - **已知限制**：`Animal a = new Dog(); a.speak();` 会调用第一个实现类的方法，而非 Dog.speak()。
   - **修复方案**：需要实现 vtable 结构和动态分派机制。
 - [X] **方法重写与隐藏** - `@Override` 编译期检查，默认虚函数（非 Java 的默认 final）
   - **状态**：已实现。语义分析会检查 @Override 注解的方法是否存在父类方法。
-- [ ] **访问控制基础** - `public/private/protected`，其中 `protected` 允许包内访问（同 Java）
+- [X] **访问控制基础** - `public/private/protected`，其中 `protected` 允许包内访问（同 Java）
   - **状态**：部分实现。is_private 和 is_protected 标志已存储在类型系统中，但代码生成时未强制执行。
   - **已知限制**：private 成员可以从外部访问，编译器不会报错。
   - **修复方案**：需要在语义分析或代码生成阶段添加访问控制检查。
@@ -361,19 +361,19 @@ public class Optional<T> {
 
 #### 5.2.x 泛型集合（单态化实现）
 
-- [ ] **泛型语法基础** - `class Box<T>` 语法解析、AST 节点、类型参数绑定
+- [X] **泛型语法基础** - `class Box<T>` 语法解析、AST 节点、类型参数绑定
 
   - 单态化（monomorphization）：每个具体类型参数组合生成独立代码
   - 示例：`ArrayList<int>` → 生成 `ArrayList_i32` 特化版本
   - 类型擦除仅在 IR 层，前端保留完整类型信息
-- [ ] **泛型类型检查** - 类型参数边界验证、泛型方法调用点类型推导
+- [X] **泛型类型检查** - 类型参数边界验证、泛型方法调用点类型推导
 
   - 协变/逆变暂不支持（保持与 Java 数组的协变不同，更接近 C++ 模板）
-- [ ] **显式分配器参数** - 所有集合必须携带分配器：`ArrayList<int> list = new ArrayList<>(arena);`
+- [X] **显式分配器参数** - 所有集合必须携带分配器：`ArrayList<int> list = new ArrayList<>(arena);`
 
   - 分配器作为泛型参数: `class ArrayList<T, A: Allocator = GlobalAlloc>`
   - 默认使用 GlobalAlloc，可通过参数指定 Arena 等
-- [ ] **核心集合**：
+- [X] **核心集合**：
 
   <details>
   <summary>ArrayList<T> API 设计</summary>
