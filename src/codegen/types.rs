@@ -1,6 +1,7 @@
 //! 类型转换和类型系统支持
 use crate::codegen::context::IRGenerator;
 use crate::types::Type;
+use crate::miette_diagnostic::ErrorCodes;
 
 impl IRGenerator {
     /// 解析类型（包括类型别名）
@@ -97,7 +98,7 @@ impl IRGenerator {
                         _ => self.type_to_llvm(actual_type),
                     }
                 } else {
-                    let warning = crate::miette_diagnostic::codegen_warning_at(
+                    let warning = crate::miette_diagnostic::codegen_warning_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                         crate::miette_diagnostic::SourceLocation::new(Some(self.source_file.clone()), self.source_line, self.source_column),
                         format!("泛型类型参数 '{}' 未在单态化上下文中解析，将使用 i8*。", param_name)
                     );

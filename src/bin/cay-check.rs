@@ -1,5 +1,5 @@
 use cavvy::miette_diagnostic::{
-    cayError, get_error_help, get_error_location, get_error_message, print_error_with_context,
+    CayError, get_error_help, get_error_location, get_error_message, print_error_with_context,
 };
 use cavvy::lexer;
 use cavvy::parser;
@@ -12,7 +12,7 @@ use std::process;
 
 /// 使用源映射打印错误信息
 fn print_error_with_source_map(
-    error: &cayError,
+    error: &CayError,
     processed_source: &str,
     source_path: &str,
     source_map: &std::collections::HashMap<usize, (String, usize)>,
@@ -52,7 +52,7 @@ fn print_error_with_source_map(
 
 /// 打印带有位置信息的错误（修复版）
 fn print_error_with_location_fixed(
-    error: &cayError,
+    error: &CayError,
     source: &str,
     filename: &str,
     line: usize,

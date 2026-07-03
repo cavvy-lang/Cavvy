@@ -3,8 +3,7 @@
 //! 提供语法分析器的通用工具函数和增强的错误处理
 
 use super::Parser;
-use crate::miette_diagnostic::{CompilationPhase, Diagnostic, ErrorCodes, FixSuggestion};
-use crate::miette_diagnostic::{cayError, cayResult};
+use crate::miette_diagnostic::{CayError, CayResult, ErrorCodes};
 use crate::lexer::{Token, TokenWithLocation};
 
 /// 检查是否到达令牌流末尾
@@ -117,7 +116,7 @@ pub fn match_token(parser: &mut Parser, token: &Token) -> bool {
 }
 
 /// 消耗指定令牌，否则报错（增强版，带详细错误信息）
-pub fn consume<'a>(parser: &'a mut Parser, token: &Token, message: &str) -> cayResult<&'a Token> {
+pub fn consume<'a>(parser: &'a mut Parser, token: &Token, message: &str) -> CayResult<&'a Token> {
     if check(parser, token) {
         Ok(advance(parser))
     } else {
@@ -178,22 +177,23 @@ pub fn consume<'a>(parser: &'a mut Parser, token: &Token, message: &str) -> cayR
         };
 
         // 添加到诊断收集器
-        let diagnostic = Diagnostic::error(
+        let error = CayError::Parser {
             error_code,
-            CompilationPhase::Parser,
-            detailed_message.clone(),
-            crate::miette_diagnostic::SourceLocation::new(loc.file.clone(), loc.line, loc.column),
-        )
-        .with_suggestion(FixSuggestion::new(suggestion));
+            file: loc.file.clone(),
+            line: loc.line,
+            column: loc.column,
+            message: detailed_message.clone(),
+            suggestion,
+        };
 
-        parser.diagnostics.add(diagnostic.clone());
+        parser.diagnostics.push(error.clone());
 
-        Err(crate::miette_diagnostic::CompilerError(diagnostic).into())
+        Err(error)
     }
 }
 
 /// 消耗标识符
-pub fn consume_identifier(parser: &mut Parser, message: &str) -> cayResult<String> {
+pub fn consume_identifier(parser: &mut Parser, message: &str) -> CayResult<String> {
     if let Token::Identifier(name) = current_token(parser) {
         let name = name.clone();
         advance(parser);
@@ -203,59 +203,55 @@ pub fn consume_identifier(parser: &mut Parser, message: &str) -> cayResult<Strin
         let actual = get_token_name(current_token(parser));
         let detailed_message = format!("期望标识符，但找到 '{}'", actual);
 
-        let diagnostic = Diagnostic::error(
-            ErrorCodes::PARSER_EXPECTED_IDENTIFIER,
-            CompilationPhase::Parser,
-            detailed_message.clone(),
-            crate::miette_diagnostic::SourceLocation::new(loc.file.clone(), loc.line, loc.column),
-        )
-        .with_suggestion(FixSuggestion::new(
-            "使用有效的标识符名称（以字母或下划线开头）",
-        ));
+        let error = CayError::Parser {
+            error_code: ErrorCodes::PARSER_EXPECTED_IDENTIFIER,
+            file: loc.file.clone(),
+            line: loc.line,
+            column: loc.column,
+            message: detailed_message.clone(),
+            suggestion: "使用有效的标识符名称（以字母或下划线开头）".to_string(),
+        };
 
-        parser.diagnostics.add(diagnostic.clone());
+        parser.diagnostics.push(error.clone());
 
-        Err(crate::miette_diagnostic::CompilerError(diagnostic).into())
+        Err(error)
     }
 }
 
-/// 创建错误（新系统：基于 Diagnostic + 错误代码）
-pub fn error(parser: &Parser, message: &str) -> cayError {
+/// 创建错误
+pub fn error(parser: &Parser, message: &str) -> CayError {
     let loc = current_full_loc(parser);
 
-    // 创建 Diagnostic 并添加到收集器
-    let diagnostic = crate::miette_diagnostic::Diagnostic::error(
-        ErrorCodes::PARSER_UNEXPECTED_TOKEN,
-        CompilationPhase::Parser,
-        message.to_string(),
-        crate::miette_diagnostic::SourceLocation::new(loc.file.clone(), loc.line, loc.column),
-    );
-
-    // 注意：这里无法 mutable 访问 parser（因为 parser 是 & 引用），
-    // 所以暂时不添加到收集器。调用 create_parser_error 的代码已达到此目的。
-
-    // 转换为 cayError（迁移期间保持向后兼容）
-    crate::miette_diagnostic::CompilerError(diagnostic).into()
+    CayError::Parser {
+        error_code: ErrorCodes::PARSER_UNEXPECTED_TOKEN,
+        file: loc.file.clone(),
+        line: loc.line,
+        column: loc.column,
+        message: message.to_string(),
+        suggestion: ErrorCodes::get_suggestion(ErrorCodes::PARSER_UNEXPECTED_TOKEN).to_string(),
+    }
 }
 
-/// 创建详细的语法错误（使用新系统）
+/// 创建详细的语法错误
 pub fn create_parser_error(
     parser: &mut Parser,
     error_code: &'static str,
     message: impl Into<String>,
-) -> cayError {
+) -> CayError {
     let loc = current_full_loc(parser);
     let message = message.into();
 
-    let diagnostic = crate::miette_diagnostic::Diagnostic::error(
+    let error = CayError::Parser {
         error_code,
-        CompilationPhase::Parser,
-        message.clone(),
-        crate::miette_diagnostic::SourceLocation::new(loc.file.clone(), loc.line, loc.column),
-    );
+        file: loc.file.clone(),
+        line: loc.line,
+        column: loc.column,
+        message: message.clone(),
+        suggestion: ErrorCodes::get_suggestion(error_code).to_string(),
+    };
 
-    parser.diagnostics.add(diagnostic.clone());
-    crate::miette_diagnostic::CompilerError(diagnostic).into()
+    parser.diagnostics.push(error.clone());
+    error
 }
 
 /// 检查下一个令牌是否匹配给定令牌

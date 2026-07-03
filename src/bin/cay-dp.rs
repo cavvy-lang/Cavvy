@@ -125,12 +125,13 @@ fn main() {
 
     let (tokens, lexer_diagnostics) = lex_with_diagnostics(&source_to_parse);
 
-    if lexer_diagnostics.has_errors() {
+    if !lexer_diagnostics.is_empty() {
         eprintln!("词法分析错误:");
-        for diag in lexer_diagnostics.diagnostics() {
+        for diag in lexer_diagnostics.iter() {
+            let (line, col) = diag.location().unwrap_or((0, 0));
             eprintln!(
                 "  [{}] {} (行 {}, 列 {})",
-                diag.code, diag.message, diag.location.line, diag.location.column
+                diag.error_code(), diag.message(), line, col
             );
         }
         process::exit(1);

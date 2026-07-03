@@ -4,12 +4,12 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::cayResult;
+use crate::miette_diagnostic::CayResult;
 use crate::types::Type;
 
 impl IRGenerator {
     /// 生成 while 语句代码
-    pub fn generate_while_statement(&mut self, while_stmt: &WhileStmt) -> cayResult<()> {
+    pub fn generate_while_statement(&mut self, while_stmt: &WhileStmt) -> CayResult<()> {
         let cond_label = self.new_label("while.cond");
         let body_label = self.new_label("while.body");
         let end_label = self.new_label("while.end");
@@ -56,7 +56,7 @@ impl IRGenerator {
     }
 
     /// 生成 for 语句代码
-    pub fn generate_for_statement(&mut self, for_stmt: &ForStmt) -> cayResult<()> {
+    pub fn generate_for_statement(&mut self, for_stmt: &ForStmt) -> CayResult<()> {
         let cond_label = self.new_label("for.cond");
         let body_label = self.new_label("for.body");
         let update_label = self.new_label("for.update");
@@ -120,7 +120,7 @@ impl IRGenerator {
         Ok(())
     }
 
-    fn generate_for_initializer(&mut self, init: &Stmt) -> cayResult<()> {
+    fn generate_for_initializer(&mut self, init: &Stmt) -> CayResult<()> {
         match init {
             Stmt::VarDecl(var) if self.scope_manager.get_var_type(&var.name).is_some() => {
                 if let Some(initializer) = &var.initializer {
@@ -150,7 +150,7 @@ impl IRGenerator {
     }
 
     /// 生成 do-while 语句代码
-    pub fn generate_do_while_statement(&mut self, do_while_stmt: &DoWhileStmt) -> cayResult<()> {
+    pub fn generate_do_while_statement(&mut self, do_while_stmt: &DoWhileStmt) -> CayResult<()> {
         let body_label = self.new_label("dowhile.body");
         let cond_label = self.new_label("dowhile.cond");
         let end_label = self.new_label("dowhile.end");
@@ -207,7 +207,7 @@ impl IRGenerator {
     ///     }
     /// }
     /// ```
-    pub fn generate_for_each_statement(&mut self, for_each: &ForEachStmt) -> cayResult<()> {
+    pub fn generate_for_each_statement(&mut self, for_each: &ForEachStmt) -> CayResult<()> {
         let iter_idx = self.temp_counter;
         self.temp_counter += 1;
         let iter_var = format!("__cay_iter_{}", iter_idx);

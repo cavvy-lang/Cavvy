@@ -27,7 +27,7 @@ impl SemanticAnalyzer {
     /// 4. char <-> int：允许
     /// 5. 数组类型之间：仅当元素类型兼容时允许
     /// 6. 其他组合：非法转换
-    pub(crate) fn infer_cast_type(&mut self, cast: &CastExpr) -> crate::miette_diagnostic::cayResult<Type> {
+    pub(crate) fn infer_cast_type(&mut self, cast: &CastExpr) -> crate::miette_diagnostic::CayResult<Type> {
         let source_type = self.infer_expr_type_internal(&cast.expr)?;
         let target_type = &cast.target_type;
 

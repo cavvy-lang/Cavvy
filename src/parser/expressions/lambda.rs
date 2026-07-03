@@ -7,11 +7,11 @@ use super::super::statements::parse_statement;
 use super::super::types::{is_type_token, parse_type};
 use super::assignment::parse_expression;
 use crate::ast::*;
-use crate::miette_diagnostic::cayResult;
+use crate::miette_diagnostic::CayResult;
 
 /// 尝试解析 Lambda 表达式
 /// 假设已经消耗了 '('，需要解析参数列表和 -> 箭头
-pub fn try_parse_lambda(parser: &mut Parser, loc: crate::miette_diagnostic::SourceLocation) -> cayResult<Expr> {
+pub fn try_parse_lambda(parser: &mut Parser, loc: crate::miette_diagnostic::SourceLocation) -> CayResult<Expr> {
     // 解析 Lambda 参数列表: (param1, param2, ...) 或 (int x, int y) 或 ()
     let mut params = Vec::new();
 
@@ -63,7 +63,7 @@ pub fn try_parse_lambda(parser: &mut Parser, loc: crate::miette_diagnostic::Sour
 }
 
 /// 解析 Lambda 参数
-fn parse_lambda_param(parser: &mut Parser) -> cayResult<LambdaParam> {
+fn parse_lambda_param(parser: &mut Parser) -> CayResult<LambdaParam> {
     // 检查是否有类型注解（可选）
     let checkpoint = parser.pos;
 
@@ -116,7 +116,7 @@ fn parse_lambda_param(parser: &mut Parser) -> cayResult<LambdaParam> {
 }
 
 /// 解析 Lambda 语句块
-fn parse_lambda_block(parser: &mut Parser) -> cayResult<Block> {
+fn parse_lambda_block(parser: &mut Parser) -> CayResult<Block> {
     let mut statements = Vec::new();
 
     while !parser.check(&crate::lexer::Token::RBrace) {

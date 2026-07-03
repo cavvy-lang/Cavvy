@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::{cayResult, codegen_error_at};
+use crate::miette_diagnostic::{CayResult, codegen_error_at, ErrorCodes};
 use crate::semantic::resolve_call_args;
 
 impl IRGenerator {
@@ -12,7 +12,7 @@ impl IRGenerator {
     ///
     /// # Arguments
     /// * `call` - 函数调用表达式
-    pub fn generate_call_expression(&mut self, call: &CallExpr) -> cayResult<String> {
+    pub fn generate_call_expression(&mut self, call: &CallExpr) -> CayResult<String> {
         // 捕获变量声明为泛型静态工厂调用（如 `Optional<int> x = Optional.of(42)`）设置的
         // 期望类型，供下方将静态方法调用特化到具体单态化版本时推断类型参数。
         // 在生成任何子表达式（可能清除该字段）之前读取。
@@ -409,7 +409,7 @@ impl IRGenerator {
                                     )
                                 }
                                 _ => {
-                                    return Err(codegen_error_at(
+                                    return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                                         member.loc.clone(),
                                         format!(
                                             "Cannot call method '{}' on non-class type",
@@ -419,7 +419,7 @@ impl IRGenerator {
                                 }
                             }
                         } else {
-                            return Err(codegen_error_at(
+                            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                                 member.loc.clone(),
                                 format!(
                                     "Cannot determine type for method call '{}'",
@@ -431,7 +431,7 @@ impl IRGenerator {
                 }
             }
             _ => {
-                return Err(codegen_error_at(
+                return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                     call.loc.clone(),
                     "Invalid function call".to_string(),
                 ));
@@ -487,7 +487,7 @@ impl IRGenerator {
             let params = self
                 .get_method_params(&class_name, &method_name)
                 .ok_or_else(|| {
-                    codegen_error_at(
+                    codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                         call.loc.clone(),
                         format!(
                             "Cannot resolve parameters for '{}' to process named arguments",
@@ -496,7 +496,7 @@ impl IRGenerator {
                     )
                 })?;
             let resolved = resolve_call_args(&call.args, &params)
-                .map_err(|msg| codegen_error_at(call.loc.clone(), msg))?;
+                .map_err(|msg| codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, call.loc.clone(), msg))?;
             resolved_args = resolved.args;
             &resolved_args
         } else {

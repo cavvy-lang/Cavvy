@@ -10,8 +10,7 @@ mod types;
 mod utils;
 
 use crate::ast::Program;
-use crate::miette_diagnostic::DiagnosticCollector;
-use crate::miette_diagnostic::cayResult;
+use crate::miette_diagnostic::{CayError, CayResult};
 use crate::lexer::TokenWithLocation;
 
 /// 语法分析器
@@ -21,7 +20,7 @@ pub struct Parser {
     /// 当前解析位置
     pub pos: usize,
     /// 诊断收集器
-    pub diagnostics: DiagnosticCollector,
+    pub diagnostics: Vec<CayError>,
     /// 源代码文本（用于内联IR等需要直接访问源码的场景）
     source: Option<String>,
     /// 类型别名映射: 别名名称 -> 目标类型
@@ -34,7 +33,7 @@ impl Parser {
         Self {
             tokens,
             pos: 0,
-            diagnostics: DiagnosticCollector::new(),
+            diagnostics: Vec::new(),
             source: None,
             type_aliases: std::collections::HashMap::new(),
         }
@@ -45,7 +44,7 @@ impl Parser {
         Self {
             tokens,
             pos: 0,
-            diagnostics: DiagnosticCollector::new(),
+            diagnostics: Vec::new(),
             source: Some(source),
             type_aliases: std::collections::HashMap::new(),
         }
@@ -57,12 +56,12 @@ impl Parser {
     }
 
     /// 获取诊断收集器
-    pub fn diagnostics(&self) -> &DiagnosticCollector {
+    pub fn diagnostics(&self) -> &Vec<CayError> {
         &self.diagnostics
     }
 
     /// 解析整个程序
-    pub fn parse(&mut self) -> cayResult<Program> {
+    pub fn parse(&mut self) -> CayResult<Program> {
         let mut classes = Vec::new();
         let mut structs = Vec::new();
         let mut enums = Vec::new();
@@ -245,53 +244,53 @@ impl Parser {
     }
 
     // 类解析方法
-    fn parse_class(&mut self) -> cayResult<crate::ast::ClassDecl> {
+    fn parse_class(&mut self) -> CayResult<crate::ast::ClassDecl> {
         classes::parse_class(self)
     }
 
-    fn parse_struct(&mut self) -> cayResult<crate::ast::StructDecl> {
+    fn parse_struct(&mut self) -> CayResult<crate::ast::StructDecl> {
         classes::parse_struct(self)
     }
 
-    fn parse_enum(&mut self) -> cayResult<crate::ast::EnumDecl> {
+    fn parse_enum(&mut self) -> CayResult<crate::ast::EnumDecl> {
         classes::parse_enum(self)
     }
 
-    fn parse_interface(&mut self) -> cayResult<crate::ast::InterfaceDecl> {
+    fn parse_interface(&mut self) -> CayResult<crate::ast::InterfaceDecl> {
         classes::parse_interface(self)
     }
 
     /// 解析泛型类型参数 <T, U, ...>
-    fn parse_specialize_class(&mut self) -> cayResult<crate::ast::SpecializeClassDecl> {
+    fn parse_specialize_class(&mut self) -> CayResult<crate::ast::SpecializeClassDecl> {
         classes::parse_specialize_class(self)
     }
 
-    fn parse_generic_type_params(&mut self) -> cayResult<Vec<crate::ast::TypeParam>> {
+    fn parse_generic_type_params(&mut self) -> CayResult<Vec<crate::ast::TypeParam>> {
         classes::parse_generic_type_params(self)
     }
 
-    fn parse_class_member(&mut self) -> cayResult<crate::ast::ClassMember> {
+    fn parse_class_member(&mut self) -> CayResult<crate::ast::ClassMember> {
         classes::parse_class_member(self)
     }
 
-    fn parse_field(&mut self) -> cayResult<crate::ast::FieldDecl> {
+    fn parse_field(&mut self) -> CayResult<crate::ast::FieldDecl> {
         classes::parse_field(self)
     }
 
-    fn parse_method(&mut self) -> cayResult<crate::ast::MethodDecl> {
+    fn parse_method(&mut self) -> CayResult<crate::ast::MethodDecl> {
         classes::parse_method(self)
     }
 
-    fn parse_modifiers(&mut self) -> cayResult<Vec<crate::ast::Modifier>> {
+    fn parse_modifiers(&mut self) -> CayResult<Vec<crate::ast::Modifier>> {
         classes::parse_modifiers(self)
     }
 
-    fn parse_parameters(&mut self) -> cayResult<Vec<crate::types::ParameterInfo>> {
+    fn parse_parameters(&mut self) -> CayResult<Vec<crate::types::ParameterInfo>> {
         classes::parse_parameters(self)
     }
 
     // 类型解析方法
-    fn parse_type(&mut self) -> cayResult<crate::types::Type> {
+    fn parse_type(&mut self) -> CayResult<crate::types::Type> {
         types::parse_type(self)
     }
 
@@ -304,108 +303,108 @@ impl Parser {
     }
 
     // 语句解析方法
-    fn parse_block(&mut self) -> cayResult<crate::ast::Block> {
+    fn parse_block(&mut self) -> CayResult<crate::ast::Block> {
         statements::parse_block(self)
     }
 
-    fn parse_statement(&mut self) -> cayResult<crate::ast::Stmt> {
+    fn parse_statement(&mut self) -> CayResult<crate::ast::Stmt> {
         statements::parse_statement(self)
     }
 
-    fn parse_var_decl(&mut self) -> cayResult<crate::ast::Stmt> {
+    fn parse_var_decl(&mut self) -> CayResult<crate::ast::Stmt> {
         statements::parse_var_decl(self)
     }
 
-    fn parse_if_statement(&mut self) -> cayResult<crate::ast::Stmt> {
+    fn parse_if_statement(&mut self) -> CayResult<crate::ast::Stmt> {
         statements::parse_if_statement(self)
     }
 
-    fn parse_while_statement(&mut self) -> cayResult<crate::ast::Stmt> {
+    fn parse_while_statement(&mut self) -> CayResult<crate::ast::Stmt> {
         statements::parse_while_statement(self)
     }
 
-    fn parse_for_statement(&mut self) -> cayResult<crate::ast::Stmt> {
+    fn parse_for_statement(&mut self) -> CayResult<crate::ast::Stmt> {
         statements::parse_for_statement(self)
     }
 
-    fn parse_do_while_statement(&mut self) -> cayResult<crate::ast::Stmt> {
+    fn parse_do_while_statement(&mut self) -> CayResult<crate::ast::Stmt> {
         statements::parse_do_while_statement(self)
     }
 
-    fn parse_switch_statement(&mut self) -> cayResult<crate::ast::Stmt> {
+    fn parse_switch_statement(&mut self) -> CayResult<crate::ast::Stmt> {
         statements::parse_switch_statement(self)
     }
 
-    fn parse_return_statement(&mut self) -> cayResult<crate::ast::Stmt> {
+    fn parse_return_statement(&mut self) -> CayResult<crate::ast::Stmt> {
         statements::parse_return_statement(self)
     }
 
-    fn parse_expression_statement(&mut self) -> cayResult<crate::ast::Stmt> {
+    fn parse_expression_statement(&mut self) -> CayResult<crate::ast::Stmt> {
         statements::parse_expression_statement(self)
     }
 
     // 表达式解析方法
-    fn parse_expression(&mut self) -> cayResult<crate::ast::Expr> {
+    fn parse_expression(&mut self) -> CayResult<crate::ast::Expr> {
         expressions::parse_expression(self)
     }
 
-    fn parse_assignment(&mut self) -> cayResult<crate::ast::Expr> {
+    fn parse_assignment(&mut self) -> CayResult<crate::ast::Expr> {
         expressions::parse_assignment(self)
     }
 
-    fn parse_or(&mut self) -> cayResult<crate::ast::Expr> {
+    fn parse_or(&mut self) -> CayResult<crate::ast::Expr> {
         expressions::parse_or(self)
     }
 
-    fn parse_and(&mut self) -> cayResult<crate::ast::Expr> {
+    fn parse_and(&mut self) -> CayResult<crate::ast::Expr> {
         expressions::parse_and(self)
     }
 
-    fn parse_bitwise_or(&mut self) -> cayResult<crate::ast::Expr> {
+    fn parse_bitwise_or(&mut self) -> CayResult<crate::ast::Expr> {
         expressions::parse_bitwise_or(self)
     }
 
-    fn parse_bitwise_xor(&mut self) -> cayResult<crate::ast::Expr> {
+    fn parse_bitwise_xor(&mut self) -> CayResult<crate::ast::Expr> {
         expressions::parse_bitwise_xor(self)
     }
 
-    fn parse_bitwise_and(&mut self) -> cayResult<crate::ast::Expr> {
+    fn parse_bitwise_and(&mut self) -> CayResult<crate::ast::Expr> {
         expressions::parse_bitwise_and(self)
     }
 
-    fn parse_equality(&mut self) -> cayResult<crate::ast::Expr> {
+    fn parse_equality(&mut self) -> CayResult<crate::ast::Expr> {
         expressions::parse_equality(self)
     }
 
-    fn parse_comparison(&mut self) -> cayResult<crate::ast::Expr> {
+    fn parse_comparison(&mut self) -> CayResult<crate::ast::Expr> {
         expressions::parse_comparison(self)
     }
 
-    fn parse_shift(&mut self) -> cayResult<crate::ast::Expr> {
+    fn parse_shift(&mut self) -> CayResult<crate::ast::Expr> {
         expressions::parse_shift(self)
     }
 
-    fn parse_term(&mut self) -> cayResult<crate::ast::Expr> {
+    fn parse_term(&mut self) -> CayResult<crate::ast::Expr> {
         expressions::parse_term(self)
     }
 
-    fn parse_factor(&mut self) -> cayResult<crate::ast::Expr> {
+    fn parse_factor(&mut self) -> CayResult<crate::ast::Expr> {
         expressions::parse_factor(self)
     }
 
-    fn parse_unary(&mut self) -> cayResult<crate::ast::Expr> {
+    fn parse_unary(&mut self) -> CayResult<crate::ast::Expr> {
         expressions::parse_unary(self)
     }
 
-    fn parse_postfix(&mut self) -> cayResult<crate::ast::Expr> {
+    fn parse_postfix(&mut self) -> CayResult<crate::ast::Expr> {
         expressions::parse_postfix(self)
     }
 
-    fn parse_primary(&mut self) -> cayResult<crate::ast::Expr> {
+    fn parse_primary(&mut self) -> CayResult<crate::ast::Expr> {
         expressions::parse_primary(self)
     }
 
-    fn parse_arguments(&mut self) -> cayResult<Vec<crate::ast::Expr>> {
+    fn parse_arguments(&mut self) -> CayResult<Vec<crate::ast::Expr>> {
         expressions::parse_arguments(self)
     }
 
@@ -450,15 +449,15 @@ impl Parser {
         &mut self,
         token: &crate::lexer::Token,
         message: &str,
-    ) -> cayResult<&crate::lexer::Token> {
+    ) -> CayResult<&crate::lexer::Token> {
         utils::consume(self, token, message)
     }
 
-    fn consume_identifier(&mut self, message: &str) -> cayResult<String> {
+    fn consume_identifier(&mut self, message: &str) -> CayResult<String> {
         utils::consume_identifier(self, message)
     }
 
-    fn error(&self, message: &str) -> crate::miette_diagnostic::cayError {
+    fn error(&self, message: &str) -> crate::miette_diagnostic::CayError {
         utils::error(self, message)
     }
 
@@ -547,7 +546,7 @@ impl Parser {
     }
 
     /// 解析顶层函数（带 public 修饰符）
-    fn parse_top_level_function(&mut self) -> cayResult<crate::ast::TopLevelFunction> {
+    fn parse_top_level_function(&mut self) -> CayResult<crate::ast::TopLevelFunction> {
         let loc = self.current_loc();
 
         // 必须是以 public 开始
@@ -562,7 +561,7 @@ impl Parser {
     /// 解析顶层函数（不带 public 修饰符）
     fn parse_top_level_function_without_public(
         &mut self,
-    ) -> cayResult<crate::ast::TopLevelFunction> {
+    ) -> CayResult<crate::ast::TopLevelFunction> {
         let loc = self.current_loc();
         self.parse_top_level_function_body(loc, vec![])
     }
@@ -572,7 +571,7 @@ impl Parser {
         &mut self,
         loc: crate::miette_diagnostic::SourceLocation,
         modifiers: Vec<crate::ast::Modifier>,
-    ) -> cayResult<crate::ast::TopLevelFunction> {
+    ) -> CayResult<crate::ast::TopLevelFunction> {
         // 解析返回类型（支持函数指针类型）
         let return_type = self.parse_type_or_fn_ptr()?;
 
@@ -672,7 +671,7 @@ impl Parser {
     }
 
     /// 解析 fn 关键字开头的顶层函数（带 public 修饰符）
-    fn parse_top_level_fn_function(&mut self) -> cayResult<crate::ast::TopLevelFunction> {
+    fn parse_top_level_fn_function(&mut self) -> CayResult<crate::ast::TopLevelFunction> {
         let loc = self.current_loc();
 
         self.consume(
@@ -686,7 +685,7 @@ impl Parser {
     /// 解析 fn 关键字开头的顶层函数（不带 public 修饰符）
     fn parse_top_level_fn_function_without_public(
         &mut self,
-    ) -> cayResult<crate::ast::TopLevelFunction> {
+    ) -> CayResult<crate::ast::TopLevelFunction> {
         let loc = self.current_loc();
         self.parse_top_level_fn_body(loc, vec![])
     }
@@ -696,7 +695,7 @@ impl Parser {
         &mut self,
         loc: crate::miette_diagnostic::SourceLocation,
         modifiers: Vec<crate::ast::Modifier>,
-    ) -> cayResult<crate::ast::TopLevelFunction> {
+    ) -> CayResult<crate::ast::TopLevelFunction> {
         self.consume(
             &crate::lexer::Token::Fn,
             "期望 'fn'\n提示: 函数定义应以 fn 开头，例如: fn add(int a, int b) { ... }",
@@ -738,7 +737,7 @@ impl Parser {
     }
 
     /// 解析 extern 声明
-    fn parse_extern_declaration(&mut self) -> cayResult<crate::ast::ExternDecl> {
+    fn parse_extern_declaration(&mut self) -> CayResult<crate::ast::ExternDecl> {
         let loc = self.current_loc();
 
         // 消费 extern 关键字
@@ -804,7 +803,7 @@ impl Parser {
     }
 
     /// 解析调用约定
-    fn parse_calling_convention(&mut self) -> cayResult<crate::ast::CallingConvention> {
+    fn parse_calling_convention(&mut self) -> CayResult<crate::ast::CallingConvention> {
         match self.current_token() {
             crate::lexer::Token::Cdecl => {
                 self.advance();
@@ -832,7 +831,7 @@ impl Parser {
 
     /// 解析单个外部函数声明
     /// 支持语法: type func(params); 或 type func(params) as alias;
-    fn parse_extern_function(&mut self) -> cayResult<crate::ast::ExternFunction> {
+    fn parse_extern_function(&mut self) -> CayResult<crate::ast::ExternFunction> {
         let loc = self.current_loc();
 
         // 解析返回类型（支持函数指针类型）
@@ -876,7 +875,7 @@ impl Parser {
     }
 
     /// 解析extern函数参数列表（支持可选参数名，兼容C风格声明）
-    fn parse_extern_parameters(&mut self) -> cayResult<Vec<crate::types::ParameterInfo>> {
+    fn parse_extern_parameters(&mut self) -> CayResult<Vec<crate::types::ParameterInfo>> {
         use crate::lexer::Token;
         let mut params = Vec::new();
         let mut param_index = 0;
@@ -947,7 +946,7 @@ impl Parser {
 
     /// 解析类型别名声明: alias Name = Type;
     /// 支持函数指针类型: alias CompareFn = fn(i32, i32) -> i32;
-    fn parse_type_alias(&mut self) -> cayResult<crate::ast::TypeAliasDecl> {
+    fn parse_type_alias(&mut self) -> CayResult<crate::ast::TypeAliasDecl> {
         let loc = self.current_loc();
 
         // 消费 alias 关键字
@@ -1020,7 +1019,7 @@ impl Parser {
     }
 
     /// 解析类型或函数指针类型
-    pub fn parse_type_or_fn_ptr(&mut self) -> cayResult<crate::types::Type> {
+    pub fn parse_type_or_fn_ptr(&mut self) -> CayResult<crate::types::Type> {
         //eprintln!("[DEBUG] parse_type_or_fn_ptr called, current token: {:?}", self.current_token());
         // 检查是否是函数指针类型: fn(...) -> ReturnType
         if self.check(&crate::lexer::Token::Fn) {
@@ -1035,7 +1034,7 @@ impl Parser {
 
     /// 解析函数指针类型: fn(ParamType1, ParamType2, ...) -> ReturnType
     /// 支持可选参数名: fn(param1: Type1, param2: Type2, ...) -> ReturnType
-    fn parse_fn_ptr_type(&mut self) -> cayResult<crate::types::Type> {
+    fn parse_fn_ptr_type(&mut self) -> CayResult<crate::types::Type> {
         use crate::lexer::Token;
 
         // 消费 fn 关键字
@@ -1110,7 +1109,7 @@ impl Parser {
     // ==================== Namespace 和 Using 解析 ====================
 
     /// 解析文件级 namespace 声明: namespace std;
-    fn parse_namespace_file_level(&mut self) -> cayResult<Vec<String>> {
+    fn parse_namespace_file_level(&mut self) -> CayResult<Vec<String>> {
         // 消费 namespace 关键字
         self.advance();
         // 解析路径
@@ -1124,7 +1123,7 @@ impl Parser {
     }
 
     /// 解析块级 namespace 声明: namespace std { ... }
-    fn parse_namespace_block(&mut self) -> cayResult<crate::ast::NamespaceDecl> {
+    fn parse_namespace_block(&mut self) -> CayResult<crate::ast::NamespaceDecl> {
         let loc = utils::current_loc(self);
         // 消费 namespace 关键字
         self.advance();
@@ -1223,7 +1222,7 @@ impl Parser {
     }
 
     /// 解析 namespace 路径: Identifier (:: Identifier)*
-    fn parse_namespace_path(&mut self) -> cayResult<Vec<String>> {
+    fn parse_namespace_path(&mut self) -> CayResult<Vec<String>> {
         let mut path = Vec::new();
         // 第一个标识符
         let first = self.consume_identifier("期望命名空间标识符\n提示: namespace 路径格式为 'Identifier' 或 'Identifier::Identifier'")?;
@@ -1239,7 +1238,7 @@ impl Parser {
     }
 
     /// 解析 using 声明: using std::StringBuilder;
-    fn parse_using_declaration(&mut self) -> cayResult<crate::ast::UsingDecl> {
+    fn parse_using_declaration(&mut self) -> CayResult<crate::ast::UsingDecl> {
         let loc = utils::current_loc(self);
         // 消费 using 关键字
         self.advance();
@@ -1279,13 +1278,13 @@ impl Parser {
 }
 
 /// 解析令牌流生成 AST
-pub fn parse(tokens: Vec<TokenWithLocation>) -> cayResult<Program> {
+pub fn parse(tokens: Vec<TokenWithLocation>) -> CayResult<Program> {
     let mut parser = Parser::new(tokens);
     parser.parse()
 }
 
 /// 解析令牌流生成 AST（带源代码，用于内联IR解析）
-pub fn parse_with_source(tokens: Vec<TokenWithLocation>, source: String) -> cayResult<Program> {
+pub fn parse_with_source(tokens: Vec<TokenWithLocation>, source: String) -> CayResult<Program> {
     let mut parser = Parser::with_source(tokens, source);
     parser.parse()
 }

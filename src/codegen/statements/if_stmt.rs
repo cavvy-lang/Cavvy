@@ -4,11 +4,11 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::cayResult;
+use crate::miette_diagnostic::CayResult;
 
 impl IRGenerator {
     /// 生成 if 语句代码
-    pub fn generate_if_statement(&mut self, if_stmt: &IfStmt) -> cayResult<()> {
+    pub fn generate_if_statement(&mut self, if_stmt: &IfStmt) -> CayResult<()> {
         let then_label = self.new_label("then");
         let else_label = self.new_label("else");
         let merge_label = self.new_label("ifmerge");

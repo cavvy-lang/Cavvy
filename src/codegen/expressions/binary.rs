@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::{SourceLocation, cayResult, codegen_error_at};
+use crate::miette_diagnostic::{SourceLocation, CayResult, codegen_error_at, ErrorCodes};
 
 /// 检查类型是否为整数类型（不包括指针）
 fn is_integer_type(ty: &str) -> bool {
@@ -59,7 +59,7 @@ impl IRGenerator {
     ///
     /// # Arguments
     /// * `bin` - 二元表达式
-    pub fn generate_binary_expression(&mut self, bin: &BinaryExpr) -> cayResult<String> {
+    pub fn generate_binary_expression(&mut self, bin: &BinaryExpr) -> CayResult<String> {
         let left = self.generate_expression(&bin.left)?;
 
         // 短路求值：&& 和 || 只先生成左侧，右侧在条件分支中惰性生成
@@ -148,7 +148,7 @@ impl IRGenerator {
         right_val: &str,
         temp: &str,
         loc: &SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         // 字符串拼接处理
         if left_type == "i8*" && right_type == "i8*" {
             // 调用内建的字符串拼接函数
@@ -342,7 +342,7 @@ impl IRGenerator {
             ));
             return Ok(format!("{} {}", promoted_type, temp));
         } else {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc.clone(),
                 format!(
                     "Unsupported addition types: {} and {}",
@@ -361,7 +361,7 @@ impl IRGenerator {
         right_val: &str,
         temp: &str,
         loc: &SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         if is_integer_type(left_type) && is_integer_type(right_type) {
             // 整数减法，需要类型提升
             let (promoted_type, promoted_left, promoted_right) =
@@ -392,7 +392,7 @@ impl IRGenerator {
             ));
             return Ok(format!("{} {}", promoted_type, temp));
         } else {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc.clone(),
                 format!(
                     "Unsupported subtraction types: {} and {}",
@@ -411,7 +411,7 @@ impl IRGenerator {
         right_val: &str,
         temp: &str,
         loc: &SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         if is_integer_type(left_type) && is_integer_type(right_type) {
             // 整数乘法，需要类型提升
             let (promoted_type, promoted_left, promoted_right) =
@@ -442,7 +442,7 @@ impl IRGenerator {
             ));
             return Ok(format!("{} {}", promoted_type, temp));
         } else {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc.clone(),
                 format!(
                     "Unsupported multiplication types: {} and {}",
@@ -461,7 +461,7 @@ impl IRGenerator {
         right_val: &str,
         temp: &str,
         loc: &SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         if is_integer_type(left_type) && is_integer_type(right_type) {
             // 整数除法，需要类型提升
             let (promoted_type, promoted_left, promoted_right) =
@@ -494,7 +494,7 @@ impl IRGenerator {
             ));
             return Ok(format!("{} {}", promoted_type, temp));
         } else {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc.clone(),
                 format!(
                     "Unsupported division types: {} and {}",
@@ -513,7 +513,7 @@ impl IRGenerator {
         right_val: &str,
         temp: &str,
         loc: &SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         if is_integer_type(left_type) && is_integer_type(right_type) {
             // 整数取模，需要类型提升
             let (promoted_type, promoted_left, promoted_right) =
@@ -526,7 +526,7 @@ impl IRGenerator {
             ));
             return Ok(format!("{} {}", promoted_type, temp));
         } else {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc.clone(),
                 format!("Unsupported modulo types: {} and {}", left_type, right_type),
             ));
@@ -542,7 +542,7 @@ impl IRGenerator {
         right_val: &str,
         temp: &str,
         loc: &SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         // 处理任意指针类型的比较（包括 i8*, i64*, i32* 等）
         if left_type.ends_with("*") && right_type.ends_with("*") {
             self.emit_line(&format!(
@@ -609,7 +609,7 @@ impl IRGenerator {
             ));
             return Ok(format!("i1 {}", temp));
         } else {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc.clone(),
                 format!(
                     "Unsupported equality comparison types: {} and {}",
@@ -628,7 +628,7 @@ impl IRGenerator {
         right_val: &str,
         temp: &str,
         loc: &SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         // 处理任意指针类型的比较（包括 i8*, i64*, i32* 等）
         if left_type.ends_with("*") && right_type.ends_with("*") {
             self.emit_line(&format!(
@@ -695,7 +695,7 @@ impl IRGenerator {
             ));
             return Ok(format!("i1 {}", temp));
         } else {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc.clone(),
                 format!(
                     "Unsupported inequality comparison types: {} and {}",
@@ -714,7 +714,7 @@ impl IRGenerator {
         right_val: &str,
         temp: &str,
         loc: &SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         if is_integer_type(left_type) && is_integer_type(right_type) {
             let (promoted_type, promoted_left, promoted_right) =
                 self.promote_integer_operands(left_type, left_val, right_type, right_val);
@@ -743,7 +743,7 @@ impl IRGenerator {
             ));
             return Ok(format!("i1 {}", temp));
         } else {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc.clone(),
                 format!(
                     "Unsupported less-than comparison types: {} and {}",
@@ -762,7 +762,7 @@ impl IRGenerator {
         right_val: &str,
         temp: &str,
         loc: &SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         if is_integer_type(left_type) && is_integer_type(right_type) {
             let (promoted_type, promoted_left, promoted_right) =
                 self.promote_integer_operands(left_type, left_val, right_type, right_val);
@@ -791,7 +791,7 @@ impl IRGenerator {
             ));
             return Ok(format!("i1 {}", temp));
         } else {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc.clone(),
                 format!(
                     "Unsupported less-or-equal comparison types: {} and {}",
@@ -810,7 +810,7 @@ impl IRGenerator {
         right_val: &str,
         temp: &str,
         loc: &SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         if is_integer_type(left_type) && is_integer_type(right_type) {
             // 整数大于比较，需要类型提升
             let (promoted_type, promoted_left, promoted_right) =
@@ -838,7 +838,7 @@ impl IRGenerator {
                 temp, promoted_type, promoted_left, promoted_right
             ));
         } else {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc.clone(),
                 format!(
                     "Unsupported greater-than comparison types: {} and {}",
@@ -858,7 +858,7 @@ impl IRGenerator {
         right_val: &str,
         temp: &str,
         loc: &SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         if is_integer_type(left_type) && is_integer_type(right_type) {
             // 整数大于等于比较，需要类型提升
             let (promoted_type, promoted_left, promoted_right) =
@@ -886,7 +886,7 @@ impl IRGenerator {
                 temp, promoted_type, promoted_left, promoted_right
             ));
         } else {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc.clone(),
                 format!(
                     "Unsupported greater-than-or-equal comparison types: {} and {}",
@@ -918,7 +918,7 @@ impl IRGenerator {
         left_val: &str,
         right_expr: &Expr,
         temp: &str,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         let left_i1 = self.convert_to_i1(left_type, left_val);
         let eval_right = self.new_label("and.eval");
         let set_false = self.new_label("and.false");
@@ -960,7 +960,7 @@ impl IRGenerator {
         left_val: &str,
         right_expr: &Expr,
         temp: &str,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         let left_i1 = self.convert_to_i1(left_type, left_val);
         let eval_right = self.new_label("or.eval");
         let set_true = self.new_label("or.true");
@@ -1002,7 +1002,7 @@ impl IRGenerator {
         right_val: &str,
         temp: &str,
         loc: &SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         if is_integer_type(left_type) && is_integer_type(right_type) {
             // 位与，需要类型提升
             let (promoted_type, promoted_left, promoted_right) =
@@ -1013,7 +1013,7 @@ impl IRGenerator {
             ));
             return Ok(format!("{} {}", promoted_type, temp));
         } else {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc.clone(),
                 format!(
                     "Bitwise AND requires integer operands, got {} and {}",
@@ -1032,7 +1032,7 @@ impl IRGenerator {
         right_val: &str,
         temp: &str,
         loc: &SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         if is_integer_type(left_type) && is_integer_type(right_type) {
             // 位或，需要类型提升
             let (promoted_type, promoted_left, promoted_right) =
@@ -1043,7 +1043,7 @@ impl IRGenerator {
             ));
             return Ok(format!("{} {}", promoted_type, temp));
         } else {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc.clone(),
                 format!(
                     "Bitwise OR requires integer operands, got {} and {}",
@@ -1062,7 +1062,7 @@ impl IRGenerator {
         right_val: &str,
         temp: &str,
         loc: &SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         if is_integer_type(left_type) && is_integer_type(right_type) {
             // 位异或，需要类型提升
             let (promoted_type, promoted_left, promoted_right) =
@@ -1073,7 +1073,7 @@ impl IRGenerator {
             ));
             return Ok(format!("{} {}", promoted_type, temp));
         } else {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc.clone(),
                 format!(
                     "Bitwise XOR requires integer operands, got {} and {}",
@@ -1092,7 +1092,7 @@ impl IRGenerator {
         right_val: &str,
         temp: &str,
         loc: &SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         if is_integer_type(left_type) && is_integer_type(right_type) {
             // 左移，需要类型提升
             let (promoted_type, promoted_left, promoted_right) =
@@ -1103,7 +1103,7 @@ impl IRGenerator {
             ));
             return Ok(format!("{} {}", promoted_type, temp));
         } else {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc.clone(),
                 format!(
                     "Shift left requires integer operands, got {} and {}",
@@ -1122,7 +1122,7 @@ impl IRGenerator {
         right_val: &str,
         temp: &str,
         loc: &SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         if is_integer_type(left_type) && is_integer_type(right_type) {
             // 算术右移，需要类型提升
             let (promoted_type, promoted_left, promoted_right) =
@@ -1133,7 +1133,7 @@ impl IRGenerator {
             ));
             return Ok(format!("{} {}", promoted_type, temp));
         } else {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc.clone(),
                 format!(
                     "Arithmetic shift right requires integer operands, got {} and {}",
@@ -1152,7 +1152,7 @@ impl IRGenerator {
         right_val: &str,
         temp: &str,
         loc: &SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         if is_integer_type(left_type) && is_integer_type(right_type) {
             // 逻辑右移，需要类型提升
             let (promoted_type, promoted_left, promoted_right) =
@@ -1163,7 +1163,7 @@ impl IRGenerator {
             ));
             return Ok(format!("{} {}", promoted_type, temp));
         } else {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc.clone(),
                 format!(
                     "Unsigned shift right requires integer operands, got {} and {}",

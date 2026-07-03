@@ -7,7 +7,7 @@ use crate::types::Type;
 
 impl SemanticAnalyzer {
     /// 推断一元表达式类型
-    pub(crate) fn infer_unary_type(&mut self, unary: &UnaryExpr) -> crate::miette_diagnostic::cayResult<Type> {
+    pub(crate) fn infer_unary_type(&mut self, unary: &UnaryExpr) -> crate::miette_diagnostic::CayResult<Type> {
         let operand_type = self.infer_expr_type_internal(&unary.operand)?;
         match unary.op {
             UnaryOp::Neg => {

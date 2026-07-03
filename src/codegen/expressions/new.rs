@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::cayResult;
+use crate::miette_diagnostic::CayResult;
 
 /// 将类型中的泛型参数（`GenericParam` 或裸 `Object("T")`）替换为具体类型实参。
 /// 用于将构造函数形参在 new 单态化时解析为具体类型。
@@ -68,7 +68,7 @@ impl IRGenerator {
     ///
     /// # Arguments
     /// * `new_expr` - new 表达式
-    pub fn generate_new_expression(&mut self, new_expr: &NewExpr) -> cayResult<String> {
+    pub fn generate_new_expression(&mut self, new_expr: &NewExpr) -> CayResult<String> {
         // 消费期望目标类型（单次使用，避免泄漏到参数中的嵌套 new 表达式）
         let expected_type = self.pending_new_expected_type.take();
 
@@ -392,7 +392,7 @@ impl IRGenerator {
     /// 2. 不需要 type_id 和 vtable
     /// 3. 调用构造函数初始化字段
     /// 4. 返回 %struct.Name* 指针
-    fn generate_struct_new_expression(&mut self, new_expr: &NewExpr) -> cayResult<String> {
+    fn generate_struct_new_expression(&mut self, new_expr: &NewExpr) -> CayResult<String> {
         let struct_name = &new_expr.class_name;
         let base_name = if let Some(pos) = struct_name.find('<') {
             struct_name[..pos].to_string()
@@ -615,7 +615,7 @@ impl IRGenerator {
     ///
     /// # Returns
     /// 装箱后的值（格式为 "i8* %tN"）
-    fn box_value_for_generic(&mut self, value: &str, type_sig: &str) -> cayResult<String> {
+    fn box_value_for_generic(&mut self, value: &str, type_sig: &str) -> CayResult<String> {
         // 解析值字符串，提取类型和值
         let parts: Vec<&str> = value.split_whitespace().collect();
         if parts.len() < 2 {
@@ -709,7 +709,7 @@ impl IRGenerator {
         &mut self,
         boxed_val: &str,
         target_type_sig: &str,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         // 解析装箱值
         let parts: Vec<&str> = boxed_val.split_whitespace().collect();
         if parts.len() < 2 {

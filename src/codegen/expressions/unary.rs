@@ -4,14 +4,14 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::{cayResult, codegen_error_at};
+use crate::miette_diagnostic::{CayResult, codegen_error_at, ErrorCodes};
 
 impl IRGenerator {
     /// 生成一元表达式代码
     ///
     /// # Arguments
     /// * `unary` - 一元表达式
-    pub fn generate_unary_expression(&mut self, unary: &UnaryExpr) -> cayResult<String> {
+    pub fn generate_unary_expression(&mut self, unary: &UnaryExpr) -> CayResult<String> {
         let operand = self.generate_expression(&unary.operand)?;
         let (op_type, op_val) = self.parse_typed_value(&operand);
         let temp = self.new_temp();
@@ -45,7 +45,7 @@ impl IRGenerator {
                     self.emit_line(&format!("  {} = xor {} {}, -1", temp, op_type, op_val));
                 } else {
                     // 浮点数不支持位取反，但类型系统应该已经阻止了这种情况
-                    return Err(codegen_error_at(
+                    return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                         unary.loc.clone(),
                         "Bitwise NOT not supported for floating point".to_string(),
                     ));
@@ -78,7 +78,7 @@ impl IRGenerator {
         unary: &UnaryExpr,
         _op_type: String,
         _op_val: String,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         // 自增/自减操作：需要先获取变量地址，加载值，计算，存储
         let is_inc = unary.op == UnaryOp::PreInc || unary.op == UnaryOp::PostInc;
         let is_pre = unary.op == UnaryOp::PreInc || unary.op == UnaryOp::PreDec;
@@ -152,7 +152,7 @@ impl IRGenerator {
     ///
     /// # Arguments
     /// * `unary` - 一元表达式（必须是AddressOf操作）
-    fn generate_address_of(&mut self, unary: &UnaryExpr) -> cayResult<String> {
+    fn generate_address_of(&mut self, unary: &UnaryExpr) -> CayResult<String> {
         // 获取操作数的左值信息（类型和指针）
         let (llvm_type, llvm_ptr) = self.get_lvalue_info(&unary.operand)?;
 
@@ -196,11 +196,11 @@ impl IRGenerator {
         unary: &UnaryExpr,
         op_type: String,
         op_val: String,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         // 解析指针类型，获取指向的类型
         // op_type 应该是 "i32*" 或 "i64*" 等格式
         if !op_type.ends_with('*') {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 unary.loc.clone(),
                 format!("Cannot dereference non-pointer type: {}", op_type),
             ));

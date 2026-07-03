@@ -7,10 +7,10 @@ use super::super::Parser;
 use super::assignment::parse_expression;
 use super::primary::parse_primary;
 use crate::ast::*;
-use crate::miette_diagnostic::cayResult;
+use crate::miette_diagnostic::CayResult;
 
 /// 解析后缀表达式
-pub fn parse_postfix(parser: &mut Parser) -> cayResult<Expr> {
+pub fn parse_postfix(parser: &mut Parser) -> CayResult<Expr> {
     let mut expr = parse_primary(parser)?;
 
     loop {
@@ -108,7 +108,7 @@ pub fn parse_postfix(parser: &mut Parser) -> cayResult<Expr> {
 }
 
 /// 解析参数列表（支持命名参数 name=value）
-pub fn parse_arguments(parser: &mut Parser) -> cayResult<Vec<Expr>> {
+pub fn parse_arguments(parser: &mut Parser) -> CayResult<Vec<Expr>> {
     let mut args = Vec::new();
 
     if !parser.check(&crate::lexer::Token::RParen) {

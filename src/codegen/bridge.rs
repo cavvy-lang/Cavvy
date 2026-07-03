@@ -35,7 +35,8 @@
 
 use crate::ast::InlineIrStmt;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::cayResult;
+use crate::miette_diagnostic::CayResult;
+use crate::miette_diagnostic::ErrorCodes;
 use crate::types::Type;
 use std::collections::HashMap;
 
@@ -88,7 +89,7 @@ impl InlineIrBridge {
         &self,
         codegen: &IRGenerator,
         inline_ir: &InlineIrStmt,
-    ) -> cayResult<InlineIrResult> {
+    ) -> CayResult<InlineIrResult> {
         // 1. 收集当前作用域的可用变量
         let available_vars = self.collect_scope_variables(codegen);
 
@@ -107,8 +108,9 @@ impl InlineIrBridge {
         let raw_text = inline_ir.raw_lines.join("\n");
         // eprintln!("DEBUG bridge: raw_text = '{}'", raw_text);
         let parsed_block = self.parser.parse(&raw_text, &ir_inputs, &[]).map_err(|e| {
-            crate::miette_diagnostic::cayError::CodeGen {
-                code: "E5004".to_string(),
+            crate::miette_diagnostic::CayError::CodeGen {
+                error_code: crate::miette_diagnostic::ErrorCodes::CODEGEN_INVALID_OPERATION,
+                kind: "代码生成错误".to_string(),
                 file: None,
                 line: 0,
                 column: 0,
@@ -301,11 +303,11 @@ impl Default for InlineIrBridge {
 /// 为IRGenerator添加协作桥支持
 pub trait InlineIrBridgeSupport {
     /// 使用协作桥处理内联IR
-    fn process_inline_ir_with_bridge(&self, inline_ir: &InlineIrStmt) -> cayResult<InlineIrResult>;
+    fn process_inline_ir_with_bridge(&self, inline_ir: &InlineIrStmt) -> CayResult<InlineIrResult>;
 }
 
 impl InlineIrBridgeSupport for IRGenerator {
-    fn process_inline_ir_with_bridge(&self, inline_ir: &InlineIrStmt) -> cayResult<InlineIrResult> {
+    fn process_inline_ir_with_bridge(&self, inline_ir: &InlineIrStmt) -> CayResult<InlineIrResult> {
         let bridge = InlineIrBridge::new();
         bridge.process_inline_ir(self, inline_ir)
     }

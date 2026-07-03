@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::cayResult;
+use crate::miette_diagnostic::CayResult;
 
 impl IRGenerator {
     /// 生成字面量代码
@@ -14,7 +14,7 @@ impl IRGenerator {
     ///
     /// # Returns
     /// 格式为 "type value" 的字符串
-    pub fn generate_literal(&mut self, lit: &LiteralValue) -> cayResult<String> {
+    pub fn generate_literal(&mut self, lit: &LiteralValue) -> CayResult<String> {
         match lit {
             LiteralValue::Int32(val) => Ok(format!("i32 {}", val)),
             LiteralValue::Int64(val) => Ok(format!("i64 {}", val)),

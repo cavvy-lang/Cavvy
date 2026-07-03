@@ -4,12 +4,12 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::{cayResult, codegen_error_at};
+use crate::miette_diagnostic::{CayResult, codegen_error_at, ErrorCodes};
 
 impl IRGenerator {
     /// 将 CaseValue 转换为 i64 常量值
     /// 对于 enum variant，查找其在 enum 定义中的索引
-    fn resolve_case_value(&self, case: &Case) -> cayResult<i64> {
+    fn resolve_case_value(&self, case: &Case) -> CayResult<i64> {
         match &case.value {
             CaseValue::Integer(v) => Ok(*v),
             CaseValue::EnumVariant {
@@ -25,13 +25,13 @@ impl IRGenerator {
                                 return Ok(idx as i64);
                             }
                         }
-                        return Err(codegen_error_at(
+                        return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                             case.loc.clone(),
                             format!("enum '{}' 中不存在 variant '{}'", enum_name, variant_name),
                         ));
                     }
                 }
-                Err(codegen_error_at(
+                Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                     case.loc.clone(),
                     format!("未知的 enum '{}' 在 case 标签中", enum_name),
                 ))
@@ -40,7 +40,7 @@ impl IRGenerator {
     }
 
     /// 生成 switch 语句代码
-    pub fn generate_switch_statement(&mut self, switch_stmt: &SwitchStmt) -> cayResult<()> {
+    pub fn generate_switch_statement(&mut self, switch_stmt: &SwitchStmt) -> CayResult<()> {
         let end_label = self.new_label("switch.end");
         let default_label = if switch_stmt.default.is_some() {
             self.new_label("switch.default")

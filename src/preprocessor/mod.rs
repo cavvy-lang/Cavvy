@@ -14,7 +14,7 @@
 //! - 预处理在词法分析之前执行，生成纯源代码
 //! - 生成 #source <file> <line> 标记以支持源映射
 
-use crate::miette_diagnostic::{cayError, cayResult};
+use crate::miette_diagnostic::{CayError, CayResult, ErrorCodes};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
@@ -211,7 +211,7 @@ impl Preprocessor {
         &mut self,
         source: &str,
         file_path: &str,
-    ) -> cayResult<PreprocessResult> {
+    ) -> CayResult<PreprocessResult> {
         let mut output_lines = Vec::new();
         let mut source_map = SourceMap::new();
         let mut link_libraries = Vec::new();
@@ -286,7 +286,8 @@ impl Preprocessor {
 
         // 检查条件编译栈是否为空
         if !self.conditional_stack.is_empty() {
-            return Err(cayError::Preprocessor {
+            return Err(CayError::Preprocessor {
+                error_code: ErrorCodes::PREPROCESSOR_DEFINE_ERROR,
                 file: Some(file_path.to_string()),
                 line: lines.len(),
                 column: 1,
@@ -316,7 +317,7 @@ impl Preprocessor {
         line: &str,
         line_num: usize,
         file_path: &str,
-    ) -> cayResult<Option<Directive>> {
+    ) -> CayResult<Option<Directive>> {
         // 去除 # 后面的空白
         let content = line[1..].trim_start();
 
@@ -389,7 +390,8 @@ impl Preprocessor {
                 Ok(Some(Directive::Link(lib_name, is_system)))
             }
             _ => {
-                Err(cayError::Preprocessor {
+                Err(CayError::Preprocessor {
+                    error_code: ErrorCodes::PREPROCESSOR_DEFINE_ERROR,
                     file: Some(file_path.to_string()),
                     line: line_num,
                     column: 1,
@@ -434,7 +436,7 @@ impl Preprocessor {
         directive: Directive,
         file_path: &str,
         line_num: usize,
-    ) -> cayResult<DirectiveResult> {
+    ) -> CayResult<DirectiveResult> {
         match directive {
             Directive::Include(path, is_system) => {
                 if self.skipping {
@@ -516,7 +518,8 @@ impl Preprocessor {
             }
             Directive::Error(message) => {
                 if !self.skipping {
-                    return Err(cayError::Preprocessor {
+                    return Err(CayError::Preprocessor {
+                        error_code: ErrorCodes::PREPROCESSOR_DEFINE_ERROR,
                         file: Some(file_path.to_string()),
                         line: line_num,
                         column: 1,
@@ -589,11 +592,12 @@ impl Preprocessor {
         args: &str,
         line_num: usize,
         file_path: &str,
-    ) -> cayResult<(String, bool)> {
+    ) -> CayResult<(String, bool)> {
         let trimmed = args.trim();
 
         if trimmed.is_empty() {
-            return Err(cayError::Preprocessor {
+            return Err(CayError::Preprocessor {
+                error_code: ErrorCodes::PREPROCESSOR_DEFINE_ERROR,
                 file: Some(file_path.to_string()),
                 line: line_num,
                 column: 1,
@@ -612,7 +616,8 @@ impl Preprocessor {
             let path = &trimmed[1..trimmed.len() - 1];
             Ok((path.to_string(), false))
         } else {
-            Err(cayError::Preprocessor {
+            Err(CayError::Preprocessor {
+                error_code: ErrorCodes::PREPROCESSOR_DEFINE_ERROR,
                 file: Some(file_path.to_string()),
                 line: line_num,
                 column: 1,
@@ -628,7 +633,7 @@ impl Preprocessor {
         path: &str,
         is_system: bool,
         current_file: &str,
-    ) -> cayResult<Option<(String, String)>> {
+    ) -> CayResult<Option<(String, String)>> {
         // 解析完整路径
         let full_path = self.resolve_include_path(path, is_system, current_file)?;
 
@@ -640,7 +645,8 @@ impl Preprocessor {
 
         // 首先检测循环包含（基于当前处理链）- 使用完整路径
         if self.include_stack.contains(&full_path) {
-            return Err(cayError::Preprocessor {
+            return Err(CayError::Preprocessor {
+                error_code: ErrorCodes::PREPROCESSOR_DEFINE_ERROR,
                 file: Some(current_file.to_string()),
                 line: 1,
                 column: 1,
@@ -655,7 +661,8 @@ impl Preprocessor {
         }
 
         // 读取文件内容
-        let content = std::fs::read_to_string(&full_path).map_err(|e| cayError::Preprocessor {
+        let content = std::fs::read_to_string(&full_path).map_err(|e| CayError::Preprocessor {
+            error_code: ErrorCodes::PREPROCESSOR_DEFINE_ERROR,
             file: Some(current_file.to_string()),
             line: 1,
             column: 1,
@@ -675,7 +682,7 @@ impl Preprocessor {
         path: &str,
         is_system: bool,
         current_file: &str,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         if is_system {
             for sys_path in &self.system_include_paths {
                 let sys_include_path = sys_path.join(path);
@@ -704,7 +711,8 @@ impl Preprocessor {
                 return Ok(cwd_caylibs.to_string_lossy().to_string());
             }
 
-            Err(cayError::Preprocessor {
+            Err(CayError::Preprocessor {
+                error_code: ErrorCodes::PREPROCESSOR_DEFINE_ERROR,
                 file: Some(current_file.to_string()),
                 line: 1,
                 column: 1,
@@ -735,7 +743,8 @@ impl Preprocessor {
                 }
             }
 
-            Err(cayError::Preprocessor {
+            Err(CayError::Preprocessor {
+                error_code: ErrorCodes::PREPROCESSOR_DEFINE_ERROR,
                 file: Some(current_file.to_string()),
                 line: 1,
                 column: 1,
@@ -751,11 +760,12 @@ impl Preprocessor {
         args: &str,
         line_num: usize,
         file_path: &str,
-    ) -> cayResult<(String, String)> {
+    ) -> CayResult<(String, String)> {
         let trimmed = args.trim();
 
         if trimmed.is_empty() {
-            return Err(cayError::Preprocessor {
+            return Err(CayError::Preprocessor {
+                error_code: ErrorCodes::PREPROCESSOR_DEFINE_ERROR,
                 file: Some(file_path.to_string()),
                 line: line_num,
                 column: 1,
@@ -773,7 +783,8 @@ impl Preprocessor {
         let value = parts.next().unwrap_or("").trim().to_string();
 
         if name.is_empty() {
-            return Err(cayError::Preprocessor {
+            return Err(CayError::Preprocessor {
+                error_code: ErrorCodes::PREPROCESSOR_DEFINE_ERROR,
                 file: Some(file_path.to_string()),
                 line: line_num,
                 column: 1,
@@ -811,11 +822,12 @@ impl Preprocessor {
         args: &str,
         line_num: usize,
         file_path: &str,
-    ) -> cayResult<(String, bool)> {
+    ) -> CayResult<(String, bool)> {
         let trimmed = args.trim();
 
         if trimmed.is_empty() {
-            return Err(cayError::Preprocessor {
+            return Err(CayError::Preprocessor {
+                error_code: ErrorCodes::PREPROCESSOR_DEFINE_ERROR,
                 file: Some(file_path.to_string()),
                 line: line_num,
                 column: 1,
@@ -829,7 +841,8 @@ impl Preprocessor {
             // 系统库
             let lib_name = &trimmed[1..trimmed.len() - 1];
             if lib_name.is_empty() {
-                return Err(cayError::Preprocessor {
+                return Err(CayError::Preprocessor {
+                    error_code: ErrorCodes::PREPROCESSOR_DEFINE_ERROR,
                     file: Some(file_path.to_string()),
                     line: line_num,
                     column: 1,
@@ -842,7 +855,8 @@ impl Preprocessor {
             // 用户库
             let lib_name = &trimmed[1..trimmed.len() - 1];
             if lib_name.is_empty() {
-                return Err(cayError::Preprocessor {
+                return Err(CayError::Preprocessor {
+                    error_code: ErrorCodes::PREPROCESSOR_DEFINE_ERROR,
                     file: Some(file_path.to_string()),
                     line: line_num,
                     column: 1,
@@ -852,7 +866,8 @@ impl Preprocessor {
             }
             Ok((lib_name.to_string(), false))
         } else {
-            Err(cayError::Preprocessor {
+            Err(CayError::Preprocessor {
+                error_code: ErrorCodes::PREPROCESSOR_DEFINE_ERROR,
                 file: Some(file_path.to_string()),
                 line: line_num,
                 column: 1,
@@ -863,11 +878,12 @@ impl Preprocessor {
     }
 
     /// 解析标识符
-    fn parse_identifier(&self, args: &str, line_num: usize, file_path: &str) -> cayResult<String> {
+    fn parse_identifier(&self, args: &str, line_num: usize, file_path: &str) -> CayResult<String> {
         let trimmed = args.trim();
 
         if trimmed.is_empty() {
-            return Err(cayError::Preprocessor {
+            return Err(CayError::Preprocessor {
+                error_code: ErrorCodes::PREPROCESSOR_DEFINE_ERROR,
                 file: Some(file_path.to_string()),
                 line: line_num,
                 column: 1,
@@ -880,7 +896,8 @@ impl Preprocessor {
         let name = trimmed.split_whitespace().next().unwrap_or("").to_string();
 
         if name.is_empty() {
-            return Err(cayError::Preprocessor {
+            return Err(CayError::Preprocessor {
+                error_code: ErrorCodes::PREPROCESSOR_DEFINE_ERROR,
                 file: Some(file_path.to_string()),
                 line: line_num,
                 column: 1,
@@ -898,7 +915,7 @@ impl Preprocessor {
         args: &str,
         line_num: usize,
         file_path: &str,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         let trimmed = args.trim();
 
         if trimmed.is_empty() {
@@ -984,7 +1001,7 @@ impl Preprocessor {
     }
 
     /// 处理 #else
-    fn handle_else(&mut self, file_path: &str) -> cayResult<()> {
+    fn handle_else(&mut self, file_path: &str) -> CayResult<()> {
         match self.conditional_stack.last() {
             Some(ConditionalState::Active) => {
                 // 当前分支已执行，跳过后续
@@ -1001,7 +1018,8 @@ impl Preprocessor {
                 self.skipping = true;
             }
             None => {
-                return Err(cayError::Preprocessor {
+                return Err(CayError::Preprocessor {
+                    error_code: ErrorCodes::PREPROCESSOR_DEFINE_ERROR,
                     file: Some(file_path.to_string()),
                     line: 1,
                     column: 1,
@@ -1014,7 +1032,7 @@ impl Preprocessor {
     }
 
     /// 处理 #elif
-    fn handle_elif(&mut self, condition: bool, file_path: &str) -> cayResult<()> {
+    fn handle_elif(&mut self, condition: bool, file_path: &str) -> CayResult<()> {
         match self.conditional_stack.last() {
             Some(ConditionalState::Active) => {
                 // 当前分支已执行，跳过后续
@@ -1035,9 +1053,10 @@ impl Preprocessor {
     }
 
     /// 弹出条件编译状态
-    fn pop_conditional(&mut self, file_path: &str) -> cayResult<()> {
+    fn pop_conditional(&mut self, file_path: &str) -> CayResult<()> {
         if self.conditional_stack.pop().is_none() {
-            return Err(cayError::Preprocessor {
+            return Err(CayError::Preprocessor {
+                error_code: ErrorCodes::PREPROCESSOR_DEFINE_ERROR,
                 file: Some(file_path.to_string()),
                 line: 1,
                 column: 0,
@@ -1056,7 +1075,7 @@ impl Preprocessor {
     }
 
     /// 兼容旧版本的简单预处理接口
-    pub fn process(&mut self, source: &str, file_path: &str) -> cayResult<String> {
+    pub fn process(&mut self, source: &str, file_path: &str) -> CayResult<String> {
         let result = self.process_with_source_map(source, file_path)?;
         Ok(result.code)
     }
@@ -1074,7 +1093,7 @@ impl Preprocessor {
 ///
 /// # Errors
 /// 当遇到预处理错误时返回错误
-pub fn preprocess(source: &str, file_path: &str, base_dir: &str) -> cayResult<String> {
+pub fn preprocess(source: &str, file_path: &str, base_dir: &str) -> CayResult<String> {
     let mut pp = Preprocessor::new(base_dir);
     pp.process(source, file_path)
 }

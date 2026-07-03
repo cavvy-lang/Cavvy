@@ -6,12 +6,12 @@ use super::statements::{parse_block, parse_statement};
 use super::types::{is_type_token, parse_type};
 use crate::ast::*;
 use crate::miette_diagnostic::SourceLocation;
-use crate::miette_diagnostic::cayResult;
+use crate::miette_diagnostic::CayResult;
 use crate::lexer::Token;
 use crate::types::{InterfaceInfo, ParameterInfo, Type};
 
 /// 解析类声明
-pub fn parse_class(parser: &mut Parser) -> cayResult<ClassDecl> {
+pub fn parse_class(parser: &mut Parser) -> CayResult<ClassDecl> {
     let loc = parser.current_loc();
 
     // 解析所有修饰符（包括 @main 注解）
@@ -79,7 +79,7 @@ pub fn parse_class(parser: &mut Parser) -> cayResult<ClassDecl> {
 }
 
 /// 解析接口声明
-pub fn parse_interface(parser: &mut Parser) -> cayResult<InterfaceDecl> {
+pub fn parse_interface(parser: &mut Parser) -> CayResult<InterfaceDecl> {
     let loc = parser.current_loc();
 
     // 解析修饰符
@@ -118,7 +118,7 @@ pub fn parse_interface(parser: &mut Parser) -> cayResult<InterfaceDecl> {
 }
 
 /// 解析接口方法（只有声明，没有实现）
-fn parse_interface_method(parser: &mut Parser) -> cayResult<MethodDecl> {
+fn parse_interface_method(parser: &mut Parser) -> CayResult<MethodDecl> {
     let loc = parser.current_loc();
     let modifiers = parse_modifiers(parser)?;
 
@@ -157,7 +157,7 @@ fn parse_interface_method(parser: &mut Parser) -> cayResult<MethodDecl> {
 }
 
 /// 解析类成员（字段、方法、构造函数、析构函数或初始化块）
-pub fn parse_class_member(parser: &mut Parser) -> cayResult<ClassMember> {
+pub fn parse_class_member(parser: &mut Parser) -> CayResult<ClassMember> {
     // 向前看判断成员类型
     let checkpoint = parser.pos;
     let modifiers = parse_modifiers(parser)?;
@@ -375,7 +375,7 @@ pub fn parse_class_member(parser: &mut Parser) -> cayResult<ClassMember> {
 }
 
 /// 解析字段声明
-pub fn parse_field(parser: &mut Parser) -> cayResult<FieldDecl> {
+pub fn parse_field(parser: &mut Parser) -> CayResult<FieldDecl> {
     let loc = parser.current_loc();
     let modifiers = parse_modifiers(parser)?;
     let field_type = parse_type(parser)?;
@@ -402,7 +402,7 @@ pub fn parse_field(parser: &mut Parser) -> cayResult<FieldDecl> {
 }
 
 /// 解析方法声明
-pub fn parse_method(parser: &mut Parser) -> cayResult<MethodDecl> {
+pub fn parse_method(parser: &mut Parser) -> CayResult<MethodDecl> {
     let loc = parser.current_loc();
     let modifiers = parse_modifiers(parser)?;
 
@@ -451,7 +451,7 @@ pub fn parse_method(parser: &mut Parser) -> cayResult<MethodDecl> {
 /// 解析 fn 关键字开头的方法声明（类型后置式/自动推断）
 /// 格式: [modifiers] fn name(params) [return_type] { body }
 /// 或: [modifiers] fn name(params) [return_type] ;
-pub fn parse_fn_method(parser: &mut Parser) -> cayResult<MethodDecl> {
+pub fn parse_fn_method(parser: &mut Parser) -> CayResult<MethodDecl> {
     let loc = parser.current_loc();
     let modifiers = parse_modifiers(parser)?;
 
@@ -507,7 +507,7 @@ pub fn parse_fn_method(parser: &mut Parser) -> cayResult<MethodDecl> {
 /// 格式: [modifiers] ClassName([params]) [throws ...] { body }
 /// 或: [modifiers] ClassName([params]) : this(args) { body }
 /// 或: [modifiers] ClassName([params]) : super(args) { body }
-pub fn parse_constructor(parser: &mut Parser) -> cayResult<ConstructorDecl> {
+pub fn parse_constructor(parser: &mut Parser) -> CayResult<ConstructorDecl> {
     let loc = parser.current_loc();
     let modifiers = parse_modifiers(parser)?;
 
@@ -564,7 +564,7 @@ struct ConstructorCallResult {
 /// 支持两种风格：
 /// - C++风格: : this(args) 或 : super(args)（在构造函数参数列表后）
 /// - Java风格: this(args) 或 super(args)（作为构造函数体的第一条语句）
-fn parse_constructor_call(parser: &mut Parser) -> cayResult<ConstructorCallResult> {
+fn parse_constructor_call(parser: &mut Parser) -> CayResult<ConstructorCallResult> {
     // 检查是否有冒号（C++风格）
     if parser.match_token(&Token::Colon) {
         // C++风格: : this(args) 或 : super(args)
@@ -656,7 +656,7 @@ fn parse_constructor_call(parser: &mut Parser) -> cayResult<ConstructorCallResul
 }
 
 /// 解析构造函数调用参数
-fn parse_constructor_call_args(parser: &mut Parser) -> cayResult<Vec<Expr>> {
+fn parse_constructor_call_args(parser: &mut Parser) -> CayResult<Vec<Expr>> {
     let mut args = Vec::new();
 
     if !parser.check(&Token::RParen) {
@@ -673,7 +673,7 @@ fn parse_constructor_call_args(parser: &mut Parser) -> cayResult<Vec<Expr>> {
 
 /// 解析析构函数声明
 /// 格式: ~ClassName() { body }
-pub fn parse_destructor(parser: &mut Parser) -> cayResult<DestructorDecl> {
+pub fn parse_destructor(parser: &mut Parser) -> CayResult<DestructorDecl> {
     let loc = parser.current_loc();
     let modifiers = parse_modifiers(parser)?;
 
@@ -706,19 +706,19 @@ pub fn parse_destructor(parser: &mut Parser) -> cayResult<DestructorDecl> {
 
 /// 解析实例初始化块
 /// 格式: { statements }
-pub fn parse_instance_initializer(parser: &mut Parser) -> cayResult<Block> {
+pub fn parse_instance_initializer(parser: &mut Parser) -> CayResult<Block> {
     parse_block(parser)
 }
 
 /// 解析静态初始化块
 /// 格式: static { statements }
-pub fn parse_static_initializer(parser: &mut Parser) -> cayResult<Block> {
+pub fn parse_static_initializer(parser: &mut Parser) -> CayResult<Block> {
     let _modifiers = parse_modifiers(parser)?; // 消耗 static
     parse_block(parser)
 }
 
 /// 解析修饰符列表（包括注解）
-pub fn parse_modifiers(parser: &mut Parser) -> cayResult<Vec<Modifier>> {
+pub fn parse_modifiers(parser: &mut Parser) -> CayResult<Vec<Modifier>> {
     let mut modifiers = Vec::new();
 
     loop {
@@ -775,7 +775,7 @@ pub fn parse_modifiers(parser: &mut Parser) -> cayResult<Vec<Modifier>> {
 }
 
 /// 解析参数列表（支持可变参数）
-pub fn parse_parameters(parser: &mut Parser) -> cayResult<Vec<ParameterInfo>> {
+pub fn parse_parameters(parser: &mut Parser) -> CayResult<Vec<ParameterInfo>> {
     //eprintln!("[DEBUG] parse_parameters called");
     let mut params = Vec::new();
 
@@ -830,7 +830,7 @@ pub fn parse_parameters(parser: &mut Parser) -> cayResult<Vec<ParameterInfo>> {
 
 /// 解析 struct 声明
 /// struct Point { int x; int y; }
-pub fn parse_struct(parser: &mut Parser) -> cayResult<StructDecl> {
+pub fn parse_struct(parser: &mut Parser) -> CayResult<StructDecl> {
     let loc = parser.current_loc();
 
     // 解析所有修饰符
@@ -921,7 +921,7 @@ pub fn parse_struct(parser: &mut Parser) -> cayResult<StructDecl> {
 }
 
 /// 解析 struct 字段 - int x;
-fn parse_struct_field(parser: &mut Parser, modifiers: &[Modifier]) -> cayResult<FieldDecl> {
+fn parse_struct_field(parser: &mut Parser, modifiers: &[Modifier]) -> CayResult<FieldDecl> {
     let loc = parser.current_loc();
     let field_type = super::types::parse_type(parser)?;
     let name = parser.consume_identifier("期望字段名\n提示: 在类型后应跟字段名，例如: int x;")?;
@@ -945,7 +945,7 @@ fn parse_struct_field(parser: &mut Parser, modifiers: &[Modifier]) -> cayResult<
 }
 
 /// 解析 struct 方法
-fn parse_struct_method(parser: &mut Parser, modifiers: &[Modifier]) -> cayResult<MethodDecl> {
+fn parse_struct_method(parser: &mut Parser, modifiers: &[Modifier]) -> CayResult<MethodDecl> {
     parse_method_after_modifiers(parser, modifiers)
 }
 
@@ -953,7 +953,7 @@ fn parse_struct_method(parser: &mut Parser, modifiers: &[Modifier]) -> cayResult
 fn parse_method_after_modifiers(
     parser: &mut Parser,
     modifiers: &[Modifier],
-) -> cayResult<MethodDecl> {
+) -> CayResult<MethodDecl> {
     let loc = parser.current_loc();
 
     // 检查是否是构造函数（struct 名后跟括号）
@@ -1000,7 +1000,7 @@ fn parse_method_after_modifiers(
 
 /// 解析 enum 声明 - tagged union / ADT
 /// enum Option<T> { Some(T), None }
-pub fn parse_enum(parser: &mut Parser) -> cayResult<EnumDecl> {
+pub fn parse_enum(parser: &mut Parser) -> CayResult<EnumDecl> {
     let loc = parser.current_loc();
 
     // 解析所有修饰符
@@ -1065,7 +1065,7 @@ pub fn parse_enum(parser: &mut Parser) -> cayResult<EnumDecl> {
 }
 
 /// 解析显式特化类声明: specialize class Box<int> { ... }
-pub fn parse_specialize_class(parser: &mut Parser) -> cayResult<SpecializeClassDecl> {
+pub fn parse_specialize_class(parser: &mut Parser) -> CayResult<SpecializeClassDecl> {
     let loc = parser.current_loc();
 
     parser.consume(
@@ -1107,7 +1107,7 @@ pub fn parse_specialize_class(parser: &mut Parser) -> cayResult<SpecializeClassD
 
 /// 解析泛型类型参数 <T, U, V, ...>
 /// 支持: T, T: Bound, T = Default, T: Bound = Default
-pub fn parse_generic_type_params(parser: &mut Parser) -> cayResult<Vec<crate::ast::TypeParam>> {
+pub fn parse_generic_type_params(parser: &mut Parser) -> CayResult<Vec<crate::ast::TypeParam>> {
     let mut params = Vec::new();
 
     if parser.match_token(&Token::Lt) {
@@ -1153,6 +1153,6 @@ pub fn parse_generic_type_params(parser: &mut Parser) -> cayResult<Vec<crate::as
 
 /// 解析泛型类型实参 <Type1, Type2, ...>（用于类型使用）
 /// 例如：Optional<int, String>
-pub fn parse_generic_type_args(parser: &mut Parser) -> cayResult<Vec<Type>> {
+pub fn parse_generic_type_args(parser: &mut Parser) -> CayResult<Vec<Type>> {
     super::types::parse_generic_type_args(parser)
 }

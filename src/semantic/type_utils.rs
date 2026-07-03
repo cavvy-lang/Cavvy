@@ -2,7 +2,7 @@
 
 use super::analyzer::SemanticAnalyzer;
 use crate::ast::Expr;
-use crate::miette_diagnostic::cayResult;
+use crate::miette_diagnostic::CayResult;
 use crate::types::{ParameterInfo, Type};
 
 /// 命名参数解析结果
@@ -914,7 +914,7 @@ impl SemanticAnalyzer {
         args: &[Expr],
         line: usize,
         column: usize,
-    ) -> cayResult<Type> {
+    ) -> CayResult<Type> {
         match method_name {
             "length" => {
                 if !args.is_empty() {

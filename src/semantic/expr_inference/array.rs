@@ -10,7 +10,7 @@ impl SemanticAnalyzer {
     pub(crate) fn infer_array_creation_type(
         &mut self,
         arr: &ArrayCreationExpr,
-    ) -> crate::miette_diagnostic::cayResult<Type> {
+    ) -> crate::miette_diagnostic::CayResult<Type> {
         // 数组创建: new Type[size] 或 new Type[size1][size2]... 或 new Type[size][] (不规则数组)
         // 检查所有维度的大小
         for (i, size) in arr.sizes.iter().enumerate() {
@@ -79,7 +79,7 @@ impl SemanticAnalyzer {
     pub(crate) fn infer_array_init_type(
         &mut self,
         init: &ArrayInitExpr,
-    ) -> crate::miette_diagnostic::cayResult<Type> {
+    ) -> crate::miette_diagnostic::CayResult<Type> {
         // 数组初始化: {1, 2, 3}
         // 需要上下文来推断类型，这里返回一个占位符类型
         // 实际类型会在变量声明时根据声明类型确定
@@ -95,7 +95,7 @@ impl SemanticAnalyzer {
     }
 
     /// 推断数组访问表达式类型
-    pub(crate) fn infer_array_access_type(&mut self, arr: &ArrayAccessExpr) -> crate::miette_diagnostic::cayResult<Type> {
+    pub(crate) fn infer_array_access_type(&mut self, arr: &ArrayAccessExpr) -> crate::miette_diagnostic::CayResult<Type> {
         // 数组访问: arr[index]
         let array_type = self.infer_expr_type_internal(&arr.array)?;
         let index_type = self.infer_expr_type_internal(&arr.index)?;

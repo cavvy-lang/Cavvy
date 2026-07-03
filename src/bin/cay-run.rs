@@ -1,7 +1,7 @@
 use cavvy::Compiler;
 use cavvy::bytecode::obfuscator;
 use cavvy::bytecode::{jit, serializer};
-use cavvy::miette_diagnostic::cayError;
+use cavvy::miette_diagnostic::CayError;
 use cavvy::miette_diagnostic::{print_error_with_context, print_miette_error, print_tool_error, print_warning};
 use std::env;
 use std::fs;
@@ -254,8 +254,9 @@ fn get_system_include_paths() -> Vec<PathBuf> {
 }
 
 /// 编译Cay源码为IR
-fn compile_cay_to_ir(source_path: &str, options: &RunOptions) -> Result<String, cayError> {
-    let source = fs::read_to_string(source_path).map_err(|e| cayError::Io {
+fn compile_cay_to_ir(source_path: &str, options: &RunOptions) -> Result<String, CayError> {
+    let source = fs::read_to_string(source_path).map_err(|e| CayError::Io {
+        error_code: "I0001",
         file: Some(source_path.to_string()),
         message: format!("读取源文件失败: {}", e),
     })?;
@@ -279,7 +280,8 @@ fn compile_cay_to_ir(source_path: &str, options: &RunOptions) -> Result<String, 
             cavvy::preprocessor::Preprocessor::with_include_paths(base_dir_str, system_paths);
         pp.process_with_source_map(&source, source_path)
     }
-    .map_err(|e| cayError::Preprocessor {
+    .map_err(|e| CayError::Preprocessor {
+        error_code: cavvy::miette_diagnostic::ErrorCodes::PREPROCESSOR_DEFINE_ERROR,
         file: Some(source_path.to_string()),
         line: 0,
         column: 0,
@@ -313,13 +315,15 @@ fn compile_cay_to_ir(source_path: &str, options: &RunOptions) -> Result<String, 
 
     // 使用临时文件
     let temp_ir_file = generate_unique_filename("cay", "ll");
-    let temp_ir_str = temp_ir_file.to_str().ok_or_else(|| cayError::Io {
+    let temp_ir_str = temp_ir_file.to_str().ok_or_else(|| CayError::Io {
+        error_code: "I0001",
         file: None,
         message: "临时文件路径包含无效UTF-8字符".to_string(),
     })?;
     compiler.compile_with_source_map(&preprocess_result.code, source_map, temp_ir_str)?;
 
-    let ir = fs::read_to_string(&temp_ir_file).map_err(|e| cayError::Io {
+    let ir = fs::read_to_string(&temp_ir_file).map_err(|e| CayError::Io {
+        error_code: "I0001",
         file: temp_ir_file.to_str().map(|s| s.to_string()),
         message: format!("读取IR文件失败: {}", e),
     })?;

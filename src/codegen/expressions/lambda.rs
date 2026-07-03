@@ -5,7 +5,7 @@
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
 use crate::miette_diagnostic::SourceLocation;
-use crate::miette_diagnostic::{cayResult, codegen_error_at};
+use crate::miette_diagnostic::{CayResult, codegen_error_at, ErrorCodes};
 use crate::types::Type;
 use std::collections::HashSet;
 
@@ -168,7 +168,7 @@ impl IRGenerator {
         &mut self,
         lambda: &LambdaExpr,
         var_name: Option<&str>,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         // 生成唯一的 Lambda 函数名（使用独立计数器避免嵌套lambda重复）
         let current_class = self.current_class.clone();
         let lambda_idx = self.lambda_counter;
@@ -449,7 +449,7 @@ impl IRGenerator {
     }
 
     /// 推断 Lambda 表达式的返回类型
-    fn infer_lambda_return_type(&self, lambda: &LambdaExpr) -> cayResult<Type> {
+    fn infer_lambda_return_type(&self, lambda: &LambdaExpr) -> CayResult<Type> {
         match &lambda.body {
             LambdaBody::Expr(expr) => {
                 // 对于表达式体，推断表达式类型
@@ -469,7 +469,7 @@ impl IRGenerator {
     }
 
     /// 推断表达式类型（用于 Lambda 返回类型推断）
-    fn infer_expr_type(&self, expr: &Expr) -> cayResult<Type> {
+    fn infer_expr_type(&self, expr: &Expr) -> CayResult<Type> {
         match expr {
             Expr::Literal(lit_expr) => match &lit_expr.value {
                 LiteralValue::Int32(_) => Ok(Type::Int32),
@@ -554,7 +554,7 @@ impl IRGenerator {
         lambda: &LambdaExpr,
         _return_type: &Type,
         llvm_return_type: &str,
-    ) -> cayResult<()> {
+    ) -> CayResult<()> {
         match &lambda.body {
             LambdaBody::Expr(expr) => {
                 let val = self.generate_expression(expr)?;
@@ -615,7 +615,7 @@ impl IRGenerator {
         from_type: &str,
         to_type: &str,
         loc: SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         if from_type == to_type {
             return Ok(val.to_string());
         }
@@ -716,7 +716,7 @@ impl IRGenerator {
         }
 
         // 其他不支持的转换
-        Err(codegen_error_at(
+        Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
             loc,
             format!(
                 "Unsupported type conversion from {} to {}",
@@ -753,7 +753,7 @@ impl IRGenerator {
     ///
     /// # Arguments
     /// * `method_ref` - 方法引用表达式
-    pub fn generate_method_ref(&mut self, method_ref: &MethodRefExpr) -> cayResult<String> {
+    pub fn generate_method_ref(&mut self, method_ref: &MethodRefExpr) -> CayResult<String> {
         let temp = self.new_temp();
 
         if let Some(ref class_name) = method_ref.class_name {

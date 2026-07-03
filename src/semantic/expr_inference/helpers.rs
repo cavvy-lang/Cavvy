@@ -1,15 +1,15 @@
 //! 表达式类型推断辅助函数
 
 use super::super::analyzer::SemanticAnalyzer;
-use crate::miette_diagnostic::{semantic_error_with_file, SourceLocation};
-use crate::miette_diagnostic::cayError;
+use crate::miette_diagnostic::{semantic_error_with_file, SourceLocation, ErrorCodes};
+use crate::miette_diagnostic::CayError;
 
 /// 辅助函数：根据SourceLocation创建语义错误
 pub fn semantic_error_at_loc(
     loc: &SourceLocation,
     message: impl Into<String>,
-) -> cayError {
-    semantic_error_with_file(loc.file.clone(), loc.line, loc.column, message)
+) -> CayError {
+    semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, loc.file.clone(), loc.line, loc.column, message)
 }
 
 /// 检查成员访问权限
@@ -35,7 +35,7 @@ pub fn check_member_access(
     target_class: &str,
     type_registry: &crate::types::TypeRegistry,
     loc: &SourceLocation,
-) -> crate::miette_diagnostic::cayResult<()> {
+) -> crate::miette_diagnostic::CayResult<()> {
     // 公开成员总是可以访问
     if is_public {
         return Ok(());

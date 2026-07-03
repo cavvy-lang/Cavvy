@@ -1,7 +1,7 @@
 // cay-dt: Cavvy Debugger - Token PreViewer
 // Token 预览工具 - 显示源代码的词法分析结果
 
-use cavvy::miette_diagnostic::DiagnosticCollector;
+use cavvy::miette_diagnostic::CayError;
 use cavvy::lexer::{TokenWithLocation, lex_with_diagnostics};
 use cavvy::preprocessor::preprocess;
 use std::env;
@@ -128,14 +128,14 @@ fn main() {
         print_tokens_pretty(&tokens, &diagnostics, &options, &file_path);
     }
 
-    if diagnostics.has_errors() {
+    if !diagnostics.is_empty() {
         process::exit(1);
     }
 }
 
 fn print_tokens_pretty(
     tokens: &[TokenWithLocation],
-    diagnostics: &DiagnosticCollector,
+    diagnostics: &[CayError],
     options: &Options,
     file_path: &str,
 ) {
@@ -164,28 +164,30 @@ fn print_tokens_pretty(
     println!("Token 数量: {}", tokens.len());
     println!();
 
-    if diagnostics.has_errors() || diagnostics.warning_count() > 0 {
+    if !diagnostics.is_empty() {
         println!("{}诊断信息:{}", header_color, reset);
-        for diag in diagnostics.diagnostics() {
-            let color = if is_error(&diag.severity) {
+        for diag in diagnostics.iter() {
+            let sev = diag.severity();
+            let color = if sev == cavvy::miette_diagnostic::Severity::Error || sev == cavvy::miette_diagnostic::Severity::Fatal {
                 error_color
             } else {
                 warning_color
             };
-            let severity = if is_error(&diag.severity) {
+            let severity = if sev == cavvy::miette_diagnostic::Severity::Error || sev == cavvy::miette_diagnostic::Severity::Fatal {
                 "错误"
             } else {
                 "警告"
             };
+            let (line, col) = diag.location().unwrap_or((0, 0));
             println!(
                 "  {}{}[{}]{} {} (行 {}, 列 {})",
                 color,
                 severity,
-                diag.code,
+                diag.error_code(),
                 reset,
-                diag.message,
-                diag.location.line,
-                diag.location.column
+                diag.message(),
+                line,
+                col
             );
         }
         println!();
@@ -232,7 +234,7 @@ fn print_tokens_pretty(
     }
 }
 
-fn print_tokens_json(tokens: &[TokenWithLocation], diagnostics: &DiagnosticCollector) {
+fn print_tokens_json(tokens: &[TokenWithLocation], diagnostics: &[CayError]) {
     use std::io::Write;
 
     let mut output = String::new();
@@ -268,19 +270,19 @@ fn print_tokens_json(tokens: &[TokenWithLocation], diagnostics: &DiagnosticColle
     output.push_str("  ],\n");
     output.push_str("  \"diagnostics\": [\n");
 
-    let diags: Vec<_> = diagnostics.diagnostics().iter().collect();
-    for (i, diag) in diags.iter().enumerate() {
+    for (i, diag) in diagnostics.iter().enumerate() {
+        let (line, col) = diag.location().unwrap_or((0, 0));
         output.push_str("    {\n");
         output.push_str(&format!(
             "      \"severity\": {:?},\n",
-            format!("{:?}", diag.severity)
+            format!("{:?}", diag.severity())
         ));
-        output.push_str(&format!("      \"code\": {:?},\n", diag.code));
-        output.push_str(&format!("      \"message\": {:?},\n", diag.message));
-        output.push_str(&format!("      \"line\": {},\n", diag.location.line));
-        output.push_str(&format!("      \"column\": {},\n", diag.location.column));
+        output.push_str(&format!("      \"code\": {:?},\n", diag.error_code()));
+        output.push_str(&format!("      \"message\": {:?},\n", diag.message()));
+        output.push_str(&format!("      \"line\": {},\n", line));
+        output.push_str(&format!("      \"column\": {},\n", col));
         output.push_str("    }");
-        if i < diags.len() - 1 {
+        if i < diagnostics.len() - 1 {
             output.push(',');
         }
         output.push('\n');

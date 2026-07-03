@@ -4,7 +4,7 @@
 
 use crate::ast::{AllocExpr, DeallocExpr};
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::cayResult;
+use crate::miette_diagnostic::CayResult;
 
 impl IRGenerator {
     /// 生成内存分配表达式的 LLVM IR
@@ -26,7 +26,7 @@ impl IRGenerator {
     ///
     /// # Returns
     /// 格式为 "i64 value" 的 LLVM IR 值字符串（指针作为 long 返回）
-    pub fn generate_alloc_expression(&mut self, alloc: &AllocExpr) -> cayResult<String> {
+    pub fn generate_alloc_expression(&mut self, alloc: &AllocExpr) -> CayResult<String> {
         // 生成大小表达式
         let size_val = self.generate_expression(&alloc.size)?;
 
@@ -72,7 +72,7 @@ impl IRGenerator {
     ///
     /// # Returns
     /// "void" 字符串（释放操作无返回值）
-    pub fn generate_dealloc_expression(&mut self, dealloc: &DeallocExpr) -> cayResult<String> {
+    pub fn generate_dealloc_expression(&mut self, dealloc: &DeallocExpr) -> CayResult<String> {
         // 生成指针表达式
         let ptr_val = self.generate_expression(&dealloc.ptr)?;
 

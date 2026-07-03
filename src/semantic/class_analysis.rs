@@ -2,7 +2,7 @@
 
 use super::analyzer::SemanticAnalyzer;
 use crate::ast::{ClassMember, MethodDecl, Modifier, Program};
-use crate::miette_diagnostic::{cayResult, semantic_error, semantic_error_with_file};
+use crate::miette_diagnostic::{CayResult, semantic_error, semantic_error_with_file, ErrorCodes};
 use crate::types::{ClassInfo, FieldInfo, MethodInfo, ParameterInfo, Type};
 
 impl SemanticAnalyzer {
@@ -13,7 +13,7 @@ impl SemanticAnalyzer {
     ///    - 如果只有一个类标记了 @main，选该类为主类
     ///    - 如果有多个类标记了 @main，报错
     ///    - 如果没有类标记 @main，报错并提示使用 @main
-    pub fn check_main_class_conflicts(&mut self, program: &Program) -> cayResult<()> {
+    pub fn check_main_class_conflicts(&mut self, program: &Program) -> CayResult<()> {
         // 收集所有有 main 方法的类
         let mut main_classes: Vec<(String, bool)> = Vec::new(); // (类名, 是否有@main标记)
 
@@ -54,7 +54,7 @@ impl SemanticAnalyzer {
                         // 多个类有 main，但没有标记 @main
                         let class_names: Vec<String> =
                             main_classes.iter().map(|(name, _)| name.clone()).collect();
-                        Err(semantic_error_with_file(
+                        Err(semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, 
                             None,
                             0,
                             0,
@@ -75,7 +75,7 @@ impl SemanticAnalyzer {
                             .iter()
                             .map(|(name, _)| name.clone())
                             .collect();
-                        Err(semantic_error_with_file(
+                        Err(semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, 
                             None,
                             0,
                             0,
@@ -91,7 +91,7 @@ impl SemanticAnalyzer {
     }
 
     /// 收集类定义
-    pub fn collect_classes(&mut self, program: &Program) -> cayResult<()> {
+    pub fn collect_classes(&mut self, program: &Program) -> CayResult<()> {
         // 首先收集接口定义
         for interface in &program.interfaces {
             let mut interface_info = crate::types::InterfaceInfo::new(interface.name.clone());
@@ -213,12 +213,9 @@ impl SemanticAnalyzer {
                                 let same_params = existing.params.iter().zip(params.iter())
                                     .all(|(a, b)| a.param_type == b.param_type && a.is_varargs == b.is_varargs);
                                 if same_params {
-                                    return Err(semantic_error_with_file(
-                                        self.current_file.clone(),
-                                        ctor.loc.line,
-                                        ctor.loc.column,
-                                        "构造函数已被定义，不能重复定义相同签名的构造函数".to_string(),
-                                    ));
+                                    return Err(semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, 
+                                        self.current_file.clone(), ctor.loc.line, ctor.loc.column, "构造函数已被定义，不能重复定义相同签名的构造函数".to_string()),
+                                    );
                                 }
                             }
                         }
@@ -296,7 +293,7 @@ impl SemanticAnalyzer {
     }
 
     /// 分析方法定义
-    pub fn analyze_methods(&mut self, program: &Program) -> cayResult<()> {
+    pub fn analyze_methods(&mut self, program: &Program) -> CayResult<()> {
         for class in &program.classes {
             self.current_class = Some(class.name.clone());
             self.type_registry.current_namespace = class.namespace_path.clone();
@@ -332,24 +329,18 @@ impl SemanticAnalyzer {
                     if is_test {
                         // @Test 方法必须是 void 返回类型
                         if method.return_type != Type::Void {
-                            return Err(semantic_error_with_file(
-                                self.current_file.clone(),
-                                method.loc.line,
-                                method.loc.column,
-                                format!(
-                                    "@Test 方法 '{}' 的返回类型必须是 void，当前为 {}\n提示: 将返回类型改为 void，例如: public void {}()",
+                            return Err(semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, 
+                                self.current_file.clone(), method.loc.line, method.loc.column, format!(
+                                    "@Test 方法 '{}' 的返回类型必须是 void，当前为 {}\n提示: 将返回类型改为 void，例如: public void {}(, ErrorCodes::get_suggestion(ErrorCodes::SEMANTIC_INVALID_OPERATION).to_string())",
                                     method.name, method.return_type, method.name
                                 ),
                             ));
                         }
                         // @Test 方法不能有参数
                         if !method.params.is_empty() {
-                            return Err(semantic_error_with_file(
-                                self.current_file.clone(),
-                                method.loc.line,
-                                method.loc.column,
-                                format!(
-                                    "@Test 方法 '{}' 不能有参数（发现 {} 个参数）\n提示: 移除参数，例如: public void {}()",
+                            return Err(semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, 
+                                self.current_file.clone(), method.loc.line, method.loc.column, format!(
+                                    "@Test 方法 '{}' 不能有参数（发现 {} 个参数）\n提示: 移除参数，例如: public void {}(, ErrorCodes::get_suggestion(ErrorCodes::SEMANTIC_INVALID_OPERATION).to_string())",
                                     method.name,
                                     method.params.len(),
                                     method.name
@@ -358,12 +349,9 @@ impl SemanticAnalyzer {
                         }
                         // @Test 方法不能是 private
                         if method.modifiers.contains(&Modifier::Private) {
-                            return Err(semantic_error_with_file(
-                                self.current_file.clone(),
-                                method.loc.line,
-                                method.loc.column,
-                                format!(
-                                    "@Test 方法 '{}' 不能是 private\n提示: 将 private 改为 public，例如: public void {}()",
+                            return Err(semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, 
+                                self.current_file.clone(), method.loc.line, method.loc.column, format!(
+                                    "@Test 方法 '{}' 不能是 private\n提示: 将 private 改为 public，例如: public void {}(, ErrorCodes::get_suggestion(ErrorCodes::SEMANTIC_INVALID_OPERATION).to_string())",
                                     method.name, method.name
                                 ),
                             ));
@@ -378,7 +366,7 @@ impl SemanticAnalyzer {
                                     let same_params = existing.params.iter().zip(method_info.params.iter())
                                         .all(|(a, b)| a.param_type == b.param_type && a.is_varargs == b.is_varargs);
                                     if same_params {
-                                        return Err(semantic_error_with_file(
+                                        return Err(semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, 
                                             self.current_file.clone(),
                                             method.loc.line,
                                             method.loc.column,
@@ -405,13 +393,13 @@ impl SemanticAnalyzer {
     /// 3. 检测循环继承
     /// 4. 验证 @Override 注解
     /// 5. 检查 final 方法不能被重写
-    pub fn check_inheritance(&mut self, program: &Program) -> cayResult<()> {
+    pub fn check_inheritance(&mut self, program: &Program) -> CayResult<()> {
         // 第一遍：验证所有父类存在
         for class in &program.classes {
             self.type_registry.current_namespace = class.namespace_path.clone();
             if let Some(ref parent_name) = class.parent {
                 if !self.type_registry.class_exists(parent_name) {
-                    return Err(semantic_error_with_file(
+                    return Err(semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, 
                         class.loc.file.clone(),
                         class.loc.line,
                         class.loc.column,
@@ -430,7 +418,7 @@ impl SemanticAnalyzer {
             if let Some(ref parent_name) = class.parent {
                 if let Some(parent_class) = self.type_registry.get_class(parent_name) {
                     if parent_class.is_final {
-                        return Err(semantic_error_with_file(
+                        return Err(semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, 
                             class.loc.file.clone(),
                             class.loc.line,
                             class.loc.column,
@@ -467,13 +455,13 @@ impl SemanticAnalyzer {
     ///
     /// 支持泛型接口实参的替换：例如 ArrayListIterator<T> implements Iterator<T> 时，
     /// 将 Iterator 方法签名中的 T 替换为 ArrayListIterator 的 T 后再进行比较。
-    fn check_interface_implementations(&self, class: &crate::ast::ClassDecl) -> cayResult<()> {
+    fn check_interface_implementations(&self, class: &crate::ast::ClassDecl) -> CayResult<()> {
         for interface_type in &class.interfaces {
             let interface_name = interface_type_name(interface_type);
             let interface_info = match self.type_registry.get_interface(&interface_name) {
                 Some(info) => info,
                 None => {
-                    return Err(semantic_error_with_file(
+                    return Err(semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, 
                         class.loc.file.clone(),
                         class.loc.line,
                         class.loc.column,
@@ -529,7 +517,7 @@ impl SemanticAnalyzer {
                     &substituted_params,
                     &substituted_return,
                 ) {
-                    return Err(semantic_error_with_file(
+                    return Err(semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, 
                         class.loc.file.clone(),
                         class.loc.line,
                         class.loc.column,
@@ -590,9 +578,9 @@ impl SemanticAnalyzer {
         original: &str,
         current: &str,
         visited: &mut Vec<String>,
-    ) -> cayResult<()> {
+    ) -> CayResult<()> {
         if visited.contains(&current.to_string()) {
-            return Err(semantic_error_with_file(
+            return Err(semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, 
                 None,
                 0,
                 0,
@@ -614,7 +602,7 @@ impl SemanticAnalyzer {
     }
 
     /// 检查 @Override 注解的方法
-    fn check_override_methods(&self, class: &crate::ast::ClassDecl) -> cayResult<()> {
+    fn check_override_methods(&self, class: &crate::ast::ClassDecl) -> CayResult<()> {
         for member in &class.members {
             if let ClassMember::Method(method) = member {
                 if method.modifiers.contains(&Modifier::Override) {
@@ -622,7 +610,7 @@ impl SemanticAnalyzer {
                     let parent_name = match &class.parent {
                         Some(p) => p,
                         None => {
-                            return Err(semantic_error_with_file(
+                            return Err(semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, 
                                 method.loc.file.clone(),
                                 method.loc.line,
                                 method.loc.column,
@@ -641,7 +629,7 @@ impl SemanticAnalyzer {
                         &method.params,
                         &method.return_type,
                     ) {
-                        return Err(semantic_error_with_file(
+                        return Err(semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, 
                             method.loc.file.clone(),
                             method.loc.line,
                             method.loc.column,
@@ -696,7 +684,7 @@ impl SemanticAnalyzer {
     }
 
     /// 检查 final 方法是否被重写
-    fn check_final_method_override(&self, class: &crate::ast::ClassDecl) -> cayResult<()> {
+    fn check_final_method_override(&self, class: &crate::ast::ClassDecl) -> CayResult<()> {
         // 获取父类名
         let parent_name = match &class.parent {
             Some(p) => p,
@@ -733,7 +721,7 @@ impl SemanticAnalyzer {
         param_types: &[Type],
         line: usize,
         column: usize,
-    ) -> cayResult<()> {
+    ) -> CayResult<()> {
         if let Some(parent_class) = self.type_registry.get_class(parent_name) {
             // 在父类中查找方法
             if let Some(methods) = parent_class.methods.get(method_name) {
@@ -746,7 +734,7 @@ impl SemanticAnalyzer {
                         if self.types_match(&parent_param_types, param_types) {
                             // 找到匹配的方法，检查是否是 final
                             if method.is_final {
-                                return Err(semantic_error_with_file(
+                                return Err(semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, 
                                     None,
                                     line,
                                     column,
@@ -826,7 +814,7 @@ impl SemanticAnalyzer {
     }
 
     /// 收集 struct 定义并注册到 TypeRegistry
-    pub fn collect_structs(&mut self, program: &Program) -> cayResult<()> {
+    pub fn collect_structs(&mut self, program: &Program) -> CayResult<()> {
         for struct_decl in &program.structs {
             let mut struct_info = crate::types::StructInfo {
                 name: struct_decl.name.clone(),
@@ -906,7 +894,7 @@ impl SemanticAnalyzer {
     }
 
     /// 收集 enum 定义并注册到 TypeRegistry
-    pub fn collect_enums(&mut self, program: &Program) -> cayResult<()> {
+    pub fn collect_enums(&mut self, program: &Program) -> CayResult<()> {
         for enum_decl in &program.enums {
             let variants = enum_decl
                 .variants
@@ -945,7 +933,7 @@ impl SemanticAnalyzer {
 
     /// 检查 @FreeFunction 冲突
     /// 当两个不同类中的方法都标记了 @FreeFunction 且同名时，报错
-    pub fn check_free_function_conflicts(&mut self, program: &Program) -> cayResult<()> {
+    pub fn check_free_function_conflicts(&mut self, program: &Program) -> CayResult<()> {
         use crate::ast::Modifier;
 
         for class_decl in &program.classes {

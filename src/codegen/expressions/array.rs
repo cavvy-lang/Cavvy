@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::{cayResult, codegen_error_at};
+use crate::miette_diagnostic::{CayResult, codegen_error_at, ErrorCodes};
 use crate::types::Type;
 
 impl IRGenerator {
@@ -12,7 +12,7 @@ impl IRGenerator {
     ///
     /// # Arguments
     /// * `arr` - 数组创建表达式
-    pub fn generate_array_creation(&mut self, arr: &ArrayCreationExpr) -> cayResult<String> {
+    pub fn generate_array_creation(&mut self, arr: &ArrayCreationExpr) -> CayResult<String> {
         // 单态化上下文下，将泛型参数 T 替换为实际类型
         let element_type = self.resolve_type_arg_concrete(&arr.element_type);
         if arr.sizes.len() == 1 {
@@ -37,14 +37,14 @@ impl IRGenerator {
         element_type: &Type,
         size_expr: &Expr,
         loc: &crate::miette_diagnostic::SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         // 生成数组大小表达式
         let size_val_expr = self.generate_expression(size_expr)?;
         let (size_type, size_val) = self.parse_typed_value(&size_val_expr);
 
         // 确保大小是整数类型
         if !size_type.starts_with("i") {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc.clone(),
                 format!("Array size must be integer, got {}", size_type),
             ));
@@ -67,7 +67,7 @@ impl IRGenerator {
             let temp = self.new_temp();
             // 防御性检查：size_type 必须是纯整数类型
             if size_type.ends_with("*") {
-                return Err(codegen_error_at(
+                return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                     loc.clone(),
                     format!("Array size must be an integer type, got {}", size_type),
                 ));
@@ -214,7 +214,7 @@ impl IRGenerator {
         element_type: &Type,
         sizes: &[Expr],
         loc: &crate::miette_diagnostic::SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         // 多维数组实现：分配一个指针数组，每个指针指向子数组
         // 例如 new int[3][4][5]:
         // 1. 分配 3 个指针的数组 (int**)
@@ -226,7 +226,7 @@ impl IRGenerator {
         // 2. 不自动分配子数组，由用户后续手动分配
 
         if sizes.len() < 2 {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc.clone(),
                 "Multidimensional array needs at least 2 dimensions".to_string(),
             ));
@@ -385,7 +385,7 @@ impl IRGenerator {
     pub fn get_array_element_ptr(
         &mut self,
         arr: &ArrayAccessExpr,
-    ) -> cayResult<(String, String, String)> {
+    ) -> CayResult<(String, String, String)> {
         // 生成数组表达式
         // 特殊处理：如果数组表达式是 MemberAccess（如 this.stack），我们需要获取指针而不是值
         // 使用 generate_expression 获取数组指针的值（已加载）
@@ -402,7 +402,7 @@ impl IRGenerator {
 
         // 确保索引是整数类型
         if !index_type.starts_with("i") {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 arr.loc.clone(),
                 format!("Array index must be integer, got {}", index_type),
             ));
@@ -445,7 +445,7 @@ impl IRGenerator {
     ///
     /// # Arguments
     /// * `arr` - 数组访问表达式
-    pub fn generate_array_access(&mut self, arr: &ArrayAccessExpr) -> cayResult<String> {
+    pub fn generate_array_access(&mut self, arr: &ArrayAccessExpr) -> CayResult<String> {
         let (elem_type, elem_ptr_temp, _) = self.get_array_element_ptr(arr)?;
 
         // 加载元素值
@@ -464,9 +464,9 @@ impl IRGenerator {
     ///
     /// # Arguments
     /// * `init` - 数组初始化表达式
-    pub fn generate_array_init(&mut self, init: &ArrayInitExpr) -> cayResult<String> {
+    pub fn generate_array_init(&mut self, init: &ArrayInitExpr) -> CayResult<String> {
         if init.elements.is_empty() {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 init.loc.clone(),
                 "Cannot generate code for empty array initializer".to_string(),
             ));
@@ -559,9 +559,9 @@ impl IRGenerator {
         &mut self,
         init: &ArrayInitExpr,
         target_type: &Type,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         if init.elements.is_empty() {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 init.loc.clone(),
                 "Cannot generate code for empty array initializer".to_string(),
             ));

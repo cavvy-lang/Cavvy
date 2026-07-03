@@ -3,14 +3,14 @@
 //! 处理变量访问、静态字段访问和隐式 this 访问。
 
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::{SourceLocation, cayResult, codegen_error_at};
+use crate::miette_diagnostic::{SourceLocation, CayResult, codegen_error_at, ErrorCodes};
 
 impl IRGenerator {
     /// 生成标识符表达式代码
     ///
     /// # Arguments
     /// * `name` - 标识符名称
-    pub fn generate_identifier(&mut self, name: &str) -> cayResult<String> {
+    pub fn generate_identifier(&mut self, name: &str) -> CayResult<String> {
         // 特殊处理 super 标识符
         if name == "super" {
             // super 应该只用于 super.methodName() 调用
@@ -102,7 +102,7 @@ impl IRGenerator {
                 || registry.get_struct(base_name).is_some()
                 || registry.get_enum_by_name(base_name).is_some();
             if known_type_name && !has_value_binding {
-                return Err(codegen_error_at(
+                return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                     SourceLocation::default(),
                     format!("Type '{}' cannot be used as a value", base_name),
                 ));

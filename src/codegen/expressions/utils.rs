@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::{cayResult, codegen_error_at};
+use crate::miette_diagnostic::{CayResult, codegen_error_at, ErrorCodes};
 
 impl IRGenerator {
     /// 提升整数操作数到相同类型
@@ -225,7 +225,7 @@ impl IRGenerator {
     pub fn get_lvalue_info_with_param_flag(
         &mut self,
         expr: &Expr,
-    ) -> cayResult<(String, String, bool)> {
+    ) -> CayResult<(String, String, bool)> {
         match expr {
             Expr::Identifier(name) => {
                 let name_str = name.as_ref();
@@ -252,7 +252,7 @@ impl IRGenerator {
                         .var_types
                         .get(name_str)
                         .ok_or_else(|| {
-                            codegen_error_at(
+                            codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                                 expr.location().clone(),
                                 format!("Variable '{}' not found", name_str),
                             )
@@ -271,7 +271,7 @@ impl IRGenerator {
                 let (ty, ptr) = self.get_member_field_pointer(member)?;
                 Ok((ty, ptr, false))
             }
-            _ => Err(codegen_error_at(
+            _ => Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 expr.location().clone(),
                 "Invalid lvalue expression".to_string(),
             )),
@@ -282,7 +282,7 @@ impl IRGenerator {
     ///
     /// # Returns
     /// (类型字符串, 指针字符串)
-    pub fn get_lvalue_info(&mut self, expr: &Expr) -> cayResult<(String, String)> {
+    pub fn get_lvalue_info(&mut self, expr: &Expr) -> CayResult<(String, String)> {
         let (ty, ptr, _) = self.get_lvalue_info_with_param_flag(expr)?;
         Ok((ty, ptr))
     }
@@ -292,7 +292,7 @@ impl IRGenerator {
     /// # Arguments
     /// * `val_type` - 除数类型
     /// * `val` - 除数值
-    pub fn generate_division_by_zero_check(&mut self, val_type: &str, val: &str) -> cayResult<()> {
+    pub fn generate_division_by_zero_check(&mut self, val_type: &str, val: &str) -> CayResult<()> {
         // 创建标签
         let error_label = self.new_label("div.error");
         let continue_label = self.new_label("div.cont");
@@ -359,7 +359,7 @@ impl IRGenerator {
     pub fn get_member_field_pointer(
         &mut self,
         member: &MemberAccessExpr,
-    ) -> cayResult<(String, String)> {
+    ) -> CayResult<(String, String)> {
         // 确定对象所属的类
         let class_name_opt: Option<String> = if let Expr::Identifier(name) = member.object.as_ref()
         {
@@ -460,7 +460,7 @@ impl IRGenerator {
             }
         }
 
-        Err(codegen_error_at(
+        Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
             member.loc.clone(),
             format!(
                 "Cannot get field pointer for member access: {}",
@@ -479,7 +479,7 @@ impl IRGenerator {
     pub fn get_nested_field_pointer(
         &mut self,
         member: &MemberAccessExpr,
-    ) -> cayResult<(String, String)> {
+    ) -> CayResult<(String, String)> {
         // 递归处理链式成员访问
         self.get_nested_field_pointer_recursive(member, true)
     }
@@ -493,7 +493,7 @@ impl IRGenerator {
         &mut self,
         member: &MemberAccessExpr,
         is_root: bool,
-    ) -> cayResult<(String, String)> {
+    ) -> CayResult<(String, String)> {
         // 获取对象指针和类型
         let (obj_ptr, obj_class_name) = match member.object.as_ref() {
             Expr::Identifier(name) => {
@@ -592,7 +592,7 @@ impl IRGenerator {
             }
         }
 
-        Err(codegen_error_at(
+        Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
             member.loc.clone(),
             format!(
                 "Cannot get nested field pointer for member access: {} (object class: {:?})",
@@ -613,7 +613,7 @@ impl IRGenerator {
         &mut self,
         member: &MemberAccessExpr,
         is_root: bool,
-    ) -> cayResult<(
+    ) -> CayResult<(
         String,
         String,
         Option<crate::codegen::context::InstanceFieldInfo>,
@@ -699,7 +699,7 @@ impl IRGenerator {
             }
         }
 
-        Err(codegen_error_at(
+        Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
             member.loc.clone(),
             format!(
                 "Cannot get nested field pointer for member access: {} (object class: {:?})",

@@ -4,14 +4,14 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::{cayResult, codegen_error_at};
+use crate::miette_diagnostic::{CayResult, codegen_error_at, ErrorCodes};
 
 impl IRGenerator {
     /// 生成赋值表达式代码
     ///
     /// # Arguments
     /// * `assign` - 赋值表达式
-    pub fn generate_assignment(&mut self, assign: &AssignmentExpr) -> cayResult<String> {
+    pub fn generate_assignment(&mut self, assign: &AssignmentExpr) -> CayResult<String> {
         if assign.op != AssignOp::Assign {
             return self.generate_compound_assignment(assign);
         }
@@ -37,7 +37,7 @@ impl IRGenerator {
                 // 解引用赋值: *p = value
                 self.generate_deref_assignment(unary, &value_type, &val, &value)
             }
-            _ => Err(codegen_error_at(
+            _ => Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 assign.loc.clone(),
                 "Invalid assignment target",
             )),
@@ -45,7 +45,7 @@ impl IRGenerator {
     }
 
     /// 生成复合赋值表达式（+=、-=、*=、/=、%=）。
-    fn generate_compound_assignment(&mut self, assign: &AssignmentExpr) -> cayResult<String> {
+    fn generate_compound_assignment(&mut self, assign: &AssignmentExpr) -> CayResult<String> {
         let (target_type, target_ptr) = self.get_lvalue_info(&assign.target)?;
         let align = self.get_type_align(&target_type);
 
@@ -92,7 +92,7 @@ impl IRGenerator {
         right_type: &str,
         right_val: &str,
         loc: &crate::miette_diagnostic::SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         let temp = self.new_temp();
         let is_left_int = left_type.starts_with("i") && !left_type.ends_with("*");
         let is_right_int = right_type.starts_with("i") && !right_type.ends_with("*");
@@ -117,7 +117,7 @@ impl IRGenerator {
                     self.emit_line(&format!("  {} = fadd {} {}, {}", temp, ty, l, r));
                     Ok(format!("{} {}", ty, temp))
                 } else {
-                    Err(codegen_error_at(
+                    Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                         loc.clone(),
                         format!("Unsupported += types: {} and {}", left_type, right_type),
                     ))
@@ -140,7 +140,7 @@ impl IRGenerator {
                     self.emit_line(&format!("  {} = fsub {} {}, {}", temp, ty, l, r));
                     Ok(format!("{} {}", ty, temp))
                 } else {
-                    Err(codegen_error_at(
+                    Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                         loc.clone(),
                         format!("Unsupported -= types: {} and {}", left_type, right_type),
                     ))
@@ -163,7 +163,7 @@ impl IRGenerator {
                     self.emit_line(&format!("  {} = fmul {} {}, {}", temp, ty, l, r));
                     Ok(format!("{} {}", ty, temp))
                 } else {
-                    Err(codegen_error_at(
+                    Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                         loc.clone(),
                         format!("Unsupported *= types: {} and {}", left_type, right_type),
                     ))
@@ -187,7 +187,7 @@ impl IRGenerator {
                     self.emit_line(&format!("  {} = fdiv {} {}, {}", temp, ty, l, r));
                     Ok(format!("{} {}", ty, temp))
                 } else {
-                    Err(codegen_error_at(
+                    Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                         loc.clone(),
                         format!("Unsupported /= types: {} and {}", left_type, right_type),
                     ))
@@ -201,7 +201,7 @@ impl IRGenerator {
                     self.emit_line(&format!("  {} = srem {} {}, {}", temp, ty, l, r));
                     Ok(format!("{} {}", ty, temp))
                 } else {
-                    Err(codegen_error_at(
+                    Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                         loc.clone(),
                         format!("Unsupported %= types: {} and {}", left_type, right_type),
                     ))
@@ -218,7 +218,7 @@ impl IRGenerator {
         value_type: &str,
         val: &str,
         loc: &crate::miette_diagnostic::SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         let temp = self.new_temp();
         let final_val = if value_type == target_type {
             val.to_string()
@@ -266,7 +266,7 @@ impl IRGenerator {
             ));
             temp
         } else {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc.clone(),
                 format!(
                     "Cannot convert {} to {} for compound assignment",
@@ -290,7 +290,7 @@ impl IRGenerator {
         value_type: &str,
         val: &str,
         value: &str,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         // 检查是否是静态字段赋值: ClassName.fieldName = value
         if let Expr::Identifier(class_name) = &*member.object {
             let static_key = format!("{}.{}", class_name, member.member);
@@ -520,7 +520,7 @@ impl IRGenerator {
                     temp
                 } else {
                     // 其他不支持的类型转换，报错
-                    return Err(codegen_error_at(
+                    return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                         member.loc.clone(),
                         format!(
                             "Cannot convert {} to {} for field assignment",
@@ -540,7 +540,7 @@ impl IRGenerator {
             return Ok(value.to_string());
         }
 
-        Err(codegen_error_at(
+        Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
             member.loc.clone(),
             "Invalid member access assignment target",
         ))
@@ -554,7 +554,7 @@ impl IRGenerator {
         val: &str,
         value: &str,
         loc: &crate::miette_diagnostic::SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         // 优先使用作用域管理器获取变量类型和 LLVM 名称
         let (var_type, llvm_name) = if let Some(scope_type) = self.scope_manager.get_var_type(name)
         {
@@ -581,7 +581,7 @@ impl IRGenerator {
                 .var_types
                 .get(name)
                 .ok_or_else(|| {
-                    codegen_error_at(loc.clone(), format!("Variable '{}' not found", name))
+                    codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, loc.clone(), format!("Variable '{}' not found", name))
                 })?
                 .clone();
             (var_type, name.to_string())
@@ -621,7 +621,7 @@ impl IRGenerator {
         value_type: &str,
         val: &str,
         value: &str,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         // 获取数组元素指针
         let (elem_type, elem_ptr, _) = self.get_array_element_ptr(arr_access)?;
 
@@ -648,7 +648,7 @@ impl IRGenerator {
         llvm_name: &str,
         value_type: &str,
         val: &str,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         let temp = self.new_temp();
 
         // 浮点类型转换
@@ -870,7 +870,7 @@ impl IRGenerator {
         value_type: &str,
         val: &str,
         value: &str,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         let temp = self.new_temp();
 
         // 浮点类型转换
@@ -994,14 +994,14 @@ impl IRGenerator {
         value_type: &str,
         val: &str,
         value: &str,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         // 生成指针表达式的代码
         let ptr_result = self.generate_expression(&unary.operand)?;
         let (ptr_type, ptr_val) = self.parse_typed_value(&ptr_result);
 
         // 确保操作数是指针类型
         if !ptr_type.ends_with('*') {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 unary.loc.clone(),
                 format!("Cannot dereference non-pointer type: {}", ptr_type),
             ));
@@ -1067,7 +1067,7 @@ impl IRGenerator {
                     temp, value_type, val, elem_type
                 ));
             } else {
-                return Err(codegen_error_at(
+                return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                     unary.loc.clone(),
                     format!(
                         "Cannot convert {} to {} for dereference assignment",

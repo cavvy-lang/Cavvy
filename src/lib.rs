@@ -21,13 +21,12 @@ pub mod embedded_llc;
 // Cavvy 环境安装与设置模块
 pub mod setup;
 
-// 统一诊断系统 — 废弃 error.rs 和 diagnostic.rs，全部使用 miette_diagnostic
-pub use miette_diagnostic::DiagnosticCollector;
+// 统一诊断系统 v2 — CayError 直接实现 miette::Diagnostic
+pub use miette_diagnostic::CayError;
+pub use miette_diagnostic::CayResult;
 pub use miette_diagnostic::print_diagnostics;
-pub use miette_diagnostic::CompilerError;
-pub use miette_diagnostic::CompilerResult;
+pub use miette_diagnostic::print_error_with_context;
 
-use miette_diagnostic::cayResult;
 use std::path::{Path, PathBuf};
 
 /// 编译器配置选项
@@ -85,7 +84,7 @@ impl Compiler {
     ///
     /// # Returns
     /// 编译成功返回 Ok(())
-    pub fn compile(&self, source: &str, output_path: &str) -> cayResult<()> {
+    pub fn compile(&self, source: &str, output_path: &str) -> CayResult<()> {
         // 1. 词法分析
         let tokens = lexer::lex(source)?;
 
@@ -131,7 +130,8 @@ impl Compiler {
         }
 
         // 输出到文件
-        std::fs::write(output_path, ir).map_err(|e| miette_diagnostic::cayError::Io {
+        std::fs::write(output_path, ir).map_err(|e| CayError::Io {
+            error_code: "I0001",
             file: Some(output_path.to_string()),
             message: e.to_string(),
         })?;
@@ -153,7 +153,7 @@ impl Compiler {
         source: &str,
         source_map: std::collections::HashMap<usize, (String, usize)>,
         output_path: &str,
-    ) -> cayResult<()> {
+    ) -> CayResult<()> {
         self.compile_with_source_map_and_main_file(source, source_map, output_path, None)
     }
 
@@ -173,7 +173,7 @@ impl Compiler {
         source_map: std::collections::HashMap<usize, (String, usize)>,
         output_path: &str,
         main_file: Option<String>,
-    ) -> cayResult<()> {
+    ) -> CayResult<()> {
         self.compile_with_source_map_and_link_libs(source, source_map, output_path, main_file, Vec::new())
     }
 
@@ -195,7 +195,7 @@ impl Compiler {
         output_path: &str,
         main_file: Option<String>,
         link_libraries: Vec<crate::ast::LinkLibraryDecl>,
-    ) -> cayResult<()> {
+    ) -> CayResult<()> {
         // 保留一份源映射用于语义分析错误定位
         let source_map_for_analyzer = source_map.clone();
 
@@ -260,7 +260,8 @@ impl Compiler {
         }
 
         // 输出到文件
-        std::fs::write(output_path, ir).map_err(|e| miette_diagnostic::cayError::Io {
+        std::fs::write(output_path, ir).map_err(|e| CayError::Io {
+            error_code: "I0001",
             file: Some(output_path.to_string()),
             message: e.to_string(),
         })?;
@@ -276,9 +277,10 @@ impl Compiler {
     ///
     /// # Returns
     /// 编译成功返回 Ok(())
-    pub fn compile_file(&self, input_path: &str, output_path: &str) -> cayResult<()> {
+    pub fn compile_file(&self, input_path: &str, output_path: &str) -> CayResult<()> {
         // 读取源文件
-        let source = std::fs::read_to_string(input_path).map_err(|e| miette_diagnostic::cayError::Io {
+        let source = std::fs::read_to_string(input_path).map_err(|e| CayError::Io {
+            error_code: "I0001",
             file: Some(input_path.to_string()),
             message: format!("无法读取源文件: {}", e),
         })?;
@@ -418,7 +420,7 @@ public class Test {
         println!("AST: {:?}", ast);
     }
 
-    fn analyze_source(source: &str) -> miette_diagnostic::cayResult<()> {
+    fn analyze_source(source: &str) -> miette_diagnostic::CayResult<()> {
         let tokens = lexer::lex(source)?;
         let ast = parser::parse_with_source(tokens, source.to_string())?;
         let mut analyzer = semantic::SemanticAnalyzer::new();

@@ -4,11 +4,11 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::cayResult;
+use crate::miette_diagnostic::CayResult;
 
 impl IRGenerator {
     /// 生成语句块代码（带作用域管理）
-    pub fn generate_block(&mut self, block: &Block) -> cayResult<()> {
+    pub fn generate_block(&mut self, block: &Block) -> CayResult<()> {
         // 进入新作用域
         self.scope_manager.enter_scope();
 
@@ -22,7 +22,7 @@ impl IRGenerator {
     }
 
     /// 生成语句块代码（不带新作用域，用于函数体等已有作用域的场景）
-    pub fn generate_block_without_scope(&mut self, block: &Block) -> cayResult<()> {
+    pub fn generate_block_without_scope(&mut self, block: &Block) -> CayResult<()> {
         for stmt in &block.statements {
             self.generate_statement(stmt)?;
         }

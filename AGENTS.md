@@ -116,11 +116,3 @@ cargo test --release --verbose
 ## 版本管理
 
 版本号位于 `.verinfo`（类 INI 格式）。`build.rs` 解析此文件，将每个版本与 git 提交哈希组合，并设置 `CARGO_*_VERSION` 环境变量用于编译时嵌入。修改 `.verinfo` 后，`cargo build` 将自动重新编译。
-
-## 已知限制与维护注意
-
-1. **接口方法动态分发**：已通过运行时对象 vtable 支持。`Animal a1 = new Dog(); a1.speak(); Animal a2 = new Cat(); a2.speak();` 应按运行时类型调用 `Dog` 和 `Cat` 的实现。修改接口调用、vtable 布局或方法名改编时，应运行 `cargo test --release --test interface_tests -- --nocapture`。
-2. **Lambda 闭包**：Lambda 语法已解析，但闭包捕获环境变量尚未完整实现。
-3. **泛型单态化**：语法解析支持 `<T>`，但代码生成尚未实现单态化。
-4. **private 访问控制**：编译器不强制执行 private 访问修饰符。
-5. **数组初始化语法**：不支持 `new Type[] { 1, 2, 3 }` 语法，需要先声明大小再赋值。

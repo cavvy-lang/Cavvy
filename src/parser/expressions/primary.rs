@@ -7,11 +7,11 @@ use super::super::types::is_type_token;
 use super::assignment::parse_expression;
 use super::lambda::try_parse_lambda;
 use crate::ast::*;
-use crate::miette_diagnostic::cayResult;
+use crate::miette_diagnostic::CayResult;
 use crate::types::Type;
 
 /// 解析基本表达式
-pub fn parse_primary(parser: &mut Parser) -> cayResult<Expr> {
+pub fn parse_primary(parser: &mut Parser) -> CayResult<Expr> {
     let loc = parser.current_loc();
 
     let token = parser.current_token().clone();
@@ -439,7 +439,7 @@ pub fn parse_primary(parser: &mut Parser) -> cayResult<Expr> {
 pub fn parse_new_expression(
     parser: &mut Parser,
     loc: crate::miette_diagnostic::SourceLocation,
-) -> cayResult<Expr> {
+) -> CayResult<Expr> {
     // 首先尝试解析类型
     if is_type_token(parser) {
         // 解析基本类型或类名（不包含数组维度）
@@ -566,7 +566,7 @@ fn get_type_name(token: &crate::lexer::Token) -> &'static str {
 }
 
 /// 解析基本类型（不包含数组维度）
-pub fn parse_base_type(parser: &mut Parser) -> cayResult<Type> {
+pub fn parse_base_type(parser: &mut Parser) -> CayResult<Type> {
     match parser.current_token() {
         crate::lexer::Token::Int => {
             parser.advance();
@@ -636,7 +636,7 @@ pub fn parse_base_type(parser: &mut Parser) -> cayResult<Type> {
 }
 
 /// 解析参数列表
-fn parse_arguments(parser: &mut Parser) -> cayResult<Vec<Expr>> {
+fn parse_arguments(parser: &mut Parser) -> CayResult<Vec<Expr>> {
     let mut args = Vec::new();
 
     if !parser.check(&crate::lexer::Token::RParen) {

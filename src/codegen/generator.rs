@@ -1,6 +1,7 @@
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::cayResult;
+use crate::miette_diagnostic::CayResult;
+use crate::miette_diagnostic::ErrorCodes;
 use crate::types::Type;
 
 /// 泛型特化：替换类型中的泛型参数为实际类型
@@ -134,7 +135,7 @@ impl IRGenerator {
     /// # Arguments
     /// * `program` - AST程序
     /// * `source_file` - 源文件路径（用于源映射）
-    pub fn generate(&mut self, program: &Program, source_file: &str) -> cayResult<String> {
+    pub fn generate(&mut self, program: &Program, source_file: &str) -> CayResult<String> {
         // 扁平化 namespace 声明
         let program = program.flatten_namespaces();
 
@@ -643,7 +644,7 @@ impl IRGenerator {
         }
     }
 
-    fn collect_static_fields(&mut self, class: &ClassDecl, qname: &str) -> cayResult<()> {
+    fn collect_static_fields(&mut self, class: &ClassDecl, qname: &str) -> CayResult<()> {
         for member in &class.members {
             if let ClassMember::Field(field) = member {
                 if field.modifiers.contains(&Modifier::Static) {
@@ -654,7 +655,7 @@ impl IRGenerator {
         Ok(())
     }
 
-    fn register_static_field(&mut self, class_name: &str, field: &FieldDecl) -> cayResult<()> {
+    fn register_static_field(&mut self, class_name: &str, field: &FieldDecl) -> CayResult<()> {
         let llvm_class = self.get_qualified_class_name(class_name);
         let full_name = format!("@{}.{}_s", llvm_class, field.name);
         // 对于数组类型，静态字段存储的是数组指针（指向元素数据）
@@ -880,7 +881,7 @@ impl IRGenerator {
         }
     }
 
-    fn generate_class(&mut self, class: &ClassDecl) -> cayResult<()> {
+    fn generate_class(&mut self, class: &ClassDecl) -> CayResult<()> {
         // 设置当前命名空间上下文——仅影响 TypeRegistry 的类名查找，不影响其他
         if let Some(ref mut registry) = self.type_registry {
             registry.current_namespace = class.namespace_path.clone();
@@ -1097,7 +1098,7 @@ impl IRGenerator {
     /// 1. 查找原始泛型类
     /// 2. 将显式特化的成员覆盖原始成员
     /// 3. 生成特化版本的 vtable、方法和构造函数
-    fn generate_specialize_class(&mut self, spec: &SpecializeClassDecl) -> cayResult<()> {
+    fn generate_specialize_class(&mut self, spec: &SpecializeClassDecl) -> CayResult<()> {
         // 设置命名空间上下文
         if let Some(ref mut registry) = self.type_registry {
             registry.current_namespace = spec.namespace_path.clone();
@@ -1107,7 +1108,7 @@ impl IRGenerator {
         let base_class = match self.classes_cache.get(&spec.base_name) {
             Some(c) => c.clone(),
             None => {
-                return Err(crate::miette_diagnostic::codegen_error_at(
+                return Err(crate::miette_diagnostic::codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                     spec.loc.clone(),
                     format!("找不到显式特化的基础类 '{}'", spec.base_name)
                 ));
@@ -1249,7 +1250,7 @@ impl IRGenerator {
     }
 
     /// 生成 struct 的所有方法（struct 是值类型，无构造/析构/静态初始化）
-    fn generate_struct_methods(&mut self, struct_decl: &StructDecl) -> cayResult<()> {
+    fn generate_struct_methods(&mut self, struct_decl: &StructDecl) -> CayResult<()> {
         // 设置当前命名空间上下文
         if let Some(ref mut registry) = self.type_registry {
             registry.current_namespace = struct_decl.namespace_path.clone();
@@ -1286,7 +1287,7 @@ impl IRGenerator {
     /// 为每个类生成一个 vtable 数组，包含所有虚方法的函数指针。
     /// vtable 结构：[slot_0, slot_1, ..., slot_N]
     /// 每个 slot 是一个 i8* 类型的函数指针。
-    fn generate_vtable_global(&mut self, class_name: &str) -> cayResult<()> {
+    fn generate_vtable_global(&mut self, class_name: &str) -> CayResult<()> {
         let llvm_class = self.get_qualified_class_name(class_name);
         let vtable_name = format!("{}.vtable", llvm_class);
 
@@ -1472,7 +1473,7 @@ impl IRGenerator {
         None
     }
 
-    fn generate_method(&mut self, class_name: &str, method: &MethodDecl) -> cayResult<()> {
+    fn generate_method(&mut self, class_name: &str, method: &MethodDecl) -> CayResult<()> {
         // 跳过 native 方法的定义（它们在运行时或由外部提供）
         if method.modifiers.contains(&Modifier::Native) {
             return Ok(());
@@ -1673,7 +1674,7 @@ impl IRGenerator {
         &mut self,
         class_name: &str,
         ctor: &crate::ast::ConstructorDecl,
-    ) -> cayResult<()> {
+    ) -> CayResult<()> {
         let fn_name = self.generate_constructor_name(class_name, ctor);
 
         // 防止重复生成相同名称的构造函数（泛型特化可能产生同名构造函数）
@@ -1841,7 +1842,7 @@ impl IRGenerator {
     }
 
     /// 生成默认构造函数（无参构造函数）
-    fn generate_default_constructor(&mut self, class_name: &str) -> cayResult<()> {
+    fn generate_default_constructor(&mut self, class_name: &str) -> CayResult<()> {
         let llvm_class = self.get_qualified_class_name(class_name);
         let fn_name = format!("{}.__ctor", llvm_class);
 
@@ -1921,7 +1922,7 @@ impl IRGenerator {
 
     /// 生成当前类字段的初始化器代码（super/this 调用之后、构造函数体之前）
     /// 只处理当前类声明的字段，不处理父类字段（父类由自己的构造函数初始化）
-    fn generate_field_initializers(&mut self, class_name: &str) -> cayResult<()> {
+    fn generate_field_initializers(&mut self, class_name: &str) -> CayResult<()> {
         let fields = match self.field_initializers.get(class_name) {
             Some(f) => f.clone(),
             None => return Ok(()),
@@ -1983,7 +1984,7 @@ impl IRGenerator {
     }
 
     /// 获取字段在对象中的偏移量（字节）
-    fn get_field_offset(&self, class_name: &str, field_name: &str) -> cayResult<i64> {
+    fn get_field_offset(&self, class_name: &str, field_name: &str) -> CayResult<i64> {
         if let Some(layout) = self.class_layouts.get(class_name) {
             if let Some(field) = layout.fields.get(field_name) {
                 return Ok(field.offset as i64);
@@ -2001,7 +2002,7 @@ impl IRGenerator {
         &mut self,
         class_name: &str,
         dtor: &crate::ast::DestructorDecl,
-    ) -> cayResult<()> {
+    ) -> CayResult<()> {
         let llvm_class = self.get_qualified_class_name(class_name);
         let fn_name = format!("{}.__dtor", llvm_class);
 
@@ -2066,7 +2067,7 @@ impl IRGenerator {
         &mut self,
         class_name: &str,
         block: &crate::ast::Block,
-    ) -> cayResult<()> {
+    ) -> CayResult<()> {
         let llvm_class = self.get_qualified_class_name(class_name);
         let fn_name = format!("{}.__static_init", llvm_class);
         self.current_function = fn_name.clone();
@@ -2322,7 +2323,7 @@ impl IRGenerator {
     fn generate_top_level_function(
         &mut self,
         func: &crate::ast::TopLevelFunction,
-    ) -> cayResult<()> {
+    ) -> CayResult<()> {
         let fn_name = self.generate_top_level_function_name(&func.name);
         self.current_function = fn_name.clone();
         self.current_class = String::new(); // 顶层函数没有类
@@ -2406,7 +2407,7 @@ impl IRGenerator {
     fn generate_extern_declaration(
         &mut self,
         extern_decl: &crate::ast::ExternDecl,
-    ) -> cayResult<()> {
+    ) -> CayResult<()> {
         for func in &extern_decl.functions {
             self.generate_extern_function(extern_decl.calling_convention, func)?;
         }
@@ -2418,7 +2419,7 @@ impl IRGenerator {
         &mut self,
         calling_conv: crate::ast::CallingConvention,
         func: &crate::ast::ExternFunction,
-    ) -> cayResult<()> {
+    ) -> CayResult<()> {
         let ret_type = self.type_to_llvm(&func.return_type);
 
         // 构建参数列表，支持可变参数
@@ -2500,7 +2501,7 @@ impl IRGenerator {
     /// 生成测试入口函数 `__cavvy_test_main`
     ///
     /// 该函数会逐个调用所有 `@Test` 注解的方法并打印结果。
-    fn emit_test_main(&mut self) -> cayResult<()> {
+    fn emit_test_main(&mut self) -> CayResult<()> {
         let test_count = self.test_methods.len();
 
         self.output

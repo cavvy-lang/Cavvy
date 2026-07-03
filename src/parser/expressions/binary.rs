@@ -5,10 +5,10 @@
 use super::super::Parser;
 use super::unary::parse_unary;
 use crate::ast::*;
-use crate::miette_diagnostic::cayResult;
+use crate::miette_diagnostic::CayResult;
 
 /// 解析逻辑或表达式
-pub fn parse_or(parser: &mut Parser) -> cayResult<Expr> {
+pub fn parse_or(parser: &mut Parser) -> CayResult<Expr> {
     let mut left = parse_and(parser)?;
 
     while parser.match_token(&crate::lexer::Token::OrOr) {
@@ -26,7 +26,7 @@ pub fn parse_or(parser: &mut Parser) -> cayResult<Expr> {
 }
 
 /// 解析逻辑与表达式
-pub fn parse_and(parser: &mut Parser) -> cayResult<Expr> {
+pub fn parse_and(parser: &mut Parser) -> CayResult<Expr> {
     let mut left = parse_bitwise_or(parser)?;
 
     while parser.match_token(&crate::lexer::Token::AndAnd) {
@@ -44,7 +44,7 @@ pub fn parse_and(parser: &mut Parser) -> cayResult<Expr> {
 }
 
 /// 解析按位或表达式
-pub fn parse_bitwise_or(parser: &mut Parser) -> cayResult<Expr> {
+pub fn parse_bitwise_or(parser: &mut Parser) -> CayResult<Expr> {
     let mut left = parse_bitwise_xor(parser)?;
 
     while parser.match_token(&crate::lexer::Token::Pipe) {
@@ -62,7 +62,7 @@ pub fn parse_bitwise_or(parser: &mut Parser) -> cayResult<Expr> {
 }
 
 /// 解析按位异或表达式
-pub fn parse_bitwise_xor(parser: &mut Parser) -> cayResult<Expr> {
+pub fn parse_bitwise_xor(parser: &mut Parser) -> CayResult<Expr> {
     let mut left = parse_bitwise_and(parser)?;
 
     while parser.match_token(&crate::lexer::Token::Caret) {
@@ -80,7 +80,7 @@ pub fn parse_bitwise_xor(parser: &mut Parser) -> cayResult<Expr> {
 }
 
 /// 解析按位与表达式
-pub fn parse_bitwise_and(parser: &mut Parser) -> cayResult<Expr> {
+pub fn parse_bitwise_and(parser: &mut Parser) -> CayResult<Expr> {
     let mut left = parse_equality(parser)?;
 
     while parser.match_token(&crate::lexer::Token::Ampersand) {
@@ -98,7 +98,7 @@ pub fn parse_bitwise_and(parser: &mut Parser) -> cayResult<Expr> {
 }
 
 /// 解析相等性表达式
-pub fn parse_equality(parser: &mut Parser) -> cayResult<Expr> {
+pub fn parse_equality(parser: &mut Parser) -> CayResult<Expr> {
     let mut left = parse_comparison(parser)?;
 
     loop {
@@ -128,7 +128,7 @@ pub fn parse_equality(parser: &mut Parser) -> cayResult<Expr> {
 }
 
 /// 解析比较表达式（包括 instanceof）
-pub fn parse_comparison(parser: &mut Parser) -> cayResult<Expr> {
+pub fn parse_comparison(parser: &mut Parser) -> CayResult<Expr> {
     let mut left = parse_shift(parser)?;
 
     loop {
@@ -182,7 +182,7 @@ pub fn parse_comparison(parser: &mut Parser) -> cayResult<Expr> {
 }
 
 /// 解析移位表达式
-pub fn parse_shift(parser: &mut Parser) -> cayResult<Expr> {
+pub fn parse_shift(parser: &mut Parser) -> CayResult<Expr> {
     let mut left = parse_term(parser)?;
 
     loop {
@@ -220,7 +220,7 @@ pub fn parse_shift(parser: &mut Parser) -> cayResult<Expr> {
 }
 
 /// 解析加减表达式
-pub fn parse_term(parser: &mut Parser) -> cayResult<Expr> {
+pub fn parse_term(parser: &mut Parser) -> CayResult<Expr> {
     let mut left = parse_factor(parser)?;
 
     loop {
@@ -250,7 +250,7 @@ pub fn parse_term(parser: &mut Parser) -> cayResult<Expr> {
 }
 
 /// 解析乘除模表达式
-pub fn parse_factor(parser: &mut Parser) -> cayResult<Expr> {
+pub fn parse_factor(parser: &mut Parser) -> CayResult<Expr> {
     let mut left = parse_unary(parser)?;
 
     loop {

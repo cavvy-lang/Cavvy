@@ -274,7 +274,7 @@ pub struct IRGenerator {
     // 已生成的方法定义（避免重复生成）
     pub generated_methods: HashSet<String>,
     // 代码生成阶段收集的警告（使用 RefCell 允许在 &self 方法中修改）
-    pub warnings: std::cell::RefCell<Vec<crate::miette_diagnostic::cayError>>,
+    pub warnings: std::cell::RefCell<Vec<crate::miette_diagnostic::CayError>>,
     // 类定义缓存（用于显式特化查找原始类）
     pub classes_cache: std::collections::HashMap<String, crate::ast::ClassDecl>,
     // 显式特化类型组合记录（基础类名 -> 特化类型参数列表集合）

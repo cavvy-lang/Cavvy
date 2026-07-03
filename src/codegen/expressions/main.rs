@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::cayResult;
+use crate::miette_diagnostic::CayResult;
 
 impl IRGenerator {
     /// 生成表达式代码的主入口
@@ -16,7 +16,7 @@ impl IRGenerator {
     ///
     /// # Returns
     /// 格式为 "type value" 的 LLVM IR 值字符串
-    pub fn generate_expression(&mut self, expr: &Expr) -> cayResult<String> {
+    pub fn generate_expression(&mut self, expr: &Expr) -> CayResult<String> {
         match expr {
             // 字面量
             Expr::Literal(lit_expr) => self.generate_literal(&lit_expr.value),

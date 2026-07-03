@@ -8,7 +8,7 @@ use super::function::{IrFunction, IrLinkage};
 use super::module::IrModule;
 use super::types::IrType;
 use super::value::{IrInstruction, IrTerminator};
-use crate::miette_diagnostic::cayResult;
+use crate::miette_diagnostic::CayResult;
 
 /// LLVM IR 文本后端
 pub struct LlvmBackend {
@@ -31,7 +31,7 @@ impl LlvmBackend {
     }
 
     /// 将 IR 模块发射为 LLVM IR 文本
-    pub fn emit(&mut self, module: &IrModule) -> cayResult<String> {
+    pub fn emit(&mut self, module: &IrModule) -> CayResult<String> {
         self.output.clear();
         self.string_decls.clear();
 
@@ -212,7 +212,7 @@ impl LlvmBackend {
     // 函数
     // ============================================================
 
-    fn emit_function(&mut self, _module: &IrModule, func: &IrFunction) -> cayResult<()> {
+    fn emit_function(&mut self, _module: &IrModule, func: &IrFunction) -> CayResult<()> {
         // 声明（无函数体的函数）
         if func.linkage == IrLinkage::Declare {
             let ret_str = func.return_type.to_llvm_str();
@@ -279,7 +279,7 @@ impl LlvmBackend {
     // 基本块
     // ============================================================
 
-    fn emit_block(&mut self, block: &IrBasicBlock) -> cayResult<()> {
+    fn emit_block(&mut self, block: &IrBasicBlock) -> CayResult<()> {
         self.emit_line(&format!("{}:", block.label));
 
         for inst in &block.instructions {
@@ -297,7 +297,7 @@ impl LlvmBackend {
     // 指令发射
     // ============================================================
 
-    fn emit_instruction(&mut self, inst: &IrInstruction) -> cayResult<()> {
+    fn emit_instruction(&mut self, inst: &IrInstruction) -> CayResult<()> {
         match inst {
             IrInstruction::Alloca { result, ty, align } => {
                 self.emit_line(&format!(
@@ -527,7 +527,7 @@ impl LlvmBackend {
     // 终止指令
     // ============================================================
 
-    fn emit_terminator(&mut self, term: &IrTerminator) -> cayResult<()> {
+    fn emit_terminator(&mut self, term: &IrTerminator) -> CayResult<()> {
         match term {
             IrTerminator::Return { value } => {
                 if let Some(val) = value {
@@ -604,7 +604,7 @@ impl LlvmBackend {
     }
 
     /// 便捷方法：一次性完成模块到 LLVM IR 文本的转换
-    pub fn emit_module(module: &IrModule) -> cayResult<String> {
+    pub fn emit_module(module: &IrModule) -> CayResult<String> {
         let mut backend = Self::new();
         backend.emit(module)
     }

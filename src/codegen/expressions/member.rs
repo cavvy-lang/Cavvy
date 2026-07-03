@@ -4,14 +4,14 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::{cayResult, codegen_error_at};
+use crate::miette_diagnostic::{CayResult, codegen_error_at, ErrorCodes};
 
 impl IRGenerator {
     /// 生成数组长度访问代码（用于 .length 属性或 .length() 方法）
     ///
     /// # Arguments
     /// * `array_expr` - 数组表达式
-    pub fn generate_array_length_access(&mut self, array_expr: &Expr) -> cayResult<String> {
+    pub fn generate_array_length_access(&mut self, array_expr: &Expr) -> CayResult<String> {
         let obj = self.generate_expression(array_expr)?;
         let (obj_type, obj_val) = self.parse_typed_value(&obj);
 
@@ -75,7 +75,7 @@ impl IRGenerator {
         }
     }
 
-    pub fn generate_member_access(&mut self, member: &MemberAccessExpr) -> cayResult<String> {
+    pub fn generate_member_access(&mut self, member: &MemberAccessExpr) -> CayResult<String> {
         // 检查是否是类名.静态方法访问: ClassName.methodName
         if let Expr::Identifier(class_name) = &*member.object {
             // 提取基础类名（处理泛型类型如 FileResult<File>）
@@ -237,7 +237,7 @@ impl IRGenerator {
                         // 枚举存在但没有这个 variant，返回错误
                         let available: Vec<_> =
                             enum_info.variants.iter().map(|v| v.name.clone()).collect();
-                        return Err(crate::miette_diagnostic::codegen_error_at(
+                        return Err(crate::miette_diagnostic::codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                             member.loc.clone(),
                             format!(
                                 "枚举 '{}' 中没有 variant '{}'。可选: {:?}",
@@ -262,7 +262,7 @@ impl IRGenerator {
                     || registry.get_enum_by_name(&base_class_name).is_some();
 
                 if known_static_target && !has_value_binding {
-                    return Err(codegen_error_at(
+                    return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                         member.loc.clone(),
                         format!(
                             "Unknown static member '{}' for type '{}'",
@@ -501,7 +501,7 @@ impl IRGenerator {
     fn generate_member_access_with_class_info(
         &mut self,
         member: &MemberAccessExpr,
-    ) -> cayResult<(String, Option<String>)> {
+    ) -> CayResult<(String, Option<String>)> {
         // 确定对象所属的类
         let class_name_opt: Option<String> = if let Expr::Identifier(name) = &*member.object {
             let name_str = name.as_ref();

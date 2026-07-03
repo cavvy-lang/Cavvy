@@ -485,7 +485,7 @@ impl CavvyLanguageServer {
         &self,
         content: &str,
         file_path: &str,
-    ) -> std::result::Result<(String, preprocessor::SourceMap), cavvy::miette_diagnostic::cayError> {
+    ) -> std::result::Result<(String, preprocessor::SourceMap), cavvy::miette_diagnostic::CayError> {
         let base_dir = Path::new(file_path)
             .parent()
             .map(|p| p.to_path_buf())
@@ -957,35 +957,35 @@ impl CavvyLanguageServer {
 }
 
 /// 将错误转换为 LSP 诊断信息
-fn error_to_diagnostic(error: &cavvy::miette_diagnostic::cayError, source: &str) -> Option<Diagnostic> {
-    use cavvy::miette_diagnostic::cayError;
+fn error_to_diagnostic(error: &cavvy::miette_diagnostic::CayError, source: &str) -> Option<Diagnostic> {
+    use cavvy::miette_diagnostic::CayError;
 
     let (message, line, column) = match error {
-        cayError::Lexer {
+        CayError::Lexer {
             message,
             line,
             column,
             ..
         } => (message.clone(), *line, *column),
-        cayError::Parser {
+        CayError::Parser {
             message,
             line,
             column,
             ..
         } => (message.clone(), *line, *column),
-        cayError::Semantic {
+        CayError::Semantic {
             message,
             line,
             column,
             ..
         } => (message.clone(), *line, *column),
-        cayError::Preprocessor {
+        CayError::Preprocessor {
             message,
             line,
             column,
             ..
         } => (message.clone(), *line, *column),
-        cayError::Io { file: _, message } => {
+        CayError::Io { error_code: _, file: _, message } => {
             return Some(Diagnostic {
                 range: Range {
                     start: Position::new(0, 0),
@@ -1047,39 +1047,39 @@ fn error_to_diagnostic(error: &cavvy::miette_diagnostic::cayError, source: &str)
 
 /// 将错误转换为 LSP 诊断信息（带源映射支持）
 fn error_to_diagnostic_with_source_map(
-    error: &cavvy::miette_diagnostic::cayError,
+    error: &cavvy::miette_diagnostic::CayError,
     _source: &str,
     source_map: &preprocessor::SourceMap,
     default_file: &str,
 ) -> Option<Diagnostic> {
-    use cavvy::miette_diagnostic::cayError;
+    use cavvy::miette_diagnostic::CayError;
 
     let (message, line, column) = match error {
-        cayError::Lexer {
+        CayError::Lexer {
             message,
             line,
             column,
             ..
         } => (message.clone(), *line, *column),
-        cayError::Parser {
+        CayError::Parser {
             message,
             line,
             column,
             ..
         } => (message.clone(), *line, *column),
-        cayError::Semantic {
+        CayError::Semantic {
             message,
             line,
             column,
             ..
         } => (message.clone(), *line, *column),
-        cayError::Preprocessor {
+        CayError::Preprocessor {
             message,
             line,
             column,
             ..
         } => (message.clone(), *line, *column),
-        cayError::MultipleErrors { errors } => {
+        CayError::MultipleErrors { errors } => {
             // 对于 MultipleErrors，我们只返回第一个错误的诊断
             if let Some(first_error) = errors.first() {
                 return error_to_diagnostic_with_source_map(
@@ -1091,7 +1091,7 @@ fn error_to_diagnostic_with_source_map(
             }
             return None;
         }
-        cayError::Io { file: _, message } => {
+        CayError::Io { error_code: _, file: _, message } => {
             return Some(Diagnostic {
                 range: Range {
                     start: Position::new(0, 0),

@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::{cayResult, codegen_error_at};
+use crate::miette_diagnostic::{CayResult, codegen_error_at, ErrorCodes};
 
 impl IRGenerator {
     /// 生成 __cay_read_ptr 运行时函数调用
@@ -13,9 +13,9 @@ impl IRGenerator {
         &mut self,
         args: &[Expr],
         loc: &crate::miette_diagnostic::SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         if args.len() != 1 {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc.clone(),
                 "__cay_read_ptr requires 1 argument".to_string(),
             ));
@@ -45,9 +45,9 @@ impl IRGenerator {
         &mut self,
         args: &[Expr],
         loc: &crate::miette_diagnostic::SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         if args.len() != 1 {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc.clone(),
                 "__cay_ptr_to_string requires 1 argument".to_string(),
             ));
@@ -77,9 +77,9 @@ impl IRGenerator {
         &mut self,
         args: &[Expr],
         loc: &crate::miette_diagnostic::SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         if args.len() != 2 {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc.clone(),
                 "__cay_write_ptr requires 2 arguments".to_string(),
             ));
@@ -119,9 +119,9 @@ impl IRGenerator {
         &mut self,
         args: &[Expr],
         loc: &crate::miette_diagnostic::SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         if args.len() != 2 {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc.clone(),
                 "__cay_write_int requires 2 arguments".to_string(),
             ));
@@ -161,9 +161,9 @@ impl IRGenerator {
         &mut self,
         args: &[Expr],
         loc: &crate::miette_diagnostic::SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         if args.len() != 1 {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc.clone(),
                 "__cay_read_int requires 1 argument".to_string(),
             ));
@@ -195,9 +195,9 @@ impl IRGenerator {
         &mut self,
         args: &[Expr],
         loc: &crate::miette_diagnostic::SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         if args.len() != 1 {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc.clone(),
                 "String.valueOf() takes exactly 1 argument".to_string(),
             ));
@@ -347,7 +347,7 @@ impl IRGenerator {
                 return Ok(format!("i8* {}", arg_val));
             }
             _ => {
-                return Err(codegen_error_at(
+                return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                     loc.clone(),
                     format!("String.valueOf() does not support type: {}", arg_type),
                 ));
@@ -388,7 +388,7 @@ impl IRGenerator {
         arg_val: &str,
         type_sig: &str,
         temp: String,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         // 根据类型签名解箱并转换为字符串
         match type_sig {
             "i" => {
@@ -483,9 +483,9 @@ impl IRGenerator {
         &mut self,
         args: &[Expr],
         loc: &crate::miette_diagnostic::SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         if args.len() != 1 {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc.clone(),
                 "Integer.parseInt() takes exactly 1 argument".to_string(),
             ));
@@ -497,7 +497,7 @@ impl IRGenerator {
 
         // 检查参数类型是否为 String (i8*)
         if arg_type != "i8*" {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc.clone(),
                 format!("Integer.parseInt() expects String, got {}", arg_type),
             ));
@@ -524,14 +524,14 @@ impl IRGenerator {
         args: &[Expr],
         func_type: &crate::types::Type,
         loc: &crate::miette_diagnostic::SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         use crate::types::{FunctionType, Type};
 
         // 获取函数类型信息
         let (param_types, ret_type) = if let Type::Function(func) = func_type {
             (func.params.clone(), *func.return_type.clone())
         } else {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc.clone(),
                 format!("Variable '{}' is not a function pointer", var_name),
             ));
@@ -539,7 +539,7 @@ impl IRGenerator {
 
         // 检查参数数量
         if args.len() != param_types.len() {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc.clone(),
                 format!(
                     "Function pointer call requires {} arguments, but got {}",
@@ -561,7 +561,7 @@ impl IRGenerator {
 
         // 获取函数指针变量
         let llvm_name = self.scope_manager.get_llvm_name(var_name).ok_or_else(|| {
-            codegen_error_at(
+            codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc.clone(),
                 format!("Undefined function pointer variable: {}", var_name),
             )

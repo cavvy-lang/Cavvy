@@ -26,7 +26,7 @@ impl SemanticAnalyzer {
     }
 
     /// 推断表达式类型（内部实现）
-    pub(crate) fn infer_expr_type_internal(&mut self, expr: &Expr) -> crate::miette_diagnostic::cayResult<Type> {
+    pub(crate) fn infer_expr_type_internal(&mut self, expr: &Expr) -> crate::miette_diagnostic::CayResult<Type> {
         match expr {
             Expr::Literal(lit_expr) => match &lit_expr.value {
                 LiteralValue::Int32(_) => Ok(Type::Int32),
@@ -427,7 +427,7 @@ impl SemanticAnalyzer {
         &mut self,
         member: &MemberAccessExpr,
         call: &CallExpr,
-    ) -> crate::miette_diagnostic::cayResult<Option<Type>> {
+    ) -> crate::miette_diagnostic::CayResult<Option<Type>> {
         let raw_class_name = match &*member.object {
             Expr::Identifier(class_name) => class_name.as_ref().to_string(),
             _ => return Ok(None),

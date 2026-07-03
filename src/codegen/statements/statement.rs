@@ -5,12 +5,12 @@
 use crate::ast::*;
 use crate::codegen::bridge::{InlineIrBridge, InlineIrResult};
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::cayResult;
+use crate::miette_diagnostic::CayResult;
 
 impl IRGenerator {
     /// 生成单个语句代码
     /// 复杂度: O(1) 每语句，设置源位置后分发到具体生成器
-    pub fn generate_statement(&mut self, stmt: &Stmt) -> cayResult<()> {
+    pub fn generate_statement(&mut self, stmt: &Stmt) -> CayResult<()> {
         // 设置源位置（如果语句有位置信息）
         let source_file = self.source_file.clone();
         match stmt {
@@ -103,7 +103,7 @@ impl IRGenerator {
     /// # 复杂度
     /// - 时间: O(n*m)，n为内联IR行数，m为作用域变量数
     /// - 空间: O(n+m)
-    fn generate_inline_ir(&mut self, inline_ir: &InlineIrStmt) -> cayResult<()> {
+    fn generate_inline_ir(&mut self, inline_ir: &InlineIrStmt) -> CayResult<()> {
         // 创建协作桥
         let bridge = InlineIrBridge::new();
 

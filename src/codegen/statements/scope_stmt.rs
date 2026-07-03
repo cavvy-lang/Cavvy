@@ -5,7 +5,7 @@
 
 use crate::ast::ScopeStmt;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::cayResult;
+use crate::miette_diagnostic::CayResult;
 
 /// 为 scope 语句生成 LLVM IR 代码
 ///
@@ -47,12 +47,12 @@ impl IRGenerator {
     /// * `stmt` - scope 语句 AST 节点
     ///
     /// # Returns
-    /// cayResult<()> - 生成成功或错误
+    /// CayResult<()> - 生成成功或错误
     ///
     /// # 复杂度
     /// * 时间: O(n)，其中 n 是 scope 体内语句数量
     /// * 空间: O(d)，其中 d 是作用域嵌套深度
-    pub fn generate_scope(&mut self, stmt: &ScopeStmt) -> cayResult<()> {
+    pub fn generate_scope(&mut self, stmt: &ScopeStmt) -> CayResult<()> {
         let scope_id = self.new_temp().replace("%", "");
 
         // 生成 scope 入口标签（用于调试和可读性）

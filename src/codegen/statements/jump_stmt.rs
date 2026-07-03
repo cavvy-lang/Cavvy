@@ -3,7 +3,7 @@
 //! 处理break和continue语句的代码生成。
 
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::{SourceLocation, cayResult, codegen_error_at};
+use crate::miette_diagnostic::{SourceLocation, CayResult, codegen_error_at, ErrorCodes};
 
 impl IRGenerator {
     /// 生成 break 语句代码
@@ -11,11 +11,11 @@ impl IRGenerator {
         &mut self,
         label: &Option<String>,
         loc: SourceLocation,
-    ) -> cayResult<()> {
+    ) -> CayResult<()> {
         let loop_ctx = if let Some(label_name) = label {
             // 带标签的 break
             self.get_loop_by_label(label_name).ok_or_else(|| {
-                codegen_error_at(
+                codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                     loc.clone(),
                     format!("break label '{}' not found", label_name),
                 )
@@ -23,7 +23,7 @@ impl IRGenerator {
         } else {
             // 不带标签的 break
             self.current_loop().ok_or_else(|| {
-                codegen_error_at(loc.clone(), "break statement outside of loop".to_string())
+                codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, loc.clone(), "break statement outside of loop".to_string())
             })?
         };
         self.emit_line(&format!("  br label %{}", loop_ctx.end_label));
@@ -35,11 +35,11 @@ impl IRGenerator {
         &mut self,
         label: &Option<String>,
         loc: SourceLocation,
-    ) -> cayResult<()> {
+    ) -> CayResult<()> {
         let loop_ctx = if let Some(label_name) = label {
             // 带标签的 continue
             self.get_loop_by_label(label_name).ok_or_else(|| {
-                codegen_error_at(
+                codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                     loc.clone(),
                     format!("continue label '{}' not found", label_name),
                 )
@@ -47,7 +47,7 @@ impl IRGenerator {
         } else {
             // 不带标签的 continue
             self.current_loop().ok_or_else(|| {
-                codegen_error_at(
+                codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                     loc.clone(),
                     "continue statement outside of loop".to_string(),
                 )

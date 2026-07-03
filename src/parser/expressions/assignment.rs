@@ -5,15 +5,15 @@
 use super::super::Parser;
 use super::binary::parse_or;
 use crate::ast::*;
-use crate::miette_diagnostic::cayResult;
+use crate::miette_diagnostic::CayResult;
 
 /// 解析表达式（入口点）
-pub fn parse_expression(parser: &mut Parser) -> cayResult<Expr> {
+pub fn parse_expression(parser: &mut Parser) -> CayResult<Expr> {
     parse_assignment(parser)
 }
 
 /// 解析赋值表达式
-pub fn parse_assignment(parser: &mut Parser) -> cayResult<Expr> {
+pub fn parse_assignment(parser: &mut Parser) -> CayResult<Expr> {
     let loc = parser.current_loc();
     // 先尝试解析三元运算符，它的优先级低于赋值
     let expr = parse_ternary(parser)?;
@@ -32,7 +32,7 @@ pub fn parse_assignment(parser: &mut Parser) -> cayResult<Expr> {
 }
 
 /// 解析三元运算符表达式: condition ? true_expr : false_expr
-fn parse_ternary(parser: &mut Parser) -> cayResult<Expr> {
+fn parse_ternary(parser: &mut Parser) -> CayResult<Expr> {
     let loc = parser.current_loc();
     let condition = parse_or(parser)?;
 

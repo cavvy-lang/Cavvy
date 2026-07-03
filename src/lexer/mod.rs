@@ -1,8 +1,7 @@
 use crate::miette_diagnostic::{
-    CompilationPhase, Diagnostic, DiagnosticCollector, ErrorCodes, FixSuggestion, SourceSpan,
+    CayError, CayResult,
+    ErrorCodes, SourceLocation,
 };
-use crate::miette_diagnostic::SourceLocation;
-use crate::miette_diagnostic::cayResult;
 use logos::Logos;
 
 #[derive(Logos, Debug, Clone, PartialEq)]
@@ -419,7 +418,7 @@ pub struct Lexer<'a> {
     inner: logos::Lexer<'a, Token>,
     line: usize,
     column: usize,
-    diagnostics: DiagnosticCollector,
+    diagnostics: Vec<CayError>,
     collect_all_errors: bool,
     /// 当前源文件路径（用于#include后的错误定位）
     current_source_file: Option<String>,
@@ -436,7 +435,7 @@ impl<'a> Lexer<'a> {
             inner: Token::lexer(source),
             line: 1,
             column: 1,
-            diagnostics: DiagnosticCollector::new(),
+            diagnostics: Vec::new(),
             collect_all_errors: false,
             current_source_file: None,
             source_map: std::collections::HashMap::new(),
@@ -451,7 +450,7 @@ impl<'a> Lexer<'a> {
             inner: Token::lexer(source),
             line: 1,
             column: 1,
-            diagnostics: DiagnosticCollector::new(),
+            diagnostics: Vec::new(),
             collect_all_errors: false,
             current_source_file: None,
             source_map: std::collections::HashMap::new(),
@@ -478,7 +477,7 @@ impl<'a> Lexer<'a> {
             inner: Token::lexer(source),
             line: 1,
             column: 1,
-            diagnostics: DiagnosticCollector::new(),
+            diagnostics: Vec::new(),
             collect_all_errors: false,
             current_source_file: current_file,
             source_map,
@@ -493,7 +492,7 @@ impl<'a> Lexer<'a> {
     }
 
     /// 获取诊断收集器
-    pub fn diagnostics(&self) -> &DiagnosticCollector {
+    pub fn diagnostics(&self) -> &Vec<CayError> {
         &self.diagnostics
     }
 
@@ -548,87 +547,94 @@ impl<'a> Lexer<'a> {
         in_string
     }
 
-    /// 创建详细的词法错误诊断
+    /// 创建详细的词法错误
     fn create_lexer_diagnostic(
         &self,
         error_type: LexerErrorType,
         span: std::ops::Range<usize>,
-    ) -> Diagnostic {
+    ) -> CayError {
         let error_char = &self.source[span.clone()];
-        let location = crate::miette_diagnostic::SourceLocation::new(
-            self.current_source_file.clone(),
-            self.line,
-            self.column,
-        );
+        let file = self.current_source_file.clone();
+        let line = self.line;
+        let column = self.column;
 
         match error_type {
             LexerErrorType::InvalidCharacter => {
-                Diagnostic::error(
-                    ErrorCodes::LEXER_INVALID_CHARACTER,
-                    CompilationPhase::Lexer,
-                    format!("非法字符: '{}'", error_char),
-                    location,
-                )
-                .with_details(format!(
-                    "字符 '{}' 不是Cavvy语言支持的有效字符。Cavvy只支持标准ASCII字符集。",
-                    error_char
-                ))
-                .with_suggestion(FixSuggestion::new("删除该字符或使用支持的字符替换"))
+                CayError::Lexer {
+                    error_code: ErrorCodes::LEXER_INVALID_CHARACTER,
+                    file,
+                    line,
+                    column,
+                    message: format!(
+                        "非法字符: '{}' — 字符 '{}' 不是Cavvy语言支持的有效字符",
+                        error_char, error_char
+                    ),
+                    suggestion: "删除该字符或使用支持的字符替换".to_string(),
+                }
             }
             LexerErrorType::UnterminatedString => {
-                Diagnostic::error(
-                    ErrorCodes::LEXER_UNTERMINATED_STRING,
-                    CompilationPhase::Lexer,
-                    "未闭合的字符串字面量",
-                    location,
-                )
-                .with_details("字符串字面量以双引号开始，但没有找到配对的结束双引号。")
-                .with_suggestion(FixSuggestion::new("在字符串末尾添加双引号 (\")"))
+                CayError::Lexer {
+                    error_code: ErrorCodes::LEXER_UNTERMINATED_STRING,
+                    file,
+                    line,
+                    column,
+                    message: "未闭合的字符串字面量 — 字符串字面量以双引号开始，但没有找到配对的结束双引号".to_string(),
+                    suggestion: "在字符串末尾添加双引号 (\")".to_string(),
+                }
             }
             LexerErrorType::InvalidEscapeSequence => {
-                Diagnostic::error(
-                    ErrorCodes::LEXER_INVALID_ESCAPE_SEQUENCE,
-                    CompilationPhase::Lexer,
-                    format!("无效的转义序列: '{}'", error_char),
-                    location,
-                )
-                .with_details("Cavvy支持以下转义序列: \\n (换行), \\t (制表符), \\\" (双引号), \\\\ (反斜杠), \\' (单引号), \\0 (空字符)")
-                .with_suggestion(FixSuggestion::new("使用有效的转义序列替换"))
+                CayError::Lexer {
+                    error_code: ErrorCodes::LEXER_INVALID_ESCAPE_SEQUENCE,
+                    file,
+                    line,
+                    column,
+                    message: format!(
+                        "无效的转义序列: '{}' — 支持的转义序列: \\n, \\t, \\\", \\\\, \\', \\0",
+                        error_char
+                    ),
+                    suggestion: "使用有效的转义序列替换".to_string(),
+                }
             }
             LexerErrorType::InvalidNumberLiteral => {
-                Diagnostic::error(
-                    ErrorCodes::LEXER_INVALID_NUMBER_LITERAL,
-                    CompilationPhase::Lexer,
-                    format!("无效的数字字面量: '{}'", error_char),
-                    location,
-                )
-                .with_details("数字字面量格式不正确。支持的格式: 十进制(123), 十六进制(0xFF), 二进制(0b101), 八进制(0o77)")
-                .with_suggestion(FixSuggestion::new("检查数字格式，确保使用正确的进制前缀"))
+                CayError::Lexer {
+                    error_code: ErrorCodes::LEXER_INVALID_NUMBER_LITERAL,
+                    file,
+                    line,
+                    column,
+                    message: format!(
+                        "无效的数字字面量: '{}' — 支持的格式: 十进制(123), 十六进制(0xFF), 二进制(0b101)",
+                        error_char
+                    ),
+                    suggestion: "检查数字格式，确保使用正确的进制前缀".to_string(),
+                }
             }
             LexerErrorType::UnterminatedComment => {
-                Diagnostic::error(
-                    ErrorCodes::LEXER_UNTERMINATED_COMMENT,
-                    CompilationPhase::Lexer,
-                    "未闭合的注释",
-                    location,
-                )
-                .with_details("块注释以 /* 开始，但没有找到配对的结束标记 */。")
-                .with_suggestion(FixSuggestion::new("添加 */ 结束注释，或将块注释改为行注释 //"))
+                CayError::Lexer {
+                    error_code: ErrorCodes::LEXER_UNTERMINATED_COMMENT,
+                    file,
+                    line,
+                    column,
+                    message: "未闭合的注释 — 块注释以 /* 开始，但没有找到配对的结束标记 */".to_string(),
+                    suggestion: "添加 */ 结束注释，或将块注释改为行注释 //".to_string(),
+                }
             }
             LexerErrorType::InvalidIdentifier => {
-                Diagnostic::error(
-                    ErrorCodes::LEXER_INVALID_IDENTIFIER,
-                    CompilationPhase::Lexer,
-                    format!("无效的标识符: '{}'", error_char),
-                    location,
-                )
-                .with_details("标识符必须以字母或下划线开头，后面可以跟字母、数字或下划线。")
-                .with_suggestion(FixSuggestion::new("使用有效的标识符名称"))
+                CayError::Lexer {
+                    error_code: ErrorCodes::LEXER_INVALID_IDENTIFIER,
+                    file,
+                    line,
+                    column,
+                    message: format!(
+                        "无效的标识符: '{}' — 标识符必须以字母或下划线开头",
+                        error_char
+                    ),
+                    suggestion: "使用有效的标识符名称".to_string(),
+                }
             }
         }
     }
 
-    pub fn tokenize(&mut self) -> cayResult<Vec<TokenWithLocation>> {
+    pub fn tokenize(&mut self) -> CayResult<Vec<TokenWithLocation>> {
         let mut tokens = Vec::new();
         let mut token_count = 0;
 
@@ -724,8 +730,8 @@ impl<'a> Lexer<'a> {
                         } else {
                             LexerErrorType::InvalidCharacter
                         };
-                        let diagnostic = self.create_lexer_diagnostic(error_type, span.clone());
-                        self.diagnostics.add(diagnostic);
+                        let error = self.create_lexer_diagnostic(error_type, span.clone());
+                        self.diagnostics.push(error);
 
                         // 跳过这个字符继续
                         self.column += span.end - span.start;
@@ -736,8 +742,8 @@ impl<'a> Lexer<'a> {
                         } else {
                             LexerErrorType::InvalidCharacter
                         };
-                        let diagnostic = self.create_lexer_diagnostic(error_type, span.clone());
-                        self.diagnostics.add(diagnostic);
+                        let error = self.create_lexer_diagnostic(error_type, span.clone());
+                        self.diagnostics.push(error);
                         self.column += span.end - span.start;
                     }
                 }
@@ -745,28 +751,16 @@ impl<'a> Lexer<'a> {
         }
 
         // 检查是否有收集到的错误
-        if self.diagnostics.has_errors() {
-            let diagnostics = self.diagnostics.clone();
-            let first = diagnostics
-                .diagnostics()
-                .first()
-                .map(|d| d.clone())
-                .unwrap_or_else(|| {
-                    crate::miette_diagnostic::Diagnostic::error(
-                        crate::miette_diagnostic::ErrorCodes::LEXER_INVALID_CHARACTER,
-                        crate::miette_diagnostic::CompilationPhase::Lexer,
-                        format!("词法分析发现 {} 个错误", diagnostics.error_count()),
-                        SourceLocation::new(None, self.line, self.column),
-                    )
-                });
-            return Err(crate::miette_diagnostic::CompilerError(first).into());
+        if !self.diagnostics.is_empty() {
+            let first = self.diagnostics[0].clone();
+            return Err(first);
         }
 
         Ok(tokens)
     }
 
     /// 获取下一个token（用于迭代器风格）
-    pub fn next_token(&mut self) -> Option<cayResult<TokenWithLocation>> {
+    pub fn next_token(&mut self) -> Option<CayResult<TokenWithLocation>> {
         match self.inner.next() {
             Some(Ok(token)) => {
                 let span = self.inner.span();
@@ -841,14 +835,16 @@ impl<'a> Lexer<'a> {
                     )
                 };
 
-                let diagnostic = crate::miette_diagnostic::Diagnostic::error(
-                    crate::miette_diagnostic::ErrorCodes::LEXER_INVALID_CHARACTER,
-                    crate::miette_diagnostic::CompilationPhase::Lexer,
-                    error_msg,
-                    SourceLocation::new(error_file.clone(), error_line, self.column),
-                );
-                self.diagnostics.add(diagnostic.clone());
-                Some(Err(crate::miette_diagnostic::CompilerError(diagnostic).into()))
+                let error = CayError::Lexer {
+                    error_code: ErrorCodes::LEXER_INVALID_CHARACTER,
+                    file: error_file.clone(),
+                    line: error_line,
+                    column: self.column,
+                    message: error_msg,
+                    suggestion: "请删除非法字符或使用支持的字符".to_string(),
+                };
+                self.diagnostics.push(error.clone());
+                Some(Err(error))
             }
             None => None,
         }
@@ -910,19 +906,19 @@ fn process_char_escape(s: &str) -> Option<char> {
 }
 
 /// 便捷的tokenize函数
-pub fn tokenize(source: &str) -> cayResult<Vec<TokenWithLocation>> {
+pub fn tokenize(source: &str) -> CayResult<Vec<TokenWithLocation>> {
     let mut lexer = Lexer::new(source);
     lexer.tokenize()
 }
 
-/// 便捷的tokenize函数（保留换行）
-pub fn tokenize_with_newlines(source: &str) -> cayResult<Vec<TokenWithLocation>> {
+/// 对源代码进行词法分析（保留换行token）
+pub fn tokenize_with_newlines(source: &str) -> CayResult<Vec<TokenWithLocation>> {
     let mut lexer = Lexer::with_preserve_newlines(source);
     lexer.tokenize()
 }
 
 /// 收集所有词法错误的tokenize函数
-pub fn tokenize_collect_errors(source: &str) -> (Vec<TokenWithLocation>, DiagnosticCollector) {
+pub fn tokenize_collect_errors(source: &str) -> (Vec<TokenWithLocation>, Vec<CayError>) {
     let mut lexer = Lexer::new(source).with_collect_all_errors();
     match lexer.tokenize() {
         Ok(tokens) => (tokens, lexer.diagnostics().clone()),
@@ -931,7 +927,7 @@ pub fn tokenize_collect_errors(source: &str) -> (Vec<TokenWithLocation>, Diagnos
 }
 
 /// 带诊断的词法分析函数（别名）
-pub fn lex_with_diagnostics(source: &str) -> (Vec<TokenWithLocation>, DiagnosticCollector) {
+pub fn lex_with_diagnostics(source: &str) -> (Vec<TokenWithLocation>, Vec<CayError>) {
     tokenize_collect_errors(source)
 }
 
@@ -1164,7 +1160,7 @@ pub fn keyword_priority(token: &Token) -> u8 {
 }
 
 /// 便捷的词法分析函数（别名）
-pub fn lex(source: &str) -> cayResult<Vec<TokenWithLocation>> {
+pub fn lex(source: &str) -> CayResult<Vec<TokenWithLocation>> {
     tokenize(source)
 }
 
@@ -1172,7 +1168,7 @@ pub fn lex(source: &str) -> cayResult<Vec<TokenWithLocation>> {
 pub fn lex_with_source_map(
     source: &str,
     source_map: std::collections::HashMap<usize, (String, usize)>,
-) -> cayResult<Vec<TokenWithLocation>> {
+) -> CayResult<Vec<TokenWithLocation>> {
     lex_with_source_map_and_file(source, source_map, None)
 }
 
@@ -1181,7 +1177,7 @@ pub fn lex_with_source_map_and_file(
     source: &str,
     source_map: std::collections::HashMap<usize, (String, usize)>,
     current_file: Option<String>,
-) -> cayResult<Vec<TokenWithLocation>> {
+) -> CayResult<Vec<TokenWithLocation>> {
     let mut lexer = Lexer::with_source_map_and_file(source, source_map, current_file);
     lexer.tokenize()
 }

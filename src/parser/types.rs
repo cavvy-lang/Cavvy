@@ -1,11 +1,11 @@
 //! 类型解析
 
 use super::Parser;
-use crate::miette_diagnostic::cayResult;
+use crate::miette_diagnostic::CayResult;
 use crate::types::Type;
 
 /// 解析类型（支持多维数组和指针，以及类型别名）
-pub fn parse_type(parser: &mut Parser) -> cayResult<Type> {
+pub fn parse_type(parser: &mut Parser) -> CayResult<Type> {
     let (ty, extra_generic_closers) = parse_type_inner(parser)?;
     if extra_generic_closers > 0 {
         return Err(
@@ -18,7 +18,7 @@ pub fn parse_type(parser: &mut Parser) -> cayResult<Type> {
 
 /// 解析泛型类型实参 <Type1, Type2, ...>（用于类型使用）
 /// 支持嵌套泛型结尾被词法器合并为 >> / >>> 的情况。
-pub fn parse_generic_type_args(parser: &mut Parser) -> cayResult<Vec<Type>> {
+pub fn parse_generic_type_args(parser: &mut Parser) -> CayResult<Vec<Type>> {
     let (args, extra_generic_closers) = parse_generic_type_args_inner(parser)?;
     if extra_generic_closers > 0 {
         return Err(
@@ -29,7 +29,7 @@ pub fn parse_generic_type_args(parser: &mut Parser) -> cayResult<Vec<Type>> {
     Ok(args)
 }
 
-fn parse_type_inner(parser: &mut Parser) -> cayResult<(Type, usize)> {
+fn parse_type_inner(parser: &mut Parser) -> CayResult<(Type, usize)> {
     let base_type = match parser.current_token() {
         crate::lexer::Token::Int => {
             parser.advance();
@@ -288,7 +288,7 @@ fn parse_type_inner(parser: &mut Parser) -> cayResult<(Type, usize)> {
     Ok((result_type, 0))
 }
 
-fn parse_generic_type_args_inner(parser: &mut Parser) -> cayResult<(Vec<Type>, usize)> {
+fn parse_generic_type_args_inner(parser: &mut Parser) -> CayResult<(Vec<Type>, usize)> {
     let mut args = Vec::new();
 
     parser.consume(
@@ -313,7 +313,7 @@ fn parse_generic_type_args_inner(parser: &mut Parser) -> cayResult<(Vec<Type>, u
     }
 }
 
-fn consume_generic_type_close(parser: &mut Parser) -> cayResult<usize> {
+fn consume_generic_type_close(parser: &mut Parser) -> CayResult<usize> {
     match parser.current_token() {
         crate::lexer::Token::Gt => {
             parser.advance();

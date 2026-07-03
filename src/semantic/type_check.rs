@@ -3,12 +3,12 @@
 use super::analyzer::SemanticAnalyzer;
 use super::symbol_table::SemanticSymbolInfo;
 use crate::ast::*;
-use crate::miette_diagnostic::{SourceLocation, cayResult};
+use crate::miette_diagnostic::{SourceLocation, CayResult};
 use crate::types::{ParameterInfo, Type};
 
 impl SemanticAnalyzer {
     /// 类型检查程序
-    pub fn type_check_program(&mut self, program: &mut Program) -> cayResult<()> {
+    pub fn type_check_program(&mut self, program: &mut Program) -> CayResult<()> {
         // 先类型检查顶层函数，以便类方法调用时能看到已推断的返回类型
         self.type_registry.current_namespace.clear();
         for func in &mut program.top_level_functions {
@@ -287,7 +287,7 @@ fn validate_iterable(&mut self, iterable_type: &Type, loc: &SourceLocation) {
         &mut self,
         stmt: &Stmt,
         expected_return: Option<&Type>,
-    ) -> cayResult<()> {
+    ) -> CayResult<()> {
         match stmt {
             Stmt::Expr(expr) => {
                 self.infer_expr_type_collect_errors(expr);
@@ -535,7 +535,7 @@ fn validate_iterable(&mut self, iterable_type: &Type, loc: &SourceLocation) {
         &mut self,
         init: &Stmt,
         expected_return: Option<&Type>,
-    ) -> cayResult<()> {
+    ) -> CayResult<()> {
         match init {
             Stmt::VarDecl(var) => {
                 // 先检查外层作用域是否已有同名变量

@@ -4,14 +4,14 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::{cayResult, codegen_error_at};
+use crate::miette_diagnostic::{CayResult, codegen_error_at, ErrorCodes};
 
 impl IRGenerator {
     /// 生成类型转换表达式代码
     ///
     /// # Arguments
     /// * `cast` - 类型转换表达式
-    pub fn generate_cast_expression(&mut self, cast: &CastExpr) -> cayResult<String> {
+    pub fn generate_cast_expression(&mut self, cast: &CastExpr) -> CayResult<String> {
         let expr_value = self.generate_expression(&cast.expr)?;
         let (from_type, val) = self.parse_typed_value(&expr_value);
         let to_type = self.type_to_llvm(&cast.target_type);
@@ -292,7 +292,7 @@ impl IRGenerator {
             }
         }
 
-        Err(codegen_error_at(
+        Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
             cast.loc.clone(),
             format!("Unsupported cast from {} to {}", from_type, to_type),
         ))

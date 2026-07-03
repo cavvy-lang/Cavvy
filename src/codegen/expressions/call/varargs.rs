@@ -3,7 +3,7 @@
 //! 处理可变参数的打包、数组创建和元素存储。
 
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::cayResult;
+use crate::miette_diagnostic::CayResult;
 
 impl IRGenerator {
     /// 将可变参数打包成数组（支持非末尾可变参数）
@@ -12,7 +12,7 @@ impl IRGenerator {
         class_name: &str,
         method_name: &str,
         arg_results: &[String],
-    ) -> cayResult<Vec<String>> {
+    ) -> CayResult<Vec<String>> {
         // 从类型注册表获取可变参数位置和元素类型
         let (varargs_index, varargs_elem_type) = self.get_varargs_info(class_name, method_name);
         let fixed_param_count = varargs_index;

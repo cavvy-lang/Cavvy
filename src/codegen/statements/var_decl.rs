@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::{cayResult, semantic_error_with_file};
+use crate::miette_diagnostic::{CayResult, semantic_error_with_file, ErrorCodes};
 use crate::types::Type;
 
 impl IRGenerator {
@@ -369,19 +369,16 @@ impl IRGenerator {
     }
 
     /// 生成变量声明代码
-    pub fn generate_var_decl(&mut self, var: &VarDecl) -> cayResult<()> {
+    pub fn generate_var_decl(&mut self, var: &VarDecl) -> CayResult<()> {
         // 处理 auto 类型推断
         let actual_type = if var.var_type == Type::Auto {
             // 从初始化器推断类型
             if let Some(init) = &var.initializer {
                 self.infer_type_from_expr(init).unwrap_or(Type::Int32)
             } else {
-                return Err(semantic_error_with_file(
-                    var.loc.file.clone(),
-                    var.loc.line,
-                    var.loc.column,
-                    "'auto' variable declaration requires an initializer".to_string(),
-                ));
+                return Err(semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, 
+                    var.loc.file.clone(), var.loc.line, var.loc.column, "'auto' variable declaration requires an initializer".to_string())
+                );
             }
         } else {
             // 单态化上下文下，将泛型参数替换为实际类型
@@ -699,7 +696,7 @@ impl IRGenerator {
                             ));
                         } else {
                             // 类型不兼容，报错
-                            return Err(crate::miette_diagnostic::codegen_error_at(
+                            return Err(crate::miette_diagnostic::codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                                 var.loc.clone(),
                                 format!(
                                     "Cannot unbox i8* to {} in variable initialization '{}'",
@@ -709,7 +706,7 @@ impl IRGenerator {
                         }
                     } else {
                         // 类型不兼容，报错
-                        return Err(crate::miette_diagnostic::codegen_error_at(
+                        return Err(crate::miette_diagnostic::codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                             var.loc.clone(),
                             format!(
                                 "Cannot convert {} to {} in variable initialization '{}'",

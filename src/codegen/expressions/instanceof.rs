@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::{cayResult, codegen_error_at};
+use crate::miette_diagnostic::{CayResult, codegen_error_at, ErrorCodes};
 
 impl IRGenerator {
     /// 生成 instanceof 表达式代码
@@ -14,7 +14,7 @@ impl IRGenerator {
     pub fn generate_instanceof_expression(
         &mut self,
         instanceof: &InstanceOfExpr,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         let expr_result = self.generate_expression(&instanceof.expr)?;
         let (expr_type, expr_val) = self.parse_typed_value(&expr_result);
 
@@ -60,7 +60,7 @@ impl IRGenerator {
         let target_class = match target_type {
             crate::types::Type::Object(name) => name.clone(),
             _ => {
-                return Err(codegen_error_at(
+                return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                     instanceof.loc.clone(),
                     "instanceof target must be an object type".to_string(),
                 ));
@@ -107,7 +107,7 @@ impl IRGenerator {
         target_class: &str,
         true_label: &str,
         false_label: &str,
-    ) -> cayResult<()> {
+    ) -> CayResult<()> {
         let target_type_id_value = self.get_type_id_value(target_class).unwrap_or(-1);
 
         let all_matching_type_ids: Vec<i32> = if let Some(ref registry) = self.type_registry {
@@ -166,7 +166,7 @@ impl IRGenerator {
         interface_name: &str,
         true_label: &str,
         false_label: &str,
-    ) -> cayResult<()> {
+    ) -> CayResult<()> {
         let implementing_type_ids: Vec<i32> = if let Some(ref registry) = self.type_registry {
             registry
                 .classes

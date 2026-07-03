@@ -4,7 +4,7 @@ use super::Parser;
 use super::expressions::parse_expression;
 use super::types::{is_primitive_type_token, parse_type};
 use crate::ast::*;
-use crate::miette_diagnostic::cayResult;
+use crate::miette_diagnostic::CayResult;
 use crate::types::Type;
 
 /// 给语句添加标签
@@ -27,7 +27,7 @@ fn add_label_to_stmt(stmt: Stmt, label: String) -> Stmt {
 }
 
 /// 解析代码块
-pub fn parse_block(parser: &mut Parser) -> cayResult<Block> {
+pub fn parse_block(parser: &mut Parser) -> CayResult<Block> {
     let loc = parser.current_loc();
     parser.consume(
         &crate::lexer::Token::LBrace,
@@ -58,7 +58,7 @@ pub fn parse_block(parser: &mut Parser) -> cayResult<Block> {
 }
 
 /// 解析语句
-pub fn parse_statement(parser: &mut Parser) -> cayResult<Stmt> {
+pub fn parse_statement(parser: &mut Parser) -> CayResult<Stmt> {
     // 检查是否是标签语句: label:
     if let crate::lexer::Token::Identifier(label_name) = parser.current_token().clone() {
         // 向前看检查是否是冒号
@@ -169,7 +169,7 @@ pub fn parse_statement(parser: &mut Parser) -> cayResult<Stmt> {
 /// - var 后置类型: var x: int = 10;
 /// - let 后置类型: let x: int = 10;
 /// - auto 类型推断: auto a = 42;
-pub fn parse_var_decl(parser: &mut Parser) -> cayResult<Stmt> {
+pub fn parse_var_decl(parser: &mut Parser) -> CayResult<Stmt> {
     let loc = parser.current_loc();
 
     let is_final = parser.match_token(&crate::lexer::Token::Final);
@@ -283,7 +283,7 @@ pub fn parse_var_decl(parser: &mut Parser) -> cayResult<Stmt> {
 }
 
 /// 解析 if 语句
-pub fn parse_if_statement(parser: &mut Parser) -> cayResult<Stmt> {
+pub fn parse_if_statement(parser: &mut Parser) -> CayResult<Stmt> {
     let loc = parser.current_loc();
     parser.advance(); // consume 'if'
 
@@ -313,7 +313,7 @@ pub fn parse_if_statement(parser: &mut Parser) -> cayResult<Stmt> {
 }
 
 /// 解析 while 语句
-pub fn parse_while_statement(parser: &mut Parser) -> cayResult<Stmt> {
+pub fn parse_while_statement(parser: &mut Parser) -> CayResult<Stmt> {
     let loc = parser.current_loc();
     parser.advance(); // consume 'while'
 
@@ -342,7 +342,7 @@ pub fn parse_while_statement(parser: &mut Parser) -> cayResult<Stmt> {
 /// 支持两种形式：
 /// - 传统 for 循环: `for (init; cond; update) body`
 /// - 增强 for 循环: `for (type var : iterable) body`
-pub fn parse_for_statement(parser: &mut Parser) -> cayResult<Stmt> {
+pub fn parse_for_statement(parser: &mut Parser) -> CayResult<Stmt> {
     let loc = parser.current_loc();
     parser.advance(); // consume 'for'
 
@@ -353,7 +353,7 @@ pub fn parse_for_statement(parser: &mut Parser) -> cayResult<Stmt> {
 
     // 预读判断是否为增强 for 循环: `type identifier : expression`
     let saved_pos = parser.pos;
-    let enhanced_decl: Option<(Type, String)> = (|| -> cayResult<_> {
+    let enhanced_decl: Option<(Type, String)> = (|| -> CayResult<_> {
         let var_type = super::types::parse_type(parser)?;
         let var_name = parser.consume_identifier(
             "期望变量名\n提示: 增强 for 循环应为 for (type var : iterable) { ... }",
@@ -424,7 +424,7 @@ pub fn parse_for_statement(parser: &mut Parser) -> cayResult<Stmt> {
 }
 
 /// 解析 do-while 语句
-pub fn parse_do_while_statement(parser: &mut Parser) -> cayResult<Stmt> {
+pub fn parse_do_while_statement(parser: &mut Parser) -> CayResult<Stmt> {
     let loc = parser.current_loc();
     parser.advance(); // consume 'do'
 
@@ -457,7 +457,7 @@ pub fn parse_do_while_statement(parser: &mut Parser) -> cayResult<Stmt> {
 }
 
 /// 解析 switch 语句
-pub fn parse_switch_statement(parser: &mut Parser) -> cayResult<Stmt> {
+pub fn parse_switch_statement(parser: &mut Parser) -> CayResult<Stmt> {
     let loc = parser.current_loc();
     parser.advance(); // consume 'switch'
 
@@ -687,7 +687,7 @@ pub fn parse_switch_statement(parser: &mut Parser) -> cayResult<Stmt> {
 }
 
 /// 解析 return 语句
-pub fn parse_return_statement(parser: &mut Parser) -> cayResult<Stmt> {
+pub fn parse_return_statement(parser: &mut Parser) -> CayResult<Stmt> {
     let _loc = parser.current_loc();
     parser.advance(); // consume 'return'
 
@@ -706,7 +706,7 @@ pub fn parse_return_statement(parser: &mut Parser) -> cayResult<Stmt> {
 }
 
 /// 解析表达式语句
-pub fn parse_expression_statement(parser: &mut Parser) -> cayResult<Stmt> {
+pub fn parse_expression_statement(parser: &mut Parser) -> CayResult<Stmt> {
     let expr = parse_expression(parser)?;
     parser.consume(
         &crate::lexer::Token::Semicolon,
@@ -725,7 +725,7 @@ pub fn parse_expression_statement(parser: &mut Parser) -> cayResult<Stmt> {
 ///       int x = 10;
 ///       println("x = " + x);
 ///   } // x 在这里自动释放
-pub fn parse_scope_statement(parser: &mut Parser) -> cayResult<Stmt> {
+pub fn parse_scope_statement(parser: &mut Parser) -> CayResult<Stmt> {
     let loc = parser.current_loc();
     parser.advance(); // consume 'scope'
 
@@ -744,7 +744,7 @@ pub fn parse_scope_statement(parser: &mut Parser) -> cayResult<Stmt> {
 ///       %result = add i32 %a, %b
 ///       store i32 %result, i32* %ptr
 ///   }
-pub fn parse_inline_ir_statement(parser: &mut Parser) -> cayResult<Stmt> {
+pub fn parse_inline_ir_statement(parser: &mut Parser) -> CayResult<Stmt> {
     let loc = parser.current_loc();
     parser.advance(); // consume '__ir'
 
@@ -763,7 +763,7 @@ pub fn parse_inline_ir_statement(parser: &mut Parser) -> cayResult<Stmt> {
 /// 跳过内联IR块中的所有token，直到匹配的RBrace
 /// 注意：调用此函数时，当前token应该是块内的第一个token（LBrace已经被consume消耗）
 /// 从token流解析内联IR
-fn parse_inline_ir_from_tokens(parser: &mut Parser) -> cayResult<Vec<String>> {
+fn parse_inline_ir_from_tokens(parser: &mut Parser) -> CayResult<Vec<String>> {
     let mut raw_lines: Vec<String> = Vec::new();
     let mut current_line: Vec<String> = Vec::new();
     let mut brace_depth = 1;

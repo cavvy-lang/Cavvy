@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::{cayResult, codegen_error_at};
+use crate::miette_diagnostic::{CayResult, codegen_error_at, ErrorCodes};
 
 /// readLine 缓冲区大小（字节）
 const READ_LINE_BUFFER_SIZE: i32 = 1024;
@@ -39,7 +39,7 @@ impl IRGenerator {
         args: &[Expr],
         newline: bool,
         loc: &crate::miette_diagnostic::SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         if args.is_empty() {
             // 无参数，仅打印换行符（如果是 println）或什么都不做（如果是 print）
             if newline {
@@ -66,7 +66,7 @@ self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_
     }
 
     /// 生成简单的单参数打印（保持向后兼容）
-    fn generate_simple_print(&mut self, arg: &Expr, newline: bool) -> cayResult<String> {
+    fn generate_simple_print(&mut self, arg: &Expr, newline: bool) -> CayResult<String> {
         match arg {
             Expr::Literal(lit_expr) => match &lit_expr.value {
                 LiteralValue::String(s) => {
@@ -353,7 +353,7 @@ self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_
         args: &[Expr],
         newline: bool,
         loc: &crate::miette_diagnostic::SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         // 第一个参数必须是 format 字符串
         let format_arg = &args[0];
         let format_str = match format_arg {
@@ -375,7 +375,7 @@ self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_
 
         // 检查参数数量是否匹配
         if placeholders.len() != args.len() - 1 {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc.clone(),
                 format!(
                     "Format string expects {} arguments, but {} provided",
@@ -789,10 +789,10 @@ self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_
         &mut self,
         args: &[Expr],
         loc: &crate::miette_diagnostic::SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         // readInt 应该没有参数
         if !args.is_empty() {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc.clone(),
                 "readInt() takes no arguments".to_string(),
             ));
@@ -852,10 +852,10 @@ self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_
         &mut self,
         args: &[Expr],
         loc: &crate::miette_diagnostic::SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         // readFloat 应该没有参数
         if !args.is_empty() {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc.clone(),
                 "readFloat() takes no arguments".to_string(),
             ));
@@ -915,10 +915,10 @@ self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_
         &mut self,
         args: &[Expr],
         loc: &crate::miette_diagnostic::SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         // readDouble 应该没有参数
         if !args.is_empty() {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc.clone(),
                 "readDouble() takes no arguments".to_string(),
             ));
@@ -978,7 +978,7 @@ self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_
         &mut self,
         args: &[Expr],
         loc: &crate::miette_diagnostic::SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         // readLong 与 readInt 相同，都返回 i64
         self.generate_read_int_call(args, loc)
     }
@@ -992,10 +992,10 @@ self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_
         &mut self,
         args: &[Expr],
         loc: &crate::miette_diagnostic::SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         // readChar 应该没有参数
         if !args.is_empty() {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc.clone(),
                 "readChar() takes no arguments".to_string(),
             ));
@@ -1055,10 +1055,10 @@ self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_
         &mut self,
         args: &[Expr],
         loc: &crate::miette_diagnostic::SourceLocation,
-    ) -> cayResult<String> {
+    ) -> CayResult<String> {
         // readLine 应该没有参数
         if !args.is_empty() {
-            return Err(codegen_error_at(
+            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc.clone(),
                 "readLine() takes no arguments".to_string(),
             ));

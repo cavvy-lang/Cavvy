@@ -4,14 +4,14 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::cayResult;
+use crate::miette_diagnostic::CayResult;
 
 impl IRGenerator {
     /// 生成三元运算符表达式代码
     ///
     /// # Arguments
     /// * `ternary` - 三元表达式
-    pub fn generate_ternary_expression(&mut self, ternary: &TernaryExpr) -> cayResult<String> {
+    pub fn generate_ternary_expression(&mut self, ternary: &TernaryExpr) -> CayResult<String> {
         // 创建标签
         let then_label = self.new_label("ternary.then");
         let else_label = self.new_label("ternary.else");

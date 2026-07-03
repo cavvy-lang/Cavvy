@@ -4,11 +4,11 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::cayResult;
+use crate::miette_diagnostic::CayResult;
 
 impl IRGenerator {
     /// 生成return语句代码
-    pub fn generate_return_statement(&mut self, expr: &Option<Expr>) -> cayResult<()> {
+    pub fn generate_return_statement(&mut self, expr: &Option<Expr>) -> CayResult<()> {
         if let Some(e) = expr.as_ref() {
             let value = self.generate_expression(e)?;
             let (value_type, val) = self.parse_typed_value(&value);

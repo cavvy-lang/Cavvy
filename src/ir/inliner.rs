@@ -8,7 +8,7 @@ use super::function::{IrFunction, IrLinkage};
 use super::module::IrModule;
 use super::types::IrType;
 use super::value::{IrInstruction, IrTerminator, IrValue};
-use crate::miette_diagnostic::{SourceLocation, cayResult};
+use crate::miette_diagnostic::{SourceLocation, CayResult, ErrorCodes};
 use std::collections::{HashMap, HashSet};
 
 /// 内联器配置
@@ -70,7 +70,7 @@ impl Inliner {
     }
 
     /// 运行内联优化
-    pub fn run(&mut self, module: IrModule) -> cayResult<IrModule> {
+    pub fn run(&mut self, module: IrModule) -> CayResult<IrModule> {
         let mut module = module;
         let mut work_list: Vec<(usize, String)> = Vec::new(); // (函数索引, 被调函数名)
 
@@ -163,12 +163,12 @@ impl Inliner {
         module: &mut IrModule,
         caller_idx: usize,
         callee_name: &str,
-    ) -> cayResult<()> {
+    ) -> CayResult<()> {
         // 克隆被调函数（因为需要借用 module）
         let callee = match module.find_function(callee_name) {
             Some(f) => f.clone(),
             None => {
-                return Err(crate::miette_diagnostic::codegen_error_at(
+                return Err(crate::miette_diagnostic::codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                     SourceLocation::default(),
                     "Callee not found".to_string(),
                 ));
@@ -313,7 +313,7 @@ impl Inliner {
                 match result_val {
                     IrValue::Register(name, _) => name.clone(),
                     _ => {
-                        return Err(crate::miette_diagnostic::codegen_error_at(
+                        return Err(crate::miette_diagnostic::codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                             SourceLocation::default(),
                             "Call result must be a register".to_string(),
                         ));

@@ -9,7 +9,7 @@ use super::module::{IrExternDecl, IrModule};
 use super::types::IrType;
 use super::value::{IrBinaryOp, IrCastKind, IrCmpOp, IrInstruction, IrTerminator, IrValue};
 use crate::ast::*;
-use crate::miette_diagnostic::{SourceLocation, cayResult, codegen_error_at};
+use crate::miette_diagnostic::{SourceLocation, CayResult, codegen_error_at, ErrorCodes};
 use crate::types::{Type, TypeRegistry};
 use std::collections::HashMap;
 
@@ -138,7 +138,7 @@ impl IrBuilder {
     }
 
     /// 从 AST 构建 IR 模块
-    pub fn build_from_ast(&mut self, program: &Program) -> cayResult<IrModule> {
+    pub fn build_from_ast(&mut self, program: &Program) -> CayResult<IrModule> {
         // 重置状态
         self.module = IrModule::new("module".to_string(), "x86_64-w64-mingw32".to_string());
 
@@ -272,9 +272,9 @@ impl IrBuilder {
     }
 
     /// 在当前基本块中添加指令
-    fn emit(&mut self, inst: IrInstruction) -> cayResult<()> {
+    fn emit(&mut self, inst: IrInstruction) -> CayResult<()> {
         let block = self.current_block_mut().ok_or_else(|| {
-            crate::miette_diagnostic::codegen_error_at(
+            crate::miette_diagnostic::codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 SourceLocation::default(),
                 "No current block".to_string(),
             )
@@ -284,9 +284,9 @@ impl IrBuilder {
     }
 
     /// 设置当前块的终止指令
-    fn set_terminator(&mut self, term: IrTerminator) -> cayResult<()> {
+    fn set_terminator(&mut self, term: IrTerminator) -> CayResult<()> {
         let block = self.current_block_mut().ok_or_else(|| {
-            crate::miette_diagnostic::codegen_error_at(
+            crate::miette_diagnostic::codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 SourceLocation::default(),
                 "No current block".to_string(),
             )
@@ -296,9 +296,9 @@ impl IrBuilder {
     }
 
     /// 创建新基本块并设置为当前块
-    fn new_block(&mut self, label: String) -> cayResult<()> {
+    fn new_block(&mut self, label: String) -> CayResult<()> {
         let func = self.current_function.as_mut().ok_or_else(|| {
-            crate::miette_diagnostic::codegen_error_at(
+            crate::miette_diagnostic::codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 SourceLocation::default(),
                 "No current function".to_string(),
             )
@@ -333,7 +333,7 @@ impl IrBuilder {
     // 顶层函数
     // ============================================================
 
-    fn build_top_level_function(&mut self, func: &TopLevelFunction) -> cayResult<()> {
+    fn build_top_level_function(&mut self, func: &TopLevelFunction) -> CayResult<()> {
         let fn_name = format!("__toplevel_{}", func.name);
         let return_type = IrType::from(&func.return_type);
         let params: Vec<IrParam> = func
@@ -391,7 +391,7 @@ impl IrBuilder {
     // 类
     // ============================================================
 
-    fn build_class(&mut self, class: &ClassDecl) -> cayResult<()> {
+    fn build_class(&mut self, class: &ClassDecl) -> CayResult<()> {
         self.current_class = class.name.clone();
 
         for member in &class.members {
@@ -428,7 +428,7 @@ impl IrBuilder {
         Ok(())
     }
 
-    fn build_method(&mut self, class_name: &str, method: &MethodDecl) -> cayResult<()> {
+    fn build_method(&mut self, class_name: &str, method: &MethodDecl) -> CayResult<()> {
         let fn_name = self.generate_method_name(class_name, method);
         let return_type = IrType::from(&method.return_type);
         let is_static = method.modifiers.contains(&Modifier::Static);
@@ -526,7 +526,7 @@ impl IrBuilder {
         Ok(())
     }
 
-    fn build_constructor(&mut self, class_name: &str, ctor: &ConstructorDecl) -> cayResult<()> {
+    fn build_constructor(&mut self, class_name: &str, ctor: &ConstructorDecl) -> CayResult<()> {
         let fn_name = self.generate_constructor_name(class_name, ctor);
 
         let mut params: Vec<IrParam> = vec![IrParam {
@@ -682,7 +682,7 @@ impl IrBuilder {
         Ok(())
     }
 
-    fn build_destructor(&mut self, class_name: &str, dtor: &DestructorDecl) -> cayResult<()> {
+    fn build_destructor(&mut self, class_name: &str, dtor: &DestructorDecl) -> CayResult<()> {
         let fn_name = format!("{}.__dtor", class_name);
 
         let params = vec![IrParam {
@@ -723,7 +723,7 @@ impl IrBuilder {
         Ok(())
     }
 
-    fn build_default_constructor(&mut self, class_name: &str) -> cayResult<()> {
+    fn build_default_constructor(&mut self, class_name: &str) -> CayResult<()> {
         let fn_name = format!("{}.__ctor", class_name);
 
         let params = vec![IrParam {
@@ -763,7 +763,7 @@ impl IrBuilder {
         Ok(())
     }
 
-    fn build_static_init(&mut self, class_name: &str, block: &Block) -> cayResult<()> {
+    fn build_static_init(&mut self, class_name: &str, block: &Block) -> CayResult<()> {
         let fn_name = format!("{}.__static_init", class_name);
 
         self.current_function = Some(IrFunction::new(fn_name, IrType::Void, Vec::new()));
@@ -787,7 +787,7 @@ impl IrBuilder {
     // 语句块
     // ============================================================
 
-    fn build_block(&mut self, block: &Block) -> cayResult<()> {
+    fn build_block(&mut self, block: &Block) -> CayResult<()> {
         self.scope_manager.enter_scope();
         // eprintln!("DEBUG: build_block with {} statements", block.statements.len());
         for (i, stmt) in block.statements.iter().enumerate() {
@@ -798,7 +798,7 @@ impl IrBuilder {
         Ok(())
     }
 
-    fn build_statement(&mut self, stmt: &Stmt) -> cayResult<()> {
+    fn build_statement(&mut self, stmt: &Stmt) -> CayResult<()> {
         match stmt {
             Stmt::Expr(expr) => {
                 self.build_expression(expr)?;
@@ -841,7 +841,7 @@ impl IrBuilder {
     }
 
     /// 构建内联IR语句
-    fn build_inline_ir(&mut self, inline_ir: &InlineIrStmt) -> cayResult<()> {
+    fn build_inline_ir(&mut self, inline_ir: &InlineIrStmt) -> CayResult<()> {
         use super::inline_ir::InlineIrParser;
 
         // 调试：检查raw_lines
@@ -851,8 +851,9 @@ impl IrBuilder {
         }
 
         if inline_ir.raw_lines.is_empty() {
-            return Err(crate::miette_diagnostic::cayError::CodeGen {
-                code: "E5004".to_string(),
+            return Err(crate::miette_diagnostic::CayError::CodeGen {
+                error_code: crate::miette_diagnostic::ErrorCodes::CODEGEN_INVALID_OPERATION,
+                kind: "代码生成错误".to_string(),
                 file: None,
                 line: 0,
                 column: 0,
@@ -876,8 +877,9 @@ impl IrBuilder {
         let block =
             parser
                 .parse(&raw_text, &inputs, &[])
-                .map_err(|e| crate::miette_diagnostic::cayError::CodeGen {
-                    code: "E5004".to_string(),
+                .map_err(|e| crate::miette_diagnostic::CayError::CodeGen {
+                    error_code: crate::miette_diagnostic::ErrorCodes::CODEGEN_INVALID_OPERATION,
+                    kind: "代码生成错误".to_string(),
                     file: None,
                     line: 0,
                     column: 0,
@@ -897,7 +899,7 @@ impl IrBuilder {
     // 变量声明
     // ============================================================
 
-    fn build_var_decl(&mut self, var: &VarDecl) -> cayResult<()> {
+    fn build_var_decl(&mut self, var: &VarDecl) -> CayResult<()> {
         let actual_type = if var.var_type == Type::Auto {
             self.infer_type_from_expr(var.initializer.as_ref())?
         } else {
@@ -929,7 +931,7 @@ impl IrBuilder {
     // 控制流
     // ============================================================
 
-    fn build_if(&mut self, if_stmt: &IfStmt) -> cayResult<()> {
+    fn build_if(&mut self, if_stmt: &IfStmt) -> CayResult<()> {
         let then_label = self.new_label("then");
         let else_label = self.new_label("else");
         let merge_label = self.new_label("ifmerge");
@@ -1010,7 +1012,7 @@ impl IrBuilder {
             .unwrap_or(false)
     }
 
-    fn build_while(&mut self, while_stmt: &WhileStmt) -> cayResult<()> {
+    fn build_while(&mut self, while_stmt: &WhileStmt) -> CayResult<()> {
         let cond_label = self.new_label("while.cond");
         let body_label = self.new_label("while.body");
         let end_label = self.new_label("while.end");
@@ -1052,7 +1054,7 @@ impl IrBuilder {
         Ok(())
     }
 
-    fn build_for(&mut self, for_stmt: &ForStmt) -> cayResult<()> {
+    fn build_for(&mut self, for_stmt: &ForStmt) -> CayResult<()> {
         let cond_label = self.new_label("for.cond");
         let body_label = self.new_label("for.body");
         let update_label = self.new_label("for.update");
@@ -1118,7 +1120,7 @@ impl IrBuilder {
     /// 生成增强 for 语句代码
     ///
     /// 将 `for (T x : iterable) body` 解糖为普通 while 循环。
-    fn build_for_each(&mut self, for_each: &ForEachStmt) -> cayResult<()> {
+    fn build_for_each(&mut self, for_each: &ForEachStmt) -> CayResult<()> {
         use crate::types::Type;
 
         let iter_idx = self.temp_counter;
@@ -1200,7 +1202,7 @@ impl IrBuilder {
         self.build_statement(&desugared)
     }
 
-    fn build_do_while(&mut self, do_while: &DoWhileStmt) -> cayResult<()> {
+    fn build_do_while(&mut self, do_while: &DoWhileStmt) -> CayResult<()> {
         let body_label = self.new_label("dowhile.body");
         let cond_label = self.new_label("dowhile.cond");
         let end_label = self.new_label("dowhile.end");
@@ -1244,7 +1246,7 @@ impl IrBuilder {
     }
 
     /// 将 CaseValue 转换为 i64 常量值
-    fn resolve_case_value(&self, case: &Case) -> cayResult<i64> {
+    fn resolve_case_value(&self, case: &Case) -> CayResult<i64> {
         match &case.value {
             CaseValue::Integer(v) => Ok(*v),
             CaseValue::EnumVariant {
@@ -1260,13 +1262,13 @@ impl IrBuilder {
                                 return Ok(idx as i64);
                             }
                         }
-                        return Err(codegen_error_at(
+                        return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                             case.loc.clone(),
                             format!("enum '{}' 中不存在 variant '{}'", enum_name, variant_name),
                         ));
                     }
                 }
-                Err(codegen_error_at(
+                Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                     case.loc.clone(),
                     format!("未知的 enum '{}' 在 case 标签中", enum_name),
                 ))
@@ -1274,7 +1276,7 @@ impl IrBuilder {
         }
     }
 
-    fn build_switch(&mut self, switch: &SwitchStmt) -> cayResult<()> {
+    fn build_switch(&mut self, switch: &SwitchStmt) -> CayResult<()> {
         let end_label = self.new_label("switch.end");
         let default_label = self.new_label("switch.default");
         let mut case_labels: Vec<(i64, String)> = Vec::new();
@@ -1370,7 +1372,7 @@ impl IrBuilder {
         Ok(())
     }
 
-    fn build_break(&mut self, label: &Option<String>, loc: &SourceLocation) -> cayResult<()> {
+    fn build_break(&mut self, label: &Option<String>, loc: &SourceLocation) -> CayResult<()> {
         let target = if let Some(l) = label {
             self.loop_stack
                 .iter()
@@ -1378,7 +1380,7 @@ impl IrBuilder {
                 .find(|ctx| ctx.label.as_deref() == Some(l.as_str()))
                 .map(|ctx| ctx.end_label.clone())
                 .ok_or_else(|| {
-                    crate::miette_diagnostic::codegen_error_at(
+                    crate::miette_diagnostic::codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                         loc.clone(),
                         format!("break label '{}' not found", l),
                     )
@@ -1388,14 +1390,14 @@ impl IrBuilder {
                 .last()
                 .map(|ctx| ctx.end_label.clone())
                 .ok_or_else(|| {
-                    crate::miette_diagnostic::codegen_error_at(loc.clone(), "break outside loop".to_string())
+                    crate::miette_diagnostic::codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, loc.clone(), "break outside loop".to_string())
                 })?
         };
         self.set_terminator(IrTerminator::Branch { target })?;
         Ok(())
     }
 
-    fn build_continue(&mut self, label: &Option<String>, loc: &SourceLocation) -> cayResult<()> {
+    fn build_continue(&mut self, label: &Option<String>, loc: &SourceLocation) -> CayResult<()> {
         let target = if let Some(l) = label {
             self.loop_stack
                 .iter()
@@ -1403,7 +1405,7 @@ impl IrBuilder {
                 .find(|ctx| ctx.label.as_deref() == Some(l.as_str()))
                 .map(|ctx| ctx.cond_label.clone())
                 .ok_or_else(|| {
-                    crate::miette_diagnostic::codegen_error_at(
+                    crate::miette_diagnostic::codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                         loc.clone(),
                         format!("continue label '{}' not found", l),
                     )
@@ -1413,14 +1415,14 @@ impl IrBuilder {
                 .last()
                 .map(|ctx| ctx.cond_label.clone())
                 .ok_or_else(|| {
-                    crate::miette_diagnostic::codegen_error_at(loc.clone(), "continue outside loop".to_string())
+                    crate::miette_diagnostic::codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, loc.clone(), "continue outside loop".to_string())
                 })?
         };
         self.set_terminator(IrTerminator::Branch { target })?;
         Ok(())
     }
 
-    fn build_return(&mut self, expr: &Option<Expr>) -> cayResult<()> {
+    fn build_return(&mut self, expr: &Option<Expr>) -> CayResult<()> {
         if let Some(e) = expr.as_ref() {
             let value = self.build_expression(e)?;
             self.set_terminator(IrTerminator::Return { value: Some(value) })?;
@@ -1434,7 +1436,7 @@ impl IrBuilder {
     // 表达式构建
     // ============================================================
 
-    fn build_expression(&mut self, expr: &Expr) -> cayResult<IrValue> {
+    fn build_expression(&mut self, expr: &Expr) -> CayResult<IrValue> {
         match expr {
             Expr::Literal(lit_expr) => self.build_literal(&lit_expr.value),
             Expr::Identifier(ident) => self.build_identifier(&ident.name),
@@ -1449,14 +1451,14 @@ impl IrBuilder {
             Expr::ArrayCreation(arr) => self.build_array_creation(arr),
             Expr::ArrayAccess(arr) => self.build_array_access(arr),
             Expr::ArrayInit(init) => self.build_array_init(init),
-            _ => Err(crate::miette_diagnostic::codegen_error_at(
+            _ => Err(crate::miette_diagnostic::codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 expr.location().clone(),
                 format!("Expression type not yet implemented in IR builder"),
             )),
         }
     }
 
-    fn build_literal(&mut self, lit: &LiteralValue) -> cayResult<IrValue> {
+    fn build_literal(&mut self, lit: &LiteralValue) -> CayResult<IrValue> {
         match lit {
             LiteralValue::Int32(v) => Ok(IrValue::IntConst(*v as i64, IrType::I32)),
             LiteralValue::Int64(v) => Ok(IrValue::IntConst(*v, IrType::I64)),
@@ -1475,7 +1477,7 @@ impl IrBuilder {
         }
     }
 
-    fn build_identifier(&mut self, name: &str) -> cayResult<IrValue> {
+    fn build_identifier(&mut self, name: &str) -> CayResult<IrValue> {
         // 查找变量
         let alloca_opt = self.scope_manager.lookup(name).cloned();
         if let Some(alloca) = alloca_opt {
@@ -1498,7 +1500,7 @@ impl IrBuilder {
         Ok(IrValue::GlobalRef(full_name, IrType::I32)) // 默认类型
     }
 
-    fn build_binary(&mut self, bin: &BinaryExpr) -> cayResult<IrValue> {
+    fn build_binary(&mut self, bin: &BinaryExpr) -> CayResult<IrValue> {
         let left = self.build_expression(&bin.left)?;
         let right = self.build_expression(&bin.right)?;
 
@@ -1569,7 +1571,7 @@ impl IrBuilder {
         Ok(result)
     }
 
-    fn build_compare(&mut self, bin: &BinaryExpr) -> cayResult<IrValue> {
+    fn build_compare(&mut self, bin: &BinaryExpr) -> CayResult<IrValue> {
         let left = self.build_expression(&bin.left)?;
         let right = self.build_expression(&bin.right)?;
         let ty = left.ir_type();
@@ -1661,7 +1663,7 @@ impl IrBuilder {
         Ok(result)
     }
 
-    fn build_unary(&mut self, unary: &UnaryExpr) -> cayResult<IrValue> {
+    fn build_unary(&mut self, unary: &UnaryExpr) -> CayResult<IrValue> {
         let operand = self.build_expression(&unary.operand)?;
         let ty = operand.ir_type();
         let result = self.new_temp(ty.clone());
@@ -1735,7 +1737,7 @@ impl IrBuilder {
                 }
             }
             _ => {
-                return Err(crate::miette_diagnostic::codegen_error_at(
+                return Err(crate::miette_diagnostic::codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                     unary.loc.clone(),
                     format!(
                         "Unary operator {:?} not yet implemented in IR builder",
@@ -1748,7 +1750,7 @@ impl IrBuilder {
     }
 
     /// 将值赋给表达式（用于自增/自减）
-    fn build_assignment_to_expr(&mut self, target: &Expr, value: IrValue) -> cayResult<()> {
+    fn build_assignment_to_expr(&mut self, target: &Expr, value: IrValue) -> CayResult<()> {
         match target {
             Expr::Identifier(ident) => {
                 let alloca_opt = self.scope_manager.lookup(&ident.name).cloned();
@@ -1763,7 +1765,7 @@ impl IrBuilder {
                 Ok(())
             }
             Expr::ArrayAccess(arr) => self.build_array_assignment(arr, value),
-            _ => Err(crate::miette_diagnostic::codegen_error_at(
+            _ => Err(crate::miette_diagnostic::codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 target.location().clone(),
                 "Complex assignment target not yet implemented in IR builder".to_string(),
             )),
@@ -1774,7 +1776,7 @@ impl IrBuilder {
         &mut self,
         arr: &crate::ast::ArrayAccessExpr,
         value: IrValue,
-    ) -> cayResult<()> {
+    ) -> CayResult<()> {
         // 构建数组和索引
         let array_val = self.build_expression(&arr.array)?;
         let index_val = self.build_expression(&arr.index)?;
@@ -1808,7 +1810,7 @@ impl IrBuilder {
         Ok(())
     }
 
-    fn build_call(&mut self, call: &CallExpr) -> cayResult<IrValue> {
+    fn build_call(&mut self, call: &CallExpr) -> CayResult<IrValue> {
         let func_name = match call.callee.as_ref() {
             Expr::Identifier(ident) => ident.name.clone(),
             Expr::MemberAccess(member) => {
@@ -1919,7 +1921,7 @@ impl IrBuilder {
                 }
             }
             _ => {
-                return Err(crate::miette_diagnostic::codegen_error_at(
+                return Err(crate::miette_diagnostic::codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                     call.loc.clone(),
                     "Complex callee not yet supported in IR builder".to_string(),
                 ));
@@ -1982,7 +1984,7 @@ impl IrBuilder {
         IrType::Void
     }
 
-    fn build_assignment(&mut self, assign: &AssignmentExpr) -> cayResult<IrValue> {
+    fn build_assignment(&mut self, assign: &AssignmentExpr) -> CayResult<IrValue> {
         let value = self.build_expression(&assign.value)?;
         let ty = value.ir_type();
 
@@ -2008,7 +2010,7 @@ impl IrBuilder {
                 self.build_array_assignment(arr, final_value.clone())?;
             }
             _ => {
-                return Err(crate::miette_diagnostic::codegen_error_at(
+                return Err(crate::miette_diagnostic::codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                     assign.loc.clone(),
                     "Complex assignment target not yet implemented in IR builder".to_string(),
                 ));
@@ -2023,7 +2025,7 @@ impl IrBuilder {
         target: &Expr,
         op: &crate::ast::AssignOp,
         value: IrValue,
-    ) -> cayResult<IrValue> {
+    ) -> CayResult<IrValue> {
         // 获取当前值
         let current_val = self.build_expression(target)?;
         let ty = current_val.ir_type();
@@ -2050,7 +2052,7 @@ impl IrBuilder {
         Ok(result)
     }
 
-    fn build_member_access(&mut self, member: &MemberAccessExpr) -> cayResult<IrValue> {
+    fn build_member_access(&mut self, member: &MemberAccessExpr) -> CayResult<IrValue> {
         let obj = self.build_expression(&member.object)?;
         let obj_ty = obj.ir_type();
 
@@ -2115,7 +2117,7 @@ impl IrBuilder {
         }
 
         // 如果找不到字段，返回错误
-        Err(crate::miette_diagnostic::codegen_error_at(
+        Err(crate::miette_diagnostic::codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
             member.loc.clone(),
             format!(
                 "Field '{}' not found in class '{}'",
@@ -2147,7 +2149,7 @@ impl IrBuilder {
         IrType::I32 // 默认类型
     }
 
-    fn build_cast(&mut self, cast: &CastExpr) -> cayResult<IrValue> {
+    fn build_cast(&mut self, cast: &CastExpr) -> CayResult<IrValue> {
         let value = self.build_expression(&cast.expr)?;
         let from_ty = value.ir_type();
         let to_ty = IrType::from(&cast.target_type);
@@ -2168,7 +2170,7 @@ impl IrBuilder {
         Ok(result)
     }
 
-    fn build_new(&mut self, new_expr: &NewExpr) -> cayResult<IrValue> {
+    fn build_new(&mut self, new_expr: &NewExpr) -> CayResult<IrValue> {
         let class_name = &new_expr.class_name;
 
         // 获取类大小
@@ -2209,7 +2211,7 @@ impl IrBuilder {
         Ok(obj_ptr)
     }
 
-    fn build_ternary(&mut self, tern: &TernaryExpr) -> cayResult<IrValue> {
+    fn build_ternary(&mut self, tern: &TernaryExpr) -> CayResult<IrValue> {
         let cond = self.build_expression(&tern.condition)?;
         let cond_val = self.new_temp(IrType::I1);
         self.emit(IrInstruction::Compare {
@@ -2233,7 +2235,7 @@ impl IrBuilder {
         Ok(result)
     }
 
-    fn build_array_creation(&mut self, arr: &crate::ast::ArrayCreationExpr) -> cayResult<IrValue> {
+    fn build_array_creation(&mut self, arr: &crate::ast::ArrayCreationExpr) -> CayResult<IrValue> {
         // 计算第一维数组大小（支持多维数组时取第一个）
         let size_val = arr
             .sizes
@@ -2262,7 +2264,7 @@ impl IrBuilder {
         Ok(alloca_result)
     }
 
-    fn build_array_access(&mut self, arr: &crate::ast::ArrayAccessExpr) -> cayResult<IrValue> {
+    fn build_array_access(&mut self, arr: &crate::ast::ArrayAccessExpr) -> CayResult<IrValue> {
         // 构建数组和索引
         let array_val = self.build_expression(&arr.array)?;
         let index_val = self.build_expression(&arr.index)?;
@@ -2294,7 +2296,7 @@ impl IrBuilder {
         Ok(result)
     }
 
-    fn build_array_init(&mut self, init: &crate::ast::ArrayInitExpr) -> cayResult<IrValue> {
+    fn build_array_init(&mut self, init: &crate::ast::ArrayInitExpr) -> CayResult<IrValue> {
         // 数组初始化: {1, 2, 3}
         // 创建固定大小的数组并初始化元素
         let elem_count = init.elements.len();
@@ -2355,7 +2357,7 @@ impl IrBuilder {
         from: &IrType,
         to: &IrType,
         loc: SourceLocation,
-    ) -> cayResult<IrCastKind> {
+    ) -> CayResult<IrCastKind> {
         match (from, to) {
             // 整数扩展/截断
             (IrType::I1, IrType::I8 | IrType::I16 | IrType::I32 | IrType::I64) => {
@@ -2381,7 +2383,7 @@ impl IrBuilder {
             (IrType::Pointer(_), _) if to.is_integer() => Ok(IrCastKind::PtrToInt),
             (_, IrType::Pointer(_)) if from.is_integer() => Ok(IrCastKind::IntToPtr),
 
-            _ => Err(crate::miette_diagnostic::codegen_error_at(
+            _ => Err(crate::miette_diagnostic::codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
                 loc,
                 format!(
                     "Cannot cast from {} to {}",
@@ -2392,14 +2394,14 @@ impl IrBuilder {
         }
     }
 
-    fn infer_type_from_expr(&self, expr: Option<&Expr>) -> cayResult<Type> {
+    fn infer_type_from_expr(&self, expr: Option<&Expr>) -> CayResult<Type> {
         match expr {
             Some(e) => self.infer_expr_type(e),
             None => Ok(Type::Int32), // 默认
         }
     }
 
-    fn infer_expr_type(&self, expr: &Expr) -> cayResult<Type> {
+    fn infer_expr_type(&self, expr: &Expr) -> CayResult<Type> {
         match expr {
             Expr::Literal(lit_expr) => match &lit_expr.value {
                 LiteralValue::Int32(_) => Ok(Type::Int32),

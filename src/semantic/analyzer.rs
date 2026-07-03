@@ -2,7 +2,7 @@
 
 use super::symbol_table::{SemanticSymbolInfo, SemanticSymbolTable};
 use crate::ast::*;
-use crate::miette_diagnostic::{cayResult, semantic_error_with_file};
+use crate::miette_diagnostic::{CayResult, semantic_error_with_file, ErrorCodes};
 use crate::types::{ClassInfo, FieldInfo, MethodInfo, ParameterInfo, Type, TypeRegistry};
 
 /// 语义分析错误信息（包含位置）
@@ -69,7 +69,7 @@ impl SemanticAnalyzer {
         // print 可以接受任意类型参数
     }
 
-    pub fn analyze(&mut self, program: Program) -> cayResult<Program> {
+    pub fn analyze(&mut self, program: Program) -> CayResult<Program> {
         // 扁平化 namespace 声明：将块级 namespace 中的声明合并到主列表
         let mut program = program.flatten_namespaces();
 
@@ -150,10 +150,11 @@ impl SemanticAnalyzer {
         self.type_check_program(&mut program)?;
 
         if !self.errors.is_empty() {
-            // 将所有错误转换为 cayError 并返回 MultipleErrors
-            let mut cay_errors: Vec<crate::miette_diagnostic::cayError> = Vec::new();
+            // 将所有错误转换为 CayError 并返回 MultipleErrors
+            let mut cay_errors: Vec<crate::miette_diagnostic::CayError> = Vec::new();
             for err in &self.errors {
-                cay_errors.push(crate::miette_diagnostic::cayError::Semantic {
+                cay_errors.push(crate::miette_diagnostic::CayError::Semantic {
+                    error_code: crate::miette_diagnostic::ErrorCodes::SEMANTIC_INVALID_OPERATION,
                     file: err.file.clone(),
                     line: err.line,
                     column: err.column,
@@ -161,7 +162,7 @@ impl SemanticAnalyzer {
                     suggestion: "请检查代码语义".to_string(),
                 });
             }
-            return Err(crate::miette_diagnostic::cayError::MultipleErrors { errors: cay_errors });
+            return Err(crate::miette_diagnostic::CayError::MultipleErrors { errors: cay_errors });
         }
 
         Ok(program)
@@ -197,7 +198,7 @@ impl SemanticAnalyzer {
     }
 
     /// 注册顶层函数到符号表
-    fn register_top_level_functions(&mut self, program: &Program) -> cayResult<()> {
+    fn register_top_level_functions(&mut self, program: &Program) -> CayResult<()> {
         use crate::semantic::symbol_table::SemanticSymbolInfo;
 
         // 检查是否启用了顶层函数特性
@@ -208,7 +209,7 @@ impl SemanticAnalyzer {
         if !top_level_enabled {
             for func in &program.top_level_functions {
                 if func.name != "main" {
-                    return Err(crate::miette_diagnostic::semantic_error_with_file(
+                    return Err(crate::miette_diagnostic::semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, 
                         func.loc.file.clone(),
                         func.loc.line,
                         func.loc.column,
@@ -224,7 +225,7 @@ impl SemanticAnalyzer {
         for func in &program.top_level_functions {
             // 检查函数名是否已存在（在当前作用域）
             if self.symbol_table.lookup_current(&func.name).is_some() {
-                return Err(crate::miette_diagnostic::semantic_error_with_file(
+                return Err(crate::miette_diagnostic::semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, 
                     func.loc.file.clone(),
                     func.loc.line,
                     func.loc.column,
@@ -298,9 +299,9 @@ impl SemanticAnalyzer {
         line: usize,
         column: usize,
         message: impl Into<String>,
-    ) -> crate::miette_diagnostic::cayError {
+    ) -> crate::miette_diagnostic::CayError {
         let msg = message.into();
-        semantic_error_with_file(self.current_file.clone(), line, column, msg)
+        semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, self.current_file.clone(), line, column, msg)
     }
 
     /// 创建语义分析错误信息（自动解析文件路径）

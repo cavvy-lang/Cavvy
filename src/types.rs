@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fmt;
 use serde::Serialize;
+use crate::miette_diagnostic::ErrorCodes;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 pub enum Type {
@@ -1244,10 +1245,11 @@ impl TypeRegistry {
         file: Option<String>,
         line: usize,
         column: usize,
-    ) -> crate::miette_diagnostic::cayResult<()> {
+    ) -> crate::miette_diagnostic::CayResult<()> {
         let name = class_info.name.clone();
         if self.classes.contains_key(&name) {
-            return Err(crate::miette_diagnostic::cayError::DuplicateDefinition {
+            return Err(crate::miette_diagnostic::CayError::DuplicateDefinition {
+                error_code: ErrorCodes::SEMANTIC_DUPLICATE_DEFINITION,
                 file,
                 line,
                 column,
@@ -1265,10 +1267,11 @@ impl TypeRegistry {
         file: Option<String>,
         line: usize,
         column: usize,
-    ) -> crate::miette_diagnostic::cayResult<()> {
+    ) -> crate::miette_diagnostic::CayResult<()> {
         let name = interface_info.name.clone();
         if self.interfaces.contains_key(&name) {
-            return Err(crate::miette_diagnostic::cayError::DuplicateDefinition {
+            return Err(crate::miette_diagnostic::CayError::DuplicateDefinition {
+                error_code: ErrorCodes::SEMANTIC_DUPLICATE_DEFINITION,
                 file,
                 line,
                 column,
@@ -1336,10 +1339,11 @@ impl TypeRegistry {
         file: Option<String>,
         line: usize,
         column: usize,
-    ) -> crate::miette_diagnostic::cayResult<()> {
+    ) -> crate::miette_diagnostic::CayResult<()> {
         let name = struct_info.name.clone();
         if self.structs.contains_key(&name) || self.classes.contains_key(&name) {
-            return Err(crate::miette_diagnostic::cayError::DuplicateDefinition {
+            return Err(crate::miette_diagnostic::CayError::DuplicateDefinition {
+                error_code: ErrorCodes::SEMANTIC_DUPLICATE_DEFINITION,
                 file,
                 line,
                 column,
@@ -1358,13 +1362,14 @@ impl TypeRegistry {
         file: Option<String>,
         line: usize,
         column: usize,
-    ) -> crate::miette_diagnostic::cayResult<()> {
+    ) -> crate::miette_diagnostic::CayResult<()> {
         let name = enum_info.name.clone();
         if self.enums.contains_key(&name)
             || self.classes.contains_key(&name)
             || self.structs.contains_key(&name)
         {
-            return Err(crate::miette_diagnostic::cayError::DuplicateDefinition {
+            return Err(crate::miette_diagnostic::CayError::DuplicateDefinition {
+                error_code: ErrorCodes::SEMANTIC_DUPLICATE_DEFINITION,
                 file,
                 line,
                 column,
@@ -1394,10 +1399,11 @@ impl TypeRegistry {
         class_name: &str,
         method_info: MethodInfo,
         loc: crate::miette_diagnostic::SourceLocation,
-    ) -> crate::miette_diagnostic::cayResult<()> {
+    ) -> crate::miette_diagnostic::CayResult<()> {
         if let Some((existing_class, _, existing_loc)) = self.free_functions.get(func_name) {
             if existing_class != class_name {
-                return Err(crate::miette_diagnostic::cayError::DuplicateDefinition {
+                return Err(crate::miette_diagnostic::CayError::DuplicateDefinition {
+                    error_code: ErrorCodes::SEMANTIC_DUPLICATE_DEFINITION,
                     file: loc.file.clone(),
                     line: loc.line,
                     column: loc.column,
