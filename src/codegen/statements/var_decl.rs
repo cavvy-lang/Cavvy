@@ -301,7 +301,7 @@ impl IRGenerator {
     }
 
     /// 解析泛型返回类型
-    /// 如果返回类型是 GenericParam，则根据类型参数替换为实际类型
+    /// 如果返回类型包含泛型参数，则根据调用类的类型实参递归替换为实际类型。
     fn resolve_generic_return_type(
         &self,
         return_type: &Type,
@@ -309,20 +309,30 @@ impl IRGenerator {
         class_name: &str,
         type_args: &[Type],
     ) -> Option<Type> {
-        match return_type {
-            Type::GenericParam(param_name) => {
-                // 获取类的泛型参数定义
-                if let Some(class_info) = registry.get_class(class_name) {
-                    // 找到泛型参数的位置
-                    if let Some(pos) = class_info.type_params.iter().position(|p| &p.name == param_name) {
-                        // 返回对应的类型参数
-                        return type_args.get(pos).cloned();
-                    }
-                }
-                None
-            }
-            _ => Some(return_type.clone()),
+        let base_class_name = if let Some(pos) = class_name.find('<') {
+            &class_name[..pos]
+        } else {
+            class_name
+        };
+
+        // 获取定义该方法的类或接口的类型参数名
+        let type_params = registry
+            .get_class(base_class_name)
+            .map(|c| c.type_params.clone())
+            .or_else(|| registry.get_interface(base_class_name).map(|i| i.type_params.clone()))
+            .unwrap_or_default();
+
+        if type_params.is_empty() || type_args.is_empty() {
+            return Some(return_type.clone());
         }
+
+        let mapping: std::collections::HashMap<String, Type> = type_params
+            .iter()
+            .zip(type_args.iter())
+            .map(|(param, arg)| (param.name.clone(), arg.clone()))
+            .collect();
+
+        Some(crate::types::substitute_type_params(return_type, &mapping))
     }
 
     /// 推断方法的返回类型

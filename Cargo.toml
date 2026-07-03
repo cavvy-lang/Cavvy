@@ -84,6 +84,21 @@ name = "cay-setup"
 path = "src/bin/cay-setup.rs"
 test = false
 
+[profile.dev]
+# Windows 下多线程编译 + 增量编译 + llvm-sys 等含 build-script 的依赖时，
+# 会出现 "required to be available in rlib format, but was not found" 的竞态错误。
+# 关闭增量编译可避免此类文件锁竞争，保持多线程编译稳定。
+incremental = false
+
+[profile.test]
+incremental = false
+
+[profile.release]
+incremental = false
+
+[profile.bench]
+incremental = false
+
 [features]
 default = []
 # 保留特性标志以向后兼容，但 llvm-sys 现在是默认依赖

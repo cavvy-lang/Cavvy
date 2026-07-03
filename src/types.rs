@@ -56,6 +56,34 @@ pub struct TypeParamInfo {
     pub default_type: Option<Type>, // 默认类型
 }
 
+/// 用给定的类型参数映射递归替换类型中的泛型参数。
+///
+/// 用于将方法签名中的泛型参数（如接口 `Iterator<T>` 的返回类型 `T`）
+/// 替换为调用处的具体类型实参（如 `String`）。
+pub fn substitute_type_params(ty: &Type, mapping: &HashMap<String, Type>) -> Type {
+    match ty {
+        Type::GenericParam(name) => mapping.get(name).cloned().unwrap_or_else(|| ty.clone()),
+        Type::Object(name) => mapping.get(name).cloned().unwrap_or_else(|| ty.clone()),
+        Type::Array(inner) => Type::Array(Box::new(substitute_type_params(inner, mapping))),
+        Type::Pointer(inner) => Type::Pointer(Box::new(substitute_type_params(inner, mapping))),
+        Type::Generic(base, args) => Type::Generic(
+            base.clone(),
+            args.iter().map(|a| substitute_type_params(a, mapping)).collect(),
+        ),
+        Type::Function(func_type) => Type::Function(Box::new(FunctionType {
+            return_type: Box::new(substitute_type_params(&func_type.return_type, mapping)),
+            params: func_type
+                .params
+                .iter()
+                .map(|p| substitute_type_params(p, mapping))
+                .collect(),
+            is_static: func_type.is_static,
+            is_closure: func_type.is_closure,
+        })),
+        _ => ty.clone(),
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ClassInfo {
     pub name: String,
@@ -1288,8 +1316,15 @@ impl TypeRegistry {
         method_name: &str,
         arg_types: &[Type],
     ) -> Option<usize> {
+        // 接口 vtable 槽位注册时使用的是基础接口名（无泛型实参），
+        // 调用处可能传入特化名如 Iterator<String>，需还原为基础名。
+        let base_interface_name = interface_name
+            .split('<')
+            .next()
+            .unwrap_or(interface_name)
+            .trim_end();
         let method_sig = Self::build_method_signature_from_types(method_name, arg_types);
-        let key = Self::build_interface_vtable_key(interface_name, &method_sig);
+        let key = Self::build_interface_vtable_key(base_interface_name, &method_sig);
         self.interface_vtable_slots.get(&key).copied()
     }
 

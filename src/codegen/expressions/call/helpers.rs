@@ -4,6 +4,24 @@
 
 use crate::codegen::context::IRGenerator;
 
+/// 简单解析类型实参字符串（与 SpecializationCollector 语义对齐）。
+fn parse_type_arg_str(s: &str) -> crate::types::Type {
+    use crate::types::Type;
+    if s.ends_with("[]") {
+        return Type::Array(Box::new(parse_type_arg_str(&s[..s.len() - 2])));
+    }
+    match s {
+        "int" => Type::Int32,
+        "long" => Type::Int64,
+        "float" => Type::Float32,
+        "double" => Type::Float64,
+        "bool" | "boolean" => Type::Bool,
+        "string" | "String" => Type::String,
+        "char" => Type::Char,
+        _ => Type::Object(s.to_string()),
+    }
+}
+
 impl IRGenerator {
     /// 将类名规范化为类型注册表可查询的名称。
     ///
@@ -56,7 +74,13 @@ impl IRGenerator {
             .type_registry
             .as_ref()
             .and_then(|r| r.get_class(&base_name))
-            .map(|c| c.type_params.clone());
+            .map(|c| c.type_params.clone())
+            .or_else(|| {
+                self.type_registry
+                    .as_ref()
+                    .and_then(|r| r.get_interface(&base_name))
+                    .map(|i| i.type_params.clone())
+            });
         if let Some(params) = type_params {
             for (idx, param) in params.iter().enumerate() {
                 let resolved_arg = args.get(idx)
@@ -80,6 +104,42 @@ impl IRGenerator {
         if let Some(best) =
             self.resolve_best_method(class_name, method_name, processed_args, has_varargs_array)
         {
+            // 提取调用处的类型实参
+            let (base_name, type_args) = if let Some(pos) = class_name.find('<') {
+                let gt_pos = class_name.rfind('>').unwrap_or(class_name.len());
+                (
+                    class_name[..pos].to_string(),
+                    crate::codegen::specialization::split_top_level_type_args(
+                        &class_name[pos + 1..gt_pos],
+                    )
+                    .iter()
+                    .map(|s| parse_type_arg_str(s.trim()))
+                    .collect::<Vec<_>>(),
+                )
+            } else {
+                (class_name.to_string(), Vec::new())
+            };
+
+            if let Some(ref registry) = self.type_registry {
+                let type_params = registry
+                    .get_class(&base_name)
+                    .map(|c| c.type_params.clone())
+                    .or_else(|| registry.get_interface(&base_name).map(|i| i.type_params.clone()))
+                    .unwrap_or_default();
+
+                if !type_params.is_empty() && !type_args.is_empty() {
+                    let mapping: std::collections::HashMap<String, crate::types::Type> = type_params
+                        .iter()
+                        .zip(type_args.iter())
+                        .map(|(param, arg)| (param.name.clone(), arg.clone()))
+                        .collect();
+                    return crate::types::substitute_type_params(
+                        &best.return_type,
+                        &mapping,
+                    );
+                }
+            }
+
             return best.return_type.clone();
         }
         // 默认返回 i64 类型
