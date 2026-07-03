@@ -58,6 +58,8 @@ sync_docs.py
 *.diff
 
 debug_*
+!src/bin/debug_common/
+!src/bin/debug_common/**
 .sisyphus/
 llvm-project/
 
