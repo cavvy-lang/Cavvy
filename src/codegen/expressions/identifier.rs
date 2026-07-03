@@ -3,7 +3,7 @@
 //! 处理变量访问、静态字段访问和隐式 this 访问。
 
 use crate::codegen::context::IRGenerator;
-use crate::error::{SourceLocation, cayResult, codegen_error_at};
+use crate::miette_diagnostic::{SourceLocation, cayResult, codegen_error_at};
 
 impl IRGenerator {
     /// 生成标识符表达式代码

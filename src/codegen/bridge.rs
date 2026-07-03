@@ -35,7 +35,7 @@
 
 use crate::ast::InlineIrStmt;
 use crate::codegen::context::IRGenerator;
-use crate::error::cayResult;
+use crate::miette_diagnostic::cayResult;
 use crate::types::Type;
 use std::collections::HashMap;
 
@@ -107,7 +107,7 @@ impl InlineIrBridge {
         let raw_text = inline_ir.raw_lines.join("\n");
         // eprintln!("DEBUG bridge: raw_text = '{}'", raw_text);
         let parsed_block = self.parser.parse(&raw_text, &ir_inputs, &[]).map_err(|e| {
-            crate::error::cayError::CodeGen {
+            crate::miette_diagnostic::cayError::CodeGen {
                 code: "E5004".to_string(),
                 file: None,
                 line: 0,

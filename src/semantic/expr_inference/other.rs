@@ -3,12 +3,12 @@
 use super::super::analyzer::SemanticAnalyzer;
 use super::helpers::semantic_error_at_loc;
 use crate::ast::*;
-use crate::error::semantic_error_with_file;
+use crate::miette_diagnostic::semantic_error_with_file;
 use crate::types::Type;
 
 impl SemanticAnalyzer {
     /// 推断 new 表达式类型
-    pub(crate) fn infer_new_type(&mut self, new_expr: &NewExpr) -> crate::error::cayResult<Type> {
+    pub(crate) fn infer_new_type(&mut self, new_expr: &NewExpr) -> crate::miette_diagnostic::cayResult<Type> {
         // 解析泛型类名: "Optional<T>" -> ("Optional", Some(["T"]))
         // 支持多类型参数: "Pair<K, V>" -> ("Pair", Some(["K", "V"]))
         let (base_class_name, type_params) = if let Some(pos) = new_expr.class_name.find('<') {
@@ -160,7 +160,7 @@ impl SemanticAnalyzer {
     pub(crate) fn infer_assignment_type(
         &mut self,
         assign: &AssignmentExpr,
-    ) -> crate::error::cayResult<Type> {
+    ) -> crate::miette_diagnostic::cayResult<Type> {
         // 检查是否是 final 变量重新赋值
         if let Expr::Identifier(name) = &assign.target.as_ref() {
             if let Some(info) = self.symbol_table.lookup(name.as_ref()) {
@@ -192,7 +192,7 @@ impl SemanticAnalyzer {
     pub(crate) fn infer_method_ref_type(
         &mut self,
         method_ref: &MethodRefExpr,
-    ) -> crate::error::cayResult<Type> {
+    ) -> crate::miette_diagnostic::cayResult<Type> {
         // 方法引用: ClassName::methodName 或 obj::methodName
         // 返回函数类型，包含参数类型和返回类型信息
 
@@ -267,7 +267,7 @@ impl SemanticAnalyzer {
     pub(crate) fn infer_ternary_type(
         &mut self,
         ternary: &TernaryExpr,
-    ) -> crate::error::cayResult<Type> {
+    ) -> crate::miette_diagnostic::cayResult<Type> {
         // 推断条件表达式类型
         let cond_type = self.infer_expr_type_internal(&ternary.condition)?;
 
@@ -309,7 +309,7 @@ impl SemanticAnalyzer {
     pub(crate) fn infer_instanceof_type(
         &mut self,
         instanceof: &InstanceOfExpr,
-    ) -> crate::error::cayResult<Type> {
+    ) -> crate::miette_diagnostic::cayResult<Type> {
         // 检查表达式类型
         let expr_type = self.infer_expr_type_internal(&instanceof.expr)?;
 

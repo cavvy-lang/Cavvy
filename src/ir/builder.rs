@@ -9,7 +9,7 @@ use super::module::{IrExternDecl, IrModule};
 use super::types::IrType;
 use super::value::{IrBinaryOp, IrCastKind, IrCmpOp, IrInstruction, IrTerminator, IrValue};
 use crate::ast::*;
-use crate::error::{SourceLocation, cayResult, codegen_error_at};
+use crate::miette_diagnostic::{SourceLocation, cayResult, codegen_error_at};
 use crate::types::{Type, TypeRegistry};
 use std::collections::HashMap;
 
@@ -274,7 +274,7 @@ impl IrBuilder {
     /// 在当前基本块中添加指令
     fn emit(&mut self, inst: IrInstruction) -> cayResult<()> {
         let block = self.current_block_mut().ok_or_else(|| {
-            crate::error::codegen_error_at(
+            crate::miette_diagnostic::codegen_error_at(
                 SourceLocation::default(),
                 "No current block".to_string(),
             )
@@ -286,7 +286,7 @@ impl IrBuilder {
     /// 设置当前块的终止指令
     fn set_terminator(&mut self, term: IrTerminator) -> cayResult<()> {
         let block = self.current_block_mut().ok_or_else(|| {
-            crate::error::codegen_error_at(
+            crate::miette_diagnostic::codegen_error_at(
                 SourceLocation::default(),
                 "No current block".to_string(),
             )
@@ -298,7 +298,7 @@ impl IrBuilder {
     /// 创建新基本块并设置为当前块
     fn new_block(&mut self, label: String) -> cayResult<()> {
         let func = self.current_function.as_mut().ok_or_else(|| {
-            crate::error::codegen_error_at(
+            crate::miette_diagnostic::codegen_error_at(
                 SourceLocation::default(),
                 "No current function".to_string(),
             )
@@ -851,7 +851,7 @@ impl IrBuilder {
         }
 
         if inline_ir.raw_lines.is_empty() {
-            return Err(crate::error::cayError::CodeGen {
+            return Err(crate::miette_diagnostic::cayError::CodeGen {
                 code: "E5004".to_string(),
                 file: None,
                 line: 0,
@@ -876,7 +876,7 @@ impl IrBuilder {
         let block =
             parser
                 .parse(&raw_text, &inputs, &[])
-                .map_err(|e| crate::error::cayError::CodeGen {
+                .map_err(|e| crate::miette_diagnostic::cayError::CodeGen {
                     code: "E5004".to_string(),
                     file: None,
                     line: 0,
@@ -1378,7 +1378,7 @@ impl IrBuilder {
                 .find(|ctx| ctx.label.as_deref() == Some(l.as_str()))
                 .map(|ctx| ctx.end_label.clone())
                 .ok_or_else(|| {
-                    crate::error::codegen_error_at(
+                    crate::miette_diagnostic::codegen_error_at(
                         loc.clone(),
                         format!("break label '{}' not found", l),
                     )
@@ -1388,7 +1388,7 @@ impl IrBuilder {
                 .last()
                 .map(|ctx| ctx.end_label.clone())
                 .ok_or_else(|| {
-                    crate::error::codegen_error_at(loc.clone(), "break outside loop".to_string())
+                    crate::miette_diagnostic::codegen_error_at(loc.clone(), "break outside loop".to_string())
                 })?
         };
         self.set_terminator(IrTerminator::Branch { target })?;
@@ -1403,7 +1403,7 @@ impl IrBuilder {
                 .find(|ctx| ctx.label.as_deref() == Some(l.as_str()))
                 .map(|ctx| ctx.cond_label.clone())
                 .ok_or_else(|| {
-                    crate::error::codegen_error_at(
+                    crate::miette_diagnostic::codegen_error_at(
                         loc.clone(),
                         format!("continue label '{}' not found", l),
                     )
@@ -1413,7 +1413,7 @@ impl IrBuilder {
                 .last()
                 .map(|ctx| ctx.cond_label.clone())
                 .ok_or_else(|| {
-                    crate::error::codegen_error_at(loc.clone(), "continue outside loop".to_string())
+                    crate::miette_diagnostic::codegen_error_at(loc.clone(), "continue outside loop".to_string())
                 })?
         };
         self.set_terminator(IrTerminator::Branch { target })?;
@@ -1449,7 +1449,7 @@ impl IrBuilder {
             Expr::ArrayCreation(arr) => self.build_array_creation(arr),
             Expr::ArrayAccess(arr) => self.build_array_access(arr),
             Expr::ArrayInit(init) => self.build_array_init(init),
-            _ => Err(crate::error::codegen_error_at(
+            _ => Err(crate::miette_diagnostic::codegen_error_at(
                 expr.location().clone(),
                 format!("Expression type not yet implemented in IR builder"),
             )),
@@ -1735,7 +1735,7 @@ impl IrBuilder {
                 }
             }
             _ => {
-                return Err(crate::error::codegen_error_at(
+                return Err(crate::miette_diagnostic::codegen_error_at(
                     unary.loc.clone(),
                     format!(
                         "Unary operator {:?} not yet implemented in IR builder",
@@ -1763,7 +1763,7 @@ impl IrBuilder {
                 Ok(())
             }
             Expr::ArrayAccess(arr) => self.build_array_assignment(arr, value),
-            _ => Err(crate::error::codegen_error_at(
+            _ => Err(crate::miette_diagnostic::codegen_error_at(
                 target.location().clone(),
                 "Complex assignment target not yet implemented in IR builder".to_string(),
             )),
@@ -1919,7 +1919,7 @@ impl IrBuilder {
                 }
             }
             _ => {
-                return Err(crate::error::codegen_error_at(
+                return Err(crate::miette_diagnostic::codegen_error_at(
                     call.loc.clone(),
                     "Complex callee not yet supported in IR builder".to_string(),
                 ));
@@ -2008,7 +2008,7 @@ impl IrBuilder {
                 self.build_array_assignment(arr, final_value.clone())?;
             }
             _ => {
-                return Err(crate::error::codegen_error_at(
+                return Err(crate::miette_diagnostic::codegen_error_at(
                     assign.loc.clone(),
                     "Complex assignment target not yet implemented in IR builder".to_string(),
                 ));
@@ -2115,7 +2115,7 @@ impl IrBuilder {
         }
 
         // 如果找不到字段，返回错误
-        Err(crate::error::codegen_error_at(
+        Err(crate::miette_diagnostic::codegen_error_at(
             member.loc.clone(),
             format!(
                 "Field '{}' not found in class '{}'",
@@ -2381,7 +2381,7 @@ impl IrBuilder {
             (IrType::Pointer(_), _) if to.is_integer() => Ok(IrCastKind::PtrToInt),
             (_, IrType::Pointer(_)) if from.is_integer() => Ok(IrCastKind::IntToPtr),
 
-            _ => Err(crate::error::codegen_error_at(
+            _ => Err(crate::miette_diagnostic::codegen_error_at(
                 loc,
                 format!(
                     "Cannot cast from {} to {}",

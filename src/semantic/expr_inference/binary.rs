@@ -7,7 +7,7 @@ use crate::types::Type;
 
 impl SemanticAnalyzer {
     /// 推断二元表达式类型
-    pub(crate) fn infer_binary_type(&mut self, bin: &BinaryExpr) -> crate::error::cayResult<Type> {
+    pub(crate) fn infer_binary_type(&mut self, bin: &BinaryExpr) -> crate::miette_diagnostic::cayResult<Type> {
         let left_type = self.infer_expr_type_internal(&bin.left)?;
         let right_type = self.infer_expr_type_internal(&bin.right)?;
 

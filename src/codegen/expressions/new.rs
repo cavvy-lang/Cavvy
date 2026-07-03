@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::error::cayResult;
+use crate::miette_diagnostic::cayResult;
 
 /// 将类型中的泛型参数（`GenericParam` 或裸 `Object("T")`）替换为具体类型实参。
 /// 用于将构造函数形参在 new 单态化时解析为具体类型。

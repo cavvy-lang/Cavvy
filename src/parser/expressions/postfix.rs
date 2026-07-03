@@ -7,7 +7,7 @@ use super::super::Parser;
 use super::assignment::parse_expression;
 use super::primary::parse_primary;
 use crate::ast::*;
-use crate::error::cayResult;
+use crate::miette_diagnostic::cayResult;
 
 /// 解析后缀表达式
 pub fn parse_postfix(parser: &mut Parser) -> cayResult<Expr> {

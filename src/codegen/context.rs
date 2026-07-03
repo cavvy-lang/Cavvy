@@ -274,7 +274,7 @@ pub struct IRGenerator {
     // 已生成的方法定义（避免重复生成）
     pub generated_methods: HashSet<String>,
     // 代码生成阶段收集的警告（使用 RefCell 允许在 &self 方法中修改）
-    pub warnings: std::cell::RefCell<Vec<crate::error::cayError>>,
+    pub warnings: std::cell::RefCell<Vec<crate::miette_diagnostic::cayError>>,
     // 类定义缓存（用于显式特化查找原始类）
     pub classes_cache: std::collections::HashMap<String, crate::ast::ClassDecl>,
     // 显式特化类型组合记录（基础类名 -> 特化类型参数列表集合）
@@ -640,7 +640,7 @@ impl IRGenerator {
     /// 从SourceLocation设置源位置
     /// 优先使用loc中的file字段，如果为None则使用传入的file参数
     /// 只有loc未携带原始文件时才回退到预处理器源映射
-    pub fn set_source_from_loc(&mut self, loc: &crate::error::SourceLocation, file: &str) {
+    pub fn set_source_from_loc(&mut self, loc: &crate::miette_diagnostic::SourceLocation, file: &str) {
         if let Some(loc_file) = &loc.file {
             self.source_file = normalize_source_file_path(loc_file);
             self.source_line = loc.line;

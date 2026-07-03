@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::error::{SourceLocation, cayResult, codegen_error_at};
+use crate::miette_diagnostic::{SourceLocation, cayResult, codegen_error_at};
 
 /// 检查类型是否为整数类型（不包括指针）
 fn is_integer_type(ty: &str) -> bool {

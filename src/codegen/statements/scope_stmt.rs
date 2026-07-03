@@ -5,7 +5,7 @@
 
 use crate::ast::ScopeStmt;
 use crate::codegen::context::IRGenerator;
-use crate::error::cayResult;
+use crate::miette_diagnostic::cayResult;
 
 /// 为 scope 语句生成 LLVM IR 代码
 ///
@@ -84,7 +84,7 @@ impl IRGenerator {
 mod tests {
     use super::*;
     use crate::ast::{Block, ScopeStmt, Stmt};
-    use crate::error::SourceLocation;
+    use crate::miette_diagnostic::SourceLocation;
 
     /// 测试 scope 代码生成的基本结构
     #[test]

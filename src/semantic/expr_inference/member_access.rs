@@ -10,7 +10,7 @@ impl SemanticAnalyzer {
     pub(crate) fn infer_member_access_type(
         &mut self,
         member: &MemberAccessExpr,
-    ) -> crate::error::cayResult<Type> {
+    ) -> crate::miette_diagnostic::cayResult<Type> {
         // 检查是否是静态字段或方法访问: ClassName.fieldName 或 ClassName.methodName
         if let Expr::Identifier(class_name) = &*member.object {
             let raw_class_name = class_name.as_ref();

@@ -97,8 +97,8 @@ impl IRGenerator {
                         _ => self.type_to_llvm(actual_type),
                     }
                 } else {
-                    let warning = crate::error::codegen_warning_at(
-                        crate::error::SourceLocation::new(Some(self.source_file.clone()), self.source_line, self.source_column),
+                    let warning = crate::miette_diagnostic::codegen_warning_at(
+                        crate::miette_diagnostic::SourceLocation::new(Some(self.source_file.clone()), self.source_line, self.source_column),
                         format!("泛型类型参数 '{}' 未在单态化上下文中解析，将使用 i8*。", param_name)
                     );
                     self.warnings.borrow_mut().push(warning);

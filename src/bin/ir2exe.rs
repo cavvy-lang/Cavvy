@@ -1,4 +1,4 @@
-use cavvy::error::{print_miette_error, print_tool_error, print_warning};
+use cavvy::miette_diagnostic::{print_miette_error, print_tool_error, print_warning};
 use cavvy::ir2exe_lib::{
     IRSourceMap, Ir2ExeOptions, compile_ir_to_exe, normalize_path, parse_source_map_from_ir,
 };

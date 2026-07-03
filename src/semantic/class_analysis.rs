@@ -2,7 +2,7 @@
 
 use super::analyzer::SemanticAnalyzer;
 use crate::ast::{ClassMember, MethodDecl, Modifier, Program};
-use crate::error::{cayResult, semantic_error, semantic_error_with_file};
+use crate::miette_diagnostic::{cayResult, semantic_error, semantic_error_with_file};
 use crate::types::{ClassInfo, FieldInfo, MethodInfo, ParameterInfo, Type};
 
 impl SemanticAnalyzer {
@@ -972,7 +972,7 @@ impl SemanticAnalyzer {
 
                         // 获取源映射后的位置
                         let (file, line) = self.resolve_file_and_line(method.loc.line);
-                        let loc = crate::error::SourceLocation {
+                        let loc = crate::miette_diagnostic::SourceLocation {
                             file,
                             line,
                             column: method.loc.column,
@@ -1005,7 +1005,7 @@ impl SemanticAnalyzer {
                                 class_decl.namespace_path.join("::"),
                                 method.name
                             );
-                            let ns_loc = crate::error::SourceLocation {
+                            let ns_loc = crate::miette_diagnostic::SourceLocation {
                                 line: method.loc.line,
                                 column: method.loc.column,
                                 ..loc

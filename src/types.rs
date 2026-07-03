@@ -880,7 +880,7 @@ pub struct TypeRegistry {
     pub class_namespace_paths: HashMap<String, Vec<String>>,
     /// @FreeFunction 导出的函数名 -> (类名, 方法信息, 源位置)
     /// 用于检测跨类同名冲突
-    pub free_functions: HashMap<String, (String, MethodInfo, crate::error::SourceLocation)>,
+    pub free_functions: HashMap<String, (String, MethodInfo, crate::miette_diagnostic::SourceLocation)>,
     /// 当前命名空间上下文 (由语义分析器在处理每个类时设置)
     pub current_namespace: Vec<String>,
 }
@@ -1244,10 +1244,10 @@ impl TypeRegistry {
         file: Option<String>,
         line: usize,
         column: usize,
-    ) -> crate::error::cayResult<()> {
+    ) -> crate::miette_diagnostic::cayResult<()> {
         let name = class_info.name.clone();
         if self.classes.contains_key(&name) {
-            return Err(crate::error::cayError::DuplicateDefinition {
+            return Err(crate::miette_diagnostic::cayError::DuplicateDefinition {
                 file,
                 line,
                 column,
@@ -1265,10 +1265,10 @@ impl TypeRegistry {
         file: Option<String>,
         line: usize,
         column: usize,
-    ) -> crate::error::cayResult<()> {
+    ) -> crate::miette_diagnostic::cayResult<()> {
         let name = interface_info.name.clone();
         if self.interfaces.contains_key(&name) {
-            return Err(crate::error::cayError::DuplicateDefinition {
+            return Err(crate::miette_diagnostic::cayError::DuplicateDefinition {
                 file,
                 line,
                 column,
@@ -1336,10 +1336,10 @@ impl TypeRegistry {
         file: Option<String>,
         line: usize,
         column: usize,
-    ) -> crate::error::cayResult<()> {
+    ) -> crate::miette_diagnostic::cayResult<()> {
         let name = struct_info.name.clone();
         if self.structs.contains_key(&name) || self.classes.contains_key(&name) {
-            return Err(crate::error::cayError::DuplicateDefinition {
+            return Err(crate::miette_diagnostic::cayError::DuplicateDefinition {
                 file,
                 line,
                 column,
@@ -1358,13 +1358,13 @@ impl TypeRegistry {
         file: Option<String>,
         line: usize,
         column: usize,
-    ) -> crate::error::cayResult<()> {
+    ) -> crate::miette_diagnostic::cayResult<()> {
         let name = enum_info.name.clone();
         if self.enums.contains_key(&name)
             || self.classes.contains_key(&name)
             || self.structs.contains_key(&name)
         {
-            return Err(crate::error::cayError::DuplicateDefinition {
+            return Err(crate::miette_diagnostic::cayError::DuplicateDefinition {
                 file,
                 line,
                 column,
@@ -1393,11 +1393,11 @@ impl TypeRegistry {
         func_name: &str,
         class_name: &str,
         method_info: MethodInfo,
-        loc: crate::error::SourceLocation,
-    ) -> crate::error::cayResult<()> {
+        loc: crate::miette_diagnostic::SourceLocation,
+    ) -> crate::miette_diagnostic::cayResult<()> {
         if let Some((existing_class, _, existing_loc)) = self.free_functions.get(func_name) {
             if existing_class != class_name {
-                return Err(crate::error::cayError::DuplicateDefinition {
+                return Err(crate::miette_diagnostic::cayError::DuplicateDefinition {
                     file: loc.file.clone(),
                     line: loc.line,
                     column: loc.column,

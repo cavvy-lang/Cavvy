@@ -5,7 +5,7 @@
 use crate::ast::*;
 use crate::codegen::bridge::{InlineIrBridge, InlineIrResult};
 use crate::codegen::context::IRGenerator;
-use crate::error::cayResult;
+use crate::miette_diagnostic::cayResult;
 
 impl IRGenerator {
     /// 生成单个语句代码

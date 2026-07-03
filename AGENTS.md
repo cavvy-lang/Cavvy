@@ -28,6 +28,7 @@ cargo test --release --verbose
 ```
 
 测试分布在两个位置：
+
 - `src/lib.rs` —— 少量内联的 `#[cfg(test)]` 单元测试（词法分析器、解析器、预处理器）。
 - `tests/*.rs` —— 集成测试，使用 release 构建的 `cayc` 编译 `examples/` 下的 `.cay` 文件，运行输出的 `.exe`，并断言 stdout。**如果未先构建 release，这些测试将全部失败。**
 
@@ -37,20 +38,20 @@ cargo test --release --verbose
 
 ## 二进制文件（11 个，而非 README 声称的 6 个）
 
-| 二进制文件 | 用途 |
-|---|---|
-| `cayc` | 一站式：`.cay` → `.exe`（内部调用 clang） |
-| `cay-ir` | `.cay` → `.ll`（LLVM IR 文本） |
-| `ir2exe` | `.ll` → `.exe` |
-| `cay-check` | 仅进行语法 + 语义检查（不生成代码） |
-| `cay-run` | 编译 + 运行一步完成 |
-| `cay-rcpl` | 交互式环境（RCPL） |
-| `cay-bcgen` | `.caybc` 字节码生成 |
-| `cay-lsp` | LSP 语言服务器 |
-| `cavly` | 包管理器 |
-| `cay-dt` | 文档工具 |
-| `cay-dp` | 依赖工具 |
-| `cay-pre` | 独立预处理器 |
+| 二进制文件    | 用途                                           |
+| ------------- | ---------------------------------------------- |
+| `cayc`      | 一站式：`.cay` → `.exe`（内部调用 clang） |
+| `cay-ir`    | `.cay` → `.ll`（LLVM IR 文本）            |
+| `ir2exe`    | `.ll` → `.exe`                            |
+| `cay-check` | 仅进行语法 + 语义检查（不生成代码）            |
+| `cay-run`   | 编译 + 运行一步完成                            |
+| `cay-rcpl`  | 交互式环境（RCPL）                             |
+| `cay-bcgen` | `.caybc` 字节码生成                          |
+| `cay-lsp`   | LSP 语言服务器                                 |
+| `cavly`     | 包管理器                                       |
+| `cay-dt`    | 文档工具                                       |
+| `cay-dp`    | 依赖工具                                       |
+| `cay-pre`   | 独立预处理器                                   |
 
 所有入口点位于 `src/bin/*.rs`。它们都依赖库 crate（`src/lib.rs`，crate 名 `cavvy`）。
 
@@ -67,6 +68,7 @@ cargo test --release --verbose
 ```
 
 `src/` 中的关键模块：
+
 - `ast.rs` —— 所有 AST 节点类型
 - `types.rs` —— 类型系统（Type 枚举、ClassInfo、MethodInfo）
 - `error.rs` —— `cayError` 枚举（thiserror）、`cayResult<T>`
@@ -82,11 +84,11 @@ cargo test --release --verbose
 
 ## 错误处理约定
 
-- `cayError`（位于 `src/error.rs`）是编译器流水线的**唯一错误类型**。使用 `thiserror::Error` 定义。每个变体都携带 `suggestion: String` 字段，用于面向用户的帮助文本。
+- `cayError`（位于 `src/miette_diagnostic.rs`）是编译器流水线的**唯一错误类型**。使用 `thiserror::Error` 定义。每个变体都携带 `suggestion: String` 字段，用于面向用户的帮助文本。
 - `cayResult<T> = Result<T, cayError>` —— 在整个编译器中使用。
 - `miette` 仅用于**显示** —— 将 `cayError` 转换为美观的 CLI 输出。请勿在编译器内部使用 miette 类型。
 - `anyhow` 被列为依赖项，但在核心编译器中**未使用**。请勿引入它。
-- 错误报告函数：`print_miette_error()`、`print_error_with_context()`、`print_tool_error()`、`print_warning()` —— 均从 `cavvy::error` 导入。
+- 错误报告函数：`print_miette_error()`、`print_error_with_context()`、`print_tool_error()`、`print_warning()` —— 均从 `cavvy::miette_diagnostic` 导入。
 
 ## 源码约定
 
@@ -118,11 +120,7 @@ cargo test --release --verbose
 ## 已知限制与维护注意
 
 1. **接口方法动态分发**：已通过运行时对象 vtable 支持。`Animal a1 = new Dog(); a1.speak(); Animal a2 = new Cat(); a2.speak();` 应按运行时类型调用 `Dog` 和 `Cat` 的实现。修改接口调用、vtable 布局或方法名改编时，应运行 `cargo test --release --test interface_tests -- --nocapture`。
-
 2. **Lambda 闭包**：Lambda 语法已解析，但闭包捕获环境变量尚未完整实现。
-
 3. **泛型单态化**：语法解析支持 `<T>`，但代码生成尚未实现单态化。
-
 4. **private 访问控制**：编译器不强制执行 private 访问修饰符。
-
 5. **数组初始化语法**：不支持 `new Type[] { 1, 2, 3 }` 语法，需要先声明大小再赋值。

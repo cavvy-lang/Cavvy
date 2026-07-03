@@ -2,7 +2,7 @@ use cavvy::ast::*;
 use cavvy::bytecode::constant_pool::ConstantPool;
 use cavvy::bytecode::instructions::{Instruction, Opcode};
 use cavvy::bytecode::{BytecodeModule, CodeBody, obfuscator, serializer};
-use cavvy::error::{print_miette_error, print_tool_error, print_warning};
+use cavvy::miette_diagnostic::{print_miette_error, print_tool_error, print_warning};
 use std::env;
 use std::fs;
 use std::path::Path;

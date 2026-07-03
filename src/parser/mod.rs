@@ -10,8 +10,8 @@ mod types;
 mod utils;
 
 use crate::ast::Program;
-use crate::diagnostic::DiagnosticCollector;
-use crate::error::cayResult;
+use crate::miette_diagnostic::DiagnosticCollector;
+use crate::miette_diagnostic::cayResult;
 use crate::lexer::TokenWithLocation;
 
 /// 语法分析器
@@ -422,11 +422,11 @@ impl Parser {
         utils::current_token(self)
     }
 
-    fn current_loc(&self) -> crate::error::SourceLocation {
+    fn current_loc(&self) -> crate::miette_diagnostic::SourceLocation {
         utils::current_loc(self)
     }
 
-    fn previous_loc(&self) -> crate::error::SourceLocation {
+    fn previous_loc(&self) -> crate::miette_diagnostic::SourceLocation {
         utils::previous_loc(self)
     }
 
@@ -458,7 +458,7 @@ impl Parser {
         utils::consume_identifier(self, message)
     }
 
-    fn error(&self, message: &str) -> crate::error::cayError {
+    fn error(&self, message: &str) -> crate::miette_diagnostic::cayError {
         utils::error(self, message)
     }
 
@@ -570,7 +570,7 @@ impl Parser {
     /// 解析顶层函数的主体部分
     fn parse_top_level_function_body(
         &mut self,
-        loc: crate::error::SourceLocation,
+        loc: crate::miette_diagnostic::SourceLocation,
         modifiers: Vec<crate::ast::Modifier>,
     ) -> cayResult<crate::ast::TopLevelFunction> {
         // 解析返回类型（支持函数指针类型）
@@ -694,7 +694,7 @@ impl Parser {
     /// 解析 fn 关键字顶层函数的主体部分
     fn parse_top_level_fn_body(
         &mut self,
-        loc: crate::error::SourceLocation,
+        loc: crate::miette_diagnostic::SourceLocation,
         modifiers: Vec<crate::ast::Modifier>,
     ) -> cayResult<crate::ast::TopLevelFunction> {
         self.consume(

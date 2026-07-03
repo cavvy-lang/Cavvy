@@ -5,8 +5,8 @@ use super::expressions::parse_expression;
 use super::statements::{parse_block, parse_statement};
 use super::types::{is_type_token, parse_type};
 use crate::ast::*;
-use crate::error::SourceLocation;
-use crate::error::cayResult;
+use crate::miette_diagnostic::SourceLocation;
+use crate::miette_diagnostic::cayResult;
 use crate::lexer::Token;
 use crate::types::{InterfaceInfo, ParameterInfo, Type};
 

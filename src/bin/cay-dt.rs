@@ -1,7 +1,7 @@
 // cay-dt: Cavvy Debugger - Token PreViewer
 // Token 预览工具 - 显示源代码的词法分析结果
 
-use cavvy::diagnostic::DiagnosticCollector;
+use cavvy::miette_diagnostic::DiagnosticCollector;
 use cavvy::lexer::{TokenWithLocation, lex_with_diagnostics};
 use cavvy::preprocessor::preprocess;
 use std::env;
@@ -311,9 +311,9 @@ fn get_token_value(token: &cavvy::lexer::Token) -> String {
     }
 }
 
-fn is_error(severity: &cavvy::diagnostic::Severity) -> bool {
+fn is_error(severity: &cavvy::miette_diagnostic::Severity) -> bool {
     matches!(
         severity,
-        cavvy::diagnostic::Severity::Error | cavvy::diagnostic::Severity::Fatal
+        cavvy::miette_diagnostic::Severity::Error | cavvy::miette_diagnostic::Severity::Fatal
     )
 }

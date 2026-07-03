@@ -1,7 +1,7 @@
 //! 类型解析
 
 use super::Parser;
-use crate::error::cayResult;
+use crate::miette_diagnostic::cayResult;
 use crate::types::Type;
 
 /// 解析类型（支持多维数组和指针，以及类型别名）

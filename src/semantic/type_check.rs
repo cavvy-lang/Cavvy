@@ -3,7 +3,7 @@
 use super::analyzer::SemanticAnalyzer;
 use super::symbol_table::SemanticSymbolInfo;
 use crate::ast::*;
-use crate::error::{SourceLocation, cayResult};
+use crate::miette_diagnostic::{SourceLocation, cayResult};
 use crate::types::{ParameterInfo, Type};
 
 impl SemanticAnalyzer {
@@ -232,7 +232,7 @@ impl SemanticAnalyzer {
         Ok(())
     }
 
-    fn type_check_condition(&mut self, condition: &Expr, loc: &crate::error::SourceLocation) {
+    fn type_check_condition(&mut self, condition: &Expr, loc: &crate::miette_diagnostic::SourceLocation) {
         let error_count_before = self.errors.len();
         let condition_type = self.infer_expr_type_collect_errors(condition);
         if self.errors.len() == error_count_before && condition_type != Type::Bool {
@@ -381,7 +381,7 @@ fn validate_iterable(&mut self, iterable_type: &Type, loc: &SourceLocation) {
                     let loc = if let Some(e) = expr {
                         self.get_expr_source_location(e)
                     } else {
-                        crate::error::SourceLocation::new(self.current_file.clone(), 0, 0)
+                        crate::miette_diagnostic::SourceLocation::new(self.current_file.clone(), 0, 0)
                     };
                     self.errors.push(self.create_error_info_with_file(
                         loc.file,
@@ -398,7 +398,7 @@ fn validate_iterable(&mut self, iterable_type: &Type, loc: &SourceLocation) {
                         let loc = if let Some(e) = expr {
                             self.get_expr_source_location(e)
                         } else {
-                            crate::error::SourceLocation::new(self.current_file.clone(), 0, 0)
+                            crate::miette_diagnostic::SourceLocation::new(self.current_file.clone(), 0, 0)
                         };
                         self.errors.push(self.create_error_info_with_file(
                             loc.file,

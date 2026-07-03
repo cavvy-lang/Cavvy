@@ -3,7 +3,7 @@
 //! 处理可变参数的打包、数组创建和元素存储。
 
 use crate::codegen::context::IRGenerator;
-use crate::error::cayResult;
+use crate::miette_diagnostic::cayResult;
 
 impl IRGenerator {
     /// 将可变参数打包成数组（支持非末尾可变参数）

@@ -2,7 +2,7 @@
 
 use super::symbol_table::{SemanticSymbolInfo, SemanticSymbolTable};
 use crate::ast::*;
-use crate::error::{cayResult, semantic_error_with_file};
+use crate::miette_diagnostic::{cayResult, semantic_error_with_file};
 use crate::types::{ClassInfo, FieldInfo, MethodInfo, ParameterInfo, Type, TypeRegistry};
 
 /// 语义分析错误信息（包含位置）
@@ -151,9 +151,9 @@ impl SemanticAnalyzer {
 
         if !self.errors.is_empty() {
             // 将所有错误转换为 cayError 并返回 MultipleErrors
-            let mut cay_errors: Vec<crate::error::cayError> = Vec::new();
+            let mut cay_errors: Vec<crate::miette_diagnostic::cayError> = Vec::new();
             for err in &self.errors {
-                cay_errors.push(crate::error::cayError::Semantic {
+                cay_errors.push(crate::miette_diagnostic::cayError::Semantic {
                     file: err.file.clone(),
                     line: err.line,
                     column: err.column,
@@ -161,7 +161,7 @@ impl SemanticAnalyzer {
                     suggestion: "请检查代码语义".to_string(),
                 });
             }
-            return Err(crate::error::cayError::MultipleErrors { errors: cay_errors });
+            return Err(crate::miette_diagnostic::cayError::MultipleErrors { errors: cay_errors });
         }
 
         Ok(program)
@@ -208,7 +208,7 @@ impl SemanticAnalyzer {
         if !top_level_enabled {
             for func in &program.top_level_functions {
                 if func.name != "main" {
-                    return Err(crate::error::semantic_error_with_file(
+                    return Err(crate::miette_diagnostic::semantic_error_with_file(
                         func.loc.file.clone(),
                         func.loc.line,
                         func.loc.column,
@@ -224,7 +224,7 @@ impl SemanticAnalyzer {
         for func in &program.top_level_functions {
             // 检查函数名是否已存在（在当前作用域）
             if self.symbol_table.lookup_current(&func.name).is_some() {
-                return Err(crate::error::semantic_error_with_file(
+                return Err(crate::miette_diagnostic::semantic_error_with_file(
                     func.loc.file.clone(),
                     func.loc.line,
                     func.loc.column,
@@ -298,7 +298,7 @@ impl SemanticAnalyzer {
         line: usize,
         column: usize,
         message: impl Into<String>,
-    ) -> crate::error::cayError {
+    ) -> crate::miette_diagnostic::cayError {
         let msg = message.into();
         semantic_error_with_file(self.current_file.clone(), line, column, msg)
     }
@@ -374,7 +374,7 @@ impl SemanticAnalyzer {
     }
 
     /// 从表达式中提取完整的源代码位置（包括文件路径）
-    pub fn get_expr_source_location(&self, expr: &Expr) -> crate::error::SourceLocation {
+    pub fn get_expr_source_location(&self, expr: &Expr) -> crate::miette_diagnostic::SourceLocation {
         match expr {
             Expr::Literal(e) => e.loc.clone(),
             Expr::Identifier(e) => e.loc.clone(),

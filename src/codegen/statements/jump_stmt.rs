@@ -3,7 +3,7 @@
 //! 处理break和continue语句的代码生成。
 
 use crate::codegen::context::IRGenerator;
-use crate::error::{SourceLocation, cayResult, codegen_error_at};
+use crate::miette_diagnostic::{SourceLocation, cayResult, codegen_error_at};
 
 impl IRGenerator {
     /// 生成 break 语句代码

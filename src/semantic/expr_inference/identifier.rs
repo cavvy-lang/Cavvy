@@ -3,7 +3,7 @@
 use super::super::analyzer::SemanticAnalyzer;
 use super::helpers::semantic_error_at_loc;
 use crate::ast::*;
-use crate::error::undefined_identifier_error_with_file;
+use crate::miette_diagnostic::undefined_identifier_error_with_file;
 use crate::types::Type;
 
 impl SemanticAnalyzer {
@@ -14,9 +14,9 @@ impl SemanticAnalyzer {
             Ok(ty) => ty,
             Err(e) => {
                 // 将错误转换为 SemanticErrorInfo 并收集
-                if let Some((line, column)) = crate::error::get_error_location(&e) {
-                    let message = crate::error::get_error_message(&e);
-                    let file = crate::error::get_error_file(&e);
+                if let Some((line, column)) = crate::miette_diagnostic::get_error_location(&e) {
+                    let message = crate::miette_diagnostic::get_error_message(&e);
+                    let file = crate::miette_diagnostic::get_error_file(&e);
                     self.errors
                         .push(self.create_error_info_with_file(file, line, column, message));
                 }
@@ -26,7 +26,7 @@ impl SemanticAnalyzer {
     }
 
     /// 推断表达式类型（内部实现）
-    pub(crate) fn infer_expr_type_internal(&mut self, expr: &Expr) -> crate::error::cayResult<Type> {
+    pub(crate) fn infer_expr_type_internal(&mut self, expr: &Expr) -> crate::miette_diagnostic::cayResult<Type> {
         match expr {
             Expr::Literal(lit_expr) => match &lit_expr.value {
                 LiteralValue::Int32(_) => Ok(Type::Int32),
@@ -427,7 +427,7 @@ impl SemanticAnalyzer {
         &mut self,
         member: &MemberAccessExpr,
         call: &CallExpr,
-    ) -> crate::error::cayResult<Option<Type>> {
+    ) -> crate::miette_diagnostic::cayResult<Option<Type>> {
         let raw_class_name = match &*member.object {
             Expr::Identifier(class_name) => class_name.as_ref().to_string(),
             _ => return Ok(None),

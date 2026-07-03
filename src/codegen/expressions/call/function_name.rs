@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::error::{cayResult, codegen_error_at};
+use crate::miette_diagnostic::{cayResult, codegen_error_at};
 
 impl IRGenerator {
     /// 生成函数名 - 优先使用类型注册表中方法定义的参数类型，支持继承

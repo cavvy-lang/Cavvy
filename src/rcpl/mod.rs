@@ -123,7 +123,7 @@ impl Rcpl {
                     if update_context {
                         self.rollback_context(&input_type);
                     }
-                    crate::error::print_miette_error(
+                    crate::miette_diagnostic::print_miette_error(
                         "cavvy::runtime_error",
                         &format!("{}", e),
                         Some("请检查代码语法和语义"),

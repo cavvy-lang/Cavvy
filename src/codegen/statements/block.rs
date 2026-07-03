@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::error::cayResult;
+use crate::miette_diagnostic::cayResult;
 
 impl IRGenerator {
     /// 生成语句块代码（带作用域管理）

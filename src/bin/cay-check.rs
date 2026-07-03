@@ -1,4 +1,4 @@
-use cavvy::error::{
+use cavvy::miette_diagnostic::{
     cayError, get_error_help, get_error_location, get_error_message, print_error_with_context,
 };
 use cavvy::lexer;

@@ -1,5 +1,5 @@
 use cavvy::Compiler;
-use cavvy::error::print_miette_error;
+use cavvy::miette_diagnostic::print_miette_error;
 use std::env;
 use std::fs;
 use std::process;

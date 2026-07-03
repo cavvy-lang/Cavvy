@@ -1,4 +1,4 @@
-use crate::error::SourceLocation;
+use crate::miette_diagnostic::SourceLocation;
 use crate::types::{ClassInfo, MethodInfo, ParameterInfo, Type};
 use std::fmt;
 use std::hash::{Hash, Hasher};

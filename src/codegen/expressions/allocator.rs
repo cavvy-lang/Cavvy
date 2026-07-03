@@ -4,7 +4,7 @@
 
 use crate::ast::{AllocExpr, DeallocExpr};
 use crate::codegen::context::IRGenerator;
-use crate::error::cayResult;
+use crate::miette_diagnostic::cayResult;
 
 impl IRGenerator {
     /// 生成内存分配表达式的 LLVM IR
@@ -98,7 +98,7 @@ impl IRGenerator {
 mod tests {
     use super::*;
     use crate::ast::{Expr, LiteralExpr, LiteralValue};
-    use crate::error::SourceLocation;
+    use crate::miette_diagnostic::SourceLocation;
 
     /// 测试分配表达式结构
     #[test]

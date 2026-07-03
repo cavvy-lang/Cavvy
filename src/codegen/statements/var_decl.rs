@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::error::{cayResult, semantic_error_with_file};
+use crate::miette_diagnostic::{cayResult, semantic_error_with_file};
 use crate::types::Type;
 
 impl IRGenerator {
@@ -699,7 +699,7 @@ impl IRGenerator {
                             ));
                         } else {
                             // 类型不兼容，报错
-                            return Err(crate::error::codegen_error_at(
+                            return Err(crate::miette_diagnostic::codegen_error_at(
                                 var.loc.clone(),
                                 format!(
                                     "Cannot unbox i8* to {} in variable initialization '{}'",
@@ -709,7 +709,7 @@ impl IRGenerator {
                         }
                     } else {
                         // 类型不兼容，报错
-                        return Err(crate::error::codegen_error_at(
+                        return Err(crate::miette_diagnostic::codegen_error_at(
                             var.loc.clone(),
                             format!(
                                 "Cannot convert {} to {} in variable initialization '{}'",

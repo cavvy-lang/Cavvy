@@ -1,8 +1,8 @@
 //! 表达式类型推断辅助函数
 
 use super::super::analyzer::SemanticAnalyzer;
-use crate::error::{semantic_error_with_file, SourceLocation};
-use crate::error::cayError;
+use crate::miette_diagnostic::{semantic_error_with_file, SourceLocation};
+use crate::miette_diagnostic::cayError;
 
 /// 辅助函数：根据SourceLocation创建语义错误
 pub fn semantic_error_at_loc(
@@ -35,7 +35,7 @@ pub fn check_member_access(
     target_class: &str,
     type_registry: &crate::types::TypeRegistry,
     loc: &SourceLocation,
-) -> crate::error::cayResult<()> {
+) -> crate::miette_diagnostic::cayResult<()> {
     // 公开成员总是可以访问
     if is_public {
         return Ok(());

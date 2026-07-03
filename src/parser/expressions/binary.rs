@@ -5,7 +5,7 @@
 use super::super::Parser;
 use super::unary::parse_unary;
 use crate::ast::*;
-use crate::error::cayResult;
+use crate::miette_diagnostic::cayResult;
 
 /// 解析逻辑或表达式
 pub fn parse_or(parser: &mut Parser) -> cayResult<Expr> {

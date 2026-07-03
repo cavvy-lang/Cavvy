@@ -14,7 +14,7 @@
 //! - 预处理在词法分析之前执行，生成纯源代码
 //! - 生成 #source <file> <line> 标记以支持源映射
 
-use crate::error::{cayError, cayResult};
+use crate::miette_diagnostic::{cayError, cayResult};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 

@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::error::{cayResult, codegen_error_at};
+use crate::miette_diagnostic::{cayResult, codegen_error_at};
 use crate::types::Type;
 
 impl IRGenerator {
@@ -36,7 +36,7 @@ impl IRGenerator {
         &mut self,
         element_type: &Type,
         size_expr: &Expr,
-        loc: &crate::error::SourceLocation,
+        loc: &crate::miette_diagnostic::SourceLocation,
     ) -> cayResult<String> {
         // 生成数组大小表达式
         let size_val_expr = self.generate_expression(size_expr)?;
@@ -213,7 +213,7 @@ impl IRGenerator {
         &mut self,
         element_type: &Type,
         sizes: &[Expr],
-        loc: &crate::error::SourceLocation,
+        loc: &crate::miette_diagnostic::SourceLocation,
     ) -> cayResult<String> {
         // 多维数组实现：分配一个指针数组，每个指针指向子数组
         // 例如 new int[3][4][5]:

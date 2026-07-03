@@ -485,7 +485,7 @@ impl CavvyLanguageServer {
         &self,
         content: &str,
         file_path: &str,
-    ) -> std::result::Result<(String, preprocessor::SourceMap), cavvy::error::cayError> {
+    ) -> std::result::Result<(String, preprocessor::SourceMap), cavvy::miette_diagnostic::cayError> {
         let base_dir = Path::new(file_path)
             .parent()
             .map(|p| p.to_path_buf())
@@ -957,8 +957,8 @@ impl CavvyLanguageServer {
 }
 
 /// 将错误转换为 LSP 诊断信息
-fn error_to_diagnostic(error: &cavvy::error::cayError, source: &str) -> Option<Diagnostic> {
-    use cavvy::error::cayError;
+fn error_to_diagnostic(error: &cavvy::miette_diagnostic::cayError, source: &str) -> Option<Diagnostic> {
+    use cavvy::miette_diagnostic::cayError;
 
     let (message, line, column) = match error {
         cayError::Lexer {
@@ -1047,12 +1047,12 @@ fn error_to_diagnostic(error: &cavvy::error::cayError, source: &str) -> Option<D
 
 /// 将错误转换为 LSP 诊断信息（带源映射支持）
 fn error_to_diagnostic_with_source_map(
-    error: &cavvy::error::cayError,
+    error: &cavvy::miette_diagnostic::cayError,
     _source: &str,
     source_map: &preprocessor::SourceMap,
     default_file: &str,
 ) -> Option<Diagnostic> {
-    use cavvy::error::cayError;
+    use cavvy::miette_diagnostic::cayError;
 
     let (message, line, column) = match error {
         cayError::Lexer {

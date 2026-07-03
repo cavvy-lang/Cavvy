@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::error::{cayResult, codegen_error_at};
+use crate::miette_diagnostic::{cayResult, codegen_error_at};
 
 impl IRGenerator {
     /// 生成 extern 函数调用
@@ -17,7 +17,7 @@ impl IRGenerator {
         &mut self,
         func_name: &str,
         args: &[Expr],
-        loc: &crate::error::SourceLocation,
+        loc: &crate::miette_diagnostic::SourceLocation,
     ) -> cayResult<String> {
         // 特殊处理运行时函数 __cay_buffer_to_string
         // 这个函数在运行时模块中已经定义，不需要从 extern 声明中查找
@@ -164,7 +164,7 @@ impl IRGenerator {
     pub fn generate_buffer_to_string_call(
         &mut self,
         args: &[Expr],
-        loc: &crate::error::SourceLocation,
+        loc: &crate::miette_diagnostic::SourceLocation,
     ) -> cayResult<String> {
         if args.len() != 2 {
             return Err(codegen_error_at(

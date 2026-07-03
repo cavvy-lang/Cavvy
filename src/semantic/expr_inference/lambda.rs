@@ -7,7 +7,7 @@ use super::super::symbol_table::SemanticSymbolInfo;
 
 impl SemanticAnalyzer {
     /// 推断 Lambda 表达式类型
-    pub(crate) fn infer_lambda_type(&mut self, lambda: &LambdaExpr) -> crate::error::cayResult<Type> {
+    pub(crate) fn infer_lambda_type(&mut self, lambda: &LambdaExpr) -> crate::miette_diagnostic::cayResult<Type> {
         // Lambda 表达式: (params) -> { body }
         // 创建新的作用域
         self.symbol_table.enter_scope();

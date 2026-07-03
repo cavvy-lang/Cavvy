@@ -7,7 +7,7 @@ use super::super::types::is_type_token;
 use super::assignment::parse_expression;
 use super::lambda::try_parse_lambda;
 use crate::ast::*;
-use crate::error::cayResult;
+use crate::miette_diagnostic::cayResult;
 use crate::types::Type;
 
 /// 解析基本表达式
@@ -438,7 +438,7 @@ pub fn parse_primary(parser: &mut Parser) -> cayResult<Expr> {
 /// 解析 new 表达式（支持类创建和多维数组创建）
 pub fn parse_new_expression(
     parser: &mut Parser,
-    loc: crate::error::SourceLocation,
+    loc: crate::miette_diagnostic::SourceLocation,
 ) -> cayResult<Expr> {
     // 首先尝试解析类型
     if is_type_token(parser) {

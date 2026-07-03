@@ -3,12 +3,12 @@
 use super::super::analyzer::SemanticAnalyzer;
 use super::helpers::semantic_error_at_loc;
 use crate::ast::*;
-use crate::error::semantic_error;
+use crate::miette_diagnostic::semantic_error;
 use crate::types::Type;
 
 impl SemanticAnalyzer {
     /// 推断函数调用类型
-    pub(crate) fn infer_call_type(&mut self, call: &CallExpr) -> crate::error::cayResult<Type> {
+    pub(crate) fn infer_call_type(&mut self, call: &CallExpr) -> crate::miette_diagnostic::cayResult<Type> {
         // 首先处理标识符调用（内置函数、extern函数、方法调用等）
         // 这需要在函数指针检查之前，因为函数指针变量也是标识符
         // 但我们需要先检查是否是已知的函数名

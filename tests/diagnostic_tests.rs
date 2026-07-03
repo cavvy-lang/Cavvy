@@ -2,7 +2,7 @@
 //!
 //! 测试新的错误诊断系统，包括错误代码、多错误收集和友好的错误信息
 
-use cavvy::diagnostic::*;
+use cavvy::miette_diagnostic::*;
 use cavvy::lexer::{lex, lex_with_diagnostics};
 use cavvy::parser::parse;
 

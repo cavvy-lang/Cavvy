@@ -1,6 +1,6 @@
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::error::cayResult;
+use crate::miette_diagnostic::cayResult;
 use crate::types::Type;
 
 /// 泛型特化：替换类型中的泛型参数为实际类型
@@ -1107,7 +1107,7 @@ impl IRGenerator {
         let base_class = match self.classes_cache.get(&spec.base_name) {
             Some(c) => c.clone(),
             None => {
-                return Err(crate::error::codegen_error_at(
+                return Err(crate::miette_diagnostic::codegen_error_at(
                     spec.loc.clone(),
                     format!("找不到显式特化的基础类 '{}'", spec.base_name)
                 ));

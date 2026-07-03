@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::error::{cayResult, codegen_error_at};
+use crate::miette_diagnostic::{cayResult, codegen_error_at};
 
 impl IRGenerator {
     /// 提升整数操作数到相同类型

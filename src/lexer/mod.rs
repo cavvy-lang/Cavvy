@@ -1,8 +1,8 @@
-use crate::diagnostic::{
+use crate::miette_diagnostic::{
     CompilationPhase, Diagnostic, DiagnosticCollector, ErrorCodes, FixSuggestion, SourceSpan,
 };
-use crate::error::SourceLocation;
-use crate::error::cayResult;
+use crate::miette_diagnostic::SourceLocation;
+use crate::miette_diagnostic::cayResult;
 use logos::Logos;
 
 #[derive(Logos, Debug, Clone, PartialEq)]
@@ -555,7 +555,7 @@ impl<'a> Lexer<'a> {
         span: std::ops::Range<usize>,
     ) -> Diagnostic {
         let error_char = &self.source[span.clone()];
-        let location = crate::diagnostic::SourceLocation::new(
+        let location = crate::miette_diagnostic::SourceLocation::new(
             self.current_source_file.clone(),
             self.line,
             self.column,
@@ -752,14 +752,14 @@ impl<'a> Lexer<'a> {
                 .first()
                 .map(|d| d.clone())
                 .unwrap_or_else(|| {
-                    crate::diagnostic::Diagnostic::error(
-                        crate::diagnostic::ErrorCodes::LEXER_INVALID_CHARACTER,
-                        crate::diagnostic::CompilationPhase::Lexer,
+                    crate::miette_diagnostic::Diagnostic::error(
+                        crate::miette_diagnostic::ErrorCodes::LEXER_INVALID_CHARACTER,
+                        crate::miette_diagnostic::CompilationPhase::Lexer,
                         format!("词法分析发现 {} 个错误", diagnostics.error_count()),
                         SourceLocation::new(None, self.line, self.column),
                     )
                 });
-            return Err(crate::error::CompilerError(first).into());
+            return Err(crate::miette_diagnostic::CompilerError(first).into());
         }
 
         Ok(tokens)
@@ -841,14 +841,14 @@ impl<'a> Lexer<'a> {
                     )
                 };
 
-                let diagnostic = crate::diagnostic::Diagnostic::error(
-                    crate::diagnostic::ErrorCodes::LEXER_INVALID_CHARACTER,
-                    crate::diagnostic::CompilationPhase::Lexer,
+                let diagnostic = crate::miette_diagnostic::Diagnostic::error(
+                    crate::miette_diagnostic::ErrorCodes::LEXER_INVALID_CHARACTER,
+                    crate::miette_diagnostic::CompilationPhase::Lexer,
                     error_msg,
                     SourceLocation::new(error_file.clone(), error_line, self.column),
                 );
                 self.diagnostics.add(diagnostic.clone());
-                Some(Err(crate::error::CompilerError(diagnostic).into()))
+                Some(Err(crate::miette_diagnostic::CompilerError(diagnostic).into()))
             }
             None => None,
         }

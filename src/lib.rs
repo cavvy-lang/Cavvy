@@ -1,8 +1,6 @@
 pub mod ast;
 pub mod bytecode;
 pub mod codegen;
-pub mod diagnostic;
-pub mod error;
 pub mod ir;
 pub mod lexer;
 pub mod miette_diagnostic;
@@ -23,13 +21,13 @@ pub mod embedded_llc;
 // Cavvy 环境安装与设置模块
 pub mod setup;
 
-pub use diagnostic::DiagnosticCollector;
-pub use diagnostic::print_diagnostics;
-/// 新的统一错误类型（推荐使用）
-pub use error::CompilerError;
-pub use error::CompilerResult;
+// 统一诊断系统 — 废弃 error.rs 和 diagnostic.rs，全部使用 miette_diagnostic
+pub use miette_diagnostic::DiagnosticCollector;
+pub use miette_diagnostic::print_diagnostics;
+pub use miette_diagnostic::CompilerError;
+pub use miette_diagnostic::CompilerResult;
 
-use error::cayResult;
+use miette_diagnostic::cayResult;
 use std::path::{Path, PathBuf};
 
 /// 编译器配置选项
@@ -133,7 +131,7 @@ impl Compiler {
         }
 
         // 输出到文件
-        std::fs::write(output_path, ir).map_err(|e| error::cayError::Io {
+        std::fs::write(output_path, ir).map_err(|e| miette_diagnostic::cayError::Io {
             file: Some(output_path.to_string()),
             message: e.to_string(),
         })?;
@@ -262,7 +260,7 @@ impl Compiler {
         }
 
         // 输出到文件
-        std::fs::write(output_path, ir).map_err(|e| error::cayError::Io {
+        std::fs::write(output_path, ir).map_err(|e| miette_diagnostic::cayError::Io {
             file: Some(output_path.to_string()),
             message: e.to_string(),
         })?;
@@ -280,7 +278,7 @@ impl Compiler {
     /// 编译成功返回 Ok(())
     pub fn compile_file(&self, input_path: &str, output_path: &str) -> cayResult<()> {
         // 读取源文件
-        let source = std::fs::read_to_string(input_path).map_err(|e| error::cayError::Io {
+        let source = std::fs::read_to_string(input_path).map_err(|e| miette_diagnostic::cayError::Io {
             file: Some(input_path.to_string()),
             message: format!("无法读取源文件: {}", e),
         })?;
@@ -336,7 +334,7 @@ impl Compiler {
             .map(|lib| crate::ast::LinkLibraryDecl {
                 name: lib.name,
                 is_system: lib.is_system,
-                loc: crate::error::SourceLocation::default(),
+                loc: crate::miette_diagnostic::SourceLocation::default(),
             })
             .collect();
 
@@ -420,7 +418,7 @@ public class Test {
         println!("AST: {:?}", ast);
     }
 
-    fn analyze_source(source: &str) -> error::cayResult<()> {
+    fn analyze_source(source: &str) -> miette_diagnostic::cayResult<()> {
         let tokens = lexer::lex(source)?;
         let ast = parser::parse_with_source(tokens, source.to_string())?;
         let mut analyzer = semantic::SemanticAnalyzer::new();
@@ -521,7 +519,7 @@ public class Example {
         );
         ir_gen.set_preprocessor_source_map(source_map);
 
-        let loc = error::SourceLocation::new(
+        let loc = miette_diagnostic::SourceLocation::new(
             Some(r"\\?\E:\spj\EOL\examples\text_editor.cay".to_string()),
             621,
             9,

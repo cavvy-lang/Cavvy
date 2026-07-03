@@ -4,7 +4,7 @@ use super::Parser;
 use super::expressions::parse_expression;
 use super::types::{is_primitive_type_token, parse_type};
 use crate::ast::*;
-use crate::error::cayResult;
+use crate::miette_diagnostic::cayResult;
 use crate::types::Type;
 
 /// 给语句添加标签

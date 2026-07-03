@@ -7,11 +7,11 @@ use super::super::statements::parse_statement;
 use super::super::types::{is_type_token, parse_type};
 use super::assignment::parse_expression;
 use crate::ast::*;
-use crate::error::cayResult;
+use crate::miette_diagnostic::cayResult;
 
 /// 尝试解析 Lambda 表达式
 /// 假设已经消耗了 '('，需要解析参数列表和 -> 箭头
-pub fn try_parse_lambda(parser: &mut Parser, loc: crate::error::SourceLocation) -> cayResult<Expr> {
+pub fn try_parse_lambda(parser: &mut Parser, loc: crate::miette_diagnostic::SourceLocation) -> cayResult<Expr> {
     // 解析 Lambda 参数列表: (param1, param2, ...) 或 (int x, int y) 或 ()
     let mut params = Vec::new();
 
@@ -131,7 +131,7 @@ fn parse_lambda_block(parser: &mut Parser) -> cayResult<Block> {
 
     Ok(Block {
         statements,
-        loc: crate::error::SourceLocation {
+        loc: crate::miette_diagnostic::SourceLocation {
             file: None,
             line: 0,
             column: 0,

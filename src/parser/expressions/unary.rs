@@ -6,7 +6,7 @@ use super::super::Parser;
 use super::super::types::{is_type_token, parse_type};
 use super::postfix::parse_postfix;
 use crate::ast::*;
-use crate::error::cayResult;
+use crate::miette_diagnostic::cayResult;
 
 /// 解析一元表达式（包括类型转换）
 pub fn parse_unary(parser: &mut Parser) -> cayResult<Expr> {

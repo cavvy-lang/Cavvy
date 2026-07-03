@@ -2,7 +2,7 @@
 
 use super::analyzer::SemanticAnalyzer;
 use crate::ast::Expr;
-use crate::error::cayResult;
+use crate::miette_diagnostic::cayResult;
 use crate::types::{ParameterInfo, Type};
 
 /// 命名参数解析结果

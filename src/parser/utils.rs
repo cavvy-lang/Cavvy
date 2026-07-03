@@ -3,8 +3,8 @@
 //! 提供语法分析器的通用工具函数和增强的错误处理
 
 use super::Parser;
-use crate::diagnostic::{CompilationPhase, Diagnostic, ErrorCodes, FixSuggestion};
-use crate::error::{cayError, cayResult};
+use crate::miette_diagnostic::{CompilationPhase, Diagnostic, ErrorCodes, FixSuggestion};
+use crate::miette_diagnostic::{cayError, cayResult};
 use crate::lexer::{Token, TokenWithLocation};
 
 /// 检查是否到达令牌流末尾
@@ -25,16 +25,16 @@ pub fn current_token(parser: &Parser) -> &Token {
 
 /// 获取当前完整位置（包含源文件信息，使用预处理行号）
 /// 当已到达令牌流末尾时，返回最后一个有效令牌的位置
-pub fn current_full_loc(parser: &Parser) -> crate::error::SourceLocation {
+pub fn current_full_loc(parser: &Parser) -> crate::miette_diagnostic::SourceLocation {
     let token = if parser.pos >= parser.tokens.len() && !parser.tokens.is_empty() {
         &parser.tokens[parser.tokens.len() - 1]
     } else if parser.pos < parser.tokens.len() {
         &parser.tokens[parser.pos]
     } else {
         // 空令牌流，返回默认位置
-        return crate::error::SourceLocation::default();
+        return crate::miette_diagnostic::SourceLocation::default();
     };
-    crate::error::SourceLocation {
+    crate::miette_diagnostic::SourceLocation {
         file: token.source_file.clone(),
         line: token.loc.line, // 使用预处理后的行号，让语义分析器来映射
         column: token.loc.column,
@@ -42,13 +42,13 @@ pub fn current_full_loc(parser: &Parser) -> crate::error::SourceLocation {
 }
 
 /// 获取上一个完整位置（包含源文件信息，使用预处理行号）
-pub fn previous_full_loc(parser: &Parser) -> crate::error::SourceLocation {
+pub fn previous_full_loc(parser: &Parser) -> crate::miette_diagnostic::SourceLocation {
     let token = if parser.pos > 0 {
         &parser.tokens[parser.pos - 1]
     } else {
         &parser.tokens[0]
     };
-    crate::error::SourceLocation {
+    crate::miette_diagnostic::SourceLocation {
         file: token.source_file.clone(),
         line: token.loc.line, // 使用预处理后的行号，让语义分析器来映射
         column: token.loc.column,
@@ -58,16 +58,16 @@ pub fn previous_full_loc(parser: &Parser) -> crate::error::SourceLocation {
 /// 获取当前位置（向后兼容）
 /// 使用预处理后的行号（loc.line），语义分析器负责映射到原始源文件
 /// 当已到达令牌流末尾时，返回最后一个有效令牌的位置
-pub fn current_loc(parser: &Parser) -> crate::error::SourceLocation {
+pub fn current_loc(parser: &Parser) -> crate::miette_diagnostic::SourceLocation {
     let token = if parser.pos >= parser.tokens.len() && !parser.tokens.is_empty() {
         &parser.tokens[parser.tokens.len() - 1]
     } else if parser.pos < parser.tokens.len() {
         &parser.tokens[parser.pos]
     } else {
         // 空令牌流，返回默认位置
-        return crate::error::SourceLocation::default();
+        return crate::miette_diagnostic::SourceLocation::default();
     };
-    crate::error::SourceLocation {
+    crate::miette_diagnostic::SourceLocation {
         file: token.source_file.clone(),
         line: token.loc.line,
         column: token.loc.column,
@@ -76,13 +76,13 @@ pub fn current_loc(parser: &Parser) -> crate::error::SourceLocation {
 
 /// 获取上一个位置（向后兼容）
 /// 使用 source_line（原始源文件行号）而不是 loc.line（预处理后的行号）
-pub fn previous_loc(parser: &Parser) -> crate::error::SourceLocation {
+pub fn previous_loc(parser: &Parser) -> crate::miette_diagnostic::SourceLocation {
     let token = if parser.pos > 0 {
         &parser.tokens[parser.pos - 1]
     } else {
         &parser.tokens[0]
     };
-    crate::error::SourceLocation {
+    crate::miette_diagnostic::SourceLocation {
         file: token.source_file.clone(),
         line: token.source_line.unwrap_or(token.loc.line),
         column: token.loc.column,
@@ -182,13 +182,13 @@ pub fn consume<'a>(parser: &'a mut Parser, token: &Token, message: &str) -> cayR
             error_code,
             CompilationPhase::Parser,
             detailed_message.clone(),
-            crate::diagnostic::SourceLocation::new(loc.file.clone(), loc.line, loc.column),
+            crate::miette_diagnostic::SourceLocation::new(loc.file.clone(), loc.line, loc.column),
         )
         .with_suggestion(FixSuggestion::new(suggestion));
 
         parser.diagnostics.add(diagnostic.clone());
 
-        Err(crate::error::CompilerError(diagnostic).into())
+        Err(crate::miette_diagnostic::CompilerError(diagnostic).into())
     }
 }
 
@@ -207,7 +207,7 @@ pub fn consume_identifier(parser: &mut Parser, message: &str) -> cayResult<Strin
             ErrorCodes::PARSER_EXPECTED_IDENTIFIER,
             CompilationPhase::Parser,
             detailed_message.clone(),
-            crate::diagnostic::SourceLocation::new(loc.file.clone(), loc.line, loc.column),
+            crate::miette_diagnostic::SourceLocation::new(loc.file.clone(), loc.line, loc.column),
         )
         .with_suggestion(FixSuggestion::new(
             "使用有效的标识符名称（以字母或下划线开头）",
@@ -215,7 +215,7 @@ pub fn consume_identifier(parser: &mut Parser, message: &str) -> cayResult<Strin
 
         parser.diagnostics.add(diagnostic.clone());
 
-        Err(crate::error::CompilerError(diagnostic).into())
+        Err(crate::miette_diagnostic::CompilerError(diagnostic).into())
     }
 }
 
@@ -224,18 +224,18 @@ pub fn error(parser: &Parser, message: &str) -> cayError {
     let loc = current_full_loc(parser);
 
     // 创建 Diagnostic 并添加到收集器
-    let diagnostic = crate::diagnostic::Diagnostic::error(
+    let diagnostic = crate::miette_diagnostic::Diagnostic::error(
         ErrorCodes::PARSER_UNEXPECTED_TOKEN,
         CompilationPhase::Parser,
         message.to_string(),
-        crate::diagnostic::SourceLocation::new(loc.file.clone(), loc.line, loc.column),
+        crate::miette_diagnostic::SourceLocation::new(loc.file.clone(), loc.line, loc.column),
     );
 
     // 注意：这里无法 mutable 访问 parser（因为 parser 是 & 引用），
     // 所以暂时不添加到收集器。调用 create_parser_error 的代码已达到此目的。
 
     // 转换为 cayError（迁移期间保持向后兼容）
-    crate::error::CompilerError(diagnostic).into()
+    crate::miette_diagnostic::CompilerError(diagnostic).into()
 }
 
 /// 创建详细的语法错误（使用新系统）
@@ -247,15 +247,15 @@ pub fn create_parser_error(
     let loc = current_full_loc(parser);
     let message = message.into();
 
-    let diagnostic = crate::diagnostic::Diagnostic::error(
+    let diagnostic = crate::miette_diagnostic::Diagnostic::error(
         error_code,
         CompilationPhase::Parser,
         message.clone(),
-        crate::diagnostic::SourceLocation::new(loc.file.clone(), loc.line, loc.column),
+        crate::miette_diagnostic::SourceLocation::new(loc.file.clone(), loc.line, loc.column),
     );
 
     parser.diagnostics.add(diagnostic.clone());
-    crate::error::CompilerError(diagnostic).into()
+    crate::miette_diagnostic::CompilerError(diagnostic).into()
 }
 
 /// 检查下一个令牌是否匹配给定令牌

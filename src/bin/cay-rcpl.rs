@@ -6,7 +6,7 @@
 //! - 多行输入支持
 //! - 上下文查看和管理
 
-use cavvy::error::print_miette_error;
+use cavvy::miette_diagnostic::print_miette_error;
 use std::env;
 
 const VERSION: &str = env!("CAY_RCPL_VERSION");

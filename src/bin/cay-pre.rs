@@ -3,7 +3,7 @@
 //! 用于调试预处理器和查看预处理后的代码
 //! 支持输出带源映射的预处理结果
 
-use cavvy::error::print_miette_error;
+use cavvy::miette_diagnostic::print_miette_error;
 use cavvy::preprocessor::{Preprocessor, SourceMap};
 use std::env;
 use std::fs;

@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::error::{cayResult, codegen_error_at};
+use crate::miette_diagnostic::{cayResult, codegen_error_at};
 
 impl IRGenerator {
     /// 生成成员函数指针字段调用
@@ -13,7 +13,7 @@ impl IRGenerator {
         member: &crate::ast::MemberAccessExpr,
         args: &[Expr],
         func_type: &crate::types::Type,
-        loc: &crate::error::SourceLocation,
+        loc: &crate::miette_diagnostic::SourceLocation,
     ) -> cayResult<String> {
         use crate::ast::Expr;
         use crate::types::{FunctionType, Type};

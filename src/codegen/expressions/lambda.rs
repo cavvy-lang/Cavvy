@@ -4,8 +4,8 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::error::SourceLocation;
-use crate::error::{cayResult, codegen_error_at};
+use crate::miette_diagnostic::SourceLocation;
+use crate::miette_diagnostic::{cayResult, codegen_error_at};
 use crate::types::Type;
 use std::collections::HashSet;
 

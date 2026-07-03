@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::error::{cayResult, codegen_error_at};
+use crate::miette_diagnostic::{cayResult, codegen_error_at};
 
 impl IRGenerator {
     /// 生成数组长度访问代码（用于 .length 属性或 .length() 方法）
@@ -237,7 +237,7 @@ impl IRGenerator {
                         // 枚举存在但没有这个 variant，返回错误
                         let available: Vec<_> =
                             enum_info.variants.iter().map(|v| v.name.clone()).collect();
-                        return Err(crate::error::codegen_error_at(
+                        return Err(crate::miette_diagnostic::codegen_error_at(
                             member.loc.clone(),
                             format!(
                                 "枚举 '{}' 中没有 variant '{}'。可选: {:?}",

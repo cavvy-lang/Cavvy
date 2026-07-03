@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::error::{cayResult, codegen_error_at};
+use crate::miette_diagnostic::{cayResult, codegen_error_at};
 
 /// readLine 缓冲区大小（字节）
 const READ_LINE_BUFFER_SIZE: i32 = 1024;
@@ -38,7 +38,7 @@ impl IRGenerator {
         &mut self,
         args: &[Expr],
         newline: bool,
-        loc: &crate::error::SourceLocation,
+        loc: &crate::miette_diagnostic::SourceLocation,
     ) -> cayResult<String> {
         if args.is_empty() {
             // 无参数，仅打印换行符（如果是 println）或什么都不做（如果是 print）
@@ -352,7 +352,7 @@ self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_
         &mut self,
         args: &[Expr],
         newline: bool,
-        loc: &crate::error::SourceLocation,
+        loc: &crate::miette_diagnostic::SourceLocation,
     ) -> cayResult<String> {
         // 第一个参数必须是 format 字符串
         let format_arg = &args[0];
@@ -788,7 +788,7 @@ self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_
     pub fn generate_read_int_call(
         &mut self,
         args: &[Expr],
-        loc: &crate::error::SourceLocation,
+        loc: &crate::miette_diagnostic::SourceLocation,
     ) -> cayResult<String> {
         // readInt 应该没有参数
         if !args.is_empty() {
@@ -851,7 +851,7 @@ self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_
     pub fn generate_read_float_call(
         &mut self,
         args: &[Expr],
-        loc: &crate::error::SourceLocation,
+        loc: &crate::miette_diagnostic::SourceLocation,
     ) -> cayResult<String> {
         // readFloat 应该没有参数
         if !args.is_empty() {
@@ -914,7 +914,7 @@ self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_
     pub fn generate_read_double_call(
         &mut self,
         args: &[Expr],
-        loc: &crate::error::SourceLocation,
+        loc: &crate::miette_diagnostic::SourceLocation,
     ) -> cayResult<String> {
         // readDouble 应该没有参数
         if !args.is_empty() {
@@ -977,7 +977,7 @@ self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_
     pub fn generate_read_long_call(
         &mut self,
         args: &[Expr],
-        loc: &crate::error::SourceLocation,
+        loc: &crate::miette_diagnostic::SourceLocation,
     ) -> cayResult<String> {
         // readLong 与 readInt 相同，都返回 i64
         self.generate_read_int_call(args, loc)
@@ -991,7 +991,7 @@ self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_
     pub fn generate_read_char_call(
         &mut self,
         args: &[Expr],
-        loc: &crate::error::SourceLocation,
+        loc: &crate::miette_diagnostic::SourceLocation,
     ) -> cayResult<String> {
         // readChar 应该没有参数
         if !args.is_empty() {
@@ -1054,7 +1054,7 @@ self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_
     pub fn generate_read_line_call(
         &mut self,
         args: &[Expr],
-        loc: &crate::error::SourceLocation,
+        loc: &crate::miette_diagnostic::SourceLocation,
     ) -> cayResult<String> {
         // readLine 应该没有参数
         if !args.is_empty() {

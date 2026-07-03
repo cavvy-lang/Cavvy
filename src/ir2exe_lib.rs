@@ -4,7 +4,7 @@
 //! 被 cayc 和 ir2exe 共享使用。
 
 use crate::embedded_llc::{self, EmbeddedLlcOptions};
-use crate::error::{print_miette_error, print_tool_error, print_warning};
+use crate::miette_diagnostic::{print_miette_error, print_tool_error, print_warning};
 use std::env;
 use std::path::{Component, Path, PathBuf};
 use std::process;

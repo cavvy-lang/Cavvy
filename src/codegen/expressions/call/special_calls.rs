@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::error::{cayResult, codegen_error_at};
+use crate::miette_diagnostic::{cayResult, codegen_error_at};
 
 impl IRGenerator {
     /// 生成 __cay_read_ptr 运行时函数调用
@@ -12,7 +12,7 @@ impl IRGenerator {
     pub fn generate_read_ptr_call(
         &mut self,
         args: &[Expr],
-        loc: &crate::error::SourceLocation,
+        loc: &crate::miette_diagnostic::SourceLocation,
     ) -> cayResult<String> {
         if args.len() != 1 {
             return Err(codegen_error_at(
@@ -44,7 +44,7 @@ impl IRGenerator {
     pub fn generate_ptr_to_string_call(
         &mut self,
         args: &[Expr],
-        loc: &crate::error::SourceLocation,
+        loc: &crate::miette_diagnostic::SourceLocation,
     ) -> cayResult<String> {
         if args.len() != 1 {
             return Err(codegen_error_at(
@@ -76,7 +76,7 @@ impl IRGenerator {
     pub fn generate_write_ptr_call(
         &mut self,
         args: &[Expr],
-        loc: &crate::error::SourceLocation,
+        loc: &crate::miette_diagnostic::SourceLocation,
     ) -> cayResult<String> {
         if args.len() != 2 {
             return Err(codegen_error_at(
@@ -118,7 +118,7 @@ impl IRGenerator {
     pub fn generate_write_int_call(
         &mut self,
         args: &[Expr],
-        loc: &crate::error::SourceLocation,
+        loc: &crate::miette_diagnostic::SourceLocation,
     ) -> cayResult<String> {
         if args.len() != 2 {
             return Err(codegen_error_at(
@@ -160,7 +160,7 @@ impl IRGenerator {
     pub fn generate_cay_read_int_call(
         &mut self,
         args: &[Expr],
-        loc: &crate::error::SourceLocation,
+        loc: &crate::miette_diagnostic::SourceLocation,
     ) -> cayResult<String> {
         if args.len() != 1 {
             return Err(codegen_error_at(
@@ -194,7 +194,7 @@ impl IRGenerator {
     pub fn generate_string_valueof_call(
         &mut self,
         args: &[Expr],
-        loc: &crate::error::SourceLocation,
+        loc: &crate::miette_diagnostic::SourceLocation,
     ) -> cayResult<String> {
         if args.len() != 1 {
             return Err(codegen_error_at(
@@ -482,7 +482,7 @@ impl IRGenerator {
     pub fn generate_integer_parseint_call(
         &mut self,
         args: &[Expr],
-        loc: &crate::error::SourceLocation,
+        loc: &crate::miette_diagnostic::SourceLocation,
     ) -> cayResult<String> {
         if args.len() != 1 {
             return Err(codegen_error_at(
@@ -523,7 +523,7 @@ impl IRGenerator {
         var_name: &str,
         args: &[Expr],
         func_type: &crate::types::Type,
-        loc: &crate::error::SourceLocation,
+        loc: &crate::miette_diagnostic::SourceLocation,
     ) -> cayResult<String> {
         use crate::types::{FunctionType, Type};
 

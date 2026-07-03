@@ -8,7 +8,7 @@ use super::function::{IrFunction, IrLinkage};
 use super::module::IrModule;
 use super::types::IrType;
 use super::value::{IrInstruction, IrTerminator};
-use crate::error::cayResult;
+use crate::miette_diagnostic::cayResult;
 
 /// LLVM IR 文本后端
 pub struct LlvmBackend {

@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::error::{cayResult, codegen_error_at};
+use crate::miette_diagnostic::{cayResult, codegen_error_at};
 
 impl IRGenerator {
     /// 生成赋值表达式代码
@@ -91,7 +91,7 @@ impl IRGenerator {
         left_val: &str,
         right_type: &str,
         right_val: &str,
-        loc: &crate::error::SourceLocation,
+        loc: &crate::miette_diagnostic::SourceLocation,
     ) -> cayResult<String> {
         let temp = self.new_temp();
         let is_left_int = left_type.starts_with("i") && !left_type.ends_with("*");
@@ -217,7 +217,7 @@ impl IRGenerator {
         target_ptr: &str,
         value_type: &str,
         val: &str,
-        loc: &crate::error::SourceLocation,
+        loc: &crate::miette_diagnostic::SourceLocation,
     ) -> cayResult<String> {
         let temp = self.new_temp();
         let final_val = if value_type == target_type {
@@ -553,7 +553,7 @@ impl IRGenerator {
         value_type: &str,
         val: &str,
         value: &str,
-        loc: &crate::error::SourceLocation,
+        loc: &crate::miette_diagnostic::SourceLocation,
     ) -> cayResult<String> {
         // 优先使用作用域管理器获取变量类型和 LLVM 名称
         let (var_type, llvm_name) = if let Some(scope_type) = self.scope_manager.get_var_type(name)
