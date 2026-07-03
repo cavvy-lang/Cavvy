@@ -4,6 +4,7 @@
 
 use super::value::{IrInstruction, IrTerminator};
 use std::fmt;
+use serde::Serialize;
 
 /// IR 基本块
 ///
@@ -11,7 +12,7 @@ use std::fmt;
 /// - 唯一的标签名
 /// - 一系列非终止指令
 /// - 恰好一个终止指令（return / br / switch / unreachable）
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct IrBasicBlock {
     /// 基本块标签（如 "entry", "while.cond.0"）
     pub label: String,

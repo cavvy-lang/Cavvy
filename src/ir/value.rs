@@ -4,6 +4,7 @@
 
 use super::types::IrType;
 use std::fmt;
+use serde::Serialize;
 
 /// IR 值 - 表示计算中的值
 ///
@@ -12,7 +13,7 @@ use std::fmt;
 /// - 寄存器（SSA 临时变量）
 /// - 全局引用
 /// - 参数引用
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum IrValue {
     /// 整数常量
     IntConst(i64, IrType),
@@ -180,7 +181,7 @@ impl fmt::Display for IrValue {
 }
 
 /// 二元运算操作符
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum IrBinaryOp {
     Add,
     Sub,
@@ -224,7 +225,7 @@ impl IrBinaryOp {
 }
 
 /// 类型转换操作
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum IrCastKind {
     /// 符号扩展 (sext)
     SignExt,
@@ -266,7 +267,7 @@ impl IrCastKind {
 }
 
 /// 比较操作符
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum IrCmpOp {
     Eq,
     Ne,
@@ -346,7 +347,7 @@ impl IrCmpOp {
 }
 
 /// IR 指令 - 基本块内的非终止指令
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub enum IrInstruction {
     /// alloca: 栈上分配内存
     Alloca {
@@ -510,7 +511,7 @@ impl IrInstruction {
 }
 
 /// IR 终止指令 - 基本块的结束指令
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub enum IrTerminator {
     /// ret void 或 ret <value>
     Return { value: Option<IrValue> },

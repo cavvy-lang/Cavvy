@@ -5,9 +5,10 @@
 use super::block::IrBasicBlock;
 use super::types::IrType;
 use super::value::IrValue;
+use serde::Serialize;
 
 /// 函数链接类型
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum IrLinkage {
     /// 外部可见
     External,
@@ -20,7 +21,7 @@ pub enum IrLinkage {
 }
 
 /// 函数参数
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct IrParam {
     pub name: String,
     pub ty: IrType,
@@ -34,7 +35,7 @@ pub struct IrParam {
 /// - 参数列表
 /// - 基本块列表（CFG）
 /// - 元数据
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct IrFunction {
     /// 函数名（包含完整的类和命名空间信息）
     pub name: String,

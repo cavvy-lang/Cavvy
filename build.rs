@@ -317,6 +317,36 @@ fn main() {
                 }
             }
 
+            // 设置 CAY-AST 版本
+            if let Some(cay_ast_section) = verinfo.get("CAY-AST") {
+                if let Some(version) = cay_ast_section.get("version") {
+                    println!(
+                        "cargo:rustc-env=CAY_AST_VERSION={}",
+                        build_full_version(version)
+                    );
+                }
+            }
+
+            // 设置 CAY-PL 版本
+            if let Some(cay_pl_section) = verinfo.get("CAY-PL") {
+                if let Some(version) = cay_pl_section.get("version") {
+                    println!(
+                        "cargo:rustc-env=CAY_PL_VERSION={}",
+                        build_full_version(version)
+                    );
+                }
+            }
+
+            // 设置 CAY-SIR 版本
+            if let Some(cay_sir_section) = verinfo.get("CAY-SIR") {
+                if let Some(version) = cay_sir_section.get("version") {
+                    println!(
+                        "cargo:rustc-env=CAY_SIR_VERSION={}",
+                        build_full_version(version)
+                    );
+                }
+            }
+
             // 设置通用版本（使用CAYC的版本）
             if let Some(cayc_section) = verinfo.get("CAYC") {
                 if let Some(version) = cayc_section.get("version") {
@@ -382,6 +412,18 @@ fn main() {
             );
             println!(
                 "cargo:rustc-env=CAY_SETUP_VERSION={}",
+                build_full_version(default_version)
+            );
+            println!(
+                "cargo:rustc-env=CAY_AST_VERSION={}",
+                build_full_version(default_version)
+            );
+            println!(
+                "cargo:rustc-env=CAY_PL_VERSION={}",
+                build_full_version(default_version)
+            );
+            println!(
+                "cargo:rustc-env=CAY_SIR_VERSION={}",
                 build_full_version(default_version)
             );
             println!(

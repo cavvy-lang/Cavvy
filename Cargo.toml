@@ -30,7 +30,6 @@ serde_jcs = "0.2"
 
 # LLVM 嵌入式支持 (用于 --use-embedded-llc)
 # llvm-sys 版本与 LLVM 版本对应关系: 221 = LLVM 22.1.x
-# force-static: Windows必须使用静态链接（动态链接不支持）
 llvm-sys = { version = "221" }
 libc = "0.2"
 
@@ -84,20 +83,17 @@ name = "cay-setup"
 path = "src/bin/cay-setup.rs"
 test = false
 
-[profile.dev]
-# Windows 下多线程编译 + 增量编译 + llvm-sys 等含 build-script 的依赖时，
-# 会出现 "required to be available in rlib format, but was not found" 的竞态错误。
-# 关闭增量编译可避免此类文件锁竞争，保持多线程编译稳定。
-incremental = false
+[[bin]]
+name = "cay-ast"
+path = "src/bin/cay-ast.rs"
 
-[profile.test]
-incremental = false
+[[bin]]
+name = "cay-pl"
+path = "src/bin/cay-pl.rs"
 
-[profile.release]
-incremental = false
-
-[profile.bench]
-incremental = false
+[[bin]]
+name = "cay-sir"
+path = "src/bin/cay-sir.rs"
 
 [features]
 default = []

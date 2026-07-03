@@ -1,4 +1,5 @@
 use miette::{Diagnostic, NamedSource, SourceSpan};
+use serde::Serialize;
 use std::fmt;
 use std::sync::Arc;
 use thiserror::Error;
@@ -455,7 +456,7 @@ impl crate::diagnostic::DiagnosticCollector {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 pub struct SourceLocation {
     pub file: Option<String>, // 源文件路径（用于多文件include场景）
     pub line: usize,

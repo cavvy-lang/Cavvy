@@ -2,6 +2,7 @@ use crate::error::SourceLocation;
 use crate::types::{ClassInfo, MethodInfo, ParameterInfo, Type};
 use std::fmt;
 use std::hash::{Hash, Hasher};
+use serde::Serialize;
 
 /// 提供位置信息的trait
 pub trait HasLocation {
@@ -9,14 +10,14 @@ pub trait HasLocation {
 }
 
 /// 链接库声明 - 用于 #link 指令
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct LinkLibraryDecl {
     pub name: String,
     pub is_system: bool, // true 表示系统库 <lib>, false 表示用户库 "lib"
     pub loc: SourceLocation,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Program {
     pub classes: Vec<ClassDecl>,
     pub structs: Vec<StructDecl>, // 用户自定义 struct 声明
@@ -33,7 +34,7 @@ pub struct Program {
 }
 
 /// namespace 块级声明 - namespace std { ... }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct NamespaceDecl {
     pub path: Vec<String>, // 命名空间路径，如 ["std", "io"]
     pub classes: Vec<ClassDecl>,
@@ -48,14 +49,14 @@ pub struct NamespaceDecl {
 }
 
 /// using 声明 - using std::StringBuilder;
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct UsingDecl {
     pub path: Vec<String>, // 完整路径，如 ["std", "StringBuilder"]，最后一个元素是要导入的名字
     pub loc: SourceLocation,
 }
 
 /// 类型别名声明 - type Name = Type;
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct TypeAliasDecl {
     pub name: String,
     pub target_type: Type,
@@ -64,7 +65,7 @@ pub struct TypeAliasDecl {
 }
 
 /// 顶层函数声明（类外函数）
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct TopLevelFunction {
     pub name: String,
     pub modifiers: Vec<Modifier>,
@@ -76,7 +77,7 @@ pub struct TopLevelFunction {
 }
 
 /// Extern 声明 - FFI 外部函数声明
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ExternDecl {
     pub calling_convention: CallingConvention, // 调用约定
     pub functions: Vec<ExternFunction>,        // 声明的函数列表
@@ -85,7 +86,7 @@ pub struct ExternDecl {
 }
 
 /// 外部函数声明
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ExternFunction {
     pub name: String,          // 外部C函数名
     pub alias: Option<String>, // 别名（用于Cavvy代码中调用）
@@ -95,7 +96,7 @@ pub struct ExternFunction {
 }
 
 /// 调用约定
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum CallingConvention {
     Cdecl,    // 默认 C 调用约定
     Stdcall,  // Windows stdcall
@@ -104,7 +105,7 @@ pub enum CallingConvention {
     Win64,    // Windows x64 calling convention
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct InterfaceDecl {
     pub name: String,
     pub modifiers: Vec<Modifier>,
@@ -116,7 +117,7 @@ pub struct InterfaceDecl {
 
 /// 用户自定义 struct 声明 - 值类型，栈分配
 /// struct Point { int x; int y; }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct StructDecl {
     pub name: String,
     pub modifiers: Vec<Modifier>,
@@ -128,7 +129,7 @@ pub struct StructDecl {
 
 /// 泛型类型参数声明
 /// 支持: T, T: Bound, T = Default, T: Bound = Default
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct TypeParam {
     pub name: String,
     pub bound: Option<String>, // 类型边界（如 Allocator），暂不强制语义检查
@@ -137,7 +138,7 @@ pub struct TypeParam {
 
 /// 用户自定义 enum 声明 - tagged union / ADT
 /// enum Option<T> { Some(T), None }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct EnumDecl {
     pub name: String,
     pub modifiers: Vec<Modifier>,
@@ -148,14 +149,14 @@ pub struct EnumDecl {
 }
 
 /// enum 的 variant - 可以携带数据
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct EnumVariant {
     pub name: String,
     pub payload_type: Option<Type>, // variant 携带的数据类型
     pub loc: SourceLocation,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ClassDecl {
     pub name: String,
     pub modifiers: Vec<Modifier>,
@@ -168,7 +169,7 @@ pub struct ClassDecl {
 }
 
 /// 显式特化类声明 - specialize class Box<int> { ... }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct SpecializeClassDecl {
     pub base_name: String,       // 基础类名，如 "Box"
     pub type_args: Vec<Type>,    // 特化类型参数，如 [int]
@@ -177,7 +178,7 @@ pub struct SpecializeClassDecl {
     pub loc: SourceLocation,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub enum ClassMember {
     Method(MethodDecl),
     Field(FieldDecl),
@@ -187,7 +188,7 @@ pub enum ClassMember {
     StaticInitializer(Block),   // 静态初始化块 static { ... }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct MethodDecl {
     pub name: String,
     pub modifiers: Vec<Modifier>,
@@ -197,7 +198,7 @@ pub struct MethodDecl {
     pub loc: SourceLocation,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct FieldDecl {
     pub name: String,
     pub field_type: Type,
@@ -207,7 +208,7 @@ pub struct FieldDecl {
 }
 
 /// 构造函数声明
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ConstructorDecl {
     pub modifiers: Vec<Modifier>,
     pub params: Vec<crate::types::ParameterInfo>,
@@ -217,21 +218,21 @@ pub struct ConstructorDecl {
 }
 
 /// 构造函数调用（this() 或 super()）
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub enum ConstructorCall {
     This(Vec<Expr>),  // this(args)
     Super(Vec<Expr>), // super(args)
 }
 
 /// 析构函数声明
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct DestructorDecl {
     pub modifiers: Vec<Modifier>,
     pub body: Block,
     pub loc: SourceLocation,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum Modifier {
     Public,
     Private,
@@ -246,13 +247,13 @@ pub enum Modifier {
     FreeFunction, // @FreeFunction 注解，将类方法导出为可直接调用的顶层函数
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Block {
     pub statements: Vec<Stmt>,
     pub loc: SourceLocation,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub enum Stmt {
     Expr(Expr),
     VarDecl(VarDecl),
@@ -271,7 +272,7 @@ pub enum Stmt {
 }
 
 /// 内联IR语句 - __ir { ... }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct InlineIrStmt {
     pub raw_lines: Vec<String>, // IR文本行
     pub loc: SourceLocation,
@@ -279,13 +280,13 @@ pub struct InlineIrStmt {
 
 /// 0.5.0.0: scope 语句 - 栈作用域分配块
 /// 用于在栈上分配临时对象，支持 RAII 模式
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ScopeStmt {
     pub body: Block,
     pub loc: SourceLocation,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct VarDecl {
     pub name: String,
     pub var_type: Type,
@@ -294,7 +295,7 @@ pub struct VarDecl {
     pub loc: SourceLocation,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct IfStmt {
     pub condition: Expr,
     pub then_branch: Box<Stmt>,
@@ -302,7 +303,7 @@ pub struct IfStmt {
     pub loc: SourceLocation,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct WhileStmt {
     pub condition: Expr,
     pub body: Box<Stmt>,
@@ -310,7 +311,7 @@ pub struct WhileStmt {
     pub loc: SourceLocation,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ForStmt {
     pub init: Option<Box<Stmt>>,
     pub condition: Option<Expr>,
@@ -322,7 +323,7 @@ pub struct ForStmt {
 
 /// 增强 for 循环语句 - 5.2.0
 /// 例如：for (int x : arr) { ... }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ForEachStmt {
     pub var_type: Type,
     pub var_name: String,
@@ -333,7 +334,7 @@ pub struct ForEachStmt {
 }
 
 /// do-while 循环语句
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct DoWhileStmt {
     pub condition: Expr,
     pub body: Box<Stmt>,
@@ -342,7 +343,7 @@ pub struct DoWhileStmt {
 }
 
 /// switch case 值 - 支持整数常量或 enum variant
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub enum CaseValue {
     Integer(i64),
     EnumVariant {
@@ -387,14 +388,14 @@ impl fmt::Display for CaseValue {
 }
 
 /// enum 解构绑定信息（case EnumName.Variant(Type var_name): 中的变量绑定）
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct PayloadBinding {
     pub var_type: Type,
     pub var_name: String,
 }
 
 /// switch case 分支
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Case {
     pub value: CaseValue,
     pub body: Vec<Stmt>,
@@ -403,7 +404,7 @@ pub struct Case {
 }
 
 /// switch 语句
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct SwitchStmt {
     pub expr: Expr,
     pub cases: Vec<Case>,
@@ -411,7 +412,7 @@ pub struct SwitchStmt {
     pub loc: SourceLocation,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub enum Expr {
     Literal(LiteralExpr),
     Identifier(IdentifierExpr),
@@ -461,7 +462,7 @@ impl HasLocation for Expr {
 }
 
 /// 0.5.0.0: 内存分配表达式
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct AllocExpr {
     pub size: Box<Expr>,
     pub align: Option<Box<Expr>>,
@@ -469,21 +470,21 @@ pub struct AllocExpr {
 }
 
 /// 0.5.0.0: 内存释放表达式
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct DeallocExpr {
     pub ptr: Box<Expr>,
     pub loc: SourceLocation,
 }
 
 /// 命名参数表达式: name=value（用于函数调用中的命名传参）
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct NamedArgExpr {
     pub name: String,
     pub value: Box<Expr>,
     pub loc: SourceLocation,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 pub struct IdentifierExpr {
     pub name: String,
     pub loc: SourceLocation,
@@ -520,7 +521,7 @@ impl IdentifierExpr {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub enum LiteralValue {
     Int32(i32),
     Int64(i64),
@@ -532,13 +533,13 @@ pub enum LiteralValue {
     Null,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct LiteralExpr {
     pub value: LiteralValue,
     pub loc: SourceLocation,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct BinaryExpr {
     pub left: Box<Expr>,
     pub op: BinaryOp,
@@ -546,7 +547,7 @@ pub struct BinaryExpr {
     pub loc: SourceLocation,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum BinaryOp {
     Add,
     Sub,
@@ -569,14 +570,14 @@ pub enum BinaryOp {
     UnsignedShr,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct UnaryExpr {
     pub op: UnaryOp,
     pub operand: Box<Expr>,
     pub loc: SourceLocation,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum UnaryOp {
     Neg,
     Not,
@@ -589,28 +590,28 @@ pub enum UnaryOp {
     Deref,     // *pointer - 解引用
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct CallExpr {
     pub callee: Box<Expr>,
     pub args: Vec<Expr>,
     pub loc: SourceLocation,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct MemberAccessExpr {
     pub object: Box<Expr>,
     pub member: String,
     pub loc: SourceLocation,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct NewExpr {
     pub class_name: String,
     pub args: Vec<Expr>,
     pub loc: SourceLocation,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct AssignmentExpr {
     pub target: Box<Expr>,
     pub value: Box<Expr>,
@@ -618,7 +619,7 @@ pub struct AssignmentExpr {
     pub loc: SourceLocation,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum AssignOp {
     Assign,
     AddAssign,
@@ -628,7 +629,7 @@ pub enum AssignOp {
     ModAssign,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct CastExpr {
     pub expr: Box<Expr>,
     pub target_type: Type,
@@ -636,7 +637,7 @@ pub struct CastExpr {
 }
 
 /// 数组创建表达式: new Type[size] 或 new Type[size1][size2]... 或 new Type[size]()
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ArrayCreationExpr {
     pub element_type: Type,
     pub sizes: Vec<Expr>, // 支持多维数组，每个维度的大小
@@ -645,14 +646,14 @@ pub struct ArrayCreationExpr {
 }
 
 /// 数组初始化表达式: {1, 2, 3}
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ArrayInitExpr {
     pub elements: Vec<Expr>,
     pub loc: SourceLocation,
 }
 
 /// 数组访问表达式: arr[index]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ArrayAccessExpr {
     pub array: Box<Expr>,
     pub index: Box<Expr>,
@@ -660,7 +661,7 @@ pub struct ArrayAccessExpr {
 }
 
 /// 方法引用表达式: ClassName::methodName 或 obj::methodName
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct MethodRefExpr {
     pub class_name: Option<String>, // 类名（静态方法引用）
     pub object: Option<Box<Expr>>,  // 对象表达式（实例方法引用）
@@ -669,7 +670,7 @@ pub struct MethodRefExpr {
 }
 
 /// Lambda 表达式: (params) -> { body }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct LambdaExpr {
     pub params: Vec<LambdaParam>,
     pub body: LambdaBody,
@@ -677,21 +678,21 @@ pub struct LambdaExpr {
 }
 
 /// Lambda 参数
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct LambdaParam {
     pub name: String,
     pub param_type: Option<Type>, // 可选的类型注解
 }
 
 /// Lambda 体（可以是表达式或语句块）
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub enum LambdaBody {
     Expr(Box<Expr>), // 单表达式: (x) -> x * 2
     Block(Block),    // 语句块: (x) -> { return x * 2; }
 }
 
 /// 三元运算符表达式: condition ? true_expr : false_expr
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct TernaryExpr {
     pub condition: Box<Expr>,
     pub true_branch: Box<Expr>,
@@ -700,7 +701,7 @@ pub struct TernaryExpr {
 }
 
 /// instanceof 表达式: obj instanceof Type
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct InstanceOfExpr {
     pub expr: Box<Expr>,
     pub target_type: crate::types::Type,

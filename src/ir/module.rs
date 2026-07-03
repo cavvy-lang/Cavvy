@@ -6,9 +6,10 @@ use super::function::IrFunction;
 use super::types::IrType;
 use super::value::IrValue;
 use std::collections::HashMap;
+use serde::Serialize;
 
 /// 全局变量定义
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct IrGlobal {
     pub name: String,
     pub ty: IrType,
@@ -18,7 +19,7 @@ pub struct IrGlobal {
 }
 
 /// 全局变量链接类型
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum IrGlobalLinkage {
     External,
     Internal,
@@ -26,14 +27,14 @@ pub enum IrGlobalLinkage {
 }
 
 /// 字符串常量
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct IrStringConstant {
     pub name: String,
     pub value: String,
 }
 
 /// 外部函数声明
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct IrExternDecl {
     pub name: String,
     pub return_type: IrType,
@@ -46,7 +47,7 @@ pub struct IrExternDecl {
 ///
 /// 代表编译单元的顶层 IR，是编译的中间产出。
 /// 可以从 .cay 源文件生成，也可以序列化为 .cayir 文件。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct IrModule {
     /// 模块名称
     pub name: String,
@@ -63,13 +64,15 @@ pub struct IrModule {
     /// 类型声明（结构体等）
     pub type_declarations: Vec<IrTypeDecl>,
     /// 字符串计数器
+    #[serde(skip)]
     string_counter: u64,
     /// 全局计数器（用于生成唯一名称）
+    #[serde(skip)]
     global_counter: u64,
 }
 
 /// 类型声明（结构体定义）
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct IrTypeDecl {
     pub name: String,
     pub fields: Vec<(String, IrType)>,
@@ -207,7 +210,7 @@ impl IrModule {
 }
 
 /// 模块统计信息
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Serialize)]
 pub struct IrModuleStats {
     pub function_count: usize,
     pub extern_count: usize,

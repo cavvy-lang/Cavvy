@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use std::fmt;
+use serde::Serialize;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 pub enum Type {
     Void,
     Int32,
@@ -41,7 +42,7 @@ pub enum Type {
     Struct(String), // 命名结构体: Struct("SDL_Window")
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 pub struct FunctionType {
     pub params: Vec<Type>,
     pub return_type: Box<Type>,
@@ -49,7 +50,7 @@ pub struct FunctionType {
     pub is_closure: bool, // 是否是闭包（有捕获变量）
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 pub struct TypeParamInfo {
     pub name: String,
     pub bound: Option<String>,      // 类型边界（暂不强制检查）
@@ -84,7 +85,7 @@ pub fn substitute_type_params(ty: &Type, mapping: &HashMap<String, Type>) -> Typ
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ClassInfo {
     pub name: String,
     pub type_params: Vec<TypeParamInfo>, // 泛型类型参数: <T, U, ...>
@@ -100,7 +101,7 @@ pub struct ClassInfo {
 }
 
 /// 构造函数信息
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ConstructorInfo {
     pub params: Vec<ParameterInfo>,
     pub is_public: bool,
@@ -108,7 +109,7 @@ pub struct ConstructorInfo {
     pub is_protected: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct InterfaceInfo {
     pub name: String,
     pub type_params: Vec<TypeParamInfo>, // 泛型类型参数: <T, U, ...>
@@ -116,7 +117,7 @@ pub struct InterfaceInfo {
 }
 
 /// struct 信息 - 值类型，无继承
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct StructInfo {
     pub name: String,
     pub fields: HashMap<String, FieldInfo>,
@@ -349,7 +350,7 @@ impl StructInfo {
 }
 
 /// enum 信息 - tagged union / ADT
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct EnumInfo {
     pub name: String,
     pub type_params: Vec<TypeParamInfo>, // 泛型类型参数
@@ -359,7 +360,7 @@ pub struct EnumInfo {
 }
 
 /// enum variant 信息
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct EnumVariantInfo {
     pub name: String,
     pub payload_type: Option<Type>, // variant 携带的数据类型
@@ -657,7 +658,7 @@ impl ClassInfo {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct MethodInfo {
     pub name: String,
     pub class_name: String,
@@ -676,7 +677,7 @@ pub struct MethodInfo {
 }
 
 /// VTable 布局信息
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct VTableLayout {
     /// 类名
     pub class_name: String,
@@ -686,7 +687,7 @@ pub struct VTableLayout {
     pub size: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct FieldInfo {
     pub name: String,
     pub field_type: Type,
@@ -698,7 +699,7 @@ pub struct FieldInfo {
     pub is_const_expr: bool, // 是否是编译期常量（static final且初始化值为常量）
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ParameterInfo {
     pub name: String,
     pub param_type: Type,
@@ -864,7 +865,7 @@ impl fmt::Display for Type {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct TypeRegistry {
     pub classes: HashMap<String, ClassInfo>,
     pub structs: HashMap<String, StructInfo>,

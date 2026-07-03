@@ -6,6 +6,7 @@
 
 use super::types::IrType;
 use super::value::{IrInstruction, IrValue};
+use serde::Serialize;
 
 /// 内联 IR 块 - 表示 Cavvy 源码中的 `__ir { ... }` 块
 ///
@@ -23,7 +24,7 @@ use super::value::{IrInstruction, IrValue};
 /// - 支持引用外层 Cavvy 变量（通过名称绑定）
 /// - 支持产生输出值供外层使用
 /// - 自动进行简单的安全检查
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct InlineIrBlock {
     /// 原始 IR 文本行
     pub raw_lines: Vec<String>,

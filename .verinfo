@@ -50,6 +50,18 @@ build = 11
 version = "5.1.0"
 build = 1
 
+[CAY-AST]
+version = "5.1.0"
+build = 1
+
+[CAY-PL]
+version = "5.1.0"
+build = 1
+
+[CAY-SIR]
+version = "5.1.0"
+build = 1
+
 [LLVM-MINIMAL]
 version = "22.1.6"
 
