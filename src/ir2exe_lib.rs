@@ -1104,7 +1104,23 @@ fn compile_with_embedded_llc(
         // Linux/Unix: 使用 GNU ld 风格参数
         lld_cmd.arg("-flavor").arg("gnu");
         lld_cmd.arg("-o").arg(output_file);
-        lld_cmd.arg(&obj_file);
+
+        // 添加标准库搜索路径 - ld.lld 不会自动搜索系统库路径
+        // 时间复杂度: O(1) - 固定数量的路径
+        let default_lib_paths = vec![
+            "/usr/lib",
+            "/usr/lib64",
+            "/usr/local/lib",
+            "/lib",
+            "/lib64",
+            "/lib/x86_64-linux-gnu",
+            "/usr/lib/x86_64-linux-gnu",
+        ];
+        for lib_path in &default_lib_paths {
+            if std::path::Path::new(lib_path).exists() {
+                lld_cmd.arg("-L").arg(lib_path);
+            }
+        }
 
         // 额外库路径
         for path in &options.extra_lib_paths {
@@ -1117,6 +1133,46 @@ fn compile_with_embedded_llc(
             lld_cmd.arg("-L").arg(&cayrt_path);
         }
 
+        // 添加 C 运行时启动文件 - 这些文件提供 _start 入口点
+        // _start 负责初始化栈、调用 main、处理程序退出
+        // 没有这些文件，入口点会是 0x0，导致段错误
+        let mut crt_files_added = false;
+        for lib_path in &default_lib_paths {
+            if std::path::Path::new(lib_path).exists() {
+                // 尝试找到 Scrt1.o (PIE) 或 crt1.o (非 PIE)
+                let scrt1 = std::path::Path::new(lib_path).join("Scrt1.o");
+                let crt1 = std::path::Path::new(lib_path).join("crt1.o");
+                let crti = std::path::Path::new(lib_path).join("crti.o");
+                let crtn = std::path::Path::new(lib_path).join("crtn.o");
+
+                // 如果已经添加过启动文件，跳过此路径（避免重复符号）
+                if crt_files_added {
+                    continue;
+                }
+
+                if scrt1.exists() {
+                    lld_cmd.arg(&scrt1);
+                    crt_files_added = true;
+                } else if crt1.exists() {
+                    lld_cmd.arg(&crt1);
+                    crt_files_added = true;
+                }
+
+                // 只在找到主启动文件后，才添加 init/fini 文件
+                if crt_files_added {
+                    if crti.exists() {
+                        lld_cmd.arg(&crti);
+                    }
+                    if crtn.exists() {
+                        lld_cmd.arg(&crtn);
+                    }
+                }
+            }
+        }
+
+        // 输入目标文件（放在启动文件之后）
+        lld_cmd.arg(&obj_file);
+
         // 根据目标平台选择运行时库
         let cayrt_lib_name = if options.target.contains("linux") {
             "cayrt-linux"
@@ -1125,12 +1181,34 @@ fn compile_with_embedded_llc(
         };
         lld_cmd.arg(format!("-l{}", cayrt_lib_name));
 
-        // 默认库
-        lld_cmd.arg("-lc").arg("-lm").arg("-lpthread");
+        // 添加启动文件和默认库
+        // 注意: ld.lld 需要显式链接这些库，不像 GNU ld 那样自动处理
+        lld_cmd.arg("-lc");
+        lld_cmd.arg("-lm");
+        lld_cmd.arg("-ldl");
+        lld_cmd.arg("-lpthread");
 
         // 额外库
         for lib in &options.extra_libs {
             lld_cmd.arg(format!("-l{}", lib));
+        }
+
+        // 添加动态链接器路径 - 必须设置否则生成的 ELF 没有 INTERP 段
+        // 没有 INTERP 段，内核无法找到动态链接器，导致程序无法启动
+        if !options.static_link {
+            // 尝试找到系统动态链接器
+            let interp_paths = [
+                "/lib64/ld-linux-x86-64.so.2",
+                "/usr/lib64/ld-linux-x86-64.so.2",
+                "/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+                "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+            ];
+            for interp in &interp_paths {
+                if std::path::Path::new(interp).exists() {
+                    lld_cmd.arg("--dynamic-linker").arg(interp);
+                    break;
+                }
+            }
         }
 
         if options.static_link {
