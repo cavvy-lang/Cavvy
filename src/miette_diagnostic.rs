@@ -513,6 +513,11 @@ impl CayError {
     pub fn severity(&self) -> Severity {
         match self {
             CayError::CodeGen {
+                kind,
+                is_warning: false,
+                ..
+            } if kind == "致命错误" => Severity::Fatal,
+            CayError::CodeGen {
                 is_warning: true, ..
             }
             | CayError::Lint { .. } => Severity::Warning,
@@ -1305,6 +1310,56 @@ pub fn line_range(source: &str, line: usize) -> (usize, usize) {
 // print_diagnostics
 // ============================================================
 
+/// 当诊断行号为 0 时输出调试文件，帮助定位编译器内部定位失败。
+fn emit_zero_line_debug_info(error: &CayError, source: &str, filename: &str) {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let errors_to_check: Vec<&CayError> = match error {
+        CayError::MultipleErrors { errors } => errors.iter().collect(),
+        _ => vec![error],
+    };
+
+    for err in errors_to_check {
+        let (line, column) = err.location().unwrap_or((0, 0));
+        if line != 0 {
+            continue;
+        }
+
+        let code = err.error_code();
+        let message = err.message();
+        let suggestion = err.suggestion_text().unwrap_or("无");
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let path = format!("debug_{}_{}.txt", code, timestamp);
+
+        let content = format!(
+            "Cavvy Bug Report\n\
+             ================\n\
+             错误代码: {}\n\
+             错误类型: {}\n\
+             文件: {}\n\
+             行号: {} (行号为0)\n\
+             列号: {}\n\
+             错误信息: {}\n\
+             建议: {}\n\n\
+             === 源代码 ===\n\
+             {}\n",
+            code,
+            err.phase().label(),
+            filename,
+            line,
+            column,
+            message,
+            suggestion,
+            source
+        );
+
+        let _ = std::fs::write(&path, content);
+    }
+}
+
 pub fn print_diagnostics(errors: &[CayError], source: &str, filename: &str) {
     if errors.is_empty() {
         return;
@@ -1319,6 +1374,9 @@ pub fn print_diagnostics(errors: &[CayError], source: &str, filename: &str) {
         .count();
     eprintln!();
     for error in errors {
+        // 行号为0通常是编译器内部定位失败，额外输出调试文件
+        emit_zero_line_debug_info(error, source, filename);
+
         let diag = CayDiagnostic::new(error, source, filename);
         let report = miette::Report::new(diag)
             .with_source_code(NamedSource::new(filename, source.to_string()));
@@ -1347,8 +1405,12 @@ pub fn print_diagnostics(errors: &[CayError], source: &str, filename: &str) {
 
 pub fn print_error_with_context(error: &CayError, source: &str, filename: &str) {
     match error {
-        CayError::MultipleErrors { errors } => print_diagnostics(errors, source, filename),
-        single => print_diagnostics(&[single.clone()], source, filename),
+        CayError::MultipleErrors { errors } => {
+            print_diagnostics_by_file(errors, source, filename);
+        }
+        single => {
+            print_diagnostics_by_file(&[single.clone()], source, filename);
+        }
     }
 }
 
