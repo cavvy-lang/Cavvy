@@ -2,8 +2,8 @@
 //!
 //! 测试错误诊断系统，包括错误代码、错误收集和友好的错误信息
 
-use cavvy::miette_diagnostic::*;
 use cavvy::lexer::lex_with_diagnostics;
+use cavvy::miette_diagnostic::*;
 
 // ==================== 辅助 trait — 为 Vec<CayError> 添加便利方法 ====================
 
@@ -19,16 +19,21 @@ trait DiagnosticVec {
 
 impl DiagnosticVec for Vec<CayError> {
     fn has_errors(&self) -> bool {
-        self.iter().any(|e| matches!(e.severity(), Severity::Error | Severity::Fatal))
+        self.iter()
+            .any(|e| matches!(e.severity(), Severity::Error | Severity::Fatal))
     }
     fn has_warnings(&self) -> bool {
         self.iter().any(|e| e.severity() == Severity::Warning)
     }
     fn error_count(&self) -> usize {
-        self.iter().filter(|e| matches!(e.severity(), Severity::Error | Severity::Fatal)).count()
+        self.iter()
+            .filter(|e| matches!(e.severity(), Severity::Error | Severity::Fatal))
+            .count()
     }
     fn warning_count(&self) -> usize {
-        self.iter().filter(|e| e.severity() == Severity::Warning).count()
+        self.iter()
+            .filter(|e| e.severity() == Severity::Warning)
+            .count()
     }
     fn has_fatal_errors(&self) -> bool {
         self.iter().any(|e| e.severity() == Severity::Fatal)
@@ -42,7 +47,12 @@ impl DiagnosticVec for Vec<CayError> {
 }
 
 /// 创建一个语义警告（CayError 中只有 CodeGen 变体支持 is_warning）
-fn semantic_warning(code: &'static str, line: usize, column: usize, message: impl Into<String>) -> CayError {
+fn semantic_warning(
+    code: &'static str,
+    line: usize,
+    column: usize,
+    message: impl Into<String>,
+) -> CayError {
     CayError::CodeGen {
         error_code: code,
         kind: "语义警告".to_string(),
@@ -55,7 +65,12 @@ fn semantic_warning(code: &'static str, line: usize, column: usize, message: imp
     }
 }
 
-fn fatal_error(code: &'static str, line: usize, column: usize, message: impl Into<String>) -> CayError {
+fn fatal_error(
+    code: &'static str,
+    line: usize,
+    column: usize,
+    message: impl Into<String>,
+) -> CayError {
     CayError::CodeGen {
         error_code: code,
         kind: "致命错误".to_string(),
@@ -76,7 +91,8 @@ fn test_collector_basic() {
 
     errors.push(semantic_error(
         ErrorCodes::SEMANTIC_TYPE_MISMATCH,
-        10, 5,
+        10,
+        5,
         "类型不匹配",
     ));
 
@@ -91,19 +107,22 @@ fn test_collector_multiple_errors() {
 
     errors.push(semantic_error(
         ErrorCodes::SEMANTIC_UNDEFINED_IDENTIFIER,
-        5, 10,
+        5,
+        10,
         "未定义变量 x",
     ));
 
     errors.push(semantic_error(
         ErrorCodes::SEMANTIC_TYPE_MISMATCH,
-        8, 15,
+        8,
+        15,
         "类型不匹配",
     ));
 
     errors.push(semantic_warning(
         ErrorCodes::SEMANTIC_WARN_UNUSED_VARIABLE,
-        12, 5,
+        12,
+        5,
         "未使用的变量",
     ));
 
@@ -236,7 +255,8 @@ fn test_print_diagnostics() {
 
     errors.push(semantic_error(
         ErrorCodes::SEMANTIC_UNDEFINED_IDENTIFIER,
-        2, 9,
+        2,
+        9,
         "未定义变量 x",
     ));
 
@@ -252,7 +272,8 @@ fn test_collector_clear() {
 
     errors.push(semantic_error(
         ErrorCodes::SEMANTIC_UNDEFINED_IDENTIFIER,
-        1, 1,
+        1,
+        1,
         "错误",
     ));
 
@@ -296,28 +317,32 @@ fn test_comprehensive_error_scenario() {
     // 词法错误
     errors.push(lexer_error(
         ErrorCodes::LEXER_INVALID_CHARACTER,
-        1, 10,
+        1,
+        10,
         "非法字符 '@'",
     ));
 
     // 语法错误
     errors.push(parser_error(
         ErrorCodes::PARSER_EXPECTED_SEMICOLON,
-        3, 15,
+        3,
+        15,
         "缺少分号",
     ));
 
     // 语义错误
     errors.push(semantic_error(
         ErrorCodes::SEMANTIC_UNDEFINED_IDENTIFIER,
-        5, 8,
+        5,
+        8,
         "未定义变量 'foo'",
     ));
 
     // 警告
     errors.push(semantic_warning(
         ErrorCodes::SEMANTIC_WARN_UNUSED_VARIABLE,
-        7, 5,
+        7,
+        5,
         "变量 'bar' 未使用",
     ));
 
@@ -352,7 +377,8 @@ fn test_fatal_error_detection() {
 
     errors.push(fatal_error(
         ErrorCodes::CODEGEN_LLVM_ERROR,
-        1, 1,
+        1,
+        1,
         "LLVM致命错误",
     ));
 
@@ -374,7 +400,8 @@ fn test_zero_line_debug_info() {
     // 创建一个行号为0的诊断（模拟内部错误定位失败）
     errors.push(duplicate_definition_error_with_file(
         Some("test.cay".to_string()),
-        0, 1,
+        0,
+        1,
         "Test",
     ));
 

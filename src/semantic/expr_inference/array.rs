@@ -95,7 +95,10 @@ impl SemanticAnalyzer {
     }
 
     /// 推断数组访问表达式类型
-    pub(crate) fn infer_array_access_type(&mut self, arr: &ArrayAccessExpr) -> crate::miette_diagnostic::CayResult<Type> {
+    pub(crate) fn infer_array_access_type(
+        &mut self,
+        arr: &ArrayAccessExpr,
+    ) -> crate::miette_diagnostic::CayResult<Type> {
         // 数组访问: arr[index]
         let array_type = self.infer_expr_type_internal(&arr.array)?;
         let index_type = self.infer_expr_type_internal(&arr.index)?;

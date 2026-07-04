@@ -3,12 +3,15 @@
 use super::super::analyzer::SemanticAnalyzer;
 use super::helpers::semantic_error_at_loc;
 use crate::ast::*;
-use crate::miette_diagnostic::{semantic_error_with_file, ErrorCodes};
+use crate::miette_diagnostic::{ErrorCodes, semantic_error_with_file};
 use crate::types::Type;
 
 impl SemanticAnalyzer {
     /// 推断 new 表达式类型
-    pub(crate) fn infer_new_type(&mut self, new_expr: &NewExpr) -> crate::miette_diagnostic::CayResult<Type> {
+    pub(crate) fn infer_new_type(
+        &mut self,
+        new_expr: &NewExpr,
+    ) -> crate::miette_diagnostic::CayResult<Type> {
         // 解析泛型类名: "Optional<T>" -> ("Optional", Some(["T"]))
         // 支持多类型参数: "Pair<K, V>" -> ("Pair", Some(["K", "V"]))
         let (base_class_name, type_params) = if let Some(pos) = new_expr.class_name.find('<') {
@@ -141,7 +144,11 @@ impl SemanticAnalyzer {
                 // 非泛型类
                 Ok(Type::Object(base_class_name))
             }
-        } else if self.current_class_type_params.iter().any(|p| &p.name == &base_class_name) {
+        } else if self
+            .current_class_type_params
+            .iter()
+            .any(|p| &p.name == &base_class_name)
+        {
             // new A() where A is a type parameter of the current class.
             // The concrete type will be substituted during monomorphization.
             Ok(Type::Object(new_expr.class_name.clone()))
@@ -179,7 +186,8 @@ impl SemanticAnalyzer {
         if self.types_compatible(&value_type, &target_type) {
             Ok(target_type)
         } else {
-            Err(semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, 
+            Err(semantic_error_with_file(
+                ErrorCodes::SEMANTIC_INVALID_OPERATION,
                 assign.loc.file.clone(),
                 assign.loc.line,
                 assign.loc.column,

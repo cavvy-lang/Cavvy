@@ -10,8 +10,8 @@ mod types;
 mod utils;
 
 use crate::ast::Program;
-use crate::miette_diagnostic::{CayError, CayResult};
 use crate::lexer::TokenWithLocation;
+use crate::miette_diagnostic::{CayError, CayResult};
 
 /// 语法分析器
 pub struct Parser {

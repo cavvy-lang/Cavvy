@@ -174,7 +174,13 @@ impl Compiler {
         output_path: &str,
         main_file: Option<String>,
     ) -> CayResult<()> {
-        self.compile_with_source_map_and_link_libs(source, source_map, output_path, main_file, Vec::new())
+        self.compile_with_source_map_and_link_libs(
+            source,
+            source_map,
+            output_path,
+            main_file,
+            Vec::new(),
+        )
     }
 
     /// 使用源映射编译（带主文件路径和链接库信息）

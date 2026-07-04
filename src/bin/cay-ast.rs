@@ -4,8 +4,8 @@
 mod debug_common;
 
 use cavvy::ast::{
-    ClassDecl, ClassMember, EnumDecl, ExternDecl, FieldDecl, InterfaceDecl,
-    MethodDecl, Program, StructDecl, TopLevelFunction,
+    ClassDecl, ClassMember, EnumDecl, ExternDecl, FieldDecl, InterfaceDecl, MethodDecl, Program,
+    StructDecl, TopLevelFunction,
 };
 use debug_common::*;
 use std::process;
@@ -165,7 +165,10 @@ fn print_extern_decl(ext: &ExternDecl, options: &CommonOptions, indent: usize) {
     let detail_color = if options.no_color { "" } else { "\x1b[32m" };
     let reset = if options.no_color { "" } else { "\x1b[0m" };
     let indent_str = " ".repeat(indent);
-    println!("{}{:?} 调用约定{}", indent_str, ext.calling_convention, reset);
+    println!(
+        "{}{:?} 调用约定{}",
+        indent_str, ext.calling_convention, reset
+    );
     for func in &ext.functions {
         let params: Vec<String> = func
             .params
@@ -174,7 +177,12 @@ fn print_extern_decl(ext: &ExternDecl, options: &CommonOptions, indent: usize) {
             .collect();
         println!(
             "{}  {}fn {}({}) -> {:?}{}",
-            indent_str, detail_color, func.name, params.join(", "), func.return_type, reset
+            indent_str,
+            detail_color,
+            func.name,
+            params.join(", "),
+            func.return_type,
+            reset
         );
     }
 }
@@ -183,7 +191,10 @@ fn print_interface(iface: &InterfaceDecl, options: &CommonOptions, indent: usize
     let item_color = if options.no_color { "" } else { "\x1b[1;33m" };
     let reset = if options.no_color { "" } else { "\x1b[0m" };
     let indent_str = " ".repeat(indent);
-    println!("{}{}{}interface {}{}", indent_str, item_color, iface.name, reset, "");
+    println!(
+        "{}{}{}interface {}{}",
+        indent_str, item_color, iface.name, reset, ""
+    );
     if !options.compact {
         for method in &iface.methods {
             print_method(method, options, indent + 2);
@@ -195,7 +206,10 @@ fn print_struct(st: &StructDecl, options: &CommonOptions, indent: usize) {
     let item_color = if options.no_color { "" } else { "\x1b[1;33m" };
     let reset = if options.no_color { "" } else { "\x1b[0m" };
     let indent_str = " ".repeat(indent);
-    println!("{}{}{}struct {}{}", indent_str, item_color, st.name, reset, "");
+    println!(
+        "{}{}{}struct {}{}",
+        indent_str, item_color, st.name, reset, ""
+    );
     if !options.compact {
         for field in &st.fields {
             print_field(field, options, indent + 2);
@@ -211,7 +225,10 @@ fn print_enum(en: &EnumDecl, options: &CommonOptions, indent: usize) {
     let detail_color = if options.no_color { "" } else { "\x1b[32m" };
     let reset = if options.no_color { "" } else { "\x1b[0m" };
     let indent_str = " ".repeat(indent);
-    println!("{}{}{}enum {}{}", indent_str, item_color, en.name, reset, "");
+    println!(
+        "{}{}{}enum {}{}",
+        indent_str, item_color, en.name, reset, ""
+    );
     if !options.compact {
         for variant in &en.variants {
             let payload = match &variant.payload_type {

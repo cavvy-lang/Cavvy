@@ -20,7 +20,11 @@ fn get_cayc_path() -> String {
 /// 获取当前平台的可执行文件扩展名
 fn get_exe_extension() -> &'static str {
     if cfg!(target_os = "windows") {
-        if cfg!(target_os = "windows") { ".exe" } else { "" }
+        if cfg!(target_os = "windows") {
+            ".exe"
+        } else {
+            ""
+        }
     } else {
         ""
     }
@@ -325,7 +329,7 @@ fn test_source_map_generation() {
     let output_exe = temp_dir.join(format!("test_output{}", exe_ext));
     let output = Command::new(get_cayc_path())
         .args(&[
-                        source_file.to_str().unwrap(),
+            source_file.to_str().unwrap(),
             output_exe.to_str().unwrap(),
             "--keep-ir",
         ])
@@ -392,7 +396,7 @@ fn test_source_map_accuracy() {
     let output_exe = temp_dir.join(format!("test_output{}", exe_ext));
     let output = Command::new(get_cayc_path())
         .args(&[
-                        source_file.to_str().unwrap(),
+            source_file.to_str().unwrap(),
             output_exe.to_str().unwrap(),
             "--keep-ir",
         ])
@@ -495,7 +499,7 @@ public class ErrorTest {
     let output_exe = temp_dir.join(format!("test_output{}", exe_ext));
     let output = Command::new(get_cayc_path())
         .args(&[
-                        source_file.to_str().unwrap(),
+            source_file.to_str().unwrap(),
             output_exe.to_str().unwrap(),
             "--keep-ir",
         ])
@@ -561,7 +565,7 @@ fn test_source_map_comment_format() {
     let output_exe = temp_dir.join(format!("test_output{}", exe_ext));
     let output = Command::new(get_cayc_path())
         .args(&[
-                        source_file.to_str().unwrap(),
+            source_file.to_str().unwrap(),
             output_exe.to_str().unwrap(),
             "--keep-ir",
         ])

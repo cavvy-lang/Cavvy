@@ -124,7 +124,11 @@ impl IRGenerator {
 
     /// 获取可变参数方法的固定参数数量和元素类型
     /// 返回 (varargs_param_index, element_type)，如果未找到可变参数则返回 (0, Int32)
-    pub fn get_varargs_info(&self, class_name: &str, method_name: &str) -> (usize, crate::types::Type) {
+    pub fn get_varargs_info(
+        &self,
+        class_name: &str,
+        method_name: &str,
+    ) -> (usize, crate::types::Type) {
         if let Some(ref registry) = self.type_registry {
             if let Some(interface_info) = registry.get_interface(class_name) {
                 if let Some(method) = interface_info.methods.get(method_name) {

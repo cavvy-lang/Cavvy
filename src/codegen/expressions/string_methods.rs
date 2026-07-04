@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::{CayResult, codegen_error_at, ErrorCodes};
+use crate::miette_diagnostic::{CayResult, ErrorCodes, codegen_error_at};
 
 impl IRGenerator {
     /// 尝试生成 String 方法调用代码
@@ -41,7 +41,8 @@ impl IRGenerator {
             "length" => {
                 // length() - 无参数，返回 i32
                 if !args.is_empty() {
-                    return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    return Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         member.loc.clone(),
                         "String.length() takes no arguments".to_string(),
                     ));
@@ -55,7 +56,8 @@ impl IRGenerator {
             "substring" => {
                 // substring(beginIndex) 或 substring(beginIndex, endIndex)
                 if args.is_empty() || args.len() > 2 {
-                    return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    return Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         member.loc.clone(),
                         "String.substring() takes 1 or 2 arguments".to_string(),
                     ));
@@ -105,7 +107,8 @@ impl IRGenerator {
             "indexOf" => {
                 // indexOf(substr) 或 indexOf(substr, startIndex)
                 if args.len() < 1 || args.len() > 2 {
-                    return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    return Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         member.loc.clone(),
                         "String.indexOf() takes 1 or 2 arguments".to_string(),
                     ));
@@ -115,7 +118,8 @@ impl IRGenerator {
                 let (substr_type, substr_val) = self.parse_typed_value(&substr_result);
 
                 if substr_type != "i8*" {
-                    return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    return Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         member.loc.clone(),
                         "String.indexOf() argument must be a string".to_string(),
                     ));
@@ -126,7 +130,8 @@ impl IRGenerator {
                     let start_result = self.generate_expression(&args[1])?;
                     let (start_type, start_val) = self.parse_typed_value(&start_result);
                     if start_type != "i32" {
-                        return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                        return Err(codegen_error_at(
+                            ErrorCodes::CODEGEN_INVALID_OPERATION,
                             member.loc.clone(),
                             "String.indexOf() second argument must be int".to_string(),
                         ));
@@ -146,7 +151,8 @@ impl IRGenerator {
             "lastIndexOf" => {
                 // lastIndexOf(substr) - 返回子串最后一次出现的位置
                 if args.len() != 1 {
-                    return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    return Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         member.loc.clone(),
                         "String.lastIndexOf() takes 1 argument".to_string(),
                     ));
@@ -156,7 +162,8 @@ impl IRGenerator {
                 let (substr_type, substr_val) = self.parse_typed_value(&substr_result);
 
                 if substr_type != "i8*" {
-                    return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    return Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         member.loc.clone(),
                         "String.lastIndexOf() argument must be a string".to_string(),
                     ));
@@ -171,7 +178,8 @@ impl IRGenerator {
             "charAt" => {
                 // charAt(index) - 返回指定位置的字符
                 if args.len() != 1 {
-                    return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    return Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         member.loc.clone(),
                         "String.charAt() takes 1 argument".to_string(),
                     ));
@@ -199,7 +207,8 @@ impl IRGenerator {
             "replace" => {
                 // replace(oldStr, newStr) - 替换所有出现的子串
                 if args.len() != 2 {
-                    return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    return Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         member.loc.clone(),
                         "String.replace() takes 2 arguments".to_string(),
                     ));
@@ -211,7 +220,8 @@ impl IRGenerator {
                 let (new_type, new_val) = self.parse_typed_value(&new_result);
 
                 if old_type != "i8*" || new_type != "i8*" {
-                    return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    return Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         member.loc.clone(),
                         "String.replace() arguments must be strings".to_string(),
                     ));
@@ -226,7 +236,8 @@ impl IRGenerator {
             "isEmpty" => {
                 // isEmpty() - 无参数，返回 boolean (i1)
                 if !args.is_empty() {
-                    return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    return Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         member.loc.clone(),
                         "String.isEmpty() takes no arguments".to_string(),
                     ));
@@ -240,7 +251,8 @@ impl IRGenerator {
             "equals" => {
                 // equals(other) - 比较两个字符串是否相等，返回 boolean (i1)
                 if args.len() != 1 {
-                    return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    return Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         member.loc.clone(),
                         "String.equals() takes 1 argument".to_string(),
                     ));
@@ -250,7 +262,8 @@ impl IRGenerator {
                 let (other_type, other_val) = self.parse_typed_value(&other_result);
 
                 if other_type != "i8*" {
-                    return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    return Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         member.loc.clone(),
                         "String.equals() argument must be a string".to_string(),
                     ));
@@ -265,7 +278,8 @@ impl IRGenerator {
             "equalsIgnoreCase" => {
                 // equalsIgnoreCase(other) - 忽略大小写比较两个字符串，返回 boolean (i1)
                 if args.len() != 1 {
-                    return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    return Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         member.loc.clone(),
                         "String.equalsIgnoreCase() takes 1 argument".to_string(),
                     ));
@@ -275,7 +289,8 @@ impl IRGenerator {
                 let (other_type, other_val) = self.parse_typed_value(&other_result);
 
                 if other_type != "i8*" {
-                    return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    return Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         member.loc.clone(),
                         "String.equalsIgnoreCase() argument must be a string".to_string(),
                     ));
@@ -291,7 +306,8 @@ impl IRGenerator {
                 // c_str() - 返回C字符串指针 (i8*)
                 // 在Cavvy中，String本身就是i8*，所以直接返回
                 if !args.is_empty() {
-                    return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    return Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         member.loc.clone(),
                         "String.c_str() takes no arguments".to_string(),
                     ));
@@ -302,7 +318,8 @@ impl IRGenerator {
             "startsWith" => {
                 // startsWith(prefix) - 检查字符串是否以指定前缀开头
                 if args.len() != 1 {
-                    return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    return Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         member.loc.clone(),
                         "String.startsWith() takes 1 argument".to_string(),
                     ));
@@ -312,7 +329,8 @@ impl IRGenerator {
                 let (prefix_type, prefix_val) = self.parse_typed_value(&prefix_result);
 
                 if prefix_type != "i8*" {
-                    return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    return Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         member.loc.clone(),
                         "String.startsWith() argument must be a string".to_string(),
                     ));
@@ -327,7 +345,8 @@ impl IRGenerator {
             "endsWith" => {
                 // endsWith(suffix) - 检查字符串是否以指定后缀结尾
                 if args.len() != 1 {
-                    return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    return Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         member.loc.clone(),
                         "String.endsWith() takes 1 argument".to_string(),
                     ));
@@ -337,7 +356,8 @@ impl IRGenerator {
                 let (suffix_type, suffix_val) = self.parse_typed_value(&suffix_result);
 
                 if suffix_type != "i8*" {
-                    return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    return Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         member.loc.clone(),
                         "String.endsWith() argument must be a string".to_string(),
                     ));
@@ -351,7 +371,8 @@ impl IRGenerator {
             }
             "trim" => {
                 if !args.is_empty() {
-                    return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    return Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         member.loc.clone(),
                         "String.trim() takes no arguments".to_string(),
                     ));
@@ -364,7 +385,8 @@ impl IRGenerator {
             }
             "toLowerCase" => {
                 if !args.is_empty() {
-                    return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    return Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         member.loc.clone(),
                         "String.toLowerCase() takes no arguments".to_string(),
                     ));
@@ -377,7 +399,8 @@ impl IRGenerator {
             }
             "toUpperCase" => {
                 if !args.is_empty() {
-                    return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    return Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         member.loc.clone(),
                         "String.toUpperCase() takes no arguments".to_string(),
                     ));
@@ -391,7 +414,8 @@ impl IRGenerator {
             "contains" => {
                 // contains(substr) - 检查字符串是否包含子串，返回 boolean (i1)
                 if args.len() != 1 {
-                    return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    return Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         member.loc.clone(),
                         "String.contains() takes 1 argument".to_string(),
                     ));
@@ -399,7 +423,8 @@ impl IRGenerator {
                 let sub_result = self.generate_expression(&args[0])?;
                 let (sub_type, sub_val) = self.parse_typed_value(&sub_result);
                 if sub_type != "i8*" {
-                    return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    return Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         member.loc.clone(),
                         "String.contains() argument must be a string".to_string(),
                     ));
@@ -413,7 +438,8 @@ impl IRGenerator {
             "compareTo" => {
                 // compareTo(other) - 比较两个字符串，返回 i32 (-1, 0, 1)
                 if args.len() != 1 {
-                    return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    return Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         member.loc.clone(),
                         "String.compareTo() takes 1 argument".to_string(),
                     ));
@@ -421,7 +447,8 @@ impl IRGenerator {
                 let other_result = self.generate_expression(&args[0])?;
                 let (other_type, other_val) = self.parse_typed_value(&other_result);
                 if other_type != "i8*" {
-                    return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    return Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         member.loc.clone(),
                         "String.compareTo() argument must be a string".to_string(),
                     ));
@@ -435,7 +462,8 @@ impl IRGenerator {
             "hashCode" => {
                 // hashCode() - 无参数，返回 i32（Java String.hashCode 算法）
                 if !args.is_empty() {
-                    return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    return Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         member.loc.clone(),
                         "String.hashCode() takes no arguments".to_string(),
                     ));

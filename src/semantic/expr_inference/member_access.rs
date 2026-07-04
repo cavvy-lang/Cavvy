@@ -252,45 +252,46 @@ impl SemanticAnalyzer {
         // 类/struct 成员访问
         // 处理 Type::Object、Type::Generic 和 Type::GenericParam
         // 提取基础类名和类型参数
-        let (base_class_name_opt, type_args_opt): (Option<String>, Option<Vec<Type>>) = match &obj_type {
-            Type::Object(class_name) => {
-                // 解析泛型类名: "Optional<T>" -> ("Optional", Some([T]))
-                // 支持多类型参数: "Pair<int, String>" -> ("Pair", Some([int, String]))
-                if let Some(pos) = class_name.find('<') {
-                    let base = class_name[..pos].to_string();
-                    let args_str = &class_name[pos + 1..class_name.len() - 1];
-                    // 解析多个类型参数，用逗号分隔
-                    let type_args: Vec<Type> = args_str
-                        .split(',')
-                        .map(|s| s.trim())
-                        .filter(|s| !s.is_empty())
-                        .map(|s| self.parse_type_string(s))
-                        .collect();
-                    if type_args.is_empty() {
-                        (Some(base), None)
+        let (base_class_name_opt, type_args_opt): (Option<String>, Option<Vec<Type>>) =
+            match &obj_type {
+                Type::Object(class_name) => {
+                    // 解析泛型类名: "Optional<T>" -> ("Optional", Some([T]))
+                    // 支持多类型参数: "Pair<int, String>" -> ("Pair", Some([int, String]))
+                    if let Some(pos) = class_name.find('<') {
+                        let base = class_name[..pos].to_string();
+                        let args_str = &class_name[pos + 1..class_name.len() - 1];
+                        // 解析多个类型参数，用逗号分隔
+                        let type_args: Vec<Type> = args_str
+                            .split(',')
+                            .map(|s| s.trim())
+                            .filter(|s| !s.is_empty())
+                            .map(|s| self.parse_type_string(s))
+                            .collect();
+                        if type_args.is_empty() {
+                            (Some(base), None)
+                        } else {
+                            (Some(base), Some(type_args))
+                        }
                     } else {
-                        (Some(base), Some(type_args))
+                        (Some(class_name.clone()), None)
                     }
-                } else {
-                    (Some(class_name.clone()), None)
                 }
-            }
-            Type::Generic(class_name, args) => {
-                // Type::Generic 直接返回类名和类型参数
-                (Some(class_name.clone()), Some(args.clone()))
-            }
-            Type::GenericParam(param_name) => {
-                // 泛型类型参数：使用 bound（默认为 Object）查找方法
-                let bound_name = self
-                    .current_class_type_params
-                    .iter()
-                    .find(|p| &p.name == param_name)
-                    .and_then(|p| p.bound.clone())
-                    .unwrap_or_else(|| "Object".to_string());
-                (Some(bound_name), None)
-            }
-            _ => (None, None),
-        };
+                Type::Generic(class_name, args) => {
+                    // Type::Generic 直接返回类名和类型参数
+                    (Some(class_name.clone()), Some(args.clone()))
+                }
+                Type::GenericParam(param_name) => {
+                    // 泛型类型参数：使用 bound（默认为 Object）查找方法
+                    let bound_name = self
+                        .current_class_type_params
+                        .iter()
+                        .find(|p| &p.name == param_name)
+                        .and_then(|p| p.bound.clone())
+                        .unwrap_or_else(|| "Object".to_string());
+                    (Some(bound_name), None)
+                }
+                _ => (None, None),
+            };
 
         if let Some(base_class_name) = base_class_name_opt {
             // 先查 struct

@@ -26,7 +26,10 @@ impl SemanticAnalyzer {
     }
 
     /// 推断表达式类型（内部实现）
-    pub(crate) fn infer_expr_type_internal(&mut self, expr: &Expr) -> crate::miette_diagnostic::CayResult<Type> {
+    pub(crate) fn infer_expr_type_internal(
+        &mut self,
+        expr: &Expr,
+    ) -> crate::miette_diagnostic::CayResult<Type> {
         match expr {
             Expr::Literal(lit_expr) => match &lit_expr.value {
                 LiteralValue::Int32(_) => Ok(Type::Int32),
@@ -359,7 +362,11 @@ impl SemanticAnalyzer {
         (has_instance_method, candidate_methods)
     }
 
-    pub(crate) fn suggest_method_name(&self, class_name: &str, method_name: &str) -> Option<String> {
+    pub(crate) fn suggest_method_name(
+        &self,
+        class_name: &str,
+        method_name: &str,
+    ) -> Option<String> {
         let mut best_name: Option<String> = None;
         let mut best_distance = usize::MAX;
         let target = method_name.to_ascii_lowercase();
@@ -369,7 +376,8 @@ impl SemanticAnalyzer {
         while let Some(name) = class_to_check {
             if let Some(class_info) = self.type_registry.get_class(&name) {
                 for candidate in class_info.methods.keys() {
-                    let distance = super::helpers::edit_distance(&target, &candidate.to_ascii_lowercase());
+                    let distance =
+                        super::helpers::edit_distance(&target, &candidate.to_ascii_lowercase());
                     if distance < best_distance {
                         best_distance = distance;
                         best_name = Some(candidate.clone());
@@ -383,7 +391,8 @@ impl SemanticAnalyzer {
 
         if let Some(struct_info) = self.type_registry.get_struct(class_name) {
             for candidate in struct_info.methods.keys() {
-                let distance = super::helpers::edit_distance(&target, &candidate.to_ascii_lowercase());
+                let distance =
+                    super::helpers::edit_distance(&target, &candidate.to_ascii_lowercase());
                 if distance < best_distance {
                     best_distance = distance;
                     best_name = Some(candidate.clone());
@@ -409,7 +418,11 @@ impl SemanticAnalyzer {
         }
     }
 
-    pub(crate) fn unknown_static_member_message(&self, member_name: &str, class_name: &str) -> String {
+    pub(crate) fn unknown_static_member_message(
+        &self,
+        member_name: &str,
+        class_name: &str,
+    ) -> String {
         if let Some(suggestion) = self.suggest_method_name(class_name, member_name) {
             format!(
                 "Unknown static member '{}' for class {}. Did you mean '{}()'?",

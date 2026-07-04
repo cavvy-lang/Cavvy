@@ -5,7 +5,7 @@ use anyhow::{Context, Result};
 
 use cavvy::cavly::audit::{AuditLogEntry, AuditLogger, SecurityEventType};
 use cavvy::cavly::registry::SecureRegistry;
-use cavvy::cavly::security::{sha256_hex, SecurityLevel};
+use cavvy::cavly::security::{SecurityLevel, sha256_hex};
 
 // Cavly 版本 - 与 Cavvy 版本保持一致
 const VERSION: &str = env!("CAVLY_VERSION");
@@ -445,7 +445,9 @@ fn cmd_install(verbose: bool) -> Result<()> {
 /// - 空间: O(1)
 fn cmd_add(args: &[String]) -> Result<()> {
     if args.len() < 3 {
-        anyhow::bail!("用法: cavly add <名称> [选项]\n\n选项:\n  --version <版本>   指定注册表版本\n  --git <url>        指定 Git 仓库\n  --branch <分支>    Git 分支\n  --tag <标签>       Git 标签\n  --path <路径>      本地路径\n  --source <url>     自定义源服务器\n  --system <库>      系统库（如 ws2_32, pthread, m）");
+        anyhow::bail!(
+            "用法: cavly add <名称> [选项]\n\n选项:\n  --version <版本>   指定注册表版本\n  --git <url>        指定 Git 仓库\n  --branch <分支>    Git 分支\n  --tag <标签>       Git 标签\n  --path <路径>      本地路径\n  --source <url>     自定义源服务器\n  --system <库>      系统库（如 ws2_32, pthread, m）"
+        );
     }
 
     let current_dir = env::current_dir()?;
@@ -480,7 +482,11 @@ fn cmd_add(args: &[String]) -> Result<()> {
     // Git 依赖 (B类)
     if let Some(url) = git_url {
         return cavvy::cavly::project::Project::add_git_dependency(
-            &project_root, &name, &url, branch.as_deref(), tag.as_deref(),
+            &project_root,
+            &name,
+            &url,
+            branch.as_deref(),
+            tag.as_deref(),
         );
     }
 
@@ -492,7 +498,10 @@ fn cmd_add(args: &[String]) -> Result<()> {
     // 自定义源依赖 (C类)
     if let Some(src) = source_url {
         return cavvy::cavly::project::Project::add_source_dependency(
-            &project_root, &name, &src, version.as_deref(),
+            &project_root,
+            &name,
+            &src,
+            version.as_deref(),
         );
     }
 
@@ -566,7 +575,10 @@ fn cmd_verify(args: &[String]) -> Result<()> {
         if hash == cert.package_sha256 {
             println!("  本地包完整性: 通过");
         } else {
-            println!("  本地包完整性: 失败 (预期 {}, 实际 {})", cert.package_sha256, hash);
+            println!(
+                "  本地包完整性: 失败 (预期 {}, 实际 {})",
+                cert.package_sha256, hash
+            );
         }
     } else {
         println!("  本地包: 未下载");

@@ -11,7 +11,10 @@ use crate::miette_diagnostic::CayResult;
 
 /// 尝试解析 Lambda 表达式
 /// 假设已经消耗了 '('，需要解析参数列表和 -> 箭头
-pub fn try_parse_lambda(parser: &mut Parser, loc: crate::miette_diagnostic::SourceLocation) -> CayResult<Expr> {
+pub fn try_parse_lambda(
+    parser: &mut Parser,
+    loc: crate::miette_diagnostic::SourceLocation,
+) -> CayResult<Expr> {
     // 解析 Lambda 参数列表: (param1, param2, ...) 或 (int x, int y) 或 ()
     let mut params = Vec::new();
 

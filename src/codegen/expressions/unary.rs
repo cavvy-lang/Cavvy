@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::{CayResult, codegen_error_at, ErrorCodes};
+use crate::miette_diagnostic::{CayResult, ErrorCodes, codegen_error_at};
 
 impl IRGenerator {
     /// 生成一元表达式代码
@@ -45,7 +45,8 @@ impl IRGenerator {
                     self.emit_line(&format!("  {} = xor {} {}, -1", temp, op_type, op_val));
                 } else {
                     // 浮点数不支持位取反，但类型系统应该已经阻止了这种情况
-                    return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    return Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         unary.loc.clone(),
                         "Bitwise NOT not supported for floating point".to_string(),
                     ));
@@ -200,7 +201,8 @@ impl IRGenerator {
         // 解析指针类型，获取指向的类型
         // op_type 应该是 "i32*" 或 "i64*" 等格式
         if !op_type.ends_with('*') {
-            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
                 unary.loc.clone(),
                 format!("Cannot dereference non-pointer type: {}", op_type),
             ));

@@ -25,11 +25,9 @@ impl IRGenerator {
         // 完全一致——即「特化类前缀 + 注册表方法签名」，其中未解析的泛型参数保留
         // 为 gT。否则会解析到类型擦除的基础模板 Optional_T_ 而链接失败。
         if class_name.contains('<') {
-            if let Some(name) = self.specialized_generic_method_name(
-                class_name,
-                method_name,
-                processed_args.len(),
-            ) {
+            if let Some(name) =
+                self.specialized_generic_method_name(class_name, method_name, processed_args.len())
+            {
                 return name;
             }
         }
@@ -301,7 +299,11 @@ impl IRGenerator {
     }
 
     /// 将参数类型转换为签名
-    pub fn param_type_to_signature(&self, ty: &crate::types::Type, is_varargs_array: bool) -> String {
+    pub fn param_type_to_signature(
+        &self,
+        ty: &crate::types::Type,
+        is_varargs_array: bool,
+    ) -> String {
         if is_varargs_array {
             // 可变参数数组：提取元素类型并生成签名
             return self.varargs_element_type_to_signature(ty);

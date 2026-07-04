@@ -1,7 +1,7 @@
+use crate::miette_diagnostic::ErrorCodes;
+use serde::Serialize;
 use std::collections::HashMap;
 use std::fmt;
-use serde::Serialize;
-use crate::miette_diagnostic::ErrorCodes;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 pub enum Type {
@@ -70,7 +70,9 @@ pub fn substitute_type_params(ty: &Type, mapping: &HashMap<String, Type>) -> Typ
         Type::Pointer(inner) => Type::Pointer(Box::new(substitute_type_params(inner, mapping))),
         Type::Generic(base, args) => Type::Generic(
             base.clone(),
-            args.iter().map(|a| substitute_type_params(a, mapping)).collect(),
+            args.iter()
+                .map(|a| substitute_type_params(a, mapping))
+                .collect(),
         ),
         Type::Function(func_type) => Type::Function(Box::new(FunctionType {
             return_type: Box::new(substitute_type_params(&func_type.return_type, mapping)),
@@ -95,9 +97,9 @@ pub struct ClassInfo {
     pub constructors: Vec<ConstructorInfo>, // 构造函数列表
     pub has_destructor: bool,               // 是否有析构函数
     pub parent: Option<String>,
-    pub interfaces: Vec<Type>,               // 实现的接口列表（支持泛型实参）
-    pub is_abstract: bool,                   // 是否是抽象类
-    pub is_final: bool,                      // 是否是final类（禁止继承）
+    pub interfaces: Vec<Type>, // 实现的接口列表（支持泛型实参）
+    pub is_abstract: bool,     // 是否是抽象类
+    pub is_final: bool,        // 是否是final类（禁止继承）
     pub vtable_layout: Option<VTableLayout>, // vtable 布局信息
 }
 
@@ -881,7 +883,8 @@ pub struct TypeRegistry {
     pub class_namespace_paths: HashMap<String, Vec<String>>,
     /// @FreeFunction 导出的函数名 -> (类名, 方法信息, 源位置)
     /// 用于检测跨类同名冲突
-    pub free_functions: HashMap<String, (String, MethodInfo, crate::miette_diagnostic::SourceLocation)>,
+    pub free_functions:
+        HashMap<String, (String, MethodInfo, crate::miette_diagnostic::SourceLocation)>,
     /// 当前命名空间上下文 (由语义分析器在处理每个类时设置)
     pub current_namespace: Vec<String>,
 }

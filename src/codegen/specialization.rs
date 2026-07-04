@@ -52,17 +52,16 @@ impl SpecializationInstance {
         if self.type_args.is_empty() {
             base
         } else {
-            let args: Vec<String> = self
-                .type_args
-                .iter()
-                .map(llvm_type_suffix)
-                .collect();
+            let args: Vec<String> = self.type_args.iter().map(llvm_type_suffix).collect();
             format!("{}__{}", base, args.join("__"))
         }
     }
 
     /// 创建类型参数映射 { "T" -> Type::Int32 }
-    pub fn type_param_mapping(&self, class_type_params: &[crate::types::TypeParamInfo]) -> HashMap<String, Type> {
+    pub fn type_param_mapping(
+        &self,
+        class_type_params: &[crate::types::TypeParamInfo],
+    ) -> HashMap<String, Type> {
         let resolved = self.resolve_type_args(class_type_params);
         let mut mapping = HashMap::new();
         for (param, type_arg) in class_type_params.iter().zip(resolved.iter()) {
@@ -72,7 +71,10 @@ impl SpecializationInstance {
     }
 
     /// 解析最终类型参数列表，缺失时使用默认值填充
-    pub fn resolve_type_args(&self, class_type_params: &[crate::types::TypeParamInfo]) -> Vec<Type> {
+    pub fn resolve_type_args(
+        &self,
+        class_type_params: &[crate::types::TypeParamInfo],
+    ) -> Vec<Type> {
         let mut result = Vec::with_capacity(class_type_params.len());
         for (idx, param) in class_type_params.iter().enumerate() {
             if let Some(type_arg) = self.type_args.get(idx) {
@@ -173,7 +175,8 @@ impl SpecializationCollector {
     fn collect_from_class_decl(&mut self, class: &ClassDecl) {
         // 记录泛型类，用于后续依赖特化收集。
         if !class.type_params.is_empty() {
-            self.generic_classes.push((class.clone(), self.current_namespace.clone()));
+            self.generic_classes
+                .push((class.clone(), self.current_namespace.clone()));
         }
 
         // 将本类的类型参数加入作用域，扫描类体时用于跳过未替换的泛型实例。
@@ -219,7 +222,10 @@ impl SpecializationCollector {
             Type::Generic(_, args) => args.iter().any(|a| self.references_scoped_type_param(a)),
             Type::Function(func_type) => {
                 self.references_scoped_type_param(&func_type.return_type)
-                    || func_type.params.iter().any(|p| self.references_scoped_type_param(p))
+                    || func_type
+                        .params
+                        .iter()
+                        .any(|p| self.references_scoped_type_param(p))
             }
             _ => false,
         }
@@ -353,12 +359,10 @@ impl SpecializationCollector {
                 self.collect_from_expr(&ternary.true_branch);
                 self.collect_from_expr(&ternary.false_branch);
             }
-            Expr::Lambda(lambda) => {
-                match &lambda.body {
-                    LambdaBody::Expr(expr) => self.collect_from_expr(expr),
-                    LambdaBody::Block(block) => self.collect_from_block(block),
-                }
-            }
+            Expr::Lambda(lambda) => match &lambda.body {
+                LambdaBody::Expr(expr) => self.collect_from_expr(expr),
+                LambdaBody::Block(block) => self.collect_from_block(block),
+            },
             _ => {}
         }
     }
@@ -369,14 +373,24 @@ impl SpecializationCollector {
             if !type_args.is_empty() {
                 // 跳过引用了作用域内类型参数的实例（如泛型类体内的 `Other<T>`）。
                 // 这些会在依赖特化阶段替换为具体类型后再收集。
-                if type_args.iter().any(|a| self.references_scoped_type_param(a)) {
+                if type_args
+                    .iter()
+                    .any(|a| self.references_scoped_type_param(a))
+                {
                     // 仍需递归检查嵌套类型（下方），但不记录本实例
                 } else {
                     // 解析基础类名和命名空间
                     let parts: Vec<&str> = class_name.split("::").collect();
-                    let base_name = parts.last().copied().unwrap_or(class_name.as_str()).to_string();
+                    let base_name = parts
+                        .last()
+                        .copied()
+                        .unwrap_or(class_name.as_str())
+                        .to_string();
                     let ns_path = if parts.len() > 1 {
-                        parts[..parts.len() - 1].iter().map(|s| s.to_string()).collect()
+                        parts[..parts.len() - 1]
+                            .iter()
+                            .map(|s| s.to_string())
+                            .collect()
                     } else {
                         self.current_namespace.clone()
                     };
@@ -388,10 +402,7 @@ impl SpecializationCollector {
                     };
 
                     let key = class_name.clone();
-                    self.instances
-                        .entry(key)
-                        .or_default()
-                        .insert(instance);
+                    self.instances.entry(key).or_default().insert(instance);
                 }
             }
         }
@@ -429,14 +440,20 @@ impl SpecializationCollector {
             }
 
             // 跳过引用了作用域内类型参数的实例；依赖特化阶段会替换为具体类型后再收集。
-            if type_args.iter().any(|a| self.references_scoped_type_param(a)) {
+            if type_args
+                .iter()
+                .any(|a| self.references_scoped_type_param(a))
+            {
                 return;
             }
 
             let parts: Vec<&str> = base_name.split("::").collect();
             let base = parts.last().copied().unwrap_or(base_name).to_string();
             let ns_path = if parts.len() > 1 {
-                parts[..parts.len() - 1].iter().map(|s| s.to_string()).collect()
+                parts[..parts.len() - 1]
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect()
             } else {
                 self.current_namespace.clone()
             };
@@ -671,9 +688,7 @@ impl SpecializationCollector {
             }
             Expr::Lambda(lambda) => match &lambda.body {
                 LambdaBody::Expr(expr) => self.collect_dependency_from_expr(expr, mapping, ns),
-                LambdaBody::Block(block) => {
-                    self.collect_dependency_from_block(block, mapping, ns)
-                }
+                LambdaBody::Block(block) => self.collect_dependency_from_block(block, mapping, ns),
             },
             _ => {}
         }

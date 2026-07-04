@@ -181,13 +181,21 @@ public class Test {
 }
 "#;
     std::fs::write("examples/test_err_access1.cay", code).unwrap();
-    let result = std::process::Command::new(if cfg!(target_os = "windows") { "./target/release/cayc.exe" } else { "./target/release/cayc" })
-        .args(&[
-            "examples/test_err_access1.cay",
-            if cfg!(target_os = "windows") { "examples/test_err_access1.exe" } else { "examples/test_err_access1" },
-        ])
-        .output()
-        .expect("Failed to execute cayc");
+    let result = std::process::Command::new(if cfg!(target_os = "windows") {
+        "./target/release/cayc.exe"
+    } else {
+        "./target/release/cayc"
+    })
+    .args(&[
+        "examples/test_err_access1.cay",
+        if cfg!(target_os = "windows") {
+            "examples/test_err_access1.exe"
+        } else {
+            "examples/test_err_access1"
+        },
+    ])
+    .output()
+    .expect("Failed to execute cayc");
     assert!(
         !result.status.success(),
         "从不同类访问 private 字段应编译失败"
@@ -199,7 +207,11 @@ public class Test {
         stderr
     );
     let _ = std::fs::remove_file("examples/test_err_access1.cay");
-    let _ = std::fs::remove_file(if cfg!(target_os = "windows") { "examples/test_err_access1.exe" } else { "examples/test_err_access1" });
+    let _ = std::fs::remove_file(if cfg!(target_os = "windows") {
+        "examples/test_err_access1.exe"
+    } else {
+        "examples/test_err_access1"
+    });
 }
 
 // === 返回类型错误 ===

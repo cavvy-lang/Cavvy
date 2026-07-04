@@ -203,28 +203,50 @@ pub struct SourceLocation {
 }
 
 impl SourceLocation {
-    pub fn new(file: Option<String>, line: usize, column: usize) -> Self { Self { file, line, column } }
-    pub fn from_token(token: &crate::lexer::TokenWithLocation) -> Self {
-        Self { file: token.source_file.clone(), line: token.source_line.unwrap_or(token.loc.line), column: token.loc.column }
+    pub fn new(file: Option<String>, line: usize, column: usize) -> Self {
+        Self { file, line, column }
     }
-    pub fn file_str(&self) -> &str { self.file.as_deref().unwrap_or("") }
+    pub fn from_token(token: &crate::lexer::TokenWithLocation) -> Self {
+        Self {
+            file: token.source_file.clone(),
+            line: token.source_line.unwrap_or(token.loc.line),
+            column: token.loc.column,
+        }
+    }
+    pub fn file_str(&self) -> &str {
+        self.file.as_deref().unwrap_or("")
+    }
 }
 
 impl Default for SourceLocation {
-    fn default() -> Self { Self { file: None, line: 0, column: 0 } }
+    fn default() -> Self {
+        Self {
+            file: None,
+            line: 0,
+            column: 0,
+        }
+    }
 }
 
 impl fmt::Display for SourceLocation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(ref file) = self.file { write!(f, "{}:{}:{}", file, self.line, self.column) }
-        else { write!(f, "{}:{}", self.line, self.column) }
+        if let Some(ref file) = self.file {
+            write!(f, "{}:{}:{}", file, self.line, self.column)
+        } else {
+            write!(f, "{}:{}", self.line, self.column)
+        }
     }
 }
 
 pub type FullSourceLocation = SourceLocation;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Severity { Note, Warning, Error, Fatal }
+pub enum Severity {
+    Note,
+    Warning,
+    Error,
+    Fatal,
+}
 
 impl fmt::Display for Severity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -238,7 +260,14 @@ impl fmt::Display for Severity {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CompilationPhase { Preprocessor, Lexer, Parser, Semantic, CodeGen, Linker }
+pub enum CompilationPhase {
+    Preprocessor,
+    Lexer,
+    Parser,
+    Semantic,
+    CodeGen,
+    Linker,
+}
 
 impl CompilationPhase {
     pub fn label(&self) -> &'static str {
@@ -274,10 +303,16 @@ pub struct SourceSpan {
 
 impl SourceSpan {
     pub fn new(start_line: usize, start_col: usize, end_line: usize, end_col: usize) -> Self {
-        Self { start: SourceLocation::new(None, start_line, start_col), end: SourceLocation::new(None, end_line, end_col) }
+        Self {
+            start: SourceLocation::new(None, start_line, start_col),
+            end: SourceLocation::new(None, end_line, end_col),
+        }
     }
     pub fn single(line: usize, column: usize) -> Self {
-        Self { start: SourceLocation::new(None, line, column), end: SourceLocation::new(None, line, column) }
+        Self {
+            start: SourceLocation::new(None, line, column),
+            end: SourceLocation::new(None, line, column),
+        }
     }
 }
 
@@ -290,15 +325,24 @@ pub struct FixSuggestion {
 
 impl FixSuggestion {
     pub fn new(description: impl Into<String>) -> Self {
-        Self { description: description.into(), replacement: None, span: None }
+        Self {
+            description: description.into(),
+            replacement: None,
+            span: None,
+        }
     }
     pub fn with_replacement(mut self, replacement: impl Into<String>, span: SourceSpan) -> Self {
-        self.replacement = Some(replacement.into()); self.span = Some(span); self
+        self.replacement = Some(replacement.into());
+        self.span = Some(span);
+        self
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct RelatedInfo { pub message: String, pub location: SourceLocation }
+pub struct RelatedInfo {
+    pub message: String,
+    pub location: SourceLocation,
+}
 
 // ============================================================
 // CayError — 统一错误类型
@@ -308,34 +352,98 @@ pub struct RelatedInfo { pub message: String, pub location: SourceLocation }
 #[derive(Error, Debug, Clone)]
 pub enum CayError {
     #[error("词法错误 [{}:{line}:{column}]: {message}", file.as_deref().unwrap_or("<unknown>"))]
-    Lexer { error_code: &'static str, file: Option<String>, line: usize, column: usize, message: String, suggestion: String },
+    Lexer {
+        error_code: &'static str,
+        file: Option<String>,
+        line: usize,
+        column: usize,
+        message: String,
+        suggestion: String,
+    },
 
     #[error("语法错误 [{}:{line}:{column}]: {message}", file.as_deref().unwrap_or("<unknown>"))]
-    Parser { error_code: &'static str, file: Option<String>, line: usize, column: usize, message: String, suggestion: String },
+    Parser {
+        error_code: &'static str,
+        file: Option<String>,
+        line: usize,
+        column: usize,
+        message: String,
+        suggestion: String,
+    },
 
     #[error("语义错误 [{}:{line}:{column}]: {message}", file.as_deref().unwrap_or("<unknown>"))]
-    Semantic { error_code: &'static str, file: Option<String>, line: usize, column: usize, message: String, suggestion: String },
+    Semantic {
+        error_code: &'static str,
+        file: Option<String>,
+        line: usize,
+        column: usize,
+        message: String,
+        suggestion: String,
+    },
 
     #[error("{kind} [{}:{line}:{column}]: {message}", file.as_deref().unwrap_or("<unknown>"))]
-    CodeGen { error_code: &'static str, kind: String, file: Option<String>, line: usize, column: usize, message: String, suggestion: String, is_warning: bool },
+    CodeGen {
+        error_code: &'static str,
+        kind: String,
+        file: Option<String>,
+        line: usize,
+        column: usize,
+        message: String,
+        suggestion: String,
+        is_warning: bool,
+    },
 
     #[error("IO错误 [{}]: {message}", file.as_deref().unwrap_or("<unknown>"))]
-    Io { error_code: &'static str, file: Option<String>, message: String },
+    Io {
+        error_code: &'static str,
+        file: Option<String>,
+        message: String,
+    },
 
     #[error("LLVM错误: {0}")]
     Llvm(String),
 
     #[error("类型错误 [{}:{line}:{column}]: {message}", file.as_deref().unwrap_or("<unknown>"))]
-    TypeMismatch { error_code: &'static str, file: Option<String>, line: usize, column: usize, message: String, expected: String, actual: String, suggestion: String },
+    TypeMismatch {
+        error_code: &'static str,
+        file: Option<String>,
+        line: usize,
+        column: usize,
+        message: String,
+        expected: String,
+        actual: String,
+        suggestion: String,
+    },
 
     #[error("未定义标识符 [{}:{line}:{column}]: '{name}'", file.as_deref().unwrap_or("<unknown>"))]
-    UndefinedIdentifier { error_code: &'static str, file: Option<String>, line: usize, column: usize, name: String, suggestion: String },
+    UndefinedIdentifier {
+        error_code: &'static str,
+        file: Option<String>,
+        line: usize,
+        column: usize,
+        name: String,
+        suggestion: String,
+    },
 
     #[error("重复定义 [{}:{line}:{column}]: '{name}'", file.as_deref().unwrap_or("<unknown>"))]
-    DuplicateDefinition { error_code: &'static str, file: Option<String>, line: usize, column: usize, name: String, suggestion: String },
+    DuplicateDefinition {
+        error_code: &'static str,
+        file: Option<String>,
+        line: usize,
+        column: usize,
+        name: String,
+        suggestion: String,
+    },
 
     #[error("预处理器错误 [{}:{line}:{column}]: {message}", file.as_deref().unwrap_or("<unknown>"))]
-    Preprocessor { error_code: &'static str, file: Option<String>, line: usize, column: usize, message: String, suggestion: String },
+    Preprocessor {
+        error_code: &'static str,
+        file: Option<String>,
+        line: usize,
+        column: usize,
+        message: String,
+        suggestion: String,
+    },
 
     #[error("发现 {} 个错误", errors.len())]
     MultipleErrors { errors: Vec<CayError> },
@@ -346,10 +454,14 @@ pub type CayResult<T> = Result<T, CayError>;
 impl CayError {
     pub fn error_code(&self) -> &'static str {
         match self {
-            CayError::Lexer { error_code, .. } | CayError::Parser { error_code, .. }
-            | CayError::Semantic { error_code, .. } | CayError::CodeGen { error_code, .. }
-            | CayError::Io { error_code, .. } | CayError::TypeMismatch { error_code, .. }
-            | CayError::UndefinedIdentifier { error_code, .. } | CayError::DuplicateDefinition { error_code, .. }
+            CayError::Lexer { error_code, .. }
+            | CayError::Parser { error_code, .. }
+            | CayError::Semantic { error_code, .. }
+            | CayError::CodeGen { error_code, .. }
+            | CayError::Io { error_code, .. }
+            | CayError::TypeMismatch { error_code, .. }
+            | CayError::UndefinedIdentifier { error_code, .. }
+            | CayError::DuplicateDefinition { error_code, .. }
             | CayError::Preprocessor { error_code, .. } => error_code,
             CayError::Llvm(_) => ErrorCodes::CODEGEN_LLVM_ERROR,
             CayError::MultipleErrors { .. } => "E9999",
@@ -359,7 +471,10 @@ impl CayError {
         match self {
             CayError::Lexer { .. } => CompilationPhase::Lexer,
             CayError::Parser { .. } => CompilationPhase::Parser,
-            CayError::Semantic { .. } | CayError::TypeMismatch { .. } | CayError::UndefinedIdentifier { .. } | CayError::DuplicateDefinition { .. } => CompilationPhase::Semantic,
+            CayError::Semantic { .. }
+            | CayError::TypeMismatch { .. }
+            | CayError::UndefinedIdentifier { .. }
+            | CayError::DuplicateDefinition { .. } => CompilationPhase::Semantic,
             CayError::CodeGen { .. } => CompilationPhase::CodeGen,
             CayError::Preprocessor { .. } => CompilationPhase::Preprocessor,
             CayError::Io { .. } | CayError::Llvm(_) => CompilationPhase::Linker,
@@ -368,44 +483,66 @@ impl CayError {
     }
     pub fn severity(&self) -> Severity {
         match self {
-            CayError::CodeGen { is_warning: true, .. } => Severity::Warning,
+            CayError::CodeGen {
+                is_warning: true, ..
+            } => Severity::Warning,
             _ => Severity::Error,
         }
     }
     pub fn suggestion_text(&self) -> Option<&str> {
         match self {
-            CayError::Lexer { suggestion, .. } | CayError::Parser { suggestion, .. }
-            | CayError::Semantic { suggestion, .. } | CayError::CodeGen { suggestion, .. }
-            | CayError::TypeMismatch { suggestion, .. } | CayError::UndefinedIdentifier { suggestion, .. }
-            | CayError::DuplicateDefinition { suggestion, .. } | CayError::Preprocessor { suggestion, .. }
-            => if suggestion.is_empty() { None } else { Some(suggestion.as_str()) },
+            CayError::Lexer { suggestion, .. }
+            | CayError::Parser { suggestion, .. }
+            | CayError::Semantic { suggestion, .. }
+            | CayError::CodeGen { suggestion, .. }
+            | CayError::TypeMismatch { suggestion, .. }
+            | CayError::UndefinedIdentifier { suggestion, .. }
+            | CayError::DuplicateDefinition { suggestion, .. }
+            | CayError::Preprocessor { suggestion, .. } => {
+                if suggestion.is_empty() {
+                    None
+                } else {
+                    Some(suggestion.as_str())
+                }
+            }
             _ => None,
         }
     }
     pub fn location(&self) -> Option<(usize, usize)> {
         match self {
-            CayError::Lexer { line, column, .. } | CayError::Parser { line, column, .. }
-            | CayError::Semantic { line, column, .. } | CayError::CodeGen { line, column, .. }
-            | CayError::TypeMismatch { line, column, .. } | CayError::UndefinedIdentifier { line, column, .. }
-            | CayError::DuplicateDefinition { line, column, .. } | CayError::Preprocessor { line, column, .. }
-            => Some((*line, *column)),
+            CayError::Lexer { line, column, .. }
+            | CayError::Parser { line, column, .. }
+            | CayError::Semantic { line, column, .. }
+            | CayError::CodeGen { line, column, .. }
+            | CayError::TypeMismatch { line, column, .. }
+            | CayError::UndefinedIdentifier { line, column, .. }
+            | CayError::DuplicateDefinition { line, column, .. }
+            | CayError::Preprocessor { line, column, .. } => Some((*line, *column)),
             _ => None,
         }
     }
     pub fn file(&self) -> Option<&str> {
         match self {
-            CayError::Lexer { file, .. } | CayError::Parser { file, .. } | CayError::Semantic { file, .. }
-            | CayError::CodeGen { file, .. } | CayError::Io { file, .. } | CayError::TypeMismatch { file, .. }
-            | CayError::UndefinedIdentifier { file, .. } | CayError::DuplicateDefinition { file, .. }
+            CayError::Lexer { file, .. }
+            | CayError::Parser { file, .. }
+            | CayError::Semantic { file, .. }
+            | CayError::CodeGen { file, .. }
+            | CayError::Io { file, .. }
+            | CayError::TypeMismatch { file, .. }
+            | CayError::UndefinedIdentifier { file, .. }
+            | CayError::DuplicateDefinition { file, .. }
             | CayError::Preprocessor { file, .. } => file.as_deref(),
             _ => None,
         }
     }
     pub fn message(&self) -> String {
         match self {
-            CayError::Lexer { message, .. } | CayError::Parser { message, .. } | CayError::Semantic { message, .. }
-            | CayError::CodeGen { message, .. } | CayError::Io { message, .. } | CayError::Preprocessor { message, .. }
-            => message.clone(),
+            CayError::Lexer { message, .. }
+            | CayError::Parser { message, .. }
+            | CayError::Semantic { message, .. }
+            | CayError::CodeGen { message, .. }
+            | CayError::Io { message, .. }
+            | CayError::Preprocessor { message, .. } => message.clone(),
             CayError::TypeMismatch { message, .. } => message.clone(),
             CayError::UndefinedIdentifier { name, .. } => format!("未定义的标识符: '{}'", name),
             CayError::DuplicateDefinition { name, .. } => format!("重复定义: '{}'", name),
@@ -416,7 +553,9 @@ impl CayError {
 }
 
 impl miette::Diagnostic for CayError {
-    fn code<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> { Some(Box::new(self.error_code())) }
+    fn code<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> {
+        Some(Box::new(self.error_code()))
+    }
     fn severity(&self) -> Option<miette::Severity> {
         match self.severity() {
             Severity::Error | Severity::Fatal => Some(miette::Severity::Error),
@@ -425,123 +564,409 @@ impl miette::Diagnostic for CayError {
         }
     }
     fn help<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> {
-        self.suggestion_text().map(|s| Box::new(s) as Box<dyn fmt::Display>)
+        self.suggestion_text()
+            .map(|s| Box::new(s) as Box<dyn fmt::Display>)
     }
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> { None }
-    fn source_code(&self) -> Option<&dyn miette::SourceCode> { None }
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+        None
+    }
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        None
+    }
 }
 
 // ============================================================
 // 便捷构造函数 — 显式 error_code（不再使用字符串匹配）
 // ============================================================
 
-pub fn lexer_error(code: &'static str, line: usize, column: usize, message: impl Into<String>) -> CayError {
-    CayError::Lexer { error_code: code, file: None, line, column, message: message.into(), suggestion: ErrorCodes::get_suggestion(code).to_string() }
+pub fn lexer_error(
+    code: &'static str,
+    line: usize,
+    column: usize,
+    message: impl Into<String>,
+) -> CayError {
+    CayError::Lexer {
+        error_code: code,
+        file: None,
+        line,
+        column,
+        message: message.into(),
+        suggestion: ErrorCodes::get_suggestion(code).to_string(),
+    }
 }
 
-pub fn lexer_error_with_suggestion(code: &'static str, line: usize, column: usize, message: impl Into<String>, suggestion: impl Into<String>) -> CayError {
-    CayError::Lexer { error_code: code, file: None, line, column, message: message.into(), suggestion: suggestion.into() }
+pub fn lexer_error_with_suggestion(
+    code: &'static str,
+    line: usize,
+    column: usize,
+    message: impl Into<String>,
+    suggestion: impl Into<String>,
+) -> CayError {
+    CayError::Lexer {
+        error_code: code,
+        file: None,
+        line,
+        column,
+        message: message.into(),
+        suggestion: suggestion.into(),
+    }
 }
 
-pub fn lexer_error_with_file(code: &'static str, file: Option<String>, line: usize, column: usize, message: impl Into<String>) -> CayError {
-    CayError::Lexer { error_code: code, file, line, column, message: message.into(), suggestion: ErrorCodes::get_suggestion(code).to_string() }
+pub fn lexer_error_with_file(
+    code: &'static str,
+    file: Option<String>,
+    line: usize,
+    column: usize,
+    message: impl Into<String>,
+) -> CayError {
+    CayError::Lexer {
+        error_code: code,
+        file,
+        line,
+        column,
+        message: message.into(),
+        suggestion: ErrorCodes::get_suggestion(code).to_string(),
+    }
 }
 
-pub fn lexer_error_with_file_and_suggestion(code: &'static str, file: Option<String>, line: usize, column: usize, message: impl Into<String>, suggestion: impl Into<String>) -> CayError {
-    CayError::Lexer { error_code: code, file, line, column, message: message.into(), suggestion: suggestion.into() }
+pub fn lexer_error_with_file_and_suggestion(
+    code: &'static str,
+    file: Option<String>,
+    line: usize,
+    column: usize,
+    message: impl Into<String>,
+    suggestion: impl Into<String>,
+) -> CayError {
+    CayError::Lexer {
+        error_code: code,
+        file,
+        line,
+        column,
+        message: message.into(),
+        suggestion: suggestion.into(),
+    }
 }
 
-pub fn parser_error(code: &'static str, line: usize, column: usize, message: impl Into<String>) -> CayError {
-    CayError::Parser { error_code: code, file: None, line, column, message: message.into(), suggestion: ErrorCodes::get_suggestion(code).to_string() }
+pub fn parser_error(
+    code: &'static str,
+    line: usize,
+    column: usize,
+    message: impl Into<String>,
+) -> CayError {
+    CayError::Parser {
+        error_code: code,
+        file: None,
+        line,
+        column,
+        message: message.into(),
+        suggestion: ErrorCodes::get_suggestion(code).to_string(),
+    }
 }
 
-pub fn parser_error_with_suggestion(code: &'static str, line: usize, column: usize, message: impl Into<String>, suggestion: impl Into<String>) -> CayError {
-    CayError::Parser { error_code: code, file: None, line, column, message: message.into(), suggestion: suggestion.into() }
+pub fn parser_error_with_suggestion(
+    code: &'static str,
+    line: usize,
+    column: usize,
+    message: impl Into<String>,
+    suggestion: impl Into<String>,
+) -> CayError {
+    CayError::Parser {
+        error_code: code,
+        file: None,
+        line,
+        column,
+        message: message.into(),
+        suggestion: suggestion.into(),
+    }
 }
 
-pub fn parser_error_with_file(code: &'static str, file: Option<String>, line: usize, column: usize, message: impl Into<String>) -> CayError {
-    CayError::Parser { error_code: code, file, line, column, message: message.into(), suggestion: ErrorCodes::get_suggestion(code).to_string() }
+pub fn parser_error_with_file(
+    code: &'static str,
+    file: Option<String>,
+    line: usize,
+    column: usize,
+    message: impl Into<String>,
+) -> CayError {
+    CayError::Parser {
+        error_code: code,
+        file,
+        line,
+        column,
+        message: message.into(),
+        suggestion: ErrorCodes::get_suggestion(code).to_string(),
+    }
 }
 
-pub fn parser_error_with_file_and_suggestion(code: &'static str, file: Option<String>, line: usize, column: usize, message: impl Into<String>, suggestion: impl Into<String>) -> CayError {
-    CayError::Parser { error_code: code, file, line, column, message: message.into(), suggestion: suggestion.into() }
+pub fn parser_error_with_file_and_suggestion(
+    code: &'static str,
+    file: Option<String>,
+    line: usize,
+    column: usize,
+    message: impl Into<String>,
+    suggestion: impl Into<String>,
+) -> CayError {
+    CayError::Parser {
+        error_code: code,
+        file,
+        line,
+        column,
+        message: message.into(),
+        suggestion: suggestion.into(),
+    }
 }
 
-pub fn semantic_error(code: &'static str, line: usize, column: usize, message: impl Into<String>) -> CayError {
-    CayError::Semantic { error_code: code, file: None, line, column, message: message.into(), suggestion: ErrorCodes::get_suggestion(code).to_string() }
+pub fn semantic_error(
+    code: &'static str,
+    line: usize,
+    column: usize,
+    message: impl Into<String>,
+) -> CayError {
+    CayError::Semantic {
+        error_code: code,
+        file: None,
+        line,
+        column,
+        message: message.into(),
+        suggestion: ErrorCodes::get_suggestion(code).to_string(),
+    }
 }
 
-pub fn semantic_error_with_suggestion(code: &'static str, line: usize, column: usize, message: impl Into<String>, suggestion: impl Into<String>) -> CayError {
-    CayError::Semantic { error_code: code, file: None, line, column, message: message.into(), suggestion: suggestion.into() }
+pub fn semantic_error_with_suggestion(
+    code: &'static str,
+    line: usize,
+    column: usize,
+    message: impl Into<String>,
+    suggestion: impl Into<String>,
+) -> CayError {
+    CayError::Semantic {
+        error_code: code,
+        file: None,
+        line,
+        column,
+        message: message.into(),
+        suggestion: suggestion.into(),
+    }
 }
 
-pub fn semantic_error_with_file(code: &'static str, file: Option<String>, line: usize, column: usize, message: impl Into<String>) -> CayError {
-    CayError::Semantic { error_code: code, file, line, column, message: message.into(), suggestion: ErrorCodes::get_suggestion(code).to_string() }
+pub fn semantic_error_with_file(
+    code: &'static str,
+    file: Option<String>,
+    line: usize,
+    column: usize,
+    message: impl Into<String>,
+) -> CayError {
+    CayError::Semantic {
+        error_code: code,
+        file,
+        line,
+        column,
+        message: message.into(),
+        suggestion: ErrorCodes::get_suggestion(code).to_string(),
+    }
 }
 
-pub fn semantic_error_with_file_and_suggestion(code: &'static str, file: Option<String>, line: usize, column: usize, message: impl Into<String>, suggestion: impl Into<String>) -> CayError {
-    CayError::Semantic { error_code: code, file, line, column, message: message.into(), suggestion: suggestion.into() }
+pub fn semantic_error_with_file_and_suggestion(
+    code: &'static str,
+    file: Option<String>,
+    line: usize,
+    column: usize,
+    message: impl Into<String>,
+    suggestion: impl Into<String>,
+) -> CayError {
+    CayError::Semantic {
+        error_code: code,
+        file,
+        line,
+        column,
+        message: message.into(),
+        suggestion: suggestion.into(),
+    }
 }
 
-pub fn codegen_error(code: &'static str, line: usize, column: usize, message: impl Into<String>) -> CayError {
-    CayError::CodeGen { error_code: code, kind: "代码生成错误".to_string(), file: None, line, column, message: message.into(), suggestion: ErrorCodes::get_suggestion(code).to_string(), is_warning: false }
+pub fn codegen_error(
+    code: &'static str,
+    line: usize,
+    column: usize,
+    message: impl Into<String>,
+) -> CayError {
+    CayError::CodeGen {
+        error_code: code,
+        kind: "代码生成错误".to_string(),
+        file: None,
+        line,
+        column,
+        message: message.into(),
+        suggestion: ErrorCodes::get_suggestion(code).to_string(),
+        is_warning: false,
+    }
 }
 
-pub fn codegen_error_at(code: &'static str, loc: SourceLocation, message: impl Into<String>) -> CayError {
-    CayError::CodeGen { error_code: code, kind: "代码生成错误".to_string(), file: loc.file, line: loc.line, column: loc.column, message: message.into(), suggestion: ErrorCodes::get_suggestion(code).to_string(), is_warning: false }
+pub fn codegen_error_at(
+    code: &'static str,
+    loc: SourceLocation,
+    message: impl Into<String>,
+) -> CayError {
+    CayError::CodeGen {
+        error_code: code,
+        kind: "代码生成错误".to_string(),
+        file: loc.file,
+        line: loc.line,
+        column: loc.column,
+        message: message.into(),
+        suggestion: ErrorCodes::get_suggestion(code).to_string(),
+        is_warning: false,
+    }
 }
 
-pub fn codegen_warning(code: &'static str, line: usize, column: usize, message: impl Into<String>) -> CayError {
-    CayError::CodeGen { error_code: code, kind: "代码生成警告".to_string(), file: None, line, column, message: message.into(), suggestion: ErrorCodes::get_suggestion(code).to_string(), is_warning: true }
+pub fn codegen_warning(
+    code: &'static str,
+    line: usize,
+    column: usize,
+    message: impl Into<String>,
+) -> CayError {
+    CayError::CodeGen {
+        error_code: code,
+        kind: "代码生成警告".to_string(),
+        file: None,
+        line,
+        column,
+        message: message.into(),
+        suggestion: ErrorCodes::get_suggestion(code).to_string(),
+        is_warning: true,
+    }
 }
 
-pub fn codegen_warning_at(code: &'static str, loc: SourceLocation, message: impl Into<String>) -> CayError {
-    CayError::CodeGen { error_code: code, kind: "代码生成警告".to_string(), file: loc.file, line: loc.line, column: loc.column, message: message.into(), suggestion: ErrorCodes::get_suggestion(code).to_string(), is_warning: true }
+pub fn codegen_warning_at(
+    code: &'static str,
+    loc: SourceLocation,
+    message: impl Into<String>,
+) -> CayError {
+    CayError::CodeGen {
+        error_code: code,
+        kind: "代码生成警告".to_string(),
+        file: loc.file,
+        line: loc.line,
+        column: loc.column,
+        message: message.into(),
+        suggestion: ErrorCodes::get_suggestion(code).to_string(),
+        is_warning: true,
+    }
 }
 
-pub fn type_mismatch_error(line: usize, column: usize, expected: impl Into<String>, actual: impl Into<String>) -> CayError {
+pub fn type_mismatch_error(
+    line: usize,
+    column: usize,
+    expected: impl Into<String>,
+    actual: impl Into<String>,
+) -> CayError {
     type_mismatch_error_with_file(None, line, column, expected, actual)
 }
 
-pub fn type_mismatch_error_with_file(file: Option<String>, line: usize, column: usize, expected: impl Into<String>, actual: impl Into<String>) -> CayError {
-    let expected_str = expected.into(); let actual_str = actual.into();
-    CayError::TypeMismatch { error_code: ErrorCodes::SEMANTIC_TYPE_MISMATCH, file, line, column, message: format!("类型不匹配: 期望 '{}', 实际 '{}'", expected_str, actual_str), expected: expected_str.clone(), actual: actual_str, suggestion: format!("请确保表达式返回 '{}' 类型的值", expected_str) }
+pub fn type_mismatch_error_with_file(
+    file: Option<String>,
+    line: usize,
+    column: usize,
+    expected: impl Into<String>,
+    actual: impl Into<String>,
+) -> CayError {
+    let expected_str = expected.into();
+    let actual_str = actual.into();
+    CayError::TypeMismatch {
+        error_code: ErrorCodes::SEMANTIC_TYPE_MISMATCH,
+        file,
+        line,
+        column,
+        message: format!("类型不匹配: 期望 '{}', 实际 '{}'", expected_str, actual_str),
+        expected: expected_str.clone(),
+        actual: actual_str,
+        suggestion: format!("请确保表达式返回 '{}' 类型的值", expected_str),
+    }
 }
 
 pub fn undefined_identifier_error(line: usize, column: usize, name: impl Into<String>) -> CayError {
     undefined_identifier_error_with_file(None, line, column, name)
 }
 
-pub fn undefined_identifier_error_with_file(file: Option<String>, line: usize, column: usize, name: impl Into<String>) -> CayError {
+pub fn undefined_identifier_error_with_file(
+    file: Option<String>,
+    line: usize,
+    column: usize,
+    name: impl Into<String>,
+) -> CayError {
     let name_str = name.into();
-    CayError::UndefinedIdentifier { error_code: ErrorCodes::SEMANTIC_UNDEFINED_IDENTIFIER, file, line, column, name: name_str.clone(), suggestion: format!("请检查 '{}' 的拼写，或在使用前声明该变量/函数", name_str) }
+    CayError::UndefinedIdentifier {
+        error_code: ErrorCodes::SEMANTIC_UNDEFINED_IDENTIFIER,
+        file,
+        line,
+        column,
+        name: name_str.clone(),
+        suggestion: format!("请检查 '{}' 的拼写，或在使用前声明该变量/函数", name_str),
+    }
 }
 
 pub fn duplicate_definition_error(line: usize, column: usize, name: impl Into<String>) -> CayError {
     duplicate_definition_error_with_file(None, line, column, name)
 }
 
-pub fn duplicate_definition_error_with_file(file: Option<String>, line: usize, column: usize, name: impl Into<String>) -> CayError {
+pub fn duplicate_definition_error_with_file(
+    file: Option<String>,
+    line: usize,
+    column: usize,
+    name: impl Into<String>,
+) -> CayError {
     let name_str = name.into();
-    CayError::DuplicateDefinition { error_code: ErrorCodes::SEMANTIC_DUPLICATE_DEFINITION, file, line, column, name: name_str.clone(), suggestion: format!("'{}' 已被定义，请使用不同的名称", name_str) }
+    CayError::DuplicateDefinition {
+        error_code: ErrorCodes::SEMANTIC_DUPLICATE_DEFINITION,
+        file,
+        line,
+        column,
+        name: name_str.clone(),
+        suggestion: format!("'{}' 已被定义，请使用不同的名称", name_str),
+    }
 }
 
-pub fn preprocessor_error(code: &'static str, file: Option<String>, line: usize, column: usize, message: impl Into<String>, suggestion: impl Into<String>) -> CayError {
-    CayError::Preprocessor { error_code: code, file, line, column, message: message.into(), suggestion: suggestion.into() }
+pub fn preprocessor_error(
+    code: &'static str,
+    file: Option<String>,
+    line: usize,
+    column: usize,
+    message: impl Into<String>,
+    suggestion: impl Into<String>,
+) -> CayError {
+    CayError::Preprocessor {
+        error_code: code,
+        file,
+        line,
+        column,
+        message: message.into(),
+        suggestion: suggestion.into(),
+    }
 }
 
 pub fn io_error(file: Option<String>, message: impl Into<String>) -> CayError {
-    CayError::Io { error_code: "I0001", file, message: message.into() }
+    CayError::Io {
+        error_code: "I0001",
+        file,
+        message: message.into(),
+    }
 }
 
 // ============================================================
 // 查询函数
 // ============================================================
 
-pub fn get_error_message(error: &CayError) -> String { error.message() }
-pub fn get_error_help(error: &CayError) -> Option<String> { error.suggestion_text().map(|s| s.to_string()) }
-pub fn get_error_location(error: &CayError) -> Option<(usize, usize)> { error.location() }
-pub fn get_error_file(error: &CayError) -> Option<String> { error.file().map(|s| s.to_string()) }
+pub fn get_error_message(error: &CayError) -> String {
+    error.message()
+}
+pub fn get_error_help(error: &CayError) -> Option<String> {
+    error.suggestion_text().map(|s| s.to_string())
+}
+pub fn get_error_location(error: &CayError) -> Option<(usize, usize)> {
+    error.location()
+}
+pub fn get_error_file(error: &CayError) -> Option<String> {
+    error.file().map(|s| s.to_string())
+}
 
 // ============================================================
 // 打印函数
@@ -549,13 +974,21 @@ pub fn get_error_file(error: &CayError) -> Option<String> { error.file().map(|s|
 
 pub fn print_miette_error(error_type: &str, message: &str, help: Option<&str>) {
     eprintln!("\n  × {}: {}", error_type, message);
-    if let Some(h) = help { if !h.is_empty() { eprintln!("  help: {}", h); } }
+    if let Some(h) = help {
+        if !h.is_empty() {
+            eprintln!("  help: {}", h);
+        }
+    }
     eprintln!();
 }
 
 pub fn print_miette_warning(warning_type: &str, message: &str, help: Option<&str>) {
     eprintln!("\n  ⚠ {}: {}", warning_type, message);
-    if let Some(h) = help { if !h.is_empty() { eprintln!("  help: {}", h); } }
+    if let Some(h) = help {
+        if !h.is_empty() {
+            eprintln!("  help: {}", h);
+        }
+    }
     eprintln!();
 }
 
@@ -564,22 +997,33 @@ pub fn print_compile_error(stage: &str, error: &str, source_path: &str, help: Op
     eprintln!("\n  × cavvy::compile_error: {}阶段错误", stage);
     eprintln!("   ╭─[{}]", source_path);
     eprintln!("   │\n   │ {}\n   ╰────", error);
-    if let Some(h) = help { if !h.is_empty() { eprintln!("  help: {}", h); } }
+    if let Some(h) = help {
+        if !h.is_empty() {
+            eprintln!("  help: {}", h);
+        }
+    }
     eprintln!();
 }
 
 pub fn print_tool_error(tool: &str, message: &str, help: Option<&str>) {
     eprintln!("\n  × cavvy::tool_error: {} 执行失败", tool);
     eprintln!("   │\n   │ {}", message);
-    if let Some(h) = help { eprintln!("   │\n  help: {}", h); }
+    if let Some(h) = help {
+        eprintln!("   │\n  help: {}", h);
+    }
     eprintln!();
 }
 
-pub fn print_warning(message: &str) { eprintln!("  ⚠ cavvy::warning: {}", message); }
+pub fn print_warning(message: &str) {
+    eprintln!("  ⚠ cavvy::warning: {}", message);
+}
 
 #[deprecated]
 pub fn print_warning_with_location(message: &str, filename: &str, line: usize, column: usize) {
-    eprintln!("  ⚠ cavvy::warning: {}\n     位置: {}:{}:{}", message, filename, line, column);
+    eprintln!(
+        "  ⚠ cavvy::warning: {}\n     位置: {}:{}:{}",
+        message, filename, line, column
+    );
 }
 
 // ============================================================
@@ -587,7 +1031,10 @@ pub fn print_warning_with_location(message: &str, filename: &str, line: usize, c
 // ============================================================
 
 #[derive(Debug, Clone)]
-enum HighlightKind { Fixed(usize), ToWhitespace }
+enum HighlightKind {
+    Fixed(usize),
+    ToWhitespace,
+}
 
 #[derive(Debug)]
 struct CayDiagnostic {
@@ -607,52 +1054,87 @@ impl CayDiagnostic {
     fn new(error: &CayError, source: &str, filename: &str) -> Self {
         let (line, column) = error.location().unwrap_or((0, 0));
         let highlight_kind = match error {
-            CayError::UndefinedIdentifier { name, .. } | CayError::DuplicateDefinition { name, .. } => HighlightKind::Fixed(name.len()),
+            CayError::UndefinedIdentifier { name, .. }
+            | CayError::DuplicateDefinition { name, .. } => HighlightKind::Fixed(name.len()),
             _ => HighlightKind::ToWhitespace,
         };
         Self {
             error_code: error.error_code(),
-            severity: match error.severity() { Severity::Error|Severity::Fatal => miette::Severity::Error, Severity::Warning => miette::Severity::Warning, _ => miette::Severity::Advice },
+            severity: match error.severity() {
+                Severity::Error | Severity::Fatal => miette::Severity::Error,
+                Severity::Warning => miette::Severity::Warning,
+                _ => miette::Severity::Advice,
+            },
             message: error.message(),
             help: error.suggestion_text().map(|s| s.to_string()),
             source: source.to_string(),
             filename: filename.to_string(),
             phase_label: error.phase().label().to_string(),
-            line, column, highlight_kind,
+            line,
+            column,
+            highlight_kind,
         }
     }
     fn compute_highlight_len(&self, offset: usize) -> usize {
         match &self.highlight_kind {
             HighlightKind::Fixed(len) => *len,
-            HighlightKind::ToWhitespace => {
-                self.source[offset..].chars().take_while(|c| !c.is_whitespace()).count().max(1)
-            }
+            HighlightKind::ToWhitespace => self.source[offset..]
+                .chars()
+                .take_while(|c| !c.is_whitespace())
+                .count()
+                .max(1),
         }
     }
     fn compute_labels(&self) -> Vec<miette::LabeledSpan> {
-        if self.line == 0 { return Vec::new(); }
+        if self.line == 0 {
+            return Vec::new();
+        }
         let offset = line_col_to_offset(&self.source, self.line, self.column);
-        if offset >= self.source.len() { return Vec::new(); }
-        let span_len = self.compute_highlight_len(offset).min(self.source.len() - offset).max(1);
-        vec![miette::LabeledSpan::new_with_span(Some(self.phase_label.clone()), MietteSpan::new(offset.into(), span_len))]
+        if offset >= self.source.len() {
+            return Vec::new();
+        }
+        let span_len = self
+            .compute_highlight_len(offset)
+            .min(self.source.len() - offset)
+            .max(1);
+        vec![miette::LabeledSpan::new_with_span(
+            Some(self.phase_label.clone()),
+            MietteSpan::new(offset.into(), span_len),
+        )]
     }
 }
 
 impl fmt::Display for CayDiagnostic {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { write!(f, "[{}] {}", self.error_code, self.message) }
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[{}] {}", self.error_code, self.message)
+    }
 }
 
 impl std::error::Error for CayDiagnostic {}
 
 impl miette::Diagnostic for CayDiagnostic {
-    fn code<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> { Some(Box::new(self.error_code)) }
-    fn severity(&self) -> Option<miette::Severity> { Some(self.severity) }
-    fn help<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> { self.help.as_ref().map(|h| Box::new(h.as_str()) as Box<dyn fmt::Display>) }
+    fn code<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> {
+        Some(Box::new(self.error_code))
+    }
+    fn severity(&self) -> Option<miette::Severity> {
+        Some(self.severity)
+    }
+    fn help<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> {
+        self.help
+            .as_ref()
+            .map(|h| Box::new(h.as_str()) as Box<dyn fmt::Display>)
+    }
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
         let labels = self.compute_labels();
-        if labels.is_empty() { None } else { Some(Box::new(labels.into_iter())) }
+        if labels.is_empty() {
+            None
+        } else {
+            Some(Box::new(labels.into_iter()))
+        }
     }
-    fn source_code(&self) -> Option<&dyn miette::SourceCode> { None }
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        None
+    }
 }
 
 // ============================================================
@@ -663,9 +1145,15 @@ pub fn line_col_to_offset(source: &str, line: usize, column: usize) -> usize {
     let mut current_line: usize = 1;
     let mut current_col: usize = 1;
     for (offset, ch) in source.char_indices() {
-        if current_line == line && current_col == column { return offset; }
-        if ch == '\n' { current_line = current_line.saturating_add(1); current_col = 1; }
-        else { current_col = current_col.saturating_add(1); }
+        if current_line == line && current_col == column {
+            return offset;
+        }
+        if ch == '\n' {
+            current_line = current_line.saturating_add(1);
+            current_col = 1;
+        } else {
+            current_col = current_col.saturating_add(1);
+        }
     }
     source.len()
 }
@@ -675,11 +1163,15 @@ pub fn line_range(source: &str, line: usize) -> (usize, usize) {
     for (offset, ch) in source.char_indices() {
         if current_line == line {
             for (end_offset, end_ch) in source[offset..].char_indices() {
-                if end_ch == '\n' { return (offset, offset + end_offset); }
+                if end_ch == '\n' {
+                    return (offset, offset + end_offset);
+                }
             }
             return (offset, source.len());
         }
-        if ch == '\n' { current_line = current_line.saturating_add(1); }
+        if ch == '\n' {
+            current_line = current_line.saturating_add(1);
+        }
     }
     (source.len(), source.len())
 }
@@ -689,23 +1181,43 @@ pub fn line_range(source: &str, line: usize) -> (usize, usize) {
 // ============================================================
 
 pub fn print_diagnostics(errors: &[CayError], source: &str, filename: &str) {
-    if errors.is_empty() { return; }
-    let error_count = errors.iter().filter(|e| matches!(e.severity(), Severity::Error | Severity::Fatal)).count();
-    let warning_count = errors.iter().filter(|e| e.severity() == Severity::Warning).count();
+    if errors.is_empty() {
+        return;
+    }
+    let error_count = errors
+        .iter()
+        .filter(|e| matches!(e.severity(), Severity::Error | Severity::Fatal))
+        .count();
+    let warning_count = errors
+        .iter()
+        .filter(|e| e.severity() == Severity::Warning)
+        .count();
     eprintln!();
     for error in errors {
         let diag = CayDiagnostic::new(error, source, filename);
-        let report = miette::Report::new(diag).with_source_code(NamedSource::new(filename, source.to_string()));
+        let report = miette::Report::new(diag)
+            .with_source_code(NamedSource::new(filename, source.to_string()));
         let mut handler = miette::GraphicalReportHandler::new();
         let mut output = String::new();
-        if handler.render_report(&mut output, report.as_ref()).is_ok() { eprintln!("{}", output); }
-        else { eprintln!("  × [{}] {}: {}", error.error_code(), error.phase().label(), error.message()); }
+        if handler.render_report(&mut output, report.as_ref()).is_ok() {
+            eprintln!("{}", output);
+        } else {
+            eprintln!(
+                "  × [{}] {}: {}",
+                error.error_code(),
+                error.phase().label(),
+                error.message()
+            );
+        }
     }
-    eprintln!("  编译结果: {}\n", match (error_count, warning_count) {
-        (e, 0) if e > 0 => format!("{} 个错误", e),
-        (0, w) if w > 0 => format!("{} 个警告", w),
-        (e, w) => format!("{} 个错误, {} 个警告", e, w),
-    });
+    eprintln!(
+        "  编译结果: {}\n",
+        match (error_count, warning_count) {
+            (e, 0) if e > 0 => format!("{} 个错误", e),
+            (0, w) if w > 0 => format!("{} 个警告", w),
+            (e, w) => format!("{} 个错误, {} 个警告", e, w),
+        }
+    );
 }
 
 pub fn print_error_with_context(error: &CayError, source: &str, filename: &str) {
@@ -715,14 +1227,30 @@ pub fn print_error_with_context(error: &CayError, source: &str, filename: &str) 
     }
 }
 
-pub fn print_diagnostics_by_file(errors: &[CayError], default_source: &str, default_filename: &str) {
-    if errors.is_empty() { return; }
+pub fn print_diagnostics_by_file(
+    errors: &[CayError],
+    default_source: &str,
+    default_filename: &str,
+) {
+    if errors.is_empty() {
+        return;
+    }
     let mut by_file: HashMap<String, (String, Vec<&CayError>)> = HashMap::new();
     let mut no_file_errors: Vec<&CayError> = Vec::new();
     for error in errors {
         if let Some(file) = error.file() {
             if !file.is_empty() {
-                by_file.entry(file.to_string()).or_insert_with(|| (std::fs::read_to_string(file).unwrap_or_else(|_| default_source.to_string()), Vec::new())).1.push(error);
+                by_file
+                    .entry(file.to_string())
+                    .or_insert_with(|| {
+                        (
+                            std::fs::read_to_string(file)
+                                .unwrap_or_else(|_| default_source.to_string()),
+                            Vec::new(),
+                        )
+                    })
+                    .1
+                    .push(error);
                 continue;
             }
         }
@@ -745,12 +1273,36 @@ pub fn print_diagnostics_by_file(errors: &[CayError], default_source: &str, defa
 #[derive(Error, Debug, miette::Diagnostic)]
 #[error("{message}")]
 #[diagnostic()]
-pub struct CavvyError { message: String, #[diagnostic(code)] code: String, #[source_code] src: NamedSource<String>, #[label("{label_text}")] span: MietteSpan, #[diagnostic(transparent)] label_text: String, #[help] help: Option<String> }
+pub struct CavvyError {
+    message: String,
+    #[diagnostic(code)]
+    code: String,
+    #[source_code]
+    src: NamedSource<String>,
+    #[label("{label_text}")]
+    span: MietteSpan,
+    #[diagnostic(transparent)]
+    label_text: String,
+    #[help]
+    help: Option<String>,
+}
 
 #[derive(Error, Debug, miette::Diagnostic)]
 #[error("{message}")]
 #[diagnostic(severity(warning))]
-pub struct CavvyWarning { message: String, #[diagnostic(code)] code: String, #[source_code] src: NamedSource<String>, #[label("{label_text}")] span: MietteSpan, #[diagnostic(transparent)] label_text: String, #[help] help: Option<String> }
+pub struct CavvyWarning {
+    message: String,
+    #[diagnostic(code)]
+    code: String,
+    #[source_code]
+    src: NamedSource<String>,
+    #[label("{label_text}")]
+    span: MietteSpan,
+    #[diagnostic(transparent)]
+    label_text: String,
+    #[help]
+    help: Option<String>,
+}
 
 #[derive(Error, Debug, miette::Diagnostic)]
 pub enum LexerError {
@@ -784,7 +1336,10 @@ pub enum LexerError {
     },
 
     #[error("无效的数字字面量")]
-    #[diagnostic(code(E2004), help("支持的格式: 十进制(123), 十六进制(0xFF), 二进制(0b101)"))]
+    #[diagnostic(
+        code(E2004),
+        help("支持的格式: 十进制(123), 十六进制(0xFF), 二进制(0b101)")
+    )]
     InvalidNumberLiteral {
         #[source_code]
         src: NamedSource<String>,
@@ -807,16 +1362,30 @@ pub enum LexerError {
 
 impl LexerError {
     pub fn invalid_character(ch: char, source: &str, source_name: &str, offset: usize) -> Self {
-        Self::InvalidCharacter { ch, src: NamedSource::new(source_name, source.to_string()), span: (offset, ch.len_utf8()).into() }
+        Self::InvalidCharacter {
+            ch,
+            src: NamedSource::new(source_name, source.to_string()),
+            span: (offset, ch.len_utf8()).into(),
+        }
     }
     pub fn unterminated_string(source: &str, source_name: &str, start: usize) -> Self {
-        Self::UnterminatedString { src: NamedSource::new(source_name, source.to_string()), span: (start, 1).into() }
+        Self::UnterminatedString {
+            src: NamedSource::new(source_name, source.to_string()),
+            span: (start, 1).into(),
+        }
     }
     pub fn invalid_escape(sequence: &str, source: &str, source_name: &str, offset: usize) -> Self {
-        Self::InvalidEscapeSequence { sequence: sequence.to_string(), src: NamedSource::new(source_name, source.to_string()), span: (offset, sequence.len()).into() }
+        Self::InvalidEscapeSequence {
+            sequence: sequence.to_string(),
+            src: NamedSource::new(source_name, source.to_string()),
+            span: (offset, sequence.len()).into(),
+        }
     }
     pub fn invalid_number(source: &str, source_name: &str, offset: usize, len: usize) -> Self {
-        Self::InvalidNumberLiteral { src: NamedSource::new(source_name, source.to_string()), span: (offset, len).into() }
+        Self::InvalidNumberLiteral {
+            src: NamedSource::new(source_name, source.to_string()),
+            span: (offset, len).into(),
+        }
     }
 }
 
@@ -888,11 +1457,27 @@ pub enum ParserError {
 }
 
 impl ParserError {
-    pub fn unexpected_token(expected: impl Into<String>, found: impl Into<String>, source: &str, source_name: &str, offset: usize, len: usize) -> Self {
-        Self::UnexpectedToken { expected: expected.into(), found: found.into(), src: NamedSource::new(source_name, source.to_string()), span: (offset, len).into(), help: None }
+    pub fn unexpected_token(
+        expected: impl Into<String>,
+        found: impl Into<String>,
+        source: &str,
+        source_name: &str,
+        offset: usize,
+        len: usize,
+    ) -> Self {
+        Self::UnexpectedToken {
+            expected: expected.into(),
+            found: found.into(),
+            src: NamedSource::new(source_name, source.to_string()),
+            span: (offset, len).into(),
+            help: None,
+        }
     }
     pub fn with_help(mut self, help: impl Into<String>) -> Self {
-        if let Self::UnexpectedToken { help: h, .. } = &mut self { *h = Some(help.into()); } self
+        if let Self::UnexpectedToken { help: h, .. } = &mut self {
+            *h = Some(help.into());
+        }
+        self
     }
 }
 
@@ -972,11 +1557,33 @@ pub enum SemanticError {
 }
 
 impl SemanticError {
-    pub fn undefined_identifier(name: &str, source: &str, source_name: &str, offset: usize, len: usize) -> Self {
-        Self::UndefinedIdentifier { name: name.to_string(), src: NamedSource::new(source_name, source.to_string()), span: (offset, len).into() }
+    pub fn undefined_identifier(
+        name: &str,
+        source: &str,
+        source_name: &str,
+        offset: usize,
+        len: usize,
+    ) -> Self {
+        Self::UndefinedIdentifier {
+            name: name.to_string(),
+            src: NamedSource::new(source_name, source.to_string()),
+            span: (offset, len).into(),
+        }
     }
-    pub fn type_mismatch(expected: impl Into<String>, found: impl Into<String>, source: &str, source_name: &str, offset: usize, len: usize) -> Self {
-        Self::TypeMismatch { expected: expected.into(), found: found.into(), src: NamedSource::new(source_name, source.to_string()), span: (offset, len).into() }
+    pub fn type_mismatch(
+        expected: impl Into<String>,
+        found: impl Into<String>,
+        source: &str,
+        source_name: &str,
+        offset: usize,
+        len: usize,
+    ) -> Self {
+        Self::TypeMismatch {
+            expected: expected.into(),
+            found: found.into(),
+            src: NamedSource::new(source_name, source.to_string()),
+            span: (offset, len).into(),
+        }
     }
 }
 
@@ -1016,17 +1623,51 @@ pub enum CodeGenError {
 }
 
 impl CavvyError {
-    pub fn new(message: impl Into<String>, code: impl Into<String>, source: impl Into<String>, source_name: impl AsRef<str>, span: (usize, usize), label: impl Into<String>) -> Self {
-        Self { message: message.into(), code: code.into(), src: NamedSource::new(source_name, source.into()), span: span.into(), label_text: label.into(), help: None }
+    pub fn new(
+        message: impl Into<String>,
+        code: impl Into<String>,
+        source: impl Into<String>,
+        source_name: impl AsRef<str>,
+        span: (usize, usize),
+        label: impl Into<String>,
+    ) -> Self {
+        Self {
+            message: message.into(),
+            code: code.into(),
+            src: NamedSource::new(source_name, source.into()),
+            span: span.into(),
+            label_text: label.into(),
+            help: None,
+        }
     }
-    pub fn with_help(mut self, help: impl Into<String>) -> Self { self.help = Some(help.into()); self }
+    pub fn with_help(mut self, help: impl Into<String>) -> Self {
+        self.help = Some(help.into());
+        self
+    }
 }
 
 impl CavvyWarning {
-    pub fn new(message: impl Into<String>, code: impl Into<String>, source: impl Into<String>, source_name: impl AsRef<str>, span: (usize, usize), label: impl Into<String>) -> Self {
-        Self { message: message.into(), code: code.into(), src: NamedSource::new(source_name, source.into()), span: span.into(), label_text: label.into(), help: None }
+    pub fn new(
+        message: impl Into<String>,
+        code: impl Into<String>,
+        source: impl Into<String>,
+        source_name: impl AsRef<str>,
+        span: (usize, usize),
+        label: impl Into<String>,
+    ) -> Self {
+        Self {
+            message: message.into(),
+            code: code.into(),
+            src: NamedSource::new(source_name, source.into()),
+            span: span.into(),
+            label_text: label.into(),
+            help: None,
+        }
     }
-    pub fn with_help(mut self, help: impl Into<String>) -> Self { self.help = Some(help.into()); self }
+    pub fn with_help(mut self, help: impl Into<String>) -> Self {
+        self.help = Some(help.into());
+        self
+    }
 }
 
 pub type MietteResult<T> = miette::Result<T>;
@@ -1039,23 +1680,115 @@ pub type MietteResult<T> = miette::Result<T>;
 mod tests {
     use super::*;
 
-    #[test] fn test_lexer_error() { let err = lexer_error(ErrorCodes::LEXER_INVALID_CHARACTER, 1, 3, "Unexpected '@'"); assert_eq!(err.error_code(), ErrorCodes::LEXER_INVALID_CHARACTER); }
-    #[test] fn test_parser_error() { let err = parser_error(ErrorCodes::PARSER_EXPECTED_SEMICOLON, 7, 1, "Expected ';'"); assert_eq!(err.error_code(), ErrorCodes::PARSER_EXPECTED_SEMICOLON); }
-    #[test] fn test_semantic_error() { let err = semantic_error(ErrorCodes::SEMANTIC_UNDEFINED_IDENTIFIER, 10, 5, "Undefined 'x'"); assert_eq!(err.error_code(), ErrorCodes::SEMANTIC_UNDEFINED_IDENTIFIER); }
-    #[test] fn test_type_mismatch() { let err = type_mismatch_error(3, 1, "int", "String"); assert_eq!(err.error_code(), ErrorCodes::SEMANTIC_TYPE_MISMATCH); }
-    #[test] fn test_undefined_identifier() { let err = undefined_identifier_error(4, 2, "foo"); assert_eq!(err.error_code(), ErrorCodes::SEMANTIC_UNDEFINED_IDENTIFIER); }
-    #[test] fn test_duplicate_definition() { let err = duplicate_definition_error(6, 3, "MyClass"); assert_eq!(err.error_code(), ErrorCodes::SEMANTIC_DUPLICATE_DEFINITION); }
-    #[test] fn test_codegen_error() { let err = codegen_error(ErrorCodes::CODEGEN_INVALID_OPERATION, 8, 4, "bad"); assert_eq!(err.error_code(), ErrorCodes::CODEGEN_INVALID_OPERATION); }
-    #[test] fn test_codegen_warning() { let err = codegen_warning(ErrorCodes::CODEGEN_SUBOPTIMAL, 5, 2, "suboptimal"); assert_eq!(err.severity(), Severity::Warning); }
-    #[test] fn test_io_error() { let err = io_error(Some("t.cay".into()), "not found"); assert_eq!(err.error_code(), "I0001"); }
-    #[test] fn test_preprocessor_error() { let err = preprocessor_error(ErrorCodes::PREPROCESSOR_DEFINE_ERROR, Some("t.cay".into()), 1, 1, "bad", "fix"); assert_eq!(err.error_code(), ErrorCodes::PREPROCESSOR_DEFINE_ERROR); }
-    #[test] fn test_source_location() { let loc = SourceLocation::new(Some("m.cay".into()), 42, 7); assert!(format!("{}", loc).contains("m.cay")); }
-    #[test] fn test_error_codes() { assert_eq!(ErrorCodes::get_description("E4001"), "未定义的标识符"); }
-    #[test] fn test_line_col_to_offset() { assert_eq!(line_col_to_offset("line1\nline2\nline3", 1, 1), 0); assert_eq!(line_col_to_offset("你好\n世界", 2, 1), 7); }
-    #[test] fn test_print_diagnostics_empty() { print_diagnostics(&[], "", "e.cay"); }
-    #[test] fn test_print_diagnostics_single() { let e = semantic_error(ErrorCodes::SEMANTIC_TYPE_MISMATCH, 3, 8, "bad"); print_diagnostics(&[e], "x\ny\n", "t.cay"); }
-    #[test] fn test_print_diagnostics_warning() { let e = codegen_warning(ErrorCodes::CODEGEN_SUBOPTIMAL, 1, 1, "w"); print_diagnostics(&[e], "x", "t.cay"); }
-    #[test] fn test_miette_diag() { let e = lexer_error(ErrorCodes::LEXER_UNTERMINATED_STRING, 2, 5, "unclosed"); assert!(miette::Diagnostic::code(&e).is_some()); }
-    #[test] fn test_lexer_error_display() { let e = LexerError::invalid_character('@', "int x = @;", "t.cay", 8); assert!(e.to_string().contains('@')); }
-    #[test] fn test_cay_diag_render() { let e = lexer_error(ErrorCodes::LEXER_INVALID_CHARACTER, 1, 3, "bad"); let d = CayDiagnostic::new(&e, "abc@def", "t.cay"); let r = miette::Report::new(d).with_source_code(NamedSource::new("t.cay", "abc@def".to_string())); let mut h = miette::GraphicalReportHandler::new(); let mut o = String::new(); assert!(h.render_report(&mut o, r.as_ref()).is_ok()); assert!(!o.is_empty()); }
+    #[test]
+    fn test_lexer_error() {
+        let err = lexer_error(ErrorCodes::LEXER_INVALID_CHARACTER, 1, 3, "Unexpected '@'");
+        assert_eq!(err.error_code(), ErrorCodes::LEXER_INVALID_CHARACTER);
+    }
+    #[test]
+    fn test_parser_error() {
+        let err = parser_error(ErrorCodes::PARSER_EXPECTED_SEMICOLON, 7, 1, "Expected ';'");
+        assert_eq!(err.error_code(), ErrorCodes::PARSER_EXPECTED_SEMICOLON);
+    }
+    #[test]
+    fn test_semantic_error() {
+        let err = semantic_error(
+            ErrorCodes::SEMANTIC_UNDEFINED_IDENTIFIER,
+            10,
+            5,
+            "Undefined 'x'",
+        );
+        assert_eq!(err.error_code(), ErrorCodes::SEMANTIC_UNDEFINED_IDENTIFIER);
+    }
+    #[test]
+    fn test_type_mismatch() {
+        let err = type_mismatch_error(3, 1, "int", "String");
+        assert_eq!(err.error_code(), ErrorCodes::SEMANTIC_TYPE_MISMATCH);
+    }
+    #[test]
+    fn test_undefined_identifier() {
+        let err = undefined_identifier_error(4, 2, "foo");
+        assert_eq!(err.error_code(), ErrorCodes::SEMANTIC_UNDEFINED_IDENTIFIER);
+    }
+    #[test]
+    fn test_duplicate_definition() {
+        let err = duplicate_definition_error(6, 3, "MyClass");
+        assert_eq!(err.error_code(), ErrorCodes::SEMANTIC_DUPLICATE_DEFINITION);
+    }
+    #[test]
+    fn test_codegen_error() {
+        let err = codegen_error(ErrorCodes::CODEGEN_INVALID_OPERATION, 8, 4, "bad");
+        assert_eq!(err.error_code(), ErrorCodes::CODEGEN_INVALID_OPERATION);
+    }
+    #[test]
+    fn test_codegen_warning() {
+        let err = codegen_warning(ErrorCodes::CODEGEN_SUBOPTIMAL, 5, 2, "suboptimal");
+        assert_eq!(err.severity(), Severity::Warning);
+    }
+    #[test]
+    fn test_io_error() {
+        let err = io_error(Some("t.cay".into()), "not found");
+        assert_eq!(err.error_code(), "I0001");
+    }
+    #[test]
+    fn test_preprocessor_error() {
+        let err = preprocessor_error(
+            ErrorCodes::PREPROCESSOR_DEFINE_ERROR,
+            Some("t.cay".into()),
+            1,
+            1,
+            "bad",
+            "fix",
+        );
+        assert_eq!(err.error_code(), ErrorCodes::PREPROCESSOR_DEFINE_ERROR);
+    }
+    #[test]
+    fn test_source_location() {
+        let loc = SourceLocation::new(Some("m.cay".into()), 42, 7);
+        assert!(format!("{}", loc).contains("m.cay"));
+    }
+    #[test]
+    fn test_error_codes() {
+        assert_eq!(ErrorCodes::get_description("E4001"), "未定义的标识符");
+    }
+    #[test]
+    fn test_line_col_to_offset() {
+        assert_eq!(line_col_to_offset("line1\nline2\nline3", 1, 1), 0);
+        assert_eq!(line_col_to_offset("你好\n世界", 2, 1), 7);
+    }
+    #[test]
+    fn test_print_diagnostics_empty() {
+        print_diagnostics(&[], "", "e.cay");
+    }
+    #[test]
+    fn test_print_diagnostics_single() {
+        let e = semantic_error(ErrorCodes::SEMANTIC_TYPE_MISMATCH, 3, 8, "bad");
+        print_diagnostics(&[e], "x\ny\n", "t.cay");
+    }
+    #[test]
+    fn test_print_diagnostics_warning() {
+        let e = codegen_warning(ErrorCodes::CODEGEN_SUBOPTIMAL, 1, 1, "w");
+        print_diagnostics(&[e], "x", "t.cay");
+    }
+    #[test]
+    fn test_miette_diag() {
+        let e = lexer_error(ErrorCodes::LEXER_UNTERMINATED_STRING, 2, 5, "unclosed");
+        assert!(miette::Diagnostic::code(&e).is_some());
+    }
+    #[test]
+    fn test_lexer_error_display() {
+        let e = LexerError::invalid_character('@', "int x = @;", "t.cay", 8);
+        assert!(e.to_string().contains('@'));
+    }
+    #[test]
+    fn test_cay_diag_render() {
+        let e = lexer_error(ErrorCodes::LEXER_INVALID_CHARACTER, 1, 3, "bad");
+        let d = CayDiagnostic::new(&e, "abc@def", "t.cay");
+        let r = miette::Report::new(d)
+            .with_source_code(NamedSource::new("t.cay", "abc@def".to_string()));
+        let mut h = miette::GraphicalReportHandler::new();
+        let mut o = String::new();
+        assert!(h.render_report(&mut o, r.as_ref()).is_ok());
+        assert!(!o.is_empty());
+    }
 }

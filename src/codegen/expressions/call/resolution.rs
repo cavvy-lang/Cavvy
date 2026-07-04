@@ -172,7 +172,12 @@ impl IRGenerator {
     }
 
     /// 转换参数类型以匹配形参类型
-    pub fn convert_arg_type(&mut self, arg_type: &str, arg_val: &str, param_llvm_type: &str) -> String {
+    pub fn convert_arg_type(
+        &mut self,
+        arg_type: &str,
+        arg_val: &str,
+        param_llvm_type: &str,
+    ) -> String {
         // 如果类型已经匹配，直接返回
         if arg_type == param_llvm_type {
             return format!("{} {}", arg_type, arg_val);

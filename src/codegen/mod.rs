@@ -19,9 +19,9 @@ pub mod obfuscator;
 mod platform;
 pub mod runtime;
 pub mod source_map;
+pub mod specialization;
 mod statements;
 mod types;
-pub mod specialization;
 
 // 0.5.0.0: CodeGen-IR Builder 协作桥
 pub mod bridge;

@@ -9,7 +9,9 @@
 //! 2. Windows 下使用 PowerShell Invoke-WebRequest
 //! 3. 使用 Python urllib（回退）
 
-use super::{SetupError, SetupResult, VersionInfo, detect_platform, find_cavvy_root, is_ci_environment};
+use super::{
+    SetupError, SetupResult, VersionInfo, detect_platform, find_cavvy_root, is_ci_environment,
+};
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -140,7 +142,10 @@ fn parse_release_json(json: &str) -> SetupResult<GitHubRelease> {
                         extract_json_string(obj_str, "name"),
                         extract_json_string(obj_str, "browser_download_url"),
                     ) {
-                        assets.push(GitHubAsset { name, browser_download_url: url });
+                        assets.push(GitHubAsset {
+                            name,
+                            browser_download_url: url,
+                        });
                     }
                 }
             }
@@ -246,7 +251,11 @@ pub fn fetch_latest_release(repo: &str) -> SetupResult<GitHubRelease> {
 /// 根据平台匹配预编译包 asset
 /// Windows: 匹配 *windows*x86_64*.7z
 /// Linux:   匹配 *linux*x86_64*.tar.xz
-pub fn match_prebuilt_asset<'a>(release: &'a GitHubRelease, os: &str, _arch: &str) -> Option<&'a GitHubAsset> {
+pub fn match_prebuilt_asset<'a>(
+    release: &'a GitHubRelease,
+    os: &str,
+    _arch: &str,
+) -> Option<&'a GitHubAsset> {
     let (os_keyword, ext) = match os {
         "win" => ("windows", ".7z"),
         "linux" => ("linux", ".tar.xz"),
@@ -255,13 +264,20 @@ pub fn match_prebuilt_asset<'a>(release: &'a GitHubRelease, os: &str, _arch: &st
 
     release.assets.iter().find(|asset| {
         let name_lower = asset.name.to_lowercase();
-        name_lower.contains(os_keyword) && name_lower.contains("x86_64") && name_lower.ends_with(ext)
+        name_lower.contains(os_keyword)
+            && name_lower.contains("x86_64")
+            && name_lower.ends_with(ext)
     })
 }
 
 /// 构建 LLVM minimal 下载 URL
 /// 版本号从 .verinfo 动态读取，无硬编码
-pub fn build_llvm_download_url(version: &str, os: &str, arch: &str, config: &DownloadConfig) -> String {
+pub fn build_llvm_download_url(
+    version: &str,
+    os: &str,
+    arch: &str,
+    config: &DownloadConfig,
+) -> String {
     if config.use_full_llvm {
         if os == "win" {
             format!(
@@ -293,7 +309,10 @@ pub fn download_file(url: &str, dest: &Path, timeout_seconds: u64) -> SetupResul
     }
 
     let parent = dest.parent().ok_or_else(|| {
-        SetupError::Io(io::Error::new(io::ErrorKind::InvalidInput, "目标路径没有父目录"))
+        SetupError::Io(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "目标路径没有父目录",
+        ))
     })?;
     fs::create_dir_all(parent)?;
 
@@ -350,7 +369,8 @@ pub fn download_file(url: &str, dest: &Path, timeout_seconds: u64) -> SetupResul
         }
 
         return Err(SetupError::CommandFailed(
-            "curl 所有下载尝试均失败，可能原因：网络代理、SSL 证书问题、或 GitHub 服务不可用。".to_string()
+            "curl 所有下载尝试均失败，可能原因：网络代理、SSL 证书问题、或 GitHub 服务不可用。"
+                .to_string(),
         ));
     }
 
@@ -364,7 +384,9 @@ pub fn download_file(url: &str, dest: &Path, timeout_seconds: u64) -> SetupResul
             .arg("--tries=3")
             .arg(url);
 
-        let output = cmd.output().map_err(|e| SetupError::CommandFailed(format!("wget 启动失败: {}", e)))?;
+        let output = cmd
+            .output()
+            .map_err(|e| SetupError::CommandFailed(format!("wget 启动失败: {}", e)))?;
         if !output.status.success() {
             let _ = fs::remove_file(&temp_path);
             return Err(SetupError::CommandFailed(format!(
@@ -462,7 +484,12 @@ pub fn extract_tar_xz(archive: &Path, dest: &Path) -> SetupResult<()> {
 
     // 策略1: tar 命令
     let tar_output = Command::new("tar")
-        .args(&["-xf", archive.to_str().unwrap_or_default(), "-C", dest.to_str().unwrap_or_default()])
+        .args(&[
+            "-xf",
+            archive.to_str().unwrap_or_default(),
+            "-C",
+            dest.to_str().unwrap_or_default(),
+        ])
         .output()
         .map_err(|e| SetupError::CommandFailed(format!("tar 启动失败: {}", e)))?;
 
@@ -536,8 +563,16 @@ pub fn verify_llvm_minimal(install_dir: &Path, os: &str) -> SetupResult<()> {
     }
 
     let essentials = [
-        "clang", "ld.lld", "ld64.lld", "llc", "lld-link", "lld", "llvm-ar",
-        "llvm-profdata", "llvm-profgen", "wasm-ld",
+        "clang",
+        "ld.lld",
+        "ld64.lld",
+        "llc",
+        "lld-link",
+        "lld",
+        "llvm-ar",
+        "llvm-profdata",
+        "llvm-profgen",
+        "wasm-ld",
     ];
     let mut missing = Vec::new();
 
@@ -574,7 +609,11 @@ pub fn find_cavvy_install_dir() -> Option<PathBuf> {
     };
 
     if let Ok(path_var) = std::env::var("PATH") {
-        let separator = if cfg!(target_os = "windows") { ';' } else { ':' };
+        let separator = if cfg!(target_os = "windows") {
+            ';'
+        } else {
+            ':'
+        };
         for dir in path_var.split(separator) {
             let candidate = PathBuf::from(dir).join(exe_name);
             if candidate.exists() {
@@ -598,7 +637,11 @@ pub fn find_tool_path(name: &str) -> Option<PathBuf> {
 
     // 1. 搜索 PATH
     if let Ok(path_var) = std::env::var("PATH") {
-        let sep = if cfg!(target_os = "windows") { ';' } else { ':' };
+        let sep = if cfg!(target_os = "windows") {
+            ';'
+        } else {
+            ':'
+        };
         for dir in path_var.split(sep) {
             let candidate = PathBuf::from(dir).join(&exe);
             if candidate.exists() {
@@ -726,8 +769,14 @@ pub fn download_and_install_llvm(
 /// 如果目录下只有一个子目录且无文件，将子目录内容提升到当前层
 fn flatten_single_subdir(dir: &Path) -> SetupResult<()> {
     let entries: Vec<_> = fs::read_dir(dir)?.collect::<Result<Vec<_>, _>>()?;
-    let subdirs: Vec<_> = entries.iter().filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false)).collect();
-    let files: Vec<_> = entries.iter().filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false)).collect();
+    let subdirs: Vec<_> = entries
+        .iter()
+        .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+        .collect();
+    let files: Vec<_> = entries
+        .iter()
+        .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
+        .collect();
 
     if subdirs.len() == 1 && files.is_empty() {
         let sub = subdirs[0].path();
@@ -764,9 +813,7 @@ pub fn install_cavvy_prebuilt(
     eprintln!("[INFO] 最新 release: {}", release.tag_name);
 
     let asset = match_prebuilt_asset(&release, os, arch)
-        .ok_or_else(|| SetupError::NotFound(
-            format!("未找到 {}-{} 平台的预编译包", os, arch)
-        ))?;
+        .ok_or_else(|| SetupError::NotFound(format!("未找到 {}-{} 平台的预编译包", os, arch)))?;
 
     eprintln!("[INFO] 匹配 asset: {}", asset.name);
 
@@ -795,8 +842,16 @@ pub fn install_cavvy_prebuilt(
     fs::create_dir_all(&temp_dir)?;
     let archive_path = temp_dir.join(&asset.name);
 
-    eprintln!("[INFO] 下载 {} -> {}", asset.browser_download_url, archive_path.display());
-    download_file(&asset.browser_download_url, &archive_path, config.timeout_seconds)?;
+    eprintln!(
+        "[INFO] 下载 {} -> {}",
+        asset.browser_download_url,
+        archive_path.display()
+    );
+    download_file(
+        &asset.browser_download_url,
+        &archive_path,
+        config.timeout_seconds,
+    )?;
 
     // 解压
     eprintln!("[INFO] 解压到 {}", install_dir.display());
@@ -805,9 +860,10 @@ pub fn install_cavvy_prebuilt(
     } else if asset.name.ends_with(".tar.xz") {
         extract_tar_xz(&archive_path, &install_dir)?;
     } else {
-        return Err(SetupError::VerificationFailed(
-            format!("不支持的压缩格式: {}", asset.name)
-        ));
+        return Err(SetupError::VerificationFailed(format!(
+            "不支持的压缩格式: {}",
+            asset.name
+        )));
     }
 
     // 清理临时文件
@@ -818,10 +874,20 @@ pub fn install_cavvy_prebuilt(
 
     // 验证关键二进制文件
     let bins = [
-        "cayc", "cay-ir", "ir2exe", "cay-check", "cay-run",
-        "cay-lsp", "cavly", "cay-setup",
+        "cayc",
+        "cay-ir",
+        "ir2exe",
+        "cay-check",
+        "cay-run",
+        "cay-lsp",
+        "cavly",
+        "cay-setup",
     ];
-    let ext = if cfg!(target_os = "windows") { ".exe" } else { "" };
+    let ext = if cfg!(target_os = "windows") {
+        ".exe"
+    } else {
+        ""
+    };
     let mut installed = Vec::new();
     let mut missing = Vec::new();
 
@@ -838,7 +904,11 @@ pub fn install_cavvy_prebuilt(
         eprintln!("[WARN] 缺少以下二进制文件: {}", missing.join(", "));
     }
 
-    eprintln!("[SUCCESS] 已安装 {} 个二进制文件到 {}", installed.len(), install_dir.display());
+    eprintln!(
+        "[SUCCESS] 已安装 {} 个二进制文件到 {}",
+        installed.len(),
+        install_dir.display()
+    );
 
     // 自动添加 PATH
     add_to_path(&install_dir)?;
@@ -907,11 +977,21 @@ pub fn install_cavvy_from_source(dest_dir: Option<&Path>) -> SetupResult<Vec<Pat
     };
 
     let bins = [
-        "cayc", "cay-ir", "ir2exe", "cay-check", "cay-run",
-        "cay-lsp", "cavly", "cay-setup",
+        "cayc",
+        "cay-ir",
+        "ir2exe",
+        "cay-check",
+        "cay-run",
+        "cay-lsp",
+        "cavly",
+        "cay-setup",
     ];
     let mut installed = Vec::new();
-    let ext = if cfg!(target_os = "windows") { ".exe" } else { "" };
+    let ext = if cfg!(target_os = "windows") {
+        ".exe"
+    } else {
+        ""
+    };
 
     for bin in &bins {
         let src = source_dir.join(format!("{}{}", bin, ext));
@@ -929,7 +1009,11 @@ pub fn install_cavvy_from_source(dest_dir: Option<&Path>) -> SetupResult<Vec<Pat
         }
     }
 
-    eprintln!("[SUCCESS] 已安装 {} 个二进制文件到 {}", installed.len(), target_dir.display());
+    eprintln!(
+        "[SUCCESS] 已安装 {} 个二进制文件到 {}",
+        installed.len(),
+        target_dir.display()
+    );
 
     // 自动添加 PATH
     add_to_path(&target_dir)?;
@@ -945,9 +1029,15 @@ pub fn add_to_path(dir: &Path) -> SetupResult<()> {
     // SAFETY: cay-setup 为单线程程序，set_var 不会在并发环境下导致数据竞争
     let dir_str = dir.to_string_lossy().to_string();
     let current = std::env::var("PATH").unwrap_or_default();
-    let sep = if cfg!(target_os = "windows") { ';' } else { ':' };
+    let sep = if cfg!(target_os = "windows") {
+        ';'
+    } else {
+        ':'
+    };
     let new_path = format!("{}{}{}", dir_str, sep, current);
-    unsafe { std::env::set_var("PATH", &new_path); }
+    unsafe {
+        std::env::set_var("PATH", &new_path);
+    }
 
     // 2. 持久化到系统
     if cfg!(target_os = "windows") {
@@ -969,9 +1059,7 @@ fn add_to_path_windows(dir: &Path) -> SetupResult<()> {
     };
 
     // 使用 PowerShell 读取当前用户 PATH
-    let ps_read = format!(
-        "[Environment]::GetEnvironmentVariable('Path', 'User')"
-    );
+    let ps_read = format!("[Environment]::GetEnvironmentVariable('Path', 'User')");
     let output = Command::new("powershell")
         .args(&["-Command", &ps_read])
         .output()
@@ -984,7 +1072,10 @@ fn add_to_path_windows(dir: &Path) -> SetupResult<()> {
     let current_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
     // 检查是否已包含
-    if current_path.to_lowercase().contains(&dir_str.to_lowercase()) {
+    if current_path
+        .to_lowercase()
+        .contains(&dir_str.to_lowercase())
+    {
         eprintln!("[INFO] PATH 中已包含 {}", dir_str);
         return Ok(());
     }
@@ -1014,7 +1105,11 @@ fn add_to_path_windows(dir: &Path) -> SetupResult<()> {
 
 /// Linux: 修改 shell profile 添加 PATH
 fn add_to_path_linux(dir: &Path) -> SetupResult<()> {
-    let dir_str = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf()).to_string_lossy().to_string();
+    let dir_str = dir
+        .canonicalize()
+        .unwrap_or_else(|_| dir.to_path_buf())
+        .to_string_lossy()
+        .to_string();
 
     // 检测当前使用的 shell
     let shell = std::env::var("SHELL").unwrap_or_default();
@@ -1049,13 +1144,18 @@ fn add_to_path_linux(dir: &Path) -> SetupResult<()> {
     drop(file);
 
     eprintln!("[SUCCESS] 已自动添加 {} 到 {}", dir_str, profile.display());
-    eprintln!("[INFO] 请运行 'source {}' 或重新打开终端以使变更生效。", profile.display());
+    eprintln!(
+        "[INFO] 请运行 'source {}' 或重新打开终端以使变更生效。",
+        profile.display()
+    );
     Ok(())
 }
 
 /// 打印环境变量设置提示（手动模式）
 pub fn print_env_setup_hint(install_dir: &Path) {
-    let bin_path = install_dir.canonicalize().unwrap_or_else(|_| install_dir.to_path_buf());
+    let bin_path = install_dir
+        .canonicalize()
+        .unwrap_or_else(|_| install_dir.to_path_buf());
 
     if cfg!(target_os = "windows") {
         println!("PowerShell (当前会话):");
@@ -1074,7 +1174,10 @@ pub fn print_env_setup_hint(install_dir: &Path) {
         println!("  export PATH=\"{}:$PATH\"", bin_path.display());
         println!();
         println!("永久设置 (添加到 ~/.bashrc 或 ~/.zshrc):");
-        println!("  echo 'export PATH=\"{}:$PATH\"' >> ~/.bashrc", bin_path.display());
+        println!(
+            "  echo 'export PATH=\"{}:$PATH\"' >> ~/.bashrc",
+            bin_path.display()
+        );
     }
 }
 
@@ -1105,8 +1208,14 @@ mod tests {
     #[test]
     fn test_extract_json_string() {
         let json = r#"{"name":"cavvy-5.1.0-windows-x86_64.7z","url":"https://example.com"}"#;
-        assert_eq!(extract_json_string(json, "name"), Some("cavvy-5.1.0-windows-x86_64.7z".to_string()));
-        assert_eq!(extract_json_string(json, "url"), Some("https://example.com".to_string()));
+        assert_eq!(
+            extract_json_string(json, "name"),
+            Some("cavvy-5.1.0-windows-x86_64.7z".to_string())
+        );
+        assert_eq!(
+            extract_json_string(json, "url"),
+            Some("https://example.com".to_string())
+        );
         assert_eq!(extract_json_string(json, "missing"), None);
     }
 
@@ -1122,8 +1231,14 @@ mod tests {
         let release = GitHubRelease {
             tag_name: "v5.1.0".to_string(),
             assets: vec![
-                GitHubAsset { name: "cavvy-5.1.0-windows-x86_64.7z".to_string(), browser_download_url: "http://win".to_string() },
-                GitHubAsset { name: "cavvy-5.1.0-linux-x86_64.tar.xz".to_string(), browser_download_url: "http://linux".to_string() },
+                GitHubAsset {
+                    name: "cavvy-5.1.0-windows-x86_64.7z".to_string(),
+                    browser_download_url: "http://win".to_string(),
+                },
+                GitHubAsset {
+                    name: "cavvy-5.1.0-linux-x86_64.tar.xz".to_string(),
+                    browser_download_url: "http://linux".to_string(),
+                },
             ],
         };
         assert!(match_prebuilt_asset(&release, "win", "x86_64").is_some());

@@ -8,7 +8,10 @@ use crate::types::Type;
 
 impl SemanticAnalyzer {
     /// 推断函数调用类型
-    pub(crate) fn infer_call_type(&mut self, call: &CallExpr) -> crate::miette_diagnostic::CayResult<Type> {
+    pub(crate) fn infer_call_type(
+        &mut self,
+        call: &CallExpr,
+    ) -> crate::miette_diagnostic::CayResult<Type> {
         // 首先处理标识符调用（内置函数、extern函数、方法调用等）
         // 这需要在函数指针检查之前，因为函数指针变量也是标识符
         // 但我们需要先检查是否是已知的函数名

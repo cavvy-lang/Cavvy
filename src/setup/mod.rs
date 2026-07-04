@@ -176,9 +176,7 @@ pub fn detect_platform() -> (&'static str, &'static str) {
         panic!("不支持的操作系统: 仅支持 Windows 和 Linux")
     };
 
-    let arch = if cfg!(target_arch = "x86_64")
-        || cfg!(target_arch = "amd64")
-    {
+    let arch = if cfg!(target_arch = "x86_64") || cfg!(target_arch = "amd64") {
         "x86_64"
     } else {
         panic!("不支持的架构: 仅支持 x86_64")
@@ -221,10 +219,12 @@ pub fn find_cavvy_root() -> Option<PathBuf> {
     ];
 
     for candidate in &candidates {
-        if candidate.join("Cargo.toml").exists()
-            && candidate.join(".verinfo").exists()
-        {
-            return Some(candidate.canonicalize().unwrap_or_else(|_| candidate.clone()));
+        if candidate.join("Cargo.toml").exists() && candidate.join(".verinfo").exists() {
+            return Some(
+                candidate
+                    .canonicalize()
+                    .unwrap_or_else(|_| candidate.clone()),
+            );
         }
     }
 

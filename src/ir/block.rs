@@ -3,8 +3,8 @@
 //! 基本块是 IR 的基本执行单元，包含一系列指令和一个终止指令。
 
 use super::value::{IrInstruction, IrTerminator};
-use std::fmt;
 use serde::Serialize;
+use std::fmt;
 
 /// IR 基本块
 ///

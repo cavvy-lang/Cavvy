@@ -131,7 +131,10 @@ fn main() {
             let (line, col) = diag.location().unwrap_or((0, 0));
             eprintln!(
                 "  [{}] {} (行 {}, 列 {})",
-                diag.error_code(), diag.message(), line, col
+                diag.error_code(),
+                diag.message(),
+                line,
+                col
             );
         }
         process::exit(1);

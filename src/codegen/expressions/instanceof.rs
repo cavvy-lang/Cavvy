@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::{CayResult, codegen_error_at, ErrorCodes};
+use crate::miette_diagnostic::{CayResult, ErrorCodes, codegen_error_at};
 
 impl IRGenerator {
     /// 生成 instanceof 表达式代码
@@ -60,7 +60,8 @@ impl IRGenerator {
         let target_class = match target_type {
             crate::types::Type::Object(name) => name.clone(),
             _ => {
-                return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                return Err(codegen_error_at(
+                    ErrorCodes::CODEGEN_INVALID_OPERATION,
                     instanceof.loc.clone(),
                     "instanceof target must be an object type".to_string(),
                 ));

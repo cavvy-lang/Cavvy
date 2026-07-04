@@ -2,7 +2,7 @@
 
 use super::symbol_table::{SemanticSymbolInfo, SemanticSymbolTable};
 use crate::ast::*;
-use crate::miette_diagnostic::{CayResult, semantic_error_with_file, ErrorCodes};
+use crate::miette_diagnostic::{CayResult, ErrorCodes, semantic_error_with_file};
 use crate::types::{ClassInfo, FieldInfo, MethodInfo, ParameterInfo, Type, TypeRegistry};
 
 /// 语义分析错误信息（包含位置）
@@ -209,7 +209,8 @@ impl SemanticAnalyzer {
         if !top_level_enabled {
             for func in &program.top_level_functions {
                 if func.name != "main" {
-                    return Err(crate::miette_diagnostic::semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, 
+                    return Err(crate::miette_diagnostic::semantic_error_with_file(
+                        ErrorCodes::SEMANTIC_INVALID_OPERATION,
                         func.loc.file.clone(),
                         func.loc.line,
                         func.loc.column,
@@ -225,7 +226,8 @@ impl SemanticAnalyzer {
         for func in &program.top_level_functions {
             // 检查函数名是否已存在（在当前作用域）
             if self.symbol_table.lookup_current(&func.name).is_some() {
-                return Err(crate::miette_diagnostic::semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, 
+                return Err(crate::miette_diagnostic::semantic_error_with_file(
+                    ErrorCodes::SEMANTIC_INVALID_OPERATION,
                     func.loc.file.clone(),
                     func.loc.line,
                     func.loc.column,
@@ -301,7 +303,13 @@ impl SemanticAnalyzer {
         message: impl Into<String>,
     ) -> crate::miette_diagnostic::CayError {
         let msg = message.into();
-        semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, self.current_file.clone(), line, column, msg)
+        semantic_error_with_file(
+            ErrorCodes::SEMANTIC_INVALID_OPERATION,
+            self.current_file.clone(),
+            line,
+            column,
+            msg,
+        )
     }
 
     /// 创建语义分析错误信息（自动解析文件路径）
@@ -375,7 +383,10 @@ impl SemanticAnalyzer {
     }
 
     /// 从表达式中提取完整的源代码位置（包括文件路径）
-    pub fn get_expr_source_location(&self, expr: &Expr) -> crate::miette_diagnostic::SourceLocation {
+    pub fn get_expr_source_location(
+        &self,
+        expr: &Expr,
+    ) -> crate::miette_diagnostic::SourceLocation {
         match expr {
             Expr::Literal(e) => e.loc.clone(),
             Expr::Identifier(e) => e.loc.clone(),

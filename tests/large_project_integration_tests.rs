@@ -36,7 +36,7 @@ fn get_cavly_path() -> String {
     if let Ok(path) = std::env::var("CARGO_BIN_EXE_cavly") {
         return path;
     }
-    
+
     // 回退到相对路径
     if cfg!(target_os = "windows") {
         "./target/release/cavly.exe".to_string()

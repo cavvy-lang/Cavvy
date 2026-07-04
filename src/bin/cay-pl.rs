@@ -107,11 +107,7 @@ fn main() {
     }
 
     let total_lines = processed.lines().count();
-    let lines = classify_lines(
-        &ast,
-        total_lines,
-        options.common.no_color,
-    );
+    let lines = classify_lines(&ast, total_lines, options.common.no_color);
     let summary = compute_summary(total_lines, &lines);
 
     if options.common.json_output {
@@ -125,16 +121,9 @@ fn main() {
             Err(e) => exit_with_error(&format!("JSON 序列化失败: {}", e)),
         }
     } else if options.show_ranges {
-        print_ranges(
-            &lines,
-            &file_path,
-            options.common.no_color,
-        );
+        print_ranges(&lines, &file_path, options.common.no_color);
     } else {
-        print_table(
-            &lines,
-            options.common.no_color,
-        );
+        print_table(&lines, options.common.no_color);
     }
 }
 
@@ -209,8 +198,14 @@ fn classify_lines(ast: &Program, total_lines: usize, _no_color: bool) -> Vec<Lin
 }
 
 fn compute_summary(total_lines: usize, lines: &[LineInfo]) -> Summary {
-    let codegen_lines = lines.iter().filter(|l| l.pipeline == Pipeline::Codegen).count();
-    let ir_builder_lines = lines.iter().filter(|l| l.pipeline == Pipeline::IrBuilder).count();
+    let codegen_lines = lines
+        .iter()
+        .filter(|l| l.pipeline == Pipeline::Codegen)
+        .count();
+    let ir_builder_lines = lines
+        .iter()
+        .filter(|l| l.pipeline == Pipeline::IrBuilder)
+        .count();
     Summary {
         total_lines,
         codegen_lines,
@@ -258,13 +253,25 @@ fn print_ranges(lines: &[LineInfo], file_path: &str, no_color: bool) {
             current_start = info.line;
             current_pipeline = info.pipeline;
         } else if info.pipeline != current_pipeline {
-            print_range(current_start, lines[i - 1].line, current_pipeline, ir_color, reset);
+            print_range(
+                current_start,
+                lines[i - 1].line,
+                current_pipeline,
+                ir_color,
+                reset,
+            );
             current_start = info.line;
             current_pipeline = info.pipeline;
         }
     }
     if !lines.is_empty() {
-        print_range(current_start, lines.last().unwrap().line, current_pipeline, ir_color, reset);
+        print_range(
+            current_start,
+            lines.last().unwrap().line,
+            current_pipeline,
+            ir_color,
+            reset,
+        );
     }
 
     let summary = compute_summary(lines.len(), lines);
@@ -277,10 +284,7 @@ fn print_ranges(lines: &[LineInfo], file_path: &str, no_color: bool) {
 
 fn print_range(start: usize, end: usize, pipeline: Pipeline, ir_color: &str, reset: &str) {
     if start == end {
-        println!(
-            "  line {:4}: {}{}{}",
-            start, ir_color, pipeline, reset
-        );
+        println!("  line {:4}: {}{}{}", start, ir_color, pipeline, reset);
     } else {
         println!(
             "  lines {:4}-{:4}: {}{}{}",

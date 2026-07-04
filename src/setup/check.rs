@@ -24,7 +24,9 @@ pub struct CheckReport {
 impl CheckReport {
     /// 是否所有必需项都通过
     pub fn all_required_ok(&self) -> bool {
-        self.items.iter().all(|(_, status)| matches!(status, CheckStatus::Ok))
+        self.items
+            .iter()
+            .all(|(_, status)| matches!(status, CheckStatus::Ok))
     }
 
     /// 是否有任何错误（Missing）
@@ -53,18 +55,26 @@ pub fn run_full_check() -> SetupResult<CheckReport> {
     let (os, _arch) = detect_platform();
 
     // 1. Git
-    report.items.push(check_command("git", &["--version"], "Git 版本控制工具"));
+    report
+        .items
+        .push(check_command("git", &["--version"], "Git 版本控制工具"));
 
     // 2. Python（用于 setup-llvm.py 回退）
-    report.items.push(check_command("python", &["--version"], "Python 解释器"));
+    report
+        .items
+        .push(check_command("python", &["--version"], "Python 解释器"));
     if !matches!(report.items.last().unwrap().1, CheckStatus::Ok) {
-        report.items.push(check_command("python3", &["--version"], "Python3 解释器"));
+        report
+            .items
+            .push(check_command("python3", &["--version"], "Python3 解释器"));
     }
 
     // 3. Rust / Cargo
-    report
-        .items
-        .push(check_command("cargo", &["--version"], "Rust Cargo 构建工具"));
+    report.items.push(check_command(
+        "cargo",
+        &["--version"],
+        "Rust Cargo 构建工具",
+    ));
     report
         .items
         .push(check_command("rustc", &["--version"], "Rust 编译器"));
@@ -78,7 +88,9 @@ pub fn run_full_check() -> SetupResult<CheckReport> {
     report
         .items
         .push(check_command("clang", &["--version"], "Clang 编译器"));
-    report.items.push(check_command("llc", &["--version"], "LLVM IR 编译器 (llc)"));
+    report
+        .items
+        .push(check_command("llc", &["--version"], "LLVM IR 编译器 (llc)"));
 
     // 5. 链接器
     // lld 通用驱动在某些系统上 --version 返回错误，优先检查平台特定驱动
@@ -88,9 +100,17 @@ pub fn run_full_check() -> SetupResult<CheckReport> {
         check_command("ld.lld", &["--version"], "LLVM ELF 链接器 (ld.lld)").1 == CheckStatus::Ok
     };
     if lld_ok {
-        report.items.push((format!("LLVM 链接器 (lld) ({})", if os == "win" { "lld-link" } else { "ld.lld" }), CheckStatus::Ok));
+        report.items.push((
+            format!(
+                "LLVM 链接器 (lld) ({})",
+                if os == "win" { "lld-link" } else { "ld.lld" }
+            ),
+            CheckStatus::Ok,
+        ));
     } else {
-        report.items.push(check_command("lld", &["--version"], "LLVM 链接器 (lld)"));
+        report
+            .items
+            .push(check_command("lld", &["--version"], "LLVM 链接器 (lld)"));
     }
 
     // 6. MinGW (Windows 必需)
@@ -142,10 +162,7 @@ fn check_command(cmd: &str, args: &[&str], description: &str) -> (String, CheckS
 /// 检查 Cavvy 项目根目录
 fn check_cavvy_root() -> (String, CheckStatus) {
     match find_cavvy_root() {
-        Some(root) => (
-            "Cavvy 项目根目录".to_string(),
-            CheckStatus::Ok,
-        ),
+        Some(root) => ("Cavvy 项目根目录".to_string(), CheckStatus::Ok),
         None => (
             "Cavvy 项目根目录".to_string(),
             CheckStatus::Warning(
@@ -187,10 +204,8 @@ fn check_llvm_minimal() -> (String, CheckStatus) {
 
         let bin_dir = llvm_minimal.join("bin");
         if !bin_dir.exists() {
-            last_status = CheckStatus::Warning(format!(
-                "{} 下 bin 目录不存在",
-                llvm_minimal.display()
-            ));
+            last_status =
+                CheckStatus::Warning(format!("{} 下 bin 目录不存在", llvm_minimal.display()));
             continue;
         }
 
@@ -208,10 +223,7 @@ fn check_llvm_minimal() -> (String, CheckStatus) {
         }
 
         if missing.is_empty() {
-            return (
-                "llvm-minimal 本地工具".to_string(),
-                CheckStatus::Ok,
-            );
+            return ("llvm-minimal 本地工具".to_string(), CheckStatus::Ok);
         } else {
             last_status = CheckStatus::Warning(format!(
                 "{} 缺少关键二进制文件: {}",
@@ -336,7 +348,9 @@ mod tests {
     fn test_check_report_detects_errors() {
         let mut report = CheckReport::default();
         report.items.push(("A".to_string(), CheckStatus::Ok));
-        report.items.push(("B".to_string(), CheckStatus::Missing("x".to_string())));
+        report
+            .items
+            .push(("B".to_string(), CheckStatus::Missing("x".to_string())));
         assert!(!report.all_required_ok());
         assert!(report.has_errors());
         assert_eq!(report.errors().len(), 1);

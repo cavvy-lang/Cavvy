@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::{CayResult, codegen_error_at, ErrorCodes};
+use crate::miette_diagnostic::{CayResult, ErrorCodes, codegen_error_at};
 use crate::semantic::resolve_call_args;
 
 impl IRGenerator {
@@ -175,15 +175,11 @@ impl IRGenerator {
                 } else if !self.current_class.is_empty() {
                     // 泛型特化方法体内使用完整特化类名，确保隐式静态/实例调用链接到
                     // 已单态化的特化版本，而非类型擦除的基础模板。
-                    let class_name = self.current_class_specialized
+                    let class_name = self
+                        .current_class_specialized
                         .clone()
                         .unwrap_or_else(|| self.current_class.clone());
-                    (
-                        class_name,
-                        name_str.to_string(),
-                        None,
-                        false,
-                    )
+                    (class_name, name_str.to_string(), None, false)
                 } else {
                     (String::new(), name_str.to_string(), None, false)
                 }
@@ -207,7 +203,8 @@ impl IRGenerator {
                             )
                         } else if obj_name_str == "this" {
                             // this.methodName() - 首先检查是否是函数指针字段
-                            let class_name = self.current_class_specialized
+                            let class_name = self
+                                .current_class_specialized
                                 .clone()
                                 .unwrap_or_else(|| self.current_class.clone());
                             if let Some(field_type) =
@@ -372,20 +369,32 @@ impl IRGenerator {
                                     // 建立类型参数映射，支持泛型特化
                                     if let Some(ref registry) = self.type_registry {
                                         if let Some(class_info) = registry.get_class(&class_name) {
-                                            if !class_info.type_params.is_empty() && !type_args.is_empty() {
-                                                for (idx, param) in class_info.type_params.iter().enumerate() {
-                                                    let resolved_arg = type_args.get(idx)
+                                            if !class_info.type_params.is_empty()
+                                                && !type_args.is_empty()
+                                            {
+                                                for (idx, param) in
+                                                    class_info.type_params.iter().enumerate()
+                                                {
+                                                    let resolved_arg = type_args
+                                                        .get(idx)
                                                         .cloned()
                                                         .or_else(|| param.default_type.clone())
-                                                        .unwrap_or_else(|| crate::types::Type::GenericParam(param.name.clone()));
-                                                    self.generic_type_args.insert(param.name.clone(), resolved_arg);
+                                                        .unwrap_or_else(|| {
+                                                            crate::types::Type::GenericParam(
+                                                                param.name.clone(),
+                                                            )
+                                                        });
+                                                    self.generic_type_args
+                                                        .insert(param.name.clone(), resolved_arg);
                                                 }
                                             }
                                         }
                                     }
                                     // 构建完整特化类名（如 Box<int>）用于方法查找与生成
-                                    let type_args_str: Vec<String> = type_args.iter().map(|t| format!("{}", t)).collect();
-                                    let specialized_class_name = format!("{}<{}>", class_name, type_args_str.join(", "));
+                                    let type_args_str: Vec<String> =
+                                        type_args.iter().map(|t| format!("{}", t)).collect();
+                                    let specialized_class_name =
+                                        format!("{}<{}>", class_name, type_args_str.join(", "));
                                     // 首先检查是否是函数指针字段
                                     if let Some(field_type) =
                                         self.get_field_type(&class_name, &member.member)
@@ -409,7 +418,8 @@ impl IRGenerator {
                                     )
                                 }
                                 _ => {
-                                    return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                                    return Err(codegen_error_at(
+                                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                                         member.loc.clone(),
                                         format!(
                                             "Cannot call method '{}' on non-class type",
@@ -419,7 +429,8 @@ impl IRGenerator {
                                 }
                             }
                         } else {
-                            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                            return Err(codegen_error_at(
+                                ErrorCodes::CODEGEN_INVALID_OPERATION,
                                 member.loc.clone(),
                                 format!(
                                     "Cannot determine type for method call '{}'",
@@ -431,7 +442,8 @@ impl IRGenerator {
                 }
             }
             _ => {
-                return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                return Err(codegen_error_at(
+                    ErrorCodes::CODEGEN_INVALID_OPERATION,
                     call.loc.clone(),
                     "Invalid function call".to_string(),
                 ));
@@ -448,7 +460,11 @@ impl IRGenerator {
             if let Some(crate::types::Type::Generic(exp_base, exp_args)) = &expected_static_type {
                 if !exp_args.is_empty() {
                     let exp_base_bare = exp_base.rsplit("::").next().unwrap_or(exp_base);
-                    let cn_bare = class_name.rsplit("::").next().unwrap_or(&class_name).to_string();
+                    let cn_bare = class_name
+                        .rsplit("::")
+                        .next()
+                        .unwrap_or(&class_name)
+                        .to_string();
                     if exp_base_bare == cn_bare {
                         let type_params = self
                             .type_registry
@@ -458,11 +474,15 @@ impl IRGenerator {
                         if let Some(params) = type_params {
                             if !params.is_empty() {
                                 for (idx, param) in params.iter().enumerate() {
-                                    let resolved_arg = exp_args.get(idx)
+                                    let resolved_arg = exp_args
+                                        .get(idx)
                                         .cloned()
                                         .or_else(|| param.default_type.clone())
-                                        .unwrap_or_else(|| crate::types::Type::GenericParam(param.name.clone()));
-                                    self.generic_type_args.insert(param.name.clone(), resolved_arg);
+                                        .unwrap_or_else(|| {
+                                            crate::types::Type::GenericParam(param.name.clone())
+                                        });
+                                    self.generic_type_args
+                                        .insert(param.name.clone(), resolved_arg);
                                 }
                                 let args_str: Vec<String> =
                                     exp_args.iter().map(|t| format!("{}", t)).collect();
@@ -487,7 +507,8 @@ impl IRGenerator {
             let params = self
                 .get_method_params(&class_name, &method_name)
                 .ok_or_else(|| {
-                    codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         call.loc.clone(),
                         format!(
                             "Cannot resolve parameters for '{}' to process named arguments",
@@ -495,8 +516,9 @@ impl IRGenerator {
                         ),
                     )
                 })?;
-            let resolved = resolve_call_args(&call.args, &params)
-                .map_err(|msg| codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, call.loc.clone(), msg))?;
+            let resolved = resolve_call_args(&call.args, &params).map_err(|msg| {
+                codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, call.loc.clone(), msg)
+            })?;
             resolved_args = resolved.args;
             &resolved_args
         } else {

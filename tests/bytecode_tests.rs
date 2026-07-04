@@ -216,7 +216,10 @@ fn test_cay_run_bytecode() {
     // 清理
     let _ = fs::remove_file(bc_path);
     let _ = fs::remove_file(source_path);
-    let _ = fs::remove_file(&format!("examples/bytecode/run_bc_test{}", get_exe_extension()));
+    let _ = fs::remove_file(&format!(
+        "examples/bytecode/run_bc_test{}",
+        get_exe_extension()
+    ));
 }
 
 /// 测试 cay-run 运行 IR 文件
@@ -281,7 +284,10 @@ entry:
 #[test]
 fn test_cay_run_source_with_obfuscation() {
     let source_path = "examples/bytecode/obfuscate_run_test.cay";
-    let exe_path = &format!("examples/bytecode/obfuscate_run_test{}", get_exe_extension());
+    let exe_path = &format!(
+        "examples/bytecode/obfuscate_run_test{}",
+        get_exe_extension()
+    );
 
     // 创建测试源文件
     fs::create_dir_all("examples/bytecode").unwrap();
@@ -634,8 +640,8 @@ fn test_bcgen_version() {
         "cay-bcgen --version should succeed"
     );
 
-    let expected_version = read_verinfo_version("CAY-BCGEN")
-        .expect("Failed to read CAY-BCGEN version from .verinfo");
+    let expected_version =
+        read_verinfo_version("CAY-BCGEN").expect("Failed to read CAY-BCGEN version from .verinfo");
     assert!(
         stdout.contains(&expected_version),
         "Version should contain {}, got: {}",
@@ -662,8 +668,8 @@ fn test_cay_run_version() {
 
     assert!(output.status.success(), "cay-run --version should succeed");
 
-    let expected_version = read_verinfo_version("CAY-RUN")
-        .expect("Failed to read CAY-RUN version from .verinfo");
+    let expected_version =
+        read_verinfo_version("CAY-RUN").expect("Failed to read CAY-RUN version from .verinfo");
     assert!(
         stdout.contains(&expected_version),
         "Version should contain {}, got: {}",

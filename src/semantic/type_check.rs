@@ -3,7 +3,7 @@
 use super::analyzer::SemanticAnalyzer;
 use super::symbol_table::SemanticSymbolInfo;
 use crate::ast::*;
-use crate::miette_diagnostic::{SourceLocation, CayResult};
+use crate::miette_diagnostic::{CayResult, SourceLocation};
 use crate::types::{ParameterInfo, Type};
 
 impl SemanticAnalyzer {
@@ -232,7 +232,11 @@ impl SemanticAnalyzer {
         Ok(())
     }
 
-    fn type_check_condition(&mut self, condition: &Expr, loc: &crate::miette_diagnostic::SourceLocation) {
+    fn type_check_condition(
+        &mut self,
+        condition: &Expr,
+        loc: &crate::miette_diagnostic::SourceLocation,
+    ) {
         let error_count_before = self.errors.len();
         let condition_type = self.infer_expr_type_collect_errors(condition);
         if self.errors.len() == error_count_before && condition_type != Type::Bool {
@@ -245,44 +249,47 @@ impl SemanticAnalyzer {
         }
     }
 
-/// 验证类型是否可迭代
-///
-/// 当前接受以下可迭代对象：
-/// - 数组类型（内置支持）
-/// - 实现 `iterator()` 方法的对象
-/// - 实现 `Iterable<T>` 接口的对象
-fn validate_iterable(&mut self, iterable_type: &Type, loc: &SourceLocation) {
-    match iterable_type {
-        Type::Array(_) => {}
-        Type::Object(name) | Type::Generic(name, _) => {
-            let bare_name = name.split('<').next().unwrap_or(name);
-            let has_iterator = self.type_registry.get_method(name, "iterator").is_some()
-                || self.type_registry.get_method(bare_name, "iterator").is_some();
-            if !has_iterator {
+    /// 验证类型是否可迭代
+    ///
+    /// 当前接受以下可迭代对象：
+    /// - 数组类型（内置支持）
+    /// - 实现 `iterator()` 方法的对象
+    /// - 实现 `Iterable<T>` 接口的对象
+    fn validate_iterable(&mut self, iterable_type: &Type, loc: &SourceLocation) {
+        match iterable_type {
+            Type::Array(_) => {}
+            Type::Object(name) | Type::Generic(name, _) => {
+                let bare_name = name.split('<').next().unwrap_or(name);
+                let has_iterator = self.type_registry.get_method(name, "iterator").is_some()
+                    || self
+                        .type_registry
+                        .get_method(bare_name, "iterator")
+                        .is_some();
+                if !has_iterator {
+                    self.errors.push(self.create_error_info_with_file(
+                        loc.file.clone(),
+                        loc.line,
+                        loc.column,
+                        format!(
+                            "Type '{}' is not iterable: missing iterator() method",
+                            iterable_type
+                        ),
+                    ));
+                }
+            }
+            Type::Pointer(inner) => self.validate_iterable(inner, loc),
+            _ => {
                 self.errors.push(self.create_error_info_with_file(
                     loc.file.clone(),
                     loc.line,
                     loc.column,
-                    format!(
-                        "Type '{}' is not iterable: missing iterator() method",
-                        iterable_type
-                    ),
+                    format!("Type '{}' is not iterable", iterable_type),
                 ));
             }
         }
-        Type::Pointer(inner) => self.validate_iterable(inner, loc),
-        _ => {
-            self.errors.push(self.create_error_info_with_file(
-                loc.file.clone(),
-                loc.line,
-                loc.column,
-                format!("Type '{}' is not iterable", iterable_type),
-            ));
-        }
     }
-}
 
-/// 类型检查语句
+    /// 类型检查语句
     pub fn type_check_statement(
         &mut self,
         stmt: &Stmt,
@@ -381,14 +388,15 @@ fn validate_iterable(&mut self, iterable_type: &Type, loc: &SourceLocation) {
                     let loc = if let Some(e) = expr {
                         self.get_expr_source_location(e)
                     } else {
-                        crate::miette_diagnostic::SourceLocation::new(self.current_file.clone(), 0, 0)
+                        crate::miette_diagnostic::SourceLocation::new(
+                            self.current_file.clone(),
+                            0,
+                            0,
+                        )
                     };
-                    self.errors.push(self.create_error_info_with_file(
-                        loc.file,
-                        loc.line,
-                        loc.column,
-                        msg,
-                    ));
+                    self.errors.push(
+                        self.create_error_info_with_file(loc.file, loc.line, loc.column, msg),
+                    );
                 }
 
                 if let Some(expected) = expected_return {
@@ -398,7 +406,11 @@ fn validate_iterable(&mut self, iterable_type: &Type, loc: &SourceLocation) {
                         let loc = if let Some(e) = expr {
                             self.get_expr_source_location(e)
                         } else {
-                            crate::miette_diagnostic::SourceLocation::new(self.current_file.clone(), 0, 0)
+                            crate::miette_diagnostic::SourceLocation::new(
+                                self.current_file.clone(),
+                                0,
+                                0,
+                            )
                         };
                         self.errors.push(self.create_error_info_with_file(
                             loc.file,

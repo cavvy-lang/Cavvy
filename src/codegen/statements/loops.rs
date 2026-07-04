@@ -138,7 +138,10 @@ impl IRGenerator {
                 Ok(())
             }
             Stmt::Block(block)
-                if block.statements.iter().all(|s| matches!(s, Stmt::VarDecl(_))) =>
+                if block
+                    .statements
+                    .iter()
+                    .all(|s| matches!(s, Stmt::VarDecl(_))) =>
             {
                 for stmt in &block.statements {
                     self.generate_for_initializer(stmt)?;

@@ -36,9 +36,13 @@ fn generic_arg_class_name(ty: &crate::types::Type) -> Option<String> {
     use crate::types::Type;
     match ty {
         Type::Object(n) | Type::Struct(n) => Some(n.clone()),
-        Type::Generic(base, _) => {
-            Some(base.split('<').next().unwrap_or(base).trim_end().to_string())
-        }
+        Type::Generic(base, _) => Some(
+            base.split('<')
+                .next()
+                .unwrap_or(base)
+                .trim_end()
+                .to_string(),
+        ),
         _ => None,
     }
 }
@@ -48,8 +52,7 @@ fn generic_arg_class_name(ty: &crate::types::Type) -> Option<String> {
 fn parse_type_arg_from_str(s: &str) -> crate::types::Type {
     use crate::types::Type;
     if s.ends_with("[]") {
-        return Type::Array(Box::new(parse_type_arg_from_str(&s[..s.len() - 2],
-        )));
+        return Type::Array(Box::new(parse_type_arg_from_str(&s[..s.len() - 2])));
     }
     match s {
         "int" => Type::Int32,
@@ -336,7 +339,9 @@ impl IRGenerator {
                     ctor_info_opt
                         .as_ref()
                         .and_then(|ctor| ctor.params.get(idx))
-                        .map(|p| substitute_generic_param(&p.param_type, type_args, &class_type_params))
+                        .map(|p| {
+                            substitute_generic_param(&p.param_type, type_args, &class_type_params)
+                        })
                 })
             } else {
                 None
@@ -406,10 +411,7 @@ impl IRGenerator {
 
         // 栈分配 struct
         let alloca_temp = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = alloca {}",
-            alloca_temp, llvm_struct_type
-        ));
+        self.emit_line(&format!("  {} = alloca {}", alloca_temp, llvm_struct_type));
 
         // 推断构造函数参数
         let fallback_types: Vec<String> = new_expr
@@ -417,11 +419,8 @@ impl IRGenerator {
             .iter()
             .map(|arg| self.infer_argument_type(arg))
             .collect();
-        let param_types = self.get_constructor_param_signatures(
-            &base_name,
-            new_expr.args.len(),
-            &fallback_types,
-        );
+        let param_types =
+            self.get_constructor_param_signatures(&base_name, new_expr.args.len(), &fallback_types);
 
         // 生成参数值
         let mut arg_values = Vec::new();
@@ -431,8 +430,7 @@ impl IRGenerator {
         }
 
         // 生成构造函数名
-        let ctor_name =
-            self.generate_constructor_call_name_with_types(struct_name, &param_types);
+        let ctor_name = self.generate_constructor_call_name_with_types(struct_name, &param_types);
 
         // 调用构造函数（传 struct 指针作为 this）
         if !param_types.is_empty() {

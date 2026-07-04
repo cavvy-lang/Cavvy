@@ -2,8 +2,8 @@
 //!
 //! 定义 IR 层面的类型表示，独立于 AST 类型但完全覆盖所有 Cavvy 类型。
 
-use std::fmt;
 use serde::Serialize;
+use std::fmt;
 
 /// IR 类型 - 后端无关的类型表示
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]

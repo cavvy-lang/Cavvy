@@ -5,7 +5,7 @@
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
 use crate::miette_diagnostic::SourceLocation;
-use crate::miette_diagnostic::{CayResult, codegen_error_at, ErrorCodes};
+use crate::miette_diagnostic::{CayResult, ErrorCodes, codegen_error_at};
 use crate::types::Type;
 use std::collections::HashSet;
 
@@ -716,7 +716,8 @@ impl IRGenerator {
         }
 
         // 其他不支持的转换
-        Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+        Err(codegen_error_at(
+            ErrorCodes::CODEGEN_INVALID_OPERATION,
             loc,
             format!(
                 "Unsupported type conversion from {} to {}",

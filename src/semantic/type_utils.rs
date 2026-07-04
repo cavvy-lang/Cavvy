@@ -338,8 +338,7 @@ impl SemanticAnalyzer {
             _ => {
                 // 兜底：检查接口子类型关系。例如实现类 ArrayListIterator<T>
                 // 可以赋值给接口类型 Iterator<T>。
-                if let (Some(from_name), Some(to_name)) =
-                    (type_base_name(from), type_base_name(to))
+                if let (Some(from_name), Some(to_name)) = (type_base_name(from), type_base_name(to))
                 {
                     if self.type_registry.interface_exists(&to_name)
                         && self.is_subtype_of(&from_name, &to_name)
@@ -414,7 +413,11 @@ impl SemanticAnalyzer {
         // 检查 subtype 是否实现了 supertype 接口
         if self.type_registry.interface_exists(supertype) {
             if let Some(class_info) = self.type_registry.get_class(subtype) {
-                if class_info.interfaces.iter().any(|i| interface_bare_name(i) == supertype) {
+                if class_info
+                    .interfaces
+                    .iter()
+                    .any(|i| interface_bare_name(i) == supertype)
+                {
                     return true;
                 }
             }
@@ -433,7 +436,11 @@ impl SemanticAnalyzer {
             if let Some(class_info) = self.type_registry.get_class(&current) {
                 // 检查当前类是否实现了目标接口
                 if self.type_registry.interface_exists(supertype) {
-                    if class_info.interfaces.iter().any(|i| interface_bare_name(i) == supertype) {
+                    if class_info
+                        .interfaces
+                        .iter()
+                        .any(|i| interface_bare_name(i) == supertype)
+                    {
                         return true;
                     }
                 }

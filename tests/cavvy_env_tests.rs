@@ -6,7 +6,7 @@
 
 use cavvy::setup::check::{CheckStatus, run_full_check};
 use cavvy::setup::download::{DownloadConfig, GitHubAsset, GitHubRelease, match_prebuilt_asset};
-use cavvy::setup::{find_verinfo, parse_verinfo, detect_platform, is_ci_environment};
+use cavvy::setup::{detect_platform, find_verinfo, is_ci_environment, parse_verinfo};
 
 #[test]
 fn test_setup_version_parsing() {
@@ -35,19 +35,38 @@ fn test_setup_check_report_status_variants() {
     let mut report = run_full_check().expect("环境检查不应 panic");
     // 强制插入各种状态，确保 has_errors / all_required_ok 逻辑正确
     report.items.push(("模拟-OK".to_string(), CheckStatus::Ok));
-    report.items.push(("模拟-Warn".to_string(), CheckStatus::Warning("测试警告".to_string())));
-    report.items.push(("模拟-Miss".to_string(), CheckStatus::Missing("测试缺失".to_string())));
+    report.items.push((
+        "模拟-Warn".to_string(),
+        CheckStatus::Warning("测试警告".to_string()),
+    ));
+    report.items.push((
+        "模拟-Miss".to_string(),
+        CheckStatus::Missing("测试缺失".to_string()),
+    ));
 
     assert!(report.has_errors(), "包含 Missing 时 has_errors 应为 true");
-    assert!(!report.all_required_ok(), "包含 Missing 时 all_required_ok 应为 false");
+    assert!(
+        !report.all_required_ok(),
+        "包含 Missing 时 all_required_ok 应为 false"
+    );
 
     // 移除 Missing 和 Warning，仅保留 Ok
-    report.items.retain(|(_, s)| !matches!(s, CheckStatus::Missing(_)));
+    report
+        .items
+        .retain(|(_, s)| !matches!(s, CheckStatus::Missing(_)));
     assert!(!report.has_errors(), "无 Missing 时 has_errors 应为 false");
-    assert!(!report.all_required_ok(), "仍有 Warning 时 all_required_ok 应为 false");
+    assert!(
+        !report.all_required_ok(),
+        "仍有 Warning 时 all_required_ok 应为 false"
+    );
 
-    report.items.retain(|(_, s)| !matches!(s, CheckStatus::Warning(_)));
-    assert!(report.all_required_ok(), "全为 Ok 时 all_required_ok 应为 true");
+    report
+        .items
+        .retain(|(_, s)| !matches!(s, CheckStatus::Warning(_)));
+    assert!(
+        report.all_required_ok(),
+        "全为 Ok 时 all_required_ok 应为 true"
+    );
 }
 
 #[test]
@@ -58,10 +77,7 @@ fn test_setup_detect_platform() {
         "应检测到已知操作系统: got {}",
         os
     );
-    assert!(
-        !arch.is_empty(),
-        "架构不应为空"
-    );
+    assert!(!arch.is_empty(), "架构不应为空");
 }
 
 #[test]

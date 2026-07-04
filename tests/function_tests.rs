@@ -368,11 +368,8 @@ fn test_fn_conflict_return_type() {
 
 #[test]
 fn test_modern_aliases() {
-    let output = compile_and_run_eol_with_features(
-        "examples/test_modern_aliases.cay",
-        &[],
-    )
-    .expect("modern aliases should compile and run");
+    let output = compile_and_run_eol_with_features("examples/test_modern_aliases.cay", &[])
+        .expect("modern aliases should compile and run");
     assert!(
         output.contains("i32=10")
             && output.contains("i64=20")

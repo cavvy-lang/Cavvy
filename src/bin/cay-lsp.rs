@@ -485,7 +485,8 @@ impl CavvyLanguageServer {
         &self,
         content: &str,
         file_path: &str,
-    ) -> std::result::Result<(String, preprocessor::SourceMap), cavvy::miette_diagnostic::CayError> {
+    ) -> std::result::Result<(String, preprocessor::SourceMap), cavvy::miette_diagnostic::CayError>
+    {
         let base_dir = Path::new(file_path)
             .parent()
             .map(|p| p.to_path_buf())
@@ -957,7 +958,10 @@ impl CavvyLanguageServer {
 }
 
 /// 将错误转换为 LSP 诊断信息
-fn error_to_diagnostic(error: &cavvy::miette_diagnostic::CayError, source: &str) -> Option<Diagnostic> {
+fn error_to_diagnostic(
+    error: &cavvy::miette_diagnostic::CayError,
+    source: &str,
+) -> Option<Diagnostic> {
     use cavvy::miette_diagnostic::CayError;
 
     let (message, line, column) = match error {
@@ -985,7 +989,11 @@ fn error_to_diagnostic(error: &cavvy::miette_diagnostic::CayError, source: &str)
             column,
             ..
         } => (message.clone(), *line, *column),
-        CayError::Io { error_code: _, file: _, message } => {
+        CayError::Io {
+            error_code: _,
+            file: _,
+            message,
+        } => {
             return Some(Diagnostic {
                 range: Range {
                     start: Position::new(0, 0),
@@ -1091,7 +1099,11 @@ fn error_to_diagnostic_with_source_map(
             }
             return None;
         }
-        CayError::Io { error_code: _, file: _, message } => {
+        CayError::Io {
+            error_code: _,
+            file: _,
+            message,
+        } => {
             return Some(Diagnostic {
                 range: Range {
                     start: Position::new(0, 0),

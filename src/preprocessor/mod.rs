@@ -257,9 +257,15 @@ impl Preprocessor {
                                     source_map.add_mapping(mapping.file.clone(), mapping.line);
                                 }
                             }
-                            DirectiveResult::Link { lib_name, is_system } => {
+                            DirectiveResult::Link {
+                                lib_name,
+                                is_system,
+                            } => {
                                 // 收集链接库信息
-                                link_libraries.push(LinkLibrary { name: lib_name, is_system });
+                                link_libraries.push(LinkLibrary {
+                                    name: lib_name,
+                                    is_system,
+                                });
                                 source_map.add_mapping(file_path.to_string(), line_number);
                                 output_lines.push("".to_string());
                             }
@@ -544,7 +550,10 @@ impl Preprocessor {
                     return Ok(DirectiveResult::Single(None));
                 }
                 // #link 指令返回链接库信息
-                Ok(DirectiveResult::Link { lib_name, is_system })
+                Ok(DirectiveResult::Link {
+                    lib_name,
+                    is_system,
+                })
             }
         }
     }

@@ -14,8 +14,8 @@ use std::path::{Path, PathBuf};
 
 use super::audit::{AuditLogEntry, AuditLogger, SecurityEventType};
 use super::security::{
-    official_root_public_key, verify_certificate_chain, FingerprintMetadata,
-    load_root_public_key_from_config, SecureIndex, VersionCertificate,
+    FingerprintMetadata, SecureIndex, VersionCertificate, load_root_public_key_from_config,
+    official_root_public_key, verify_certificate_chain,
 };
 
 /// 官方安全源索引服务器地址
@@ -110,8 +110,8 @@ impl SecureRegistry {
         let data = http_get(&self.config.index_url, self.config.timeout_secs)
             .with_context(|| format!("获取索引失败: {}", self.config.index_url))?;
 
-        let index: SecureIndex = serde_json::from_slice(&data)
-            .with_context(|| "解析索引 JSON 失败")?;
+        let index: SecureIndex =
+            serde_json::from_slice(&data).with_context(|| "解析索引 JSON 失败")?;
 
         // 缓存索引
         if self.config.cache_enabled {
@@ -140,8 +140,8 @@ impl SecureRegistry {
         let data = http_get(&url, self.config.timeout_secs)
             .with_context(|| format!("获取指纹元信息失败: {}", url))?;
 
-        let meta: FingerprintMetadata = serde_json::from_slice(&data)
-            .with_context(|| "解析指纹元信息失败")?;
+        let meta: FingerprintMetadata =
+            serde_json::from_slice(&data).with_context(|| "解析指纹元信息失败")?;
 
         // 验证指纹格式
         if meta.fingerprint != fingerprint {
@@ -174,8 +174,8 @@ impl SecureRegistry {
         let data = http_get(&url, self.config.timeout_secs)
             .with_context(|| format!("获取证书失败: {}", url))?;
 
-        let cert: VersionCertificate = serde_json::from_slice(&data)
-            .with_context(|| "解析证书失败")?;
+        let cert: VersionCertificate =
+            serde_json::from_slice(&data).with_context(|| "解析证书失败")?;
 
         if cert.fingerprint != fingerprint {
             bail!(
@@ -222,12 +222,7 @@ impl SecureRegistry {
             .packages
             .into_iter()
             .find(|p| p.fingerprint == fingerprint)
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "在官方索引中找不到指纹对应的包: {}",
-                    fingerprint
-                )
-            })
+            .ok_or_else(|| anyhow::anyhow!("在官方索引中找不到指纹对应的包: {}", fingerprint))
     }
 
     /// 下载并验证包
@@ -253,19 +248,13 @@ impl SecureRegistry {
 
         // 2. 下载包数据
         let package_path = self.download_package_data(pkg, dest_dir)?;
-        let package_data = std::fs::read(&package_path).with_context(|| {
-            format!("读取包数据失败: {}", package_path.display())
-        })?;
+        let package_data = std::fs::read(&package_path)
+            .with_context(|| format!("读取包数据失败: {}", package_path.display()))?;
 
         // 3. 验证证书链
         let root_pk = load_root_public_key_from_config(self.config.root_public_key.as_deref());
         verify_certificate_chain(&cert, &meta, &package_data, root_pk.as_ref())
-            .with_context(|| {
-                format!(
-                    "包 {}@{} 的安全验证失败",
-                    pkg.name, pkg.latest_version
-                )
-            })?;
+            .with_context(|| format!("包 {}@{} 的安全验证失败", pkg.name, pkg.latest_version))?;
 
         // 4. 记录审计日志
         self.logger.log_silent(
@@ -283,16 +272,11 @@ impl SecureRegistry {
     /// 验证本地已下载的包
     ///
     /// 用于对已缓存的包重新执行验证（如根公钥更新后）。
-    pub fn verify_local_package(
-        &self,
-        package_path: &Path,
-        fingerprint: &str,
-    ) -> Result<()> {
+    pub fn verify_local_package(&self, package_path: &Path, fingerprint: &str) -> Result<()> {
         let meta = self.fetch_fingerprint_metadata(fingerprint)?;
         let cert = self.fetch_certificate(fingerprint)?;
-        let package_data = std::fs::read(package_path).with_context(|| {
-            format!("读取包数据失败: {}", package_path.display())
-        })?;
+        let package_data = std::fs::read(package_path)
+            .with_context(|| format!("读取包数据失败: {}", package_path.display()))?;
 
         let root_pk = load_root_public_key_from_config(self.config.root_public_key.as_deref());
         verify_certificate_chain(&cert, &meta, &package_data, root_pk.as_ref())
@@ -323,40 +307,28 @@ impl SecureRegistry {
         pkg: &super::security::IndexPackage,
         dest_dir: &Path,
     ) -> Result<PathBuf> {
-        std::fs::create_dir_all(dest_dir).with_context(|| {
-            format!("创建目录失败: {}", dest_dir.display())
-        })?;
+        std::fs::create_dir_all(dest_dir)
+            .with_context(|| format!("创建目录失败: {}", dest_dir.display()))?;
 
         let repo = pkg.repository.trim_end_matches(".git");
 
         // GitHub 自动生成 release 源码 tar.gz 的标准 URL
         // 策略1: 带 refs/tags/ 前缀
-        let url = format!(
-            "{}/archive/refs/tags/v{}.tar.gz",
-            repo, pkg.latest_version
-        );
-        let dest = dest_dir.join(format!(
-            "{}-{}.tar.gz",
-            pkg.name, pkg.latest_version
-        ));
+        let url = format!("{}/archive/refs/tags/v{}.tar.gz", repo, pkg.latest_version);
+        let dest = dest_dir.join(format!("{}-{}.tar.gz", pkg.name, pkg.latest_version));
 
         match http_get(&url, self.config.timeout_secs) {
             Ok(data) => {
-                std::fs::write(&dest, &data).with_context(|| {
-                    format!("写入包文件失败: {}", dest.display())
-                })?;
+                std::fs::write(&dest, &data)
+                    .with_context(|| format!("写入包文件失败: {}", dest.display()))?;
                 return Ok(dest);
             }
             Err(_) => {
                 // 策略2: 不带 refs/tags/ 前缀（兼容旧格式）
-                let url_alt = format!(
-                    "{}/archive/v{}.tar.gz",
-                    repo, pkg.latest_version
-                );
+                let url_alt = format!("{}/archive/v{}.tar.gz", repo, pkg.latest_version);
                 if let Ok(data) = http_get(&url_alt, self.config.timeout_secs) {
-                    std::fs::write(&dest, &data).with_context(|| {
-                        format!("写入包文件失败: {}", dest.display())
-                    })?;
+                    std::fs::write(&dest, &data)
+                        .with_context(|| format!("写入包文件失败: {}", dest.display()))?;
                     return Ok(dest);
                 }
             }
@@ -384,8 +356,8 @@ impl SecureRegistry {
         let path = self.config.cache_dir.join("index.json");
         let data = std::fs::read(&path)
             .with_context(|| format!("读取缓存索引失败: {}", path.display()))?;
-        let index: SecureIndex = serde_json::from_slice(&data)
-            .with_context(|| "解析缓存索引失败")?;
+        let index: SecureIndex =
+            serde_json::from_slice(&data).with_context(|| "解析缓存索引失败")?;
         Ok(index)
     }
 
@@ -404,8 +376,8 @@ impl SecureRegistry {
         let path = self.config.cache_dir.join(format!("{}.json", fingerprint));
         let data = std::fs::read(&path)
             .with_context(|| format!("读取缓存元信息失败: {}", path.display()))?;
-        let meta: FingerprintMetadata = serde_json::from_slice(&data)
-            .with_context(|| "解析缓存元信息失败")?;
+        let meta: FingerprintMetadata =
+            serde_json::from_slice(&data).with_context(|| "解析缓存元信息失败")?;
         Ok(meta)
     }
 
@@ -422,8 +394,8 @@ impl SecureRegistry {
         let path = self.config.cache_dir.join(format!("{}.cert", fingerprint));
         let data = std::fs::read(&path)
             .with_context(|| format!("读取缓存证书失败: {}", path.display()))?;
-        let cert: VersionCertificate = serde_json::from_slice(&data)
-            .with_context(|| "解析缓存证书失败")?;
+        let cert: VersionCertificate =
+            serde_json::from_slice(&data).with_context(|| "解析缓存证书失败")?;
         Ok(cert)
     }
 
@@ -466,11 +438,12 @@ pub(crate) fn http_get(url: &str, timeout_secs: u64) -> Result<Vec<u8>> {
     // 回退到 PowerShell (Windows)
     // 使用 -OutFile 保存到临时文件，避免二进制数据在 stdout 传输中被损坏
     if cfg!(target_os = "windows") {
-        let temp_file = std::env::temp_dir()
-            .join(format!("cavvy_http_{}.tmp", std::process::id()));
+        let temp_file = std::env::temp_dir().join(format!("cavvy_http_{}.tmp", std::process::id()));
         let ps_cmd = format!(
             "try {{ Invoke-WebRequest -Uri '{}' -UseBasicParsing -MaximumRedirection 5 -TimeoutSec {} -OutFile '{}'; exit 0 }} catch {{ exit 1 }}",
-            url, timeout_secs, temp_file.display()
+            url,
+            timeout_secs,
+            temp_file.display()
         );
         let output = std::process::Command::new("powershell")
             .args(&["-NoProfile", "-Command", &ps_cmd])
@@ -493,12 +466,7 @@ pub(crate) fn http_get(url: &str, timeout_secs: u64) -> Result<Vec<u8>> {
 
     // 回退到 wget (Linux)
     let wget_result = std::process::Command::new("wget")
-        .args(&[
-            "-qO-",
-            "--timeout",
-            &timeout_secs.to_string(),
-            url,
-        ])
+        .args(&["-qO-", "--timeout", &timeout_secs.to_string(), url])
         .output();
 
     if let Ok(output) = wget_result {

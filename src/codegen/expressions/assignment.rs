@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::{CayResult, codegen_error_at, ErrorCodes};
+use crate::miette_diagnostic::{CayResult, ErrorCodes, codegen_error_at};
 
 impl IRGenerator {
     /// 生成赋值表达式代码
@@ -37,7 +37,8 @@ impl IRGenerator {
                 // 解引用赋值: *p = value
                 self.generate_deref_assignment(unary, &value_type, &val, &value)
             }
-            _ => Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+            _ => Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
                 assign.loc.clone(),
                 "Invalid assignment target",
             )),
@@ -117,7 +118,8 @@ impl IRGenerator {
                     self.emit_line(&format!("  {} = fadd {} {}, {}", temp, ty, l, r));
                     Ok(format!("{} {}", ty, temp))
                 } else {
-                    Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         loc.clone(),
                         format!("Unsupported += types: {} and {}", left_type, right_type),
                     ))
@@ -140,7 +142,8 @@ impl IRGenerator {
                     self.emit_line(&format!("  {} = fsub {} {}, {}", temp, ty, l, r));
                     Ok(format!("{} {}", ty, temp))
                 } else {
-                    Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         loc.clone(),
                         format!("Unsupported -= types: {} and {}", left_type, right_type),
                     ))
@@ -163,7 +166,8 @@ impl IRGenerator {
                     self.emit_line(&format!("  {} = fmul {} {}, {}", temp, ty, l, r));
                     Ok(format!("{} {}", ty, temp))
                 } else {
-                    Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         loc.clone(),
                         format!("Unsupported *= types: {} and {}", left_type, right_type),
                     ))
@@ -187,7 +191,8 @@ impl IRGenerator {
                     self.emit_line(&format!("  {} = fdiv {} {}, {}", temp, ty, l, r));
                     Ok(format!("{} {}", ty, temp))
                 } else {
-                    Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         loc.clone(),
                         format!("Unsupported /= types: {} and {}", left_type, right_type),
                     ))
@@ -201,7 +206,8 @@ impl IRGenerator {
                     self.emit_line(&format!("  {} = srem {} {}, {}", temp, ty, l, r));
                     Ok(format!("{} {}", ty, temp))
                 } else {
-                    Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         loc.clone(),
                         format!("Unsupported %= types: {} and {}", left_type, right_type),
                     ))
@@ -266,7 +272,8 @@ impl IRGenerator {
             ));
             temp
         } else {
-            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
                 loc.clone(),
                 format!(
                     "Cannot convert {} to {} for compound assignment",
@@ -520,7 +527,8 @@ impl IRGenerator {
                     temp
                 } else {
                     // 其他不支持的类型转换，报错
-                    return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    return Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         member.loc.clone(),
                         format!(
                             "Cannot convert {} to {} for field assignment",
@@ -540,7 +548,8 @@ impl IRGenerator {
             return Ok(value.to_string());
         }
 
-        Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+        Err(codegen_error_at(
+            ErrorCodes::CODEGEN_INVALID_OPERATION,
             member.loc.clone(),
             "Invalid member access assignment target",
         ))
@@ -581,7 +590,11 @@ impl IRGenerator {
                 .var_types
                 .get(name)
                 .ok_or_else(|| {
-                    codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, loc.clone(), format!("Variable '{}' not found", name))
+                    codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
+                        loc.clone(),
+                        format!("Variable '{}' not found", name),
+                    )
                 })?
                 .clone();
             (var_type, name.to_string())
@@ -1001,7 +1014,8 @@ impl IRGenerator {
 
         // 确保操作数是指针类型
         if !ptr_type.ends_with('*') {
-            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
                 unary.loc.clone(),
                 format!("Cannot dereference non-pointer type: {}", ptr_type),
             ));
@@ -1067,7 +1081,8 @@ impl IRGenerator {
                     temp, value_type, val, elem_type
                 ));
             } else {
-                return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                return Err(codegen_error_at(
+                    ErrorCodes::CODEGEN_INVALID_OPERATION,
                     unary.loc.clone(),
                     format!(
                         "Cannot convert {} to {} for dereference assignment",
@@ -1096,7 +1111,7 @@ impl IRGenerator {
         if !llvm_type.starts_with("%struct.") || !llvm_type.ends_with("*") {
             return None;
         }
-        let inner = &llvm_type["%struct.".len()..llvm_type.len()-1];
+        let inner = &llvm_type["%struct.".len()..llvm_type.len() - 1];
         if self.is_struct_type(inner) {
             Some(inner.to_string())
         } else {

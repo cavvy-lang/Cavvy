@@ -125,10 +125,14 @@ fn test_udp_communication() {
 #[test]
 fn test_network_library_compiles() {
     // 使用 cay-check 检查网络库语法
-    let output = Command::new(if cfg!(target_os = "windows") { "./target/release/cay-check.exe" } else { "./target/release/cay-check" })
-        .args(&["caylibs/Network.cay"])
-        .output()
-        .expect("执行 cay-check 失败");
+    let output = Command::new(if cfg!(target_os = "windows") {
+        "./target/release/cay-check.exe"
+    } else {
+        "./target/release/cay-check"
+    })
+    .args(&["caylibs/Network.cay"])
+    .output()
+    .expect("执行 cay-check 失败");
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -145,10 +149,14 @@ fn test_network_library_compiles() {
 /// 测试 TCP 客户端代码编译
 #[test]
 fn test_tcp_client_compiles() {
-    let output = Command::new(if cfg!(target_os = "windows") { "./target/release/cay-check.exe" } else { "./target/release/cay-check" })
-        .args(&["examples/test_network_tcp_client.cay"])
-        .output()
-        .expect("执行 cay-check 失败");
+    let output = Command::new(if cfg!(target_os = "windows") {
+        "./target/release/cay-check.exe"
+    } else {
+        "./target/release/cay-check"
+    })
+    .args(&["examples/test_network_tcp_client.cay"])
+    .output()
+    .expect("执行 cay-check 失败");
 
     let stderr = String::from_utf8_lossy(&output.stderr);
 
@@ -162,10 +170,14 @@ fn test_tcp_client_compiles() {
 /// 测试 TCP 服务器代码编译
 #[test]
 fn test_tcp_server_compiles() {
-    let output = Command::new(if cfg!(target_os = "windows") { "./target/release/cay-check.exe" } else { "./target/release/cay-check" })
-        .args(&["examples/test_network_tcp_server.cay"])
-        .output()
-        .expect("执行 cay-check 失败");
+    let output = Command::new(if cfg!(target_os = "windows") {
+        "./target/release/cay-check.exe"
+    } else {
+        "./target/release/cay-check"
+    })
+    .args(&["examples/test_network_tcp_server.cay"])
+    .output()
+    .expect("执行 cay-check 失败");
 
     let stderr = String::from_utf8_lossy(&output.stderr);
 
@@ -179,10 +191,14 @@ fn test_tcp_server_compiles() {
 /// 测试 UDP 示例代码编译
 #[test]
 fn test_udp_example_compiles() {
-    let output = Command::new(if cfg!(target_os = "windows") { "./target/release/cay-check.exe" } else { "./target/release/cay-check" })
-        .args(&["examples/test_network_udp.cay"])
-        .output()
-        .expect("执行 cay-check 失败");
+    let output = Command::new(if cfg!(target_os = "windows") {
+        "./target/release/cay-check.exe"
+    } else {
+        "./target/release/cay-check"
+    })
+    .args(&["examples/test_network_udp.cay"])
+    .output()
+    .expect("执行 cay-check 失败");
 
     let stderr = String::from_utf8_lossy(&output.stderr);
 
@@ -196,10 +212,14 @@ fn test_udp_example_compiles() {
 /// 测试网络工具示例代码编译
 #[test]
 fn test_network_utils_compiles() {
-    let output = Command::new(if cfg!(target_os = "windows") { "./target/release/cay-check.exe" } else { "./target/release/cay-check" })
-        .args(&["examples/test_network_utils.cay"])
-        .output()
-        .expect("执行 cay-check 失败");
+    let output = Command::new(if cfg!(target_os = "windows") {
+        "./target/release/cay-check.exe"
+    } else {
+        "./target/release/cay-check"
+    })
+    .args(&["examples/test_network_utils.cay"])
+    .output()
+    .expect("执行 cay-check 失败");
 
     let stderr = String::from_utf8_lossy(&output.stderr);
 
@@ -233,10 +253,14 @@ fn test_network_helper_functions() {
 /// 测试 Web 服务器示例代码编译
 #[test]
 fn test_web_server_compiles() {
-    let output = Command::new(if cfg!(target_os = "windows") { "./target/release/cay-check.exe" } else { "./target/release/cay-check" })
-        .args(&["examples/web_server.cay"])
-        .output()
-        .expect("执行 cay-check 失败");
+    let output = Command::new(if cfg!(target_os = "windows") {
+        "./target/release/cay-check.exe"
+    } else {
+        "./target/release/cay-check"
+    })
+    .args(&["examples/web_server.cay"])
+    .output()
+    .expect("执行 cay-check 失败");
 
     let stderr = String::from_utf8_lossy(&output.stderr);
 
@@ -250,10 +274,14 @@ fn test_web_server_compiles() {
 /// 测试 Web 服务器测试版本编译
 #[test]
 fn test_web_server_test_compiles() {
-    let output = Command::new(if cfg!(target_os = "windows") { "./target/release/cay-check.exe" } else { "./target/release/cay-check" })
-        .args(&["examples/test_web_server.cay"])
-        .output()
-        .expect("执行 cay-check 失败");
+    let output = Command::new(if cfg!(target_os = "windows") {
+        "./target/release/cay-check.exe"
+    } else {
+        "./target/release/cay-check"
+    })
+    .args(&["examples/test_web_server.cay"])
+    .output()
+    .expect("执行 cay-check 失败");
 
     let stderr = String::from_utf8_lossy(&output.stderr);
 

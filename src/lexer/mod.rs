@@ -1,7 +1,4 @@
-use crate::miette_diagnostic::{
-    CayError, CayResult,
-    ErrorCodes, SourceLocation,
-};
+use crate::miette_diagnostic::{CayError, CayResult, ErrorCodes, SourceLocation};
 use logos::Logos;
 
 #[derive(Logos, Debug, Clone, PartialEq)]
@@ -559,78 +556,68 @@ impl<'a> Lexer<'a> {
         let column = self.column;
 
         match error_type {
-            LexerErrorType::InvalidCharacter => {
-                CayError::Lexer {
-                    error_code: ErrorCodes::LEXER_INVALID_CHARACTER,
-                    file,
-                    line,
-                    column,
-                    message: format!(
-                        "非法字符: '{}' — 字符 '{}' 不是Cavvy语言支持的有效字符",
-                        error_char, error_char
-                    ),
-                    suggestion: "删除该字符或使用支持的字符替换".to_string(),
-                }
-            }
-            LexerErrorType::UnterminatedString => {
-                CayError::Lexer {
-                    error_code: ErrorCodes::LEXER_UNTERMINATED_STRING,
-                    file,
-                    line,
-                    column,
-                    message: "未闭合的字符串字面量 — 字符串字面量以双引号开始，但没有找到配对的结束双引号".to_string(),
-                    suggestion: "在字符串末尾添加双引号 (\")".to_string(),
-                }
-            }
-            LexerErrorType::InvalidEscapeSequence => {
-                CayError::Lexer {
-                    error_code: ErrorCodes::LEXER_INVALID_ESCAPE_SEQUENCE,
-                    file,
-                    line,
-                    column,
-                    message: format!(
-                        "无效的转义序列: '{}' — 支持的转义序列: \\n, \\t, \\\", \\\\, \\', \\0",
-                        error_char
-                    ),
-                    suggestion: "使用有效的转义序列替换".to_string(),
-                }
-            }
-            LexerErrorType::InvalidNumberLiteral => {
-                CayError::Lexer {
-                    error_code: ErrorCodes::LEXER_INVALID_NUMBER_LITERAL,
-                    file,
-                    line,
-                    column,
-                    message: format!(
-                        "无效的数字字面量: '{}' — 支持的格式: 十进制(123), 十六进制(0xFF), 二进制(0b101)",
-                        error_char
-                    ),
-                    suggestion: "检查数字格式，确保使用正确的进制前缀".to_string(),
-                }
-            }
-            LexerErrorType::UnterminatedComment => {
-                CayError::Lexer {
-                    error_code: ErrorCodes::LEXER_UNTERMINATED_COMMENT,
-                    file,
-                    line,
-                    column,
-                    message: "未闭合的注释 — 块注释以 /* 开始，但没有找到配对的结束标记 */".to_string(),
-                    suggestion: "添加 */ 结束注释，或将块注释改为行注释 //".to_string(),
-                }
-            }
-            LexerErrorType::InvalidIdentifier => {
-                CayError::Lexer {
-                    error_code: ErrorCodes::LEXER_INVALID_IDENTIFIER,
-                    file,
-                    line,
-                    column,
-                    message: format!(
-                        "无效的标识符: '{}' — 标识符必须以字母或下划线开头",
-                        error_char
-                    ),
-                    suggestion: "使用有效的标识符名称".to_string(),
-                }
-            }
+            LexerErrorType::InvalidCharacter => CayError::Lexer {
+                error_code: ErrorCodes::LEXER_INVALID_CHARACTER,
+                file,
+                line,
+                column,
+                message: format!(
+                    "非法字符: '{}' — 字符 '{}' 不是Cavvy语言支持的有效字符",
+                    error_char, error_char
+                ),
+                suggestion: "删除该字符或使用支持的字符替换".to_string(),
+            },
+            LexerErrorType::UnterminatedString => CayError::Lexer {
+                error_code: ErrorCodes::LEXER_UNTERMINATED_STRING,
+                file,
+                line,
+                column,
+                message:
+                    "未闭合的字符串字面量 — 字符串字面量以双引号开始，但没有找到配对的结束双引号"
+                        .to_string(),
+                suggestion: "在字符串末尾添加双引号 (\")".to_string(),
+            },
+            LexerErrorType::InvalidEscapeSequence => CayError::Lexer {
+                error_code: ErrorCodes::LEXER_INVALID_ESCAPE_SEQUENCE,
+                file,
+                line,
+                column,
+                message: format!(
+                    "无效的转义序列: '{}' — 支持的转义序列: \\n, \\t, \\\", \\\\, \\', \\0",
+                    error_char
+                ),
+                suggestion: "使用有效的转义序列替换".to_string(),
+            },
+            LexerErrorType::InvalidNumberLiteral => CayError::Lexer {
+                error_code: ErrorCodes::LEXER_INVALID_NUMBER_LITERAL,
+                file,
+                line,
+                column,
+                message: format!(
+                    "无效的数字字面量: '{}' — 支持的格式: 十进制(123), 十六进制(0xFF), 二进制(0b101)",
+                    error_char
+                ),
+                suggestion: "检查数字格式，确保使用正确的进制前缀".to_string(),
+            },
+            LexerErrorType::UnterminatedComment => CayError::Lexer {
+                error_code: ErrorCodes::LEXER_UNTERMINATED_COMMENT,
+                file,
+                line,
+                column,
+                message: "未闭合的注释 — 块注释以 /* 开始，但没有找到配对的结束标记 */".to_string(),
+                suggestion: "添加 */ 结束注释，或将块注释改为行注释 //".to_string(),
+            },
+            LexerErrorType::InvalidIdentifier => CayError::Lexer {
+                error_code: ErrorCodes::LEXER_INVALID_IDENTIFIER,
+                file,
+                line,
+                column,
+                message: format!(
+                    "无效的标识符: '{}' — 标识符必须以字母或下划线开头",
+                    error_char
+                ),
+                suggestion: "使用有效的标识符名称".to_string(),
+            },
         }
     }
 

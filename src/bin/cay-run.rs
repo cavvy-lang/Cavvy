@@ -2,7 +2,9 @@ use cavvy::Compiler;
 use cavvy::bytecode::obfuscator;
 use cavvy::bytecode::{jit, serializer};
 use cavvy::miette_diagnostic::CayError;
-use cavvy::miette_diagnostic::{print_error_with_context, print_miette_error, print_tool_error, print_warning};
+use cavvy::miette_diagnostic::{
+    print_error_with_context, print_miette_error, print_tool_error, print_warning,
+};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};

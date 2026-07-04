@@ -5,8 +5,8 @@
 use super::function::IrFunction;
 use super::types::IrType;
 use super::value::IrValue;
-use std::collections::HashMap;
 use serde::Serialize;
+use std::collections::HashMap;
 
 /// 全局变量定义
 #[derive(Debug, Clone, Serialize)]

@@ -22,8 +22,14 @@ use tempfile::TempDir;
 #[test]
 fn test_sha256_known_vectors() {
     let vectors = vec![
-        (b"" as &[u8], "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"),
-        (b"abc", "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"),
+        (
+            b"" as &[u8],
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        ),
+        (
+            b"abc",
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+        ),
     ];
 
     for (input, expected) in vectors {
@@ -118,8 +124,7 @@ fn test_build_signing_payload_removes_signatures() {
 fn test_ed25519_public_key_from_base64_valid() {
     let bytes = [0u8; 32];
     let b64 = base64_encode(&bytes);
-    let pk =
-        cavvy::cavly::security::Ed25519PublicKey::from_base64("test", &b64).unwrap();
+    let pk = cavvy::cavly::security::Ed25519PublicKey::from_base64("test", &b64).unwrap();
     assert_eq!(pk.key_id, "test");
     assert_eq!(pk.bytes, bytes);
 }
@@ -127,8 +132,7 @@ fn test_ed25519_public_key_from_base64_valid() {
 #[test]
 fn test_ed25519_public_key_invalid_length() {
     let b64 = base64_encode(&[0u8; 31]);
-    let result =
-        cavvy::cavly::security::Ed25519PublicKey::from_base64("test", &b64);
+    let result = cavvy::cavly::security::Ed25519PublicKey::from_base64("test", &b64);
     assert!(result.is_err());
 }
 
@@ -217,7 +221,8 @@ fn test_verify_dual_signatures_missing_key_fails() {
         publisher: "pub".to_string(),
         repository: "https://example.com".to_string(),
         commit_hash: "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0".to_string(),
-        package_sha256: "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+        package_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+            .to_string(),
         certified_at: "2026-06-17T12:00:00Z".to_string(),
         expires_at: None,
         dependencies: None,
@@ -260,7 +265,8 @@ fn test_verify_dual_signatures_wrong_algorithm_fails() {
         publisher: "pub".to_string(),
         repository: "https://example.com".to_string(),
         commit_hash: "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0".to_string(),
-        package_sha256: "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+        package_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+            .to_string(),
         certified_at: "2026-06-17T12:00:00Z".to_string(),
         expires_at: None,
         dependencies: None,
@@ -328,16 +334,27 @@ fn test_audit_logger_filter_by_type() {
     let logger = AuditLogger::with_path(temp.path().join("audit.log"));
 
     logger
-        .log(&AuditLogEntry::new(SecurityEventType::SecureSourceInstall, "a"))
+        .log(&AuditLogEntry::new(
+            SecurityEventType::SecureSourceInstall,
+            "a",
+        ))
         .unwrap();
     logger
-        .log(&AuditLogEntry::new(SecurityEventType::WarningDisplayed, "b"))
+        .log(&AuditLogEntry::new(
+            SecurityEventType::WarningDisplayed,
+            "b",
+        ))
         .unwrap();
     logger
-        .log(&AuditLogEntry::new(SecurityEventType::SecureSourceInstall, "c"))
+        .log(&AuditLogEntry::new(
+            SecurityEventType::SecureSourceInstall,
+            "c",
+        ))
         .unwrap();
 
-    let filtered = logger.filter_by_type(SecurityEventType::SecureSourceInstall).unwrap();
+    let filtered = logger
+        .filter_by_type(SecurityEventType::SecureSourceInstall)
+        .unwrap();
     assert_eq!(filtered.len(), 2);
 }
 
@@ -595,10 +612,22 @@ fn create_local_git_repo(path: &std::path::Path, project_type: &str) -> anyhow::
 
     // 配置 git 用户（commit 需要）
     Command::new("git")
-        .args(&["-C", &path.to_string_lossy(), "config", "user.email", "test@test.com"])
+        .args(&[
+            "-C",
+            &path.to_string_lossy(),
+            "config",
+            "user.email",
+            "test@test.com",
+        ])
         .status()?;
     Command::new("git")
-        .args(&["-C", &path.to_string_lossy(), "config", "user.name", "Test User"])
+        .args(&[
+            "-C",
+            &path.to_string_lossy(),
+            "config",
+            "user.name",
+            "Test User",
+        ])
         .status()?;
 
     // 创建 cavly.toml
@@ -636,7 +665,11 @@ target_dir = "target"
 #[test]
 fn test_add_git_dependency_to_config() {
     // 跳过测试如果 git 不可用
-    if std::process::Command::new("git").arg("--version").status().is_err() {
+    if std::process::Command::new("git")
+        .arg("--version")
+        .status()
+        .is_err()
+    {
         eprintln!("警告: git 不可用，跳过 test_add_git_dependency_to_config");
         return;
     }
@@ -676,7 +709,14 @@ fn test_add_git_dependency_to_config() {
     }
 
     // 验证仓库已克隆到本地
-    assert!(temp.path().join(".cavvy").join("git").join("my-lib").join("cavly.toml").exists());
+    assert!(
+        temp.path()
+            .join(".cavvy")
+            .join("git")
+            .join("my-lib")
+            .join("cavly.toml")
+            .exists()
+    );
 }
 
 #[test]
@@ -712,7 +752,11 @@ fn test_add_duplicate_dependency_fails() {
     assert!(result.is_ok());
 
     // Git 依赖重复应报错（使用本地 Git 仓库测试）
-    if std::process::Command::new("git").arg("--version").status().is_ok() {
+    if std::process::Command::new("git")
+        .arg("--version")
+        .status()
+        .is_ok()
+    {
         let repo_path = temp.path().join("remote-dup");
         create_local_git_repo(&repo_path, "lib").unwrap();
         let repo_url = repo_path.to_string_lossy().to_string();

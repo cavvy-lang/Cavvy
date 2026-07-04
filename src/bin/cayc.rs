@@ -1,6 +1,8 @@
 use cavvy::Compiler;
-use cavvy::miette_diagnostic::{print_error_with_context, print_miette_error, print_tool_error, print_warning};
 use cavvy::ir2exe_lib::{IRSourceMap, Ir2ExeOptions, compile_ir_to_exe, parse_source_map_from_ir};
+use cavvy::miette_diagnostic::{
+    print_error_with_context, print_miette_error, print_tool_error, print_warning,
+};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};

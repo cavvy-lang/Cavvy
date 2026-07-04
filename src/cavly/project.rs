@@ -452,13 +452,16 @@ public class BuildScript {
 
         println!("正在从安全源查找包 '{}'...", name);
 
-        let registry = SecureRegistry::new()
-            .with_context(|| "创建安全注册表客户端失败")?;
+        let registry = SecureRegistry::new().with_context(|| "创建安全注册表客户端失败")?;
 
-        let pkg = registry.find_package(name)
+        let pkg = registry
+            .find_package(name)
             .with_context(|| format!("在官方索引中找不到包: {}", name))?;
 
-        println!("  找到包: {} v{} (指纹: {})", pkg.name, pkg.latest_version, pkg.fingerprint);
+        println!(
+            "  找到包: {} v{} (指纹: {})",
+            pkg.name, pkg.latest_version, pkg.fingerprint
+        );
         println!("  仓库: {}", pkg.repository);
 
         // 确定安装目录
@@ -469,7 +472,8 @@ public class BuildScript {
 
         // 下载并验证包
         println!("  正在下载并验证安全证书...");
-        let package_path = registry.download_and_verify(&pkg, &install_dir)
+        let package_path = registry
+            .download_and_verify(&pkg, &install_dir)
             .with_context(|| format!("下载并验证包 '{}' 失败", name))?;
 
         println!("  包已下载到: {}", package_path.display());
@@ -519,7 +523,8 @@ public class BuildScript {
         });
 
         config.add_dependency(name, dep);
-        config.to_file(&config_path)
+        config
+            .to_file(&config_path)
             .with_context(|| "写入 cavly.toml 失败")?;
 
         println!("已将 '{}' 添加到 [dependencies] 并安装到本地注册表", name);
@@ -546,8 +551,8 @@ public class BuildScript {
         branch: Option<&str>,
         tag: Option<&str>,
     ) -> Result<()> {
-        use crate::cavly::config::{Dependency, DetailedDependency};
         use crate::cavly::audit::{AuditLogEntry, AuditLogger, SecurityEventType};
+        use crate::cavly::config::{Dependency, DetailedDependency};
 
         let config_path = path.join(CONFIG_FILE);
         let mut config = CavlyConfig::from_file(&config_path)?;
@@ -580,7 +585,8 @@ public class BuildScript {
         cmd.arg(git_url);
         cmd.arg(&git_dir);
 
-        let status = cmd.status()
+        let status = cmd
+            .status()
             .with_context(|| "无法执行 git 命令，请确保 git 已安装并加入 PATH")?;
 
         if !status.success() {
@@ -625,7 +631,11 @@ public class BuildScript {
 
         if dep_config.package.project_type != ProjectType::Lib {
             std::fs::remove_dir_all(&git_dir).ok();
-            bail!("Git 依赖 '{}' 不是库项目 (project_type = {:?})", name, dep_config.package.project_type);
+            bail!(
+                "Git 依赖 '{}' 不是库项目 (project_type = {:?})",
+                name,
+                dep_config.package.project_type
+            );
         }
 
         // 计算相对路径写入 cavly.toml（使项目可移植）
@@ -640,7 +650,8 @@ public class BuildScript {
         });
 
         config.add_dependency(name, dep);
-        config.to_file(&config_path)
+        config
+            .to_file(&config_path)
             .with_context(|| "写入 cavly.toml 失败")?;
 
         // 审计日志
@@ -704,9 +715,9 @@ public class BuildScript {
     /// - 时间: O(n * (网络 + 磁盘))，n 为依赖数量
     /// - 空间: O(m)，m 为最大包大小
     pub fn install_dependencies(path: &Path, verbose: bool) -> Result<()> {
+        use crate::cavly::audit::{AuditLogEntry, AuditLogger, SecurityEventType};
         use crate::cavly::config::{Dependency, DetailedDependency};
         use crate::cavly::registry::SecureRegistry;
-        use crate::cavly::audit::{AuditLogEntry, AuditLogger, SecurityEventType};
 
         let config_path = path.join(CONFIG_FILE);
         let config = CavlyConfig::from_file(&config_path)?;
@@ -724,12 +735,10 @@ public class BuildScript {
 
         for (name, dep) in &config.dependencies {
             let detailed = match dep {
-                Dependency::Simple(version) => {
-                    DetailedDependency {
-                        version: Some(version.clone()),
-                        ..Default::default()
-                    }
-                }
+                Dependency::Simple(version) => DetailedDependency {
+                    version: Some(version.clone()),
+                    ..Default::default()
+                },
                 Dependency::Detailed(d) => d.clone(),
             };
 
@@ -760,14 +769,27 @@ public class BuildScript {
 
             // B 类: Git 依赖
             if let Some(ref git_url) = detailed.git {
-                Self::install_git_dependency(path, name, git_url, detailed.branch.as_deref(), detailed.tag.as_deref(), verbose)?;
+                Self::install_git_dependency(
+                    path,
+                    name,
+                    git_url,
+                    detailed.branch.as_deref(),
+                    detailed.tag.as_deref(),
+                    verbose,
+                )?;
                 installed += 1;
                 continue;
             }
 
             // C 类: 自定义源依赖
             if let Some(ref source_url) = detailed.source {
-                Self::install_source_dependency(path, name, source_url, detailed.version.as_deref(), verbose)?;
+                Self::install_source_dependency(
+                    path,
+                    name,
+                    source_url,
+                    detailed.version.as_deref(),
+                    verbose,
+                )?;
                 installed += 1;
                 continue;
             }
@@ -779,7 +801,10 @@ public class BuildScript {
         }
 
         println!();
-        println!("依赖安装完成: {} 个新安装, {} 个已存在, {} 个跳过", installed, already_exist, skipped);
+        println!(
+            "依赖安装完成: {} 个新安装, {} 个已存在, {} 个跳过",
+            installed, already_exist, skipped
+        );
         Ok(())
     }
 
@@ -792,14 +817,17 @@ public class BuildScript {
     ) -> Result<()> {
         use crate::cavly::registry::SecureRegistry;
 
-        let registry = SecureRegistry::new()
-            .with_context(|| "创建安全注册表客户端失败")?;
+        let registry = SecureRegistry::new().with_context(|| "创建安全注册表客户端失败")?;
 
-        let pkg = registry.find_package(name)
+        let pkg = registry
+            .find_package(name)
             .with_context(|| format!("在官方索引中找不到包: {}", name))?;
 
         if verbose {
-            println!("    找到包: {} v{} (指纹: {})", pkg.name, pkg.latest_version, pkg.fingerprint);
+            println!(
+                "    找到包: {} v{} (指纹: {})",
+                pkg.name, pkg.latest_version, pkg.fingerprint
+            );
             println!("    仓库: {}", pkg.repository);
         }
 
@@ -808,7 +836,8 @@ public class BuildScript {
         std::fs::create_dir_all(&install_dir)
             .with_context(|| format!("创建安装目录失败: {}", install_dir.display()))?;
 
-        let package_path = registry.download_and_verify(&pkg, &install_dir)
+        let package_path = registry
+            .download_and_verify(&pkg, &install_dir)
             .with_context(|| format!("下载并验证包 '{}' 失败", name))?;
 
         // 解压 tar.gz
@@ -869,7 +898,8 @@ public class BuildScript {
         cmd.arg(git_url);
         cmd.arg(&git_dir);
 
-        let status = cmd.status()
+        let status = cmd
+            .status()
             .with_context(|| "无法执行 git 命令，请确保 git 已安装并加入 PATH")?;
 
         if !status.success() {
@@ -910,8 +940,8 @@ public class BuildScript {
         version: Option<&str>,
         verbose: bool,
     ) -> Result<()> {
-        use crate::cavly::security::{blocking_warning_custom_source, is_interactive};
         use crate::cavly::audit::{AuditLogEntry, AuditLogger, SecurityEventType};
+        use crate::cavly::security::{blocking_warning_custom_source, is_interactive};
 
         // 阻塞警告（ESSO-11420 第 8 节）
         if is_interactive() {
@@ -919,23 +949,36 @@ public class BuildScript {
         } else {
             // 非交互环境：若未关闭阻塞，则失败
             if std::env::var("ESSO_UNVERIFIED_SOURCE_NO_BLOCK").unwrap_or_default() != "1" {
-                bail!("非交互环境中安装自定义源依赖需要显式确认，请设置环境变量 ESSO_UNVERIFIED_SOURCE_NO_BLOCK=1");
+                bail!(
+                    "非交互环境中安装自定义源依赖需要显式确认，请设置环境变量 ESSO_UNVERIFIED_SOURCE_NO_BLOCK=1"
+                );
             }
-            eprintln!("[SECURITY NOTICE] Installing from custom source server: {}. Package: {}. Official secure source verification not applicable. This installation is not covered by Ethernos secure source guarantees.", source_url, name);
+            eprintln!(
+                "[SECURITY NOTICE] Installing from custom source server: {}. Package: {}. Official secure source verification not applicable. This installation is not covered by Ethernos secure source guarantees.",
+                source_url, name
+            );
         }
 
         // 审计日志
         if let Ok(logger) = AuditLogger::new() {
             logger.log_silent(
-                &AuditLogEntry::new(SecurityEventType::UnverifiedSourceInstall, "install_source_dependency")
-                    .with_package(source_url, name, version.unwrap_or("latest"))
-                    .with_details(&format!("从自定义源 {} 安装包 {}", source_url, name)),
+                &AuditLogEntry::new(
+                    SecurityEventType::UnverifiedSourceInstall,
+                    "install_source_dependency",
+                )
+                .with_package(source_url, name, version.unwrap_or("latest"))
+                .with_details(&format!("从自定义源 {} 安装包 {}", source_url, name)),
             );
         }
 
         // 构造下载 URL: {source_url}/{name}/{version}/package.tar.gz
         let ver = version.unwrap_or("latest");
-        let download_url = format!("{}/{}/{}/package.tar.gz", source_url.trim_end_matches('/'), name, ver);
+        let download_url = format!(
+            "{}/{}/{}/package.tar.gz",
+            source_url.trim_end_matches('/'),
+            name,
+            ver
+        );
 
         let install_dir = path.join(".cavvy").join("registry").join(name).join(ver);
         std::fs::create_dir_all(&install_dir)?;
@@ -1015,10 +1058,14 @@ public class BuildScript {
         });
 
         config.add_dependency(name, dep);
-        config.to_file(&config_path)
+        config
+            .to_file(&config_path)
             .with_context(|| "写入 cavly.toml 失败")?;
 
-        println!("已将 '{}' 添加到 [dependencies]（自定义源: {}）", name, source_url);
+        println!(
+            "已将 '{}' 添加到 [dependencies]（自定义源: {}）",
+            name, source_url
+        );
         Ok(())
     }
 }

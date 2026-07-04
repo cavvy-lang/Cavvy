@@ -59,10 +59,7 @@ impl Ed25519PublicKey {
     pub fn from_base64(key_id: &str, b64: &str) -> Result<Self> {
         let bytes = base64_decode(b64)?;
         if bytes.len() != 32 {
-            bail!(
-                "Ed25519 公钥长度必须为 32 字节，实际 {} 字节",
-                bytes.len()
-            );
+            bail!("Ed25519 公钥长度必须为 32 字节，实际 {} 字节", bytes.len());
         }
         let mut arr = [0u8; 32];
         arr.copy_from_slice(&bytes);
@@ -75,10 +72,7 @@ impl Ed25519PublicKey {
     /// 从原始字节创建公钥
     pub fn from_bytes(key_id: &str, bytes: &[u8]) -> Result<Self> {
         if bytes.len() != 32 {
-            bail!(
-                "Ed25519 公钥长度必须为 32 字节，实际 {} 字节",
-                bytes.len()
-            );
+            bail!("Ed25519 公钥长度必须为 32 字节，实际 {} 字节", bytes.len());
         }
         let mut arr = [0u8; 32];
         arr.copy_from_slice(bytes);
@@ -258,7 +252,7 @@ pub fn verify_sha256(data: &[u8], expected: &str) -> Result<()> {
 /// - 时间: O(n)
 /// - 空间: O(n)
 pub fn base64_decode(s: &str) -> Result<Vec<u8>> {
-    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
     STANDARD.decode(s).context("Base64 解码失败")
 }
 
@@ -268,7 +262,7 @@ pub fn base64_decode(s: &str) -> Result<Vec<u8>> {
 /// - 时间: O(n)
 /// - 空间: O(n)
 pub fn base64_encode(data: &[u8]) -> String {
-    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
     STANDARD.encode(data)
 }
 
@@ -360,9 +354,7 @@ pub fn verify_dual_signatures(
     let publisher_pk = meta
         .public_keys
         .iter()
-        .find(|pk| {
-            pk.key_id == cert.signatures.publisher.key_id && pk.status == "active"
-        })
+        .find(|pk| pk.key_id == cert.signatures.publisher.key_id && pk.status == "active")
         .ok_or_else(|| {
             anyhow::anyhow!(
                 "找不到活跃的发布者公钥: {}",
@@ -378,8 +370,12 @@ pub fn verify_dual_signatures(
     let payload = build_signing_payload(&cert_json)?;
 
     // 4. 验证发布者签名
-    verify_ed25519(&payload, &cert.signatures.publisher.signature, &publisher_ed_pk)
-        .context("发布者签名验证失败")?;
+    verify_ed25519(
+        &payload,
+        &cert.signatures.publisher.signature,
+        &publisher_ed_pk,
+    )
+    .context("发布者签名验证失败")?;
 
     // 5. 验证官方签名（如果提供了根公钥）
     if let Some(root_pk) = root_public_key {
@@ -445,7 +441,11 @@ fn verify_uuid_v4(s: &str) -> Result<()> {
     let expected_dashes = [8, 13, 18, 23];
     for &pos in &expected_dashes {
         if s.as_bytes()[pos] != b'-' {
-            bail!("UUID 格式错误: 第 {} 位应为 '-', 实际是 '{}'", pos, s.as_bytes()[pos] as char);
+            bail!(
+                "UUID 格式错误: 第 {} 位应为 '-', 实际是 '{}'",
+                pos,
+                s.as_bytes()[pos] as char
+            );
         }
     }
     let version_char = s.as_bytes()[14];
@@ -733,7 +733,8 @@ mod tests {
             publisher: "pub".to_string(),
             repository: "https://example.com".to_string(),
             commit_hash: "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0".to_string(),
-            package_sha256: "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+            package_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+                .to_string(),
             certified_at: "2026-06-17T12:00:00Z".to_string(),
             expires_at: None,
             dependencies: None,
@@ -774,7 +775,8 @@ mod tests {
             publisher: "pub".to_string(),
             repository: "https://example.com".to_string(),
             commit_hash: "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0".to_string(),
-            package_sha256: "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+            package_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+                .to_string(),
             certified_at: "2026-06-17T12:00:00Z".to_string(),
             expires_at: None,
             dependencies: None,
@@ -821,7 +823,8 @@ mod tests {
             publisher: "pub".to_string(),
             repository: "https://example.com".to_string(),
             commit_hash: "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0".to_string(),
-            package_sha256: "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+            package_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+                .to_string(),
             certified_at: "2026-06-17T12:00:00Z".to_string(),
             expires_at: None,
             dependencies: None,
@@ -860,8 +863,14 @@ mod tests {
         let cert_value = serde_json::to_value(&cert).unwrap();
         let payload = build_signing_payload(&cert_value).unwrap();
 
-        let pk = Ed25519PublicKey::from_base64("pub", "RTfAQ4kW+D+2LpOQlrglBE0ZsPjIhLlR1+cAymRbx2U=").unwrap();
-        let result = verify_ed25519(&payload, "9eBxjlvd6mS2xutnI1Y5o2JzRRgHVBxQ/LBeds814gzumo6Ytj2J51LUR7D6Ht89ZdgVI2nxf8p91+xC/FfJBQ==", &pk);
+        let pk =
+            Ed25519PublicKey::from_base64("pub", "RTfAQ4kW+D+2LpOQlrglBE0ZsPjIhLlR1+cAymRbx2U=")
+                .unwrap();
+        let result = verify_ed25519(
+            &payload,
+            "9eBxjlvd6mS2xutnI1Y5o2JzRRgHVBxQ/LBeds814gzumo6Ytj2J51LUR7D6Ht89ZdgVI2nxf8p91+xC/FfJBQ==",
+            &pk,
+        );
         assert!(result.is_ok());
     }
 }

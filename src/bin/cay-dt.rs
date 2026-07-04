@@ -1,8 +1,8 @@
 // cay-dt: Cavvy Debugger - Token PreViewer
 // Token 预览工具 - 显示源代码的词法分析结果
 
-use cavvy::miette_diagnostic::CayError;
 use cavvy::lexer::{TokenWithLocation, lex_with_diagnostics};
+use cavvy::miette_diagnostic::CayError;
 use cavvy::preprocessor::preprocess;
 use std::env;
 use std::fs;
@@ -168,12 +168,16 @@ fn print_tokens_pretty(
         println!("{}诊断信息:{}", header_color, reset);
         for diag in diagnostics.iter() {
             let sev = diag.severity();
-            let color = if sev == cavvy::miette_diagnostic::Severity::Error || sev == cavvy::miette_diagnostic::Severity::Fatal {
+            let color = if sev == cavvy::miette_diagnostic::Severity::Error
+                || sev == cavvy::miette_diagnostic::Severity::Fatal
+            {
                 error_color
             } else {
                 warning_color
             };
-            let severity = if sev == cavvy::miette_diagnostic::Severity::Error || sev == cavvy::miette_diagnostic::Severity::Fatal {
+            let severity = if sev == cavvy::miette_diagnostic::Severity::Error
+                || sev == cavvy::miette_diagnostic::Severity::Fatal
+            {
                 "错误"
             } else {
                 "警告"

@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::{CayResult, semantic_error_with_file, ErrorCodes};
+use crate::miette_diagnostic::{CayResult, ErrorCodes, semantic_error_with_file};
 use crate::types::Type;
 
 impl IRGenerator {
@@ -174,7 +174,9 @@ impl IRGenerator {
                     }
                     // 否则尝试从变量映射获取
                     // 首先尝试从 var_cay_types 获取完整类型信息（支持泛型）
-                    let (class_name, type_args) = if let Some(cay_type) = self.var_cay_types.get(obj_name_str) {
+                    let (class_name, type_args) = if let Some(cay_type) =
+                        self.var_cay_types.get(obj_name_str)
+                    {
                         match cay_type {
                             crate::types::Type::Object(name) => (name.clone(), Vec::new()),
                             crate::types::Type::Generic(name, args) => (name.clone(), args.clone()),
@@ -319,7 +321,11 @@ impl IRGenerator {
         let type_params = registry
             .get_class(base_class_name)
             .map(|c| c.type_params.clone())
-            .or_else(|| registry.get_interface(base_class_name).map(|i| i.type_params.clone()))
+            .or_else(|| {
+                registry
+                    .get_interface(base_class_name)
+                    .map(|i| i.type_params.clone())
+            })
             .unwrap_or_default();
 
         if type_params.is_empty() || type_args.is_empty() {
@@ -376,9 +382,13 @@ impl IRGenerator {
             if let Some(init) = &var.initializer {
                 self.infer_type_from_expr(init).unwrap_or(Type::Int32)
             } else {
-                return Err(semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, 
-                    var.loc.file.clone(), var.loc.line, var.loc.column, "'auto' variable declaration requires an initializer".to_string())
-                );
+                return Err(semantic_error_with_file(
+                    ErrorCodes::SEMANTIC_INVALID_OPERATION,
+                    var.loc.file.clone(),
+                    var.loc.line,
+                    var.loc.column,
+                    "'auto' variable declaration requires an initializer".to_string(),
+                ));
             }
         } else {
             // 单态化上下文下，将泛型参数替换为实际类型
@@ -414,11 +424,10 @@ impl IRGenerator {
                     .iter()
                     .map(|t| self.resolve_type_arg_concrete(t))
                     .collect();
-                let all_concrete = !resolved.is_empty()
-                    && resolved.iter().all(|t| self.type_arg_is_concrete(t));
+                let all_concrete =
+                    !resolved.is_empty() && resolved.iter().all(|t| self.type_arg_is_concrete(t));
                 if all_concrete {
-                    let args_str: Vec<String> =
-                        resolved.iter().map(|t| format!("{}", t)).collect();
+                    let args_str: Vec<String> = resolved.iter().map(|t| format!("{}", t)).collect();
                     self.var_class_map.insert(
                         var.name.clone(),
                         format!("{}<{}>", class_name, args_str.join(", ")),
@@ -696,7 +705,8 @@ impl IRGenerator {
                             ));
                         } else {
                             // 类型不兼容，报错
-                            return Err(crate::miette_diagnostic::codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                            return Err(crate::miette_diagnostic::codegen_error_at(
+                                ErrorCodes::CODEGEN_INVALID_OPERATION,
                                 var.loc.clone(),
                                 format!(
                                     "Cannot unbox i8* to {} in variable initialization '{}'",
@@ -706,7 +716,8 @@ impl IRGenerator {
                         }
                     } else {
                         // 类型不兼容，报错
-                        return Err(crate::miette_diagnostic::codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                        return Err(crate::miette_diagnostic::codegen_error_at(
+                            ErrorCodes::CODEGEN_INVALID_OPERATION,
                             var.loc.clone(),
                             format!(
                                 "Cannot convert {} to {} in variable initialization '{}'",
@@ -722,24 +733,14 @@ impl IRGenerator {
                         let src_ptr = val;
                         let new_struct = self.new_temp();
                         let llvm_struct_type = format!("%struct.{}", struct_name);
-                        self.emit_line(&format!(
-                            "  {} = alloca {}",
-                            new_struct, llvm_struct_type
-                        ));
-                        self.emit_struct_memcpy(
-                            &new_struct,
-                            &src_ptr,
-                            &struct_name,
-                        );
+                        self.emit_line(&format!("  {} = alloca {}", new_struct, llvm_struct_type));
+                        self.emit_struct_memcpy(&new_struct, &src_ptr, &struct_name);
                         self.emit_line(&format!(
                             "  store {}* {}, {}** %{}, align {}",
                             llvm_struct_type, new_struct, llvm_struct_type, llvm_name, align
                         ));
                     } else {
-                        self.emit_line(&format!(
-                            "  store {}, {}* %{}",
-                            value, var_type, llvm_name
-                        ));
+                        self.emit_line(&format!("  store {}, {}* %{}", value, var_type, llvm_name));
                     }
                 }
             }

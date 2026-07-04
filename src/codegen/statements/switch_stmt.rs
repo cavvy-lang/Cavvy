@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::{CayResult, codegen_error_at, ErrorCodes};
+use crate::miette_diagnostic::{CayResult, ErrorCodes, codegen_error_at};
 
 impl IRGenerator {
     /// 将 CaseValue 转换为 i64 常量值
@@ -25,13 +25,15 @@ impl IRGenerator {
                                 return Ok(idx as i64);
                             }
                         }
-                        return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                        return Err(codegen_error_at(
+                            ErrorCodes::CODEGEN_INVALID_OPERATION,
                             case.loc.clone(),
                             format!("enum '{}' 中不存在 variant '{}'", enum_name, variant_name),
                         ));
                     }
                 }
-                Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                Err(codegen_error_at(
+                    ErrorCodes::CODEGEN_INVALID_OPERATION,
                     case.loc.clone(),
                     format!("未知的 enum '{}' 在 case 标签中", enum_name),
                 ))

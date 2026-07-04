@@ -10,7 +10,7 @@
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::fs::{create_dir_all, OpenOptions};
+use std::fs::{OpenOptions, create_dir_all};
 use std::io::Write;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -202,7 +202,10 @@ impl AuditLogger {
     /// - 空间: O(k)，k 为匹配条目数
     pub fn filter_by_type(&self, event_type: SecurityEventType) -> Result<Vec<AuditLogEntry>> {
         let all = self.read_all()?;
-        Ok(all.into_iter().filter(|e| e.event_type == event_type).collect())
+        Ok(all
+            .into_iter()
+            .filter(|e| e.event_type == event_type)
+            .collect())
     }
 
     /// 获取日志文件路径
@@ -293,7 +296,16 @@ fn days_to_ymd(mut days: u64) -> (u32, u32, u32) {
     let days_in_month = [
         31u32,
         if is_leap_year(year) { 29 } else { 28 },
-        31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
     ];
     let mut month = 1u32;
     for dim in &days_in_month {
@@ -350,7 +362,10 @@ mod tests {
 
         let entries = logger.read_all().unwrap();
         assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0].event_type, SecurityEventType::SecureSourceInstall);
+        assert_eq!(
+            entries[0].event_type,
+            SecurityEventType::SecureSourceInstall
+        );
         assert_eq!(entries[1].event_type, SecurityEventType::WarningDisplayed);
     }
 
@@ -361,16 +376,27 @@ mod tests {
         let logger = AuditLogger::with_path(log_path);
 
         logger
-            .log(&AuditLogEntry::new(SecurityEventType::SecureSourceInstall, "a"))
+            .log(&AuditLogEntry::new(
+                SecurityEventType::SecureSourceInstall,
+                "a",
+            ))
             .unwrap();
         logger
-            .log(&AuditLogEntry::new(SecurityEventType::WarningDisplayed, "b"))
+            .log(&AuditLogEntry::new(
+                SecurityEventType::WarningDisplayed,
+                "b",
+            ))
             .unwrap();
         logger
-            .log(&AuditLogEntry::new(SecurityEventType::SecureSourceInstall, "c"))
+            .log(&AuditLogEntry::new(
+                SecurityEventType::SecureSourceInstall,
+                "c",
+            ))
             .unwrap();
 
-        let filtered = logger.filter_by_type(SecurityEventType::SecureSourceInstall).unwrap();
+        let filtered = logger
+            .filter_by_type(SecurityEventType::SecureSourceInstall)
+            .unwrap();
         assert_eq!(filtered.len(), 2);
     }
 

@@ -53,10 +53,7 @@ impl IRGenerator {
     /// 主循环上下文（如 main 方法）中 `generic_type_args` 为空，若不安装映射，
     /// 泛型方法的返回/参数类型会被降级为 i8*，既产生警告又导致类型不匹配。
     /// 调用方应在方法调用代码生成结束后恢复调用前的映射快照。
-    pub fn install_receiver_generic_args(
-        &mut self,
-        obj_expr: &Option<Box<crate::ast::Expr>>,
-    ) {
+    pub fn install_receiver_generic_args(&mut self, obj_expr: &Option<Box<crate::ast::Expr>>) {
         use crate::types::Type;
         let Some(obj) = obj_expr else {
             return;
@@ -69,7 +66,11 @@ impl IRGenerator {
         }
         // 提取基础类名（去除泛型参数与命名空间前缀）
         let base_name = base.split('<').next().unwrap_or(&base);
-        let base_name = base_name.rsplit("::").next().unwrap_or(base_name).to_string();
+        let base_name = base_name
+            .rsplit("::")
+            .next()
+            .unwrap_or(base_name)
+            .to_string();
         let type_params = self
             .type_registry
             .as_ref()
@@ -83,11 +84,13 @@ impl IRGenerator {
             });
         if let Some(params) = type_params {
             for (idx, param) in params.iter().enumerate() {
-                let resolved_arg = args.get(idx)
+                let resolved_arg = args
+                    .get(idx)
                     .cloned()
                     .or_else(|| param.default_type.clone())
                     .unwrap_or_else(|| Type::GenericParam(param.name.clone()));
-                self.generic_type_args.insert(param.name.clone(), resolved_arg);
+                self.generic_type_args
+                    .insert(param.name.clone(), resolved_arg);
             }
         }
     }
@@ -124,19 +127,21 @@ impl IRGenerator {
                 let type_params = registry
                     .get_class(&base_name)
                     .map(|c| c.type_params.clone())
-                    .or_else(|| registry.get_interface(&base_name).map(|i| i.type_params.clone()))
+                    .or_else(|| {
+                        registry
+                            .get_interface(&base_name)
+                            .map(|i| i.type_params.clone())
+                    })
                     .unwrap_or_default();
 
                 if !type_params.is_empty() && !type_args.is_empty() {
-                    let mapping: std::collections::HashMap<String, crate::types::Type> = type_params
-                        .iter()
-                        .zip(type_args.iter())
-                        .map(|(param, arg)| (param.name.clone(), arg.clone()))
-                        .collect();
-                    return crate::types::substitute_type_params(
-                        &best.return_type,
-                        &mapping,
-                    );
+                    let mapping: std::collections::HashMap<String, crate::types::Type> =
+                        type_params
+                            .iter()
+                            .zip(type_args.iter())
+                            .map(|(param, arg)| (param.name.clone(), arg.clone()))
+                            .collect();
+                    return crate::types::substitute_type_params(&best.return_type, &mapping);
                 }
             }
 

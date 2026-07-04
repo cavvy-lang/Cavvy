@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::{CayResult, codegen_error_at, ErrorCodes};
+use crate::miette_diagnostic::{CayResult, ErrorCodes, codegen_error_at};
 
 /// readLine 缓冲区大小（字节）
 const READ_LINE_BUFFER_SIZE: i32 = 1024;
@@ -51,7 +51,11 @@ impl IRGenerator {
                     "  {} = getelementptr [{} x i8], [{} x i8]* {}, i64 0, i64 0",
                     fmt_ptr, fmt_len, fmt_len, fmt_name
                 ));
-self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_ret_type("printf", "i32"), fmt_ptr));
+                self.emit_line(&format!(
+                    "  call {} (i8*, ...) @printf(i8* {})",
+                    self.get_extern_ret_type("printf", "i32"),
+                    fmt_ptr
+                ));
             }
             return Ok("void".to_string());
         }
@@ -90,7 +94,9 @@ self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_
 
                     self.emit_line(&format!(
                         "  call {} (i8*, ...) @printf(i8* {}, i8* {})",
-                        self.get_extern_ret_type("printf", "i32"), fmt_ptr, str_ptr
+                        self.get_extern_ret_type("printf", "i32"),
+                        fmt_ptr,
+                        str_ptr
                     ));
                 }
                 LiteralValue::Int32(_) | LiteralValue::Int64(_) => {
@@ -124,7 +130,9 @@ self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_
 
                     self.emit_line(&format!(
                         "  call {} (i8*, ...) @printf(i8* {}, i64 {})",
-                        self.get_extern_ret_type("printf", "i32"), fmt_ptr, final_val
+                        self.get_extern_ret_type("printf", "i32"),
+                        fmt_ptr,
+                        final_val
                     ));
                 }
                 _ => {
@@ -142,7 +150,9 @@ self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_
                         ));
                         self.emit_line(&format!(
                             "  call {} (i8*, ...) @printf(i8* {}, i8* {})",
-                            self.get_extern_ret_type("printf", "i32"), fmt_ptr, val
+                            self.get_extern_ret_type("printf", "i32"),
+                            fmt_ptr,
+                            val
                         ));
                     } else if type_str == "i1" {
                         // 布尔类型：调用 __cay_bool_to_string 转换为字符串后打印
@@ -161,7 +171,9 @@ self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_
                         ));
                         self.emit_line(&format!(
                             "  call {} (i8*, ...) @printf(i8* {}, i8* {})",
-                            self.get_extern_ret_type("printf", "i32"), fmt_ptr, str_temp
+                            self.get_extern_ret_type("printf", "i32"),
+                            fmt_ptr,
+                            str_temp
                         ));
                     } else if type_str.starts_with("i") && !type_str.ends_with("*") {
                         let i64_fmt = self.get_i64_format_specifier();
@@ -191,7 +203,9 @@ self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_
 
                         self.emit_line(&format!(
                             "  call {} (i8*, ...) @printf(i8* {}, i64 {})",
-                            self.get_extern_ret_type("printf", "i32"), fmt_ptr, final_val
+                            self.get_extern_ret_type("printf", "i32"),
+                            fmt_ptr,
+                            final_val
                         ));
                     } else if type_str == "double" || type_str == "float" {
                         let fmt_str = if newline { "%f\n" } else { "%f" };
@@ -216,7 +230,9 @@ self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_
 
                         self.emit_line(&format!(
                             "  call {} (i8*, ...) @printf(i8* {}, double {})",
-                            self.get_extern_ret_type("printf", "i32"), fmt_ptr, final_val
+                            self.get_extern_ret_type("printf", "i32"),
+                            fmt_ptr,
+                            final_val
                         ));
                     } else {
                         let fmt_str = if newline { "%s\n" } else { "%s" };
@@ -229,7 +245,9 @@ self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_
                         ));
                         self.emit_line(&format!(
                             "  call {} (i8*, ...) @printf(i8* {}, {})",
-                            self.get_extern_ret_type("printf", "i32"), fmt_ptr, value
+                            self.get_extern_ret_type("printf", "i32"),
+                            fmt_ptr,
+                            value
                         ));
                     }
                 }
@@ -249,7 +267,9 @@ self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_
                     ));
                     self.emit_line(&format!(
                         "  call {} (i8*, ...) @printf(i8* {}, i8* {})",
-                        self.get_extern_ret_type("printf", "i32"), fmt_ptr, val
+                        self.get_extern_ret_type("printf", "i32"),
+                        fmt_ptr,
+                        val
                     ));
                 } else if type_str == "i1" {
                     // 布尔类型：调用 __cay_bool_to_string 转换为字符串后打印
@@ -268,7 +288,9 @@ self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_
                     ));
                     self.emit_line(&format!(
                         "  call {} (i8*, ...) @printf(i8* {}, i8* {})",
-                        self.get_extern_ret_type("printf", "i32"), fmt_ptr, str_temp
+                        self.get_extern_ret_type("printf", "i32"),
+                        fmt_ptr,
+                        str_temp
                     ));
                 } else if type_str.starts_with("i") && !type_str.ends_with("*") {
                     let i64_fmt = self.get_i64_format_specifier();
@@ -298,7 +320,9 @@ self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_
 
                     self.emit_line(&format!(
                         "  call {} (i8*, ...) @printf(i8* {}, i64 {})",
-                        self.get_extern_ret_type("printf", "i32"), fmt_ptr, final_val
+                        self.get_extern_ret_type("printf", "i32"),
+                        fmt_ptr,
+                        final_val
                     ));
                 } else if type_str == "double" || type_str == "float" {
                     let fmt_str = if newline { "%f\n" } else { "%f" };
@@ -320,7 +344,9 @@ self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_
 
                     self.emit_line(&format!(
                         "  call {} (i8*, ...) @printf(i8* {}, double {})",
-                        self.get_extern_ret_type("printf", "i32"), fmt_ptr, final_val
+                        self.get_extern_ret_type("printf", "i32"),
+                        fmt_ptr,
+                        final_val
                     ));
                 } else {
                     let fmt_str = if newline { "%s\n" } else { "%s" };
@@ -333,7 +359,9 @@ self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_
                     ));
                     self.emit_line(&format!(
                         "  call {} (i8*, ...) @printf(i8* {}, {})",
-                        self.get_extern_ret_type("printf", "i32"), fmt_ptr, value
+                        self.get_extern_ret_type("printf", "i32"),
+                        fmt_ptr,
+                        value
                     ));
                 }
             }
@@ -375,7 +403,8 @@ self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_
 
         // 检查参数数量是否匹配
         if placeholders.len() != args.len() - 1 {
-            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
                 loc.clone(),
                 format!(
                     "Format string expects {} arguments, but {} provided",
@@ -430,7 +459,8 @@ self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_
 
         self.emit_line(&format!(
             "  call {} (i8*, ...) @printf({})",
-            self.get_extern_ret_type("printf", "i32"), call_args.join(", ")
+            self.get_extern_ret_type("printf", "i32"),
+            call_args.join(", ")
         ));
 
         Ok("i64 0".to_string())
@@ -792,7 +822,8 @@ self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_
     ) -> CayResult<String> {
         // readInt 应该没有参数
         if !args.is_empty() {
-            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
                 loc.clone(),
                 "readInt() takes no arguments".to_string(),
             ));
@@ -855,7 +886,8 @@ self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_
     ) -> CayResult<String> {
         // readFloat 应该没有参数
         if !args.is_empty() {
-            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
                 loc.clone(),
                 "readFloat() takes no arguments".to_string(),
             ));
@@ -918,7 +950,8 @@ self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_
     ) -> CayResult<String> {
         // readDouble 应该没有参数
         if !args.is_empty() {
-            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
                 loc.clone(),
                 "readDouble() takes no arguments".to_string(),
             ));
@@ -995,7 +1028,8 @@ self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_
     ) -> CayResult<String> {
         // readChar 应该没有参数
         if !args.is_empty() {
-            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
                 loc.clone(),
                 "readChar() takes no arguments".to_string(),
             ));
@@ -1058,7 +1092,8 @@ self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_
     ) -> CayResult<String> {
         // readLine 应该没有参数
         if !args.is_empty() {
-            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
                 loc.clone(),
                 "readLine() takes no arguments".to_string(),
             ));

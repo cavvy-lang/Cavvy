@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::{CayResult, codegen_error_at, ErrorCodes};
+use crate::miette_diagnostic::{CayResult, ErrorCodes, codegen_error_at};
 
 impl IRGenerator {
     /// 生成 extern 函数调用
@@ -40,7 +40,8 @@ impl IRGenerator {
             match found {
                 Some(f) => f.clone(),
                 None => {
-                    return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    return Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         loc.clone(),
                         format!("Extern function '{}' not found", func_name),
                     ));
@@ -167,7 +168,8 @@ impl IRGenerator {
         loc: &crate::miette_diagnostic::SourceLocation,
     ) -> CayResult<String> {
         if args.len() != 2 {
-            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
                 loc.clone(),
                 "__cay_buffer_to_string requires 2 arguments".to_string(),
             ));

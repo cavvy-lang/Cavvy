@@ -3,8 +3,8 @@
 //! 定义 IR 值、指令和终止指令，构成基本块的内容。
 
 use super::types::IrType;
-use std::fmt;
 use serde::Serialize;
+use std::fmt;
 
 /// IR 值 - 表示计算中的值
 ///

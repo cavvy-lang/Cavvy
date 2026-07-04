@@ -5,7 +5,11 @@ use crate::miette_diagnostic::ErrorCodes;
 use crate::types::Type;
 
 /// 泛型特化：替换类型中的泛型参数为实际类型
-fn substitute_type_params(ty: &Type, type_args: &[Type], type_params: &[crate::types::TypeParamInfo]) -> Type {
+fn substitute_type_params(
+    ty: &Type,
+    type_args: &[Type],
+    type_params: &[crate::types::TypeParamInfo],
+) -> Type {
     match ty {
         Type::GenericParam(name) => {
             if let Some(idx) = type_params.iter().position(|p| &p.name == name) {
@@ -27,13 +31,23 @@ fn substitute_type_params(ty: &Type, type_args: &[Type], type_params: &[crate::t
             }
             ty.clone()
         }
-        Type::Array(inner) => Type::Array(Box::new(substitute_type_params(inner, type_args, type_params))),
-        Type::Pointer(inner) => Type::Pointer(Box::new(substitute_type_params(inner, type_args, type_params))),
+        Type::Array(inner) => Type::Array(Box::new(substitute_type_params(
+            inner,
+            type_args,
+            type_params,
+        ))),
+        Type::Pointer(inner) => Type::Pointer(Box::new(substitute_type_params(
+            inner,
+            type_args,
+            type_params,
+        ))),
         Type::Function(func_type) => {
             let new_return = substitute_type_params(&func_type.return_type, type_args, type_params);
-            let new_params: Vec<Type> = func_type.params.iter().map(|p| {
-                substitute_type_params(p, type_args, type_params)
-            }).collect();
+            let new_params: Vec<Type> = func_type
+                .params
+                .iter()
+                .map(|p| substitute_type_params(p, type_args, type_params))
+                .collect();
             Type::Function(Box::new(crate::types::FunctionType {
                 return_type: Box::new(new_return),
                 params: new_params,
@@ -42,7 +56,10 @@ fn substitute_type_params(ty: &Type, type_args: &[Type], type_params: &[crate::t
             }))
         }
         Type::Generic(base, args) => {
-            let new_args = args.iter().map(|a| substitute_type_params(a, type_args, type_params)).collect();
+            let new_args = args
+                .iter()
+                .map(|a| substitute_type_params(a, type_args, type_params))
+                .collect();
             Type::Generic(base.clone(), new_args)
         }
         _ => ty.clone(),
@@ -221,7 +238,9 @@ impl IRGenerator {
 
             // ===== 泛型特化：为每个特化版本计算布局 =====
             if !class.type_params.is_empty() {
-                let mut instances = generator.specializations.get(&base_qname)
+                let mut instances = generator
+                    .specializations
+                    .get(&base_qname)
                     .cloned()
                     .unwrap_or_default();
                 // 同 generate_class：按裸类名合并，兼容命名空间内的泛型类。
@@ -247,12 +266,23 @@ impl IRGenerator {
                     let resolved_type_args = instance.resolve_type_args(&type_param_infos);
 
                     // 计算特化版本的布局（字段类型已替换）
-                    let specialized_fields: Vec<_> = instance_fields.iter().map(|f| {
-                        let mut field = f.clone();
-                        field.field_type = substitute_type_params(&field.field_type, &resolved_type_args, &type_param_infos);
-                        field
-                    }).collect();
-                    generator.compute_class_layout(&specialized_name, &specialized_fields, class.parent.as_deref());
+                    let specialized_fields: Vec<_> = instance_fields
+                        .iter()
+                        .map(|f| {
+                            let mut field = f.clone();
+                            field.field_type = substitute_type_params(
+                                &field.field_type,
+                                &resolved_type_args,
+                                &type_param_infos,
+                            );
+                            field
+                        })
+                        .collect();
+                    generator.compute_class_layout(
+                        &specialized_name,
+                        &specialized_fields,
+                        class.parent.as_deref(),
+                    );
 
                     generator.generic_type_args = old_mapping;
                 }
@@ -359,7 +389,11 @@ impl IRGenerator {
 
         // 先收集显式特化信息，用于在自动单态化时跳过
         for spec_class in &program.specialize_classes {
-            let type_args_str: Vec<String> = spec_class.type_args.iter().map(|t| format!("{}", t)).collect();
+            let type_args_str: Vec<String> = spec_class
+                .type_args
+                .iter()
+                .map(|t| format!("{}", t))
+                .collect();
             let spec_key = type_args_str.join(", ");
             self.explicit_specializations
                 .entry(spec_class.base_name.clone())
@@ -634,7 +668,8 @@ impl IRGenerator {
             return;
         }
 
-        self.output.push_str("\n; Link libraries metadata (generated by #link directives)\n");
+        self.output
+            .push_str("\n; Link libraries metadata (generated by #link directives)\n");
         for lib in link_libraries {
             if lib.is_system {
                 self.output.push_str(&format!("; !link <{}>\n", lib.name));
@@ -891,11 +926,8 @@ impl IRGenerator {
         let full_class_name = if class.type_params.is_empty() {
             class.name.clone()
         } else {
-            let type_param_names: Vec<String> = class
-                .type_params
-                .iter()
-                .map(|p| p.name.clone())
-                .collect();
+            let type_param_names: Vec<String> =
+                class.type_params.iter().map(|p| p.name.clone()).collect();
             format!("{}<{}>", class.name, type_param_names.join(", "))
         };
 
@@ -977,7 +1009,9 @@ impl IRGenerator {
 
         // ===== 泛型特化：为每个特化版本生成方法 =====
         if is_generic {
-            let mut instances = self.specializations.get(&base_qname)
+            let mut instances = self
+                .specializations
+                .get(&base_qname)
                 .cloned()
                 .unwrap_or_default();
             // 特化收集器以源码中书写的类名为键（裸名，如 "Optional"），而此处
@@ -1009,7 +1043,10 @@ impl IRGenerator {
                 }
 
                 // 检查是否有显式特化覆盖此类型组合
-                let type_args_str: Vec<String> = resolved_type_args.iter().map(|t| format!("{}", t)).collect();
+                let type_args_str: Vec<String> = resolved_type_args
+                    .iter()
+                    .map(|t| format!("{}", t))
+                    .collect();
                 let explicit_key = type_args_str.join(", ");
                 if let Some(explicit_set) = self.explicit_specializations.get(&class.name) {
                     if explicit_set.contains(&explicit_key) {
@@ -1041,8 +1078,10 @@ impl IRGenerator {
                                     &resolved_type_args,
                                     &type_param_infos,
                                 );
-                                specialized_method.params = method.params.iter().map(|p| {
-                                    crate::types::ParameterInfo {
+                                specialized_method.params = method
+                                    .params
+                                    .iter()
+                                    .map(|p| crate::types::ParameterInfo {
                                         name: p.name.clone(),
                                         param_type: substitute_type_params(
                                             &p.param_type,
@@ -1050,15 +1089,17 @@ impl IRGenerator {
                                             &type_param_infos,
                                         ),
                                         is_varargs: p.is_varargs,
-                                    }
-                                }).collect();
+                                    })
+                                    .collect();
                                 self.generate_method(&specialized_name, &specialized_method)?;
                             }
                         }
                         ClassMember::Constructor(ctor) => {
                             let mut specialized_ctor = ctor.clone();
-                            specialized_ctor.params = ctor.params.iter().map(|p| {
-                                crate::types::ParameterInfo {
+                            specialized_ctor.params = ctor
+                                .params
+                                .iter()
+                                .map(|p| crate::types::ParameterInfo {
                                     name: p.name.clone(),
                                     param_type: substitute_type_params(
                                         &p.param_type,
@@ -1066,8 +1107,8 @@ impl IRGenerator {
                                         &type_param_infos,
                                     ),
                                     is_varargs: p.is_varargs,
-                                }
-                            }).collect();
+                                })
+                                .collect();
                             self.generate_constructor(&specialized_name, &specialized_ctor)?;
                         }
                         _ => {}
@@ -1093,7 +1134,7 @@ impl IRGenerator {
     }
 
     /// 生成显式特化类
-    /// 
+    ///
     /// 为显式特化声明生成 LLVM IR：
     /// 1. 查找原始泛型类
     /// 2. 将显式特化的成员覆盖原始成员
@@ -1108,9 +1149,10 @@ impl IRGenerator {
         let base_class = match self.classes_cache.get(&spec.base_name) {
             Some(c) => c.clone(),
             None => {
-                return Err(crate::miette_diagnostic::codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                return Err(crate::miette_diagnostic::codegen_error_at(
+                    ErrorCodes::CODEGEN_INVALID_OPERATION,
                     spec.loc.clone(),
-                    format!("找不到显式特化的基础类 '{}'", spec.base_name)
+                    format!("找不到显式特化的基础类 '{}'", spec.base_name),
                 ));
             }
         };
@@ -1127,18 +1169,25 @@ impl IRGenerator {
             .collect();
 
         // 解析最终类型参数（填充默认值）
-        let resolved_type_args: Vec<Type> = type_param_infos.iter().enumerate().map(|(idx, param)| {
-            if let Some(type_arg) = spec.type_args.get(idx) {
-                type_arg.clone()
-            } else if let Some(default) = &param.default_type {
-                default.clone()
-            } else {
-                Type::GenericParam(param.name.clone())
-            }
-        }).collect();
+        let resolved_type_args: Vec<Type> = type_param_infos
+            .iter()
+            .enumerate()
+            .map(|(idx, param)| {
+                if let Some(type_arg) = spec.type_args.get(idx) {
+                    type_arg.clone()
+                } else if let Some(default) = &param.default_type {
+                    default.clone()
+                } else {
+                    Type::GenericParam(param.name.clone())
+                }
+            })
+            .collect();
 
         // 构建特化类名，如 Box<int>
-        let type_args_str: Vec<String> = resolved_type_args.iter().map(|t| format!("{}", t)).collect();
+        let type_args_str: Vec<String> = resolved_type_args
+            .iter()
+            .map(|t| format!("{}", t))
+            .collect();
         let specialized_name = format!("{}<{}>", spec.base_name, type_args_str.join(", "));
 
         // 构建类型参数映射
@@ -1158,8 +1207,9 @@ impl IRGenerator {
         self.generate_vtable_global(&specialized_name)?;
 
         // 合并成员：显式特化成员覆盖原始成员
-        let mut merged_members: std::collections::HashMap<String, ClassMember> = std::collections::HashMap::new();
-        
+        let mut merged_members: std::collections::HashMap<String, ClassMember> =
+            std::collections::HashMap::new();
+
         // 先添加原始成员
         for member in &base_class.members {
             let key = match member {
@@ -1171,7 +1221,7 @@ impl IRGenerator {
             };
             merged_members.insert(key, member.clone());
         }
-        
+
         // 显式特化成员覆盖
         for member in &spec.members {
             let key = match member {
@@ -1185,7 +1235,9 @@ impl IRGenerator {
         }
 
         // 检查是否有显式构造函数
-        let has_explicit_ctor = merged_members.values().any(|m| matches!(m, ClassMember::Constructor(_)));
+        let has_explicit_ctor = merged_members
+            .values()
+            .any(|m| matches!(m, ClassMember::Constructor(_)));
 
         // 生成合并后的成员
         for member in merged_members.values() {
@@ -1200,8 +1252,10 @@ impl IRGenerator {
                             &resolved_type_args,
                             &type_param_infos,
                         );
-                        specialized_method.params = method.params.iter().map(|p| {
-                            crate::types::ParameterInfo {
+                        specialized_method.params = method
+                            .params
+                            .iter()
+                            .map(|p| crate::types::ParameterInfo {
                                 name: p.name.clone(),
                                 param_type: substitute_type_params(
                                     &p.param_type,
@@ -1209,15 +1263,17 @@ impl IRGenerator {
                                     &type_param_infos,
                                 ),
                                 is_varargs: p.is_varargs,
-                            }
-                        }).collect();
+                            })
+                            .collect();
                         self.generate_method(&specialized_name, &specialized_method)?;
                     }
                 }
                 ClassMember::Constructor(ctor) => {
                     let mut specialized_ctor = ctor.clone();
-                    specialized_ctor.params = ctor.params.iter().map(|p| {
-                        crate::types::ParameterInfo {
+                    specialized_ctor.params = ctor
+                        .params
+                        .iter()
+                        .map(|p| crate::types::ParameterInfo {
                             name: p.name.clone(),
                             param_type: substitute_type_params(
                                 &p.param_type,
@@ -1225,8 +1281,8 @@ impl IRGenerator {
                                 &type_param_infos,
                             ),
                             is_varargs: p.is_varargs,
-                        }
-                    }).collect();
+                        })
+                        .collect();
                     self.generate_constructor(&specialized_name, &specialized_ctor)?;
                 }
                 _ => {}
@@ -1566,10 +1622,19 @@ impl IRGenerator {
 
         // 实例方法声明 this 变量
         if !is_static {
-            let this_llvm_name = self.scope_manager.declare_var("this", &format!("{}*", this_llvm_type));
-            self.emit_line(&format!("  %{} = alloca {}*", this_llvm_name, this_llvm_type));
-            self.emit_line(&format!("  store {}* %this, {}** %{}", this_llvm_type, this_llvm_type, this_llvm_name));
-            self.var_types.insert("this".to_string(), format!("{}*", this_llvm_type));
+            let this_llvm_name = self
+                .scope_manager
+                .declare_var("this", &format!("{}*", this_llvm_type));
+            self.emit_line(&format!(
+                "  %{} = alloca {}*",
+                this_llvm_name, this_llvm_type
+            ));
+            self.emit_line(&format!(
+                "  store {}* %this, {}** %{}",
+                this_llvm_type, this_llvm_type, this_llvm_name
+            ));
+            self.var_types
+                .insert("this".to_string(), format!("{}*", this_llvm_type));
             // 存储 this 的 Cavvy 类型信息，用于准确的类型推断
             let this_cay_type = crate::types::Type::Object(class_name.to_string());
             self.var_cay_types.insert("this".to_string(), this_cay_type);
@@ -2514,7 +2579,8 @@ impl IRGenerator {
         // 声明 printf 函数（根据用户 extern 声明动态适配返回类型）
         let printf_ret = self.get_extern_ret_type("printf", "i32");
         if printf_ret == "void" {
-            self.output.push_str("declare void @printf(i8*, ...) #0\n\n");
+            self.output
+                .push_str("declare void @printf(i8*, ...) #0\n\n");
         } else {
             self.output.push_str("declare i32 @printf(i8*, ...) #0\n\n");
         }

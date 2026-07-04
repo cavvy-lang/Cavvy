@@ -2,7 +2,7 @@
 
 use super::analyzer::SemanticAnalyzer;
 use crate::ast::{ClassMember, MethodDecl, Modifier, Program};
-use crate::miette_diagnostic::{CayResult, semantic_error, semantic_error_with_file, ErrorCodes};
+use crate::miette_diagnostic::{CayResult, ErrorCodes, semantic_error, semantic_error_with_file};
 use crate::types::{ClassInfo, FieldInfo, MethodInfo, ParameterInfo, Type};
 
 impl SemanticAnalyzer {
@@ -54,7 +54,8 @@ impl SemanticAnalyzer {
                         // 多个类有 main，但没有标记 @main
                         let class_names: Vec<String> =
                             main_classes.iter().map(|(name, _)| name.clone()).collect();
-                        Err(semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, 
+                        Err(semantic_error_with_file(
+                            ErrorCodes::SEMANTIC_INVALID_OPERATION,
                             None,
                             0,
                             0,
@@ -75,7 +76,8 @@ impl SemanticAnalyzer {
                             .iter()
                             .map(|(name, _)| name.clone())
                             .collect();
-                        Err(semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, 
+                        Err(semantic_error_with_file(
+                            ErrorCodes::SEMANTIC_INVALID_OPERATION,
                             None,
                             0,
                             0,
@@ -108,8 +110,10 @@ impl SemanticAnalyzer {
             // 收集接口方法，并将接口类型参数名替换为 GenericParam 类型，
             // 以便与实现类的方法签名进行统一比较。
             for method in &interface.methods {
-                let params = self.replace_params_type_params(&method.params, &interface.type_params);
-                let return_type = self.replace_type_params(&method.return_type, &interface.type_params);
+                let params =
+                    self.replace_params_type_params(&method.params, &interface.type_params);
+                let return_type =
+                    self.replace_type_params(&method.return_type, &interface.type_params);
                 let method_info = MethodInfo {
                     name: method.name.clone(),
                     class_name: interface.name.clone(),
@@ -159,10 +163,7 @@ impl SemanticAnalyzer {
                 constructors: Vec::new(),
                 has_destructor: false,
                 // 未显式指定父类时，默认继承 Object 根类
-                parent: class
-                    .parent
-                    .clone()
-                    .or(Some("Object".to_string())),
+                parent: class.parent.clone().or(Some("Object".to_string())),
                 interfaces: class.interfaces.clone(),
                 is_abstract,
                 is_final,
@@ -210,12 +211,19 @@ impl SemanticAnalyzer {
                         // 检查是否存在签名完全相同的构造函数（重复定义）
                         for existing in &class_info.constructors {
                             if existing.params.len() == params.len() {
-                                let same_params = existing.params.iter().zip(params.iter())
-                                    .all(|(a, b)| a.param_type == b.param_type && a.is_varargs == b.is_varargs);
+                                let same_params =
+                                    existing.params.iter().zip(params.iter()).all(|(a, b)| {
+                                        a.param_type == b.param_type && a.is_varargs == b.is_varargs
+                                    });
                                 if same_params {
-                                    return Err(semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, 
-                                        self.current_file.clone(), ctor.loc.line, ctor.loc.column, "构造函数已被定义，不能重复定义相同签名的构造函数".to_string()),
-                                    );
+                                    return Err(semantic_error_with_file(
+                                        ErrorCodes::SEMANTIC_INVALID_OPERATION,
+                                        self.current_file.clone(),
+                                        ctor.loc.line,
+                                        ctor.loc.column,
+                                        "构造函数已被定义，不能重复定义相同签名的构造函数"
+                                            .to_string(),
+                                    ));
                                 }
                             }
                         }
@@ -329,8 +337,12 @@ impl SemanticAnalyzer {
                     if is_test {
                         // @Test 方法必须是 void 返回类型
                         if method.return_type != Type::Void {
-                            return Err(semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, 
-                                self.current_file.clone(), method.loc.line, method.loc.column, format!(
+                            return Err(semantic_error_with_file(
+                                ErrorCodes::SEMANTIC_INVALID_OPERATION,
+                                self.current_file.clone(),
+                                method.loc.line,
+                                method.loc.column,
+                                format!(
                                     "@Test 方法 '{}' 的返回类型必须是 void，当前为 {}\n提示: 将返回类型改为 void，例如: public void {}(, ErrorCodes::get_suggestion(ErrorCodes::SEMANTIC_INVALID_OPERATION).to_string())",
                                     method.name, method.return_type, method.name
                                 ),
@@ -338,8 +350,12 @@ impl SemanticAnalyzer {
                         }
                         // @Test 方法不能有参数
                         if !method.params.is_empty() {
-                            return Err(semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, 
-                                self.current_file.clone(), method.loc.line, method.loc.column, format!(
+                            return Err(semantic_error_with_file(
+                                ErrorCodes::SEMANTIC_INVALID_OPERATION,
+                                self.current_file.clone(),
+                                method.loc.line,
+                                method.loc.column,
+                                format!(
                                     "@Test 方法 '{}' 不能有参数（发现 {} 个参数）\n提示: 移除参数，例如: public void {}(, ErrorCodes::get_suggestion(ErrorCodes::SEMANTIC_INVALID_OPERATION).to_string())",
                                     method.name,
                                     method.params.len(),
@@ -349,8 +365,12 @@ impl SemanticAnalyzer {
                         }
                         // @Test 方法不能是 private
                         if method.modifiers.contains(&Modifier::Private) {
-                            return Err(semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, 
-                                self.current_file.clone(), method.loc.line, method.loc.column, format!(
+                            return Err(semantic_error_with_file(
+                                ErrorCodes::SEMANTIC_INVALID_OPERATION,
+                                self.current_file.clone(),
+                                method.loc.line,
+                                method.loc.column,
+                                format!(
                                     "@Test 方法 '{}' 不能是 private\n提示: 将 private 改为 public，例如: public void {}(, ErrorCodes::get_suggestion(ErrorCodes::SEMANTIC_INVALID_OPERATION).to_string())",
                                     method.name, method.name
                                 ),
@@ -363,10 +383,16 @@ impl SemanticAnalyzer {
                         if let Some(existing_methods) = class_info.methods.get(&method_info.name) {
                             for existing in existing_methods {
                                 if existing.params.len() == method_info.params.len() {
-                                    let same_params = existing.params.iter().zip(method_info.params.iter())
-                                        .all(|(a, b)| a.param_type == b.param_type && a.is_varargs == b.is_varargs);
+                                    let same_params =
+                                        existing.params.iter().zip(method_info.params.iter()).all(
+                                            |(a, b)| {
+                                                a.param_type == b.param_type
+                                                    && a.is_varargs == b.is_varargs
+                                            },
+                                        );
                                     if same_params {
-                                        return Err(semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, 
+                                        return Err(semantic_error_with_file(
+                                            ErrorCodes::SEMANTIC_INVALID_OPERATION,
                                             self.current_file.clone(),
                                             method.loc.line,
                                             method.loc.column,
@@ -399,7 +425,8 @@ impl SemanticAnalyzer {
             self.type_registry.current_namespace = class.namespace_path.clone();
             if let Some(ref parent_name) = class.parent {
                 if !self.type_registry.class_exists(parent_name) {
-                    return Err(semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, 
+                    return Err(semantic_error_with_file(
+                        ErrorCodes::SEMANTIC_INVALID_OPERATION,
                         class.loc.file.clone(),
                         class.loc.line,
                         class.loc.column,
@@ -418,7 +445,8 @@ impl SemanticAnalyzer {
             if let Some(ref parent_name) = class.parent {
                 if let Some(parent_class) = self.type_registry.get_class(parent_name) {
                     if parent_class.is_final {
-                        return Err(semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, 
+                        return Err(semantic_error_with_file(
+                            ErrorCodes::SEMANTIC_INVALID_OPERATION,
                             class.loc.file.clone(),
                             class.loc.line,
                             class.loc.column,
@@ -461,7 +489,8 @@ impl SemanticAnalyzer {
             let interface_info = match self.type_registry.get_interface(&interface_name) {
                 Some(info) => info,
                 None => {
-                    return Err(semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, 
+                    return Err(semantic_error_with_file(
+                        ErrorCodes::SEMANTIC_INVALID_OPERATION,
                         class.loc.file.clone(),
                         class.loc.line,
                         class.loc.column,
@@ -517,7 +546,8 @@ impl SemanticAnalyzer {
                     &substituted_params,
                     &substituted_return,
                 ) {
-                    return Err(semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, 
+                    return Err(semantic_error_with_file(
+                        ErrorCodes::SEMANTIC_INVALID_OPERATION,
                         class.loc.file.clone(),
                         class.loc.line,
                         class.loc.column,
@@ -580,7 +610,8 @@ impl SemanticAnalyzer {
         visited: &mut Vec<String>,
     ) -> CayResult<()> {
         if visited.contains(&current.to_string()) {
-            return Err(semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, 
+            return Err(semantic_error_with_file(
+                ErrorCodes::SEMANTIC_INVALID_OPERATION,
                 None,
                 0,
                 0,
@@ -610,7 +641,8 @@ impl SemanticAnalyzer {
                     let parent_name = match &class.parent {
                         Some(p) => p,
                         None => {
-                            return Err(semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, 
+                            return Err(semantic_error_with_file(
+                                ErrorCodes::SEMANTIC_INVALID_OPERATION,
                                 method.loc.file.clone(),
                                 method.loc.line,
                                 method.loc.column,
@@ -629,7 +661,8 @@ impl SemanticAnalyzer {
                         &method.params,
                         &method.return_type,
                     ) {
-                        return Err(semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, 
+                        return Err(semantic_error_with_file(
+                            ErrorCodes::SEMANTIC_INVALID_OPERATION,
                             method.loc.file.clone(),
                             method.loc.line,
                             method.loc.column,
@@ -734,7 +767,8 @@ impl SemanticAnalyzer {
                         if self.types_match(&parent_param_types, param_types) {
                             // 找到匹配的方法，检查是否是 final
                             if method.is_final {
-                                return Err(semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, 
+                                return Err(semantic_error_with_file(
+                                    ErrorCodes::SEMANTIC_INVALID_OPERATION,
                                     None,
                                     line,
                                     column,

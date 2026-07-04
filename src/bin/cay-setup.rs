@@ -12,8 +12,8 @@ use std::process;
 
 use cavvy::setup::check::{CheckStatus, run_full_check};
 use cavvy::setup::download::{
-    DownloadConfig, install_cavvy_prebuilt, install_cavvy_from_source,
-    download_and_install_llvm, find_cavvy_install_dir, get_tool_version,
+    DownloadConfig, download_and_install_llvm, find_cavvy_install_dir, get_tool_version,
+    install_cavvy_from_source, install_cavvy_prebuilt,
 };
 use cavvy::setup::{SetupResult, VersionInfo, find_verinfo, parse_verinfo};
 
@@ -51,9 +51,8 @@ fn ask_yn(prompt: &str, default_yes: bool) -> bool {
 }
 
 fn load_verinfo() -> SetupResult<VersionInfo> {
-    let path = find_verinfo().ok_or_else(|| {
-        cavvy::setup::SetupError::NotFound("未找到 .verinfo 文件".to_string())
-    })?;
+    let path = find_verinfo()
+        .ok_or_else(|| cavvy::setup::SetupError::NotFound("未找到 .verinfo 文件".to_string()))?;
     parse_verinfo(path)
 }
 
@@ -224,13 +223,19 @@ fn menu_install() -> SetupResult<()> {
                 if let Some(ref dir) = cavvy_dir {
                     if !dir.join("llvm-minimal").exists() {
                         println!();
-                        if ask_yn("检测到当前 Cavvy 安装目录缺少 LLVM minimal，是否立即下载", true) {
+                        if ask_yn(
+                            "检测到当前 Cavvy 安装目录缺少 LLVM minimal，是否立即下载",
+                            true,
+                        ) {
                             println!();
                             let verinfo = load_verinfo()?;
                             let config = DownloadConfig::default();
                             match download_and_install_llvm(&verinfo, &config, Some(dir)) {
                                 Ok(llvm_dir) => {
-                                    println!("[SUCCESS] LLVM minimal 已安装到: {}", llvm_dir.display());
+                                    println!(
+                                        "[SUCCESS] LLVM minimal 已安装到: {}",
+                                        llvm_dir.display()
+                                    );
                                 }
                                 Err(e) => {
                                     eprintln!("[WARN] LLVM minimal 下载失败: {}", e);
@@ -270,7 +275,14 @@ fn menu_version_tools() -> SetupResult<()> {
     println!("版本管理");
     println!("{}", "-".repeat(50));
 
-    let tools = ["cayc", "cay-ir", "ir2exe", "cay-check", "cay-run", "cay-setup"];
+    let tools = [
+        "cayc",
+        "cay-ir",
+        "ir2exe",
+        "cay-check",
+        "cay-run",
+        "cay-setup",
+    ];
     let mut found_any = false;
 
     for tool in &tools {

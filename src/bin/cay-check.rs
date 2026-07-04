@@ -1,7 +1,7 @@
+use cavvy::lexer;
 use cavvy::miette_diagnostic::{
     CayError, get_error_help, get_error_location, get_error_message, print_error_with_context,
 };
-use cavvy::lexer;
 use cavvy::parser;
 use cavvy::preprocessor;
 use cavvy::semantic;

@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::{CayResult, codegen_error_at, ErrorCodes};
+use crate::miette_diagnostic::{CayResult, ErrorCodes, codegen_error_at};
 
 impl IRGenerator {
     /// 提升整数操作数到相同类型
@@ -252,7 +252,8 @@ impl IRGenerator {
                         .var_types
                         .get(name_str)
                         .ok_or_else(|| {
-                            codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                            codegen_error_at(
+                                ErrorCodes::CODEGEN_INVALID_OPERATION,
                                 expr.location().clone(),
                                 format!("Variable '{}' not found", name_str),
                             )
@@ -271,7 +272,8 @@ impl IRGenerator {
                 let (ty, ptr) = self.get_member_field_pointer(member)?;
                 Ok((ty, ptr, false))
             }
-            _ => Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+            _ => Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
                 expr.location().clone(),
                 "Invalid lvalue expression".to_string(),
             )),
@@ -309,7 +311,11 @@ impl IRGenerator {
         self.emit_line(&format!("{}:", error_label));
         // 输出错误信息到 stderr
         let error_msg = self.get_or_create_string_constant("Error: Division by zero\n");
-        self.emit_line(&format!("  call {} (i8*, ...) @printf(i8* {})", self.get_extern_ret_type("printf", "i32"), error_msg));
+        self.emit_line(&format!(
+            "  call {} (i8*, ...) @printf(i8* {})",
+            self.get_extern_ret_type("printf", "i32"),
+            error_msg
+        ));
         // 调用 exit 退出程序
         self.emit_line("  call void @exit(i32 1)");
         self.emit_line("  unreachable");
@@ -460,7 +466,8 @@ impl IRGenerator {
             }
         }
 
-        Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+        Err(codegen_error_at(
+            ErrorCodes::CODEGEN_INVALID_OPERATION,
             member.loc.clone(),
             format!(
                 "Cannot get field pointer for member access: {}",
@@ -592,7 +599,8 @@ impl IRGenerator {
             }
         }
 
-        Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+        Err(codegen_error_at(
+            ErrorCodes::CODEGEN_INVALID_OPERATION,
             member.loc.clone(),
             format!(
                 "Cannot get nested field pointer for member access: {} (object class: {:?})",
@@ -699,7 +707,8 @@ impl IRGenerator {
             }
         }
 
-        Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+        Err(codegen_error_at(
+            ErrorCodes::CODEGEN_INVALID_OPERATION,
             member.loc.clone(),
             format!(
                 "Cannot get nested field pointer for member access: {} (object class: {:?})",

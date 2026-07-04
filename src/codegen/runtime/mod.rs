@@ -175,7 +175,9 @@ impl IRGenerator {
         // LLVM 内存操作内部函数声明（标准库和用户内联 IR 可使用）
         self.emit_raw("declare void @llvm.memcpy.p0i8.p0i8.i64(i8* noalias nocapture writeonly, i8* noalias nocapture readonly, i64, i1 immarg)");
         self.emit_raw("declare void @llvm.memmove.p0i8.p0i8.i64(i8* nocapture writeonly, i8* nocapture readonly, i64, i1 immarg)");
-        self.emit_raw("declare void @llvm.memset.p0i8.i64(i8* nocapture writeonly, i8, i64, i1 immarg)");
+        self.emit_raw(
+            "declare void @llvm.memset.p0i8.i64(i8* nocapture writeonly, i8, i64, i1 immarg)",
+        );
 
         // Windows平台使用 __acrt_iob_func 获取stdin
         if target_triple.contains("windows") || target_triple.contains("mingw") {

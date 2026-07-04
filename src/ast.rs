@@ -1,8 +1,8 @@
 use crate::miette_diagnostic::SourceLocation;
 use crate::types::{ClassInfo, MethodInfo, ParameterInfo, Type};
+use serde::Serialize;
 use std::fmt;
 use std::hash::{Hash, Hasher};
-use serde::Serialize;
 
 /// 提供位置信息的trait
 pub trait HasLocation {
@@ -171,8 +171,8 @@ pub struct ClassDecl {
 /// 显式特化类声明 - specialize class Box<int> { ... }
 #[derive(Debug, Clone, Serialize)]
 pub struct SpecializeClassDecl {
-    pub base_name: String,       // 基础类名，如 "Box"
-    pub type_args: Vec<Type>,    // 特化类型参数，如 [int]
+    pub base_name: String,         // 基础类名，如 "Box"
+    pub type_args: Vec<Type>,      // 特化类型参数，如 [int]
     pub members: Vec<ClassMember>, // 特化版本的成员（可覆盖原方法）
     pub namespace_path: Vec<String>,
     pub loc: SourceLocation,

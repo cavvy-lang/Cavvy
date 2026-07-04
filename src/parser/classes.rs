@@ -5,9 +5,9 @@ use super::expressions::parse_expression;
 use super::statements::{parse_block, parse_statement};
 use super::types::{is_type_token, parse_type};
 use crate::ast::*;
-use crate::miette_diagnostic::SourceLocation;
-use crate::miette_diagnostic::CayResult;
 use crate::lexer::Token;
+use crate::miette_diagnostic::CayResult;
+use crate::miette_diagnostic::SourceLocation;
 use crate::types::{InterfaceInfo, ParameterInfo, Type};
 
 /// 解析类声明
@@ -1077,17 +1077,13 @@ pub fn parse_specialize_class(parser: &mut Parser) -> CayResult<SpecializeClassD
         "期望关键字 'class'\n提示: specialize 后应跟 'class'，例如: specialize class Box<int> { ... }",
     )?;
 
-    let base_name = parser.consume_identifier(
-        "期望类名\n提示: 在 'specialize class' 后应跟类名",
-    )?;
+    let base_name =
+        parser.consume_identifier("期望类名\n提示: 在 'specialize class' 后应跟类名")?;
 
     // 解析特化类型参数 <int> 或 <int, String>
     let type_args = parse_generic_type_args(parser)?;
 
-    parser.consume(
-        &Token::LBrace,
-        "期望 '{'\n提示: 显式特化声明后应跟类体",
-    )?;
+    parser.consume(&Token::LBrace, "期望 '{'\n提示: 显式特化声明后应跟类体")?;
 
     let mut members = Vec::new();
     while !parser.check(&Token::RBrace) && !parser.is_at_end() {
@@ -1118,9 +1114,7 @@ pub fn parse_generic_type_params(parser: &mut Parser) -> CayResult<Vec<crate::as
 
             // 可选的类型边界: T: Bound
             let bound = if parser.match_token(&Token::Colon) {
-                Some(parser.consume_identifier(
-                    "期望类型边界名\n提示: 类型边界格式为 'T: Bound'",
-                )?)
+                Some(parser.consume_identifier("期望类型边界名\n提示: 类型边界格式为 'T: Bound'")?)
             } else {
                 None
             };

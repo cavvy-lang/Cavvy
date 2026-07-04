@@ -1,13 +1,16 @@
 //! Lambda 表达式类型推断
 
 use super::super::analyzer::SemanticAnalyzer;
+use super::super::symbol_table::SemanticSymbolInfo;
 use crate::ast::*;
 use crate::types::Type;
-use super::super::symbol_table::SemanticSymbolInfo;
 
 impl SemanticAnalyzer {
     /// 推断 Lambda 表达式类型
-    pub(crate) fn infer_lambda_type(&mut self, lambda: &LambdaExpr) -> crate::miette_diagnostic::CayResult<Type> {
+    pub(crate) fn infer_lambda_type(
+        &mut self,
+        lambda: &LambdaExpr,
+    ) -> crate::miette_diagnostic::CayResult<Type> {
         // Lambda 表达式: (params) -> { body }
         // 创建新的作用域
         self.symbol_table.enter_scope();

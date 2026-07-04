@@ -44,7 +44,7 @@ pub struct StructLayoutInfo {
     pub total_size: usize,
     pub fields: HashMap<String, InstanceFieldInfo>,
     pub field_order: Vec<String>, // 字段定义顺序，用于 LLVM GEP 索引
-    pub llvm_type_def: String, // LLVM 类型定义: %struct.Point = type { i32, i32 }
+    pub llvm_type_def: String,    // LLVM 类型定义: %struct.Point = type { i32, i32 }
 }
 
 /// 类实例布局信息
@@ -266,7 +266,8 @@ pub struct IRGenerator {
     // 中的 `Box<int>`），用于将无显式类型参数的 new 单态化到具体特化版本。
     pub pending_new_expected_type: Option<crate::types::Type>,
     // 泛型特化：已收集的特化实例（基础类名 -> 实例集合）
-    pub specializations: HashMap<String, HashSet<crate::codegen::specialization::SpecializationInstance>>,
+    pub specializations:
+        HashMap<String, HashSet<crate::codegen::specialization::SpecializationInstance>>,
     // 泛型特化：已生成的特化方法名（避免重复生成）
     pub generated_specializations: HashSet<String>,
     // 已生成的 vtable 全局常量（避免重复生成）
@@ -278,7 +279,8 @@ pub struct IRGenerator {
     // 类定义缓存（用于显式特化查找原始类）
     pub classes_cache: std::collections::HashMap<String, crate::ast::ClassDecl>,
     // 显式特化类型组合记录（基础类名 -> 特化类型参数列表集合）
-    pub explicit_specializations: std::collections::HashMap<String, std::collections::HashSet<String>>,
+    pub explicit_specializations:
+        std::collections::HashMap<String, std::collections::HashSet<String>>,
 }
 
 /// DWARF 子程序元数据
@@ -640,7 +642,11 @@ impl IRGenerator {
     /// 从SourceLocation设置源位置
     /// 优先使用loc中的file字段，如果为None则使用传入的file参数
     /// 只有loc未携带原始文件时才回退到预处理器源映射
-    pub fn set_source_from_loc(&mut self, loc: &crate::miette_diagnostic::SourceLocation, file: &str) {
+    pub fn set_source_from_loc(
+        &mut self,
+        loc: &crate::miette_diagnostic::SourceLocation,
+        file: &str,
+    ) {
         if let Some(loc_file) = &loc.file {
             self.source_file = normalize_source_file_path(loc_file);
             self.source_line = loc.line;
@@ -740,17 +746,15 @@ impl IRGenerator {
                     Type::GenericParam(name)
                 }
             }
-            Type::Array(inner) => {
-                Type::Array(Box::new(self.substitute_generic_params(*inner)))
-            }
-            Type::Pointer(inner) => {
-                Type::Pointer(Box::new(self.substitute_generic_params(*inner)))
-            }
+            Type::Array(inner) => Type::Array(Box::new(self.substitute_generic_params(*inner))),
+            Type::Pointer(inner) => Type::Pointer(Box::new(self.substitute_generic_params(*inner))),
             Type::Function(func_type) => {
                 let new_return = self.substitute_generic_params(*func_type.return_type);
-                let new_params = func_type.params.into_iter().map(|p| {
-                    self.substitute_generic_params(p)
-                }).collect();
+                let new_params = func_type
+                    .params
+                    .into_iter()
+                    .map(|p| self.substitute_generic_params(p))
+                    .collect();
                 Type::Function(Box::new(crate::types::FunctionType {
                     return_type: Box::new(new_return),
                     params: new_params,
@@ -759,7 +763,10 @@ impl IRGenerator {
                 }))
             }
             Type::Generic(base, args) => {
-                let new_args = args.into_iter().map(|a| self.substitute_generic_params(a)).collect();
+                let new_args = args
+                    .into_iter()
+                    .map(|a| self.substitute_generic_params(a))
+                    .collect();
                 Type::Generic(base, new_args)
             }
             _ => ty,
@@ -773,7 +780,11 @@ impl IRGenerator {
         self.resolve_type_arg_concrete_depth(ty, 0)
     }
 
-    fn resolve_type_arg_concrete_depth(&self, ty: &crate::types::Type, depth: usize) -> crate::types::Type {
+    fn resolve_type_arg_concrete_depth(
+        &self,
+        ty: &crate::types::Type,
+        depth: usize,
+    ) -> crate::types::Type {
         use crate::types::Type;
         // 深度上限防止自映射（如 T -> Object("T")）导致的无限递归
         if depth > 16 {
@@ -794,15 +805,17 @@ impl IRGenerator {
                     ty.clone()
                 }
             }
-            Type::Array(inner) => {
-                Type::Array(Box::new(self.resolve_type_arg_concrete_depth(inner, depth + 1)))
-            }
-            Type::Pointer(inner) => {
-                Type::Pointer(Box::new(self.resolve_type_arg_concrete_depth(inner, depth + 1)))
-            }
+            Type::Array(inner) => Type::Array(Box::new(
+                self.resolve_type_arg_concrete_depth(inner, depth + 1),
+            )),
+            Type::Pointer(inner) => Type::Pointer(Box::new(
+                self.resolve_type_arg_concrete_depth(inner, depth + 1),
+            )),
             Type::Generic(base, args) => Type::Generic(
                 base.clone(),
-                args.iter().map(|a| self.resolve_type_arg_concrete_depth(a, depth + 1)).collect(),
+                args.iter()
+                    .map(|a| self.resolve_type_arg_concrete_depth(a, depth + 1))
+                    .collect(),
             ),
             _ => ty.clone(),
         }
@@ -1736,7 +1749,8 @@ impl IRGenerator {
         &self,
         class_name: &str,
         field_name: &str,
-    ) -> Option<&InstanceFieldInfo> {        // 先用传入的类名直接查找 class 布局
+    ) -> Option<&InstanceFieldInfo> {
+        // 先用传入的类名直接查找 class 布局
         if let Some(layout) = self.class_layouts.get(class_name) {
             if let Some(result) = layout.fields.get(field_name) {
                 return Some(result);
@@ -1804,23 +1818,22 @@ impl IRGenerator {
     /// 生成 struct 深拷贝代码（通过 llvm.memcpy）
     /// 时间复杂度: O(1) IR 生成，运行时 O(size)
     /// 空间复杂度: O(1) 额外临时变量
-    pub fn emit_struct_memcpy(
-        &mut self,
-        dest_ptr: &str,
-        src_ptr: &str,
-        struct_name: &str,
-    ) {
+    pub fn emit_struct_memcpy(&mut self, dest_ptr: &str, src_ptr: &str, struct_name: &str) {
         if let Some(layout) = self.get_struct_layout(struct_name) {
             let size = layout.total_size;
             let dest_i8 = self.new_temp();
             let src_i8 = self.new_temp();
             self.emit_line(&format!(
                 "  {} = bitcast {}* {} to i8*",
-                dest_i8, format!("%struct.{}", struct_name), dest_ptr
+                dest_i8,
+                format!("%struct.{}", struct_name),
+                dest_ptr
             ));
             self.emit_line(&format!(
                 "  {} = bitcast {}* {} to i8*",
-                src_i8, format!("%struct.{}", struct_name), src_ptr
+                src_i8,
+                format!("%struct.{}", struct_name),
+                src_ptr
             ));
             self.emit_line(&format!(
                 "  call void @llvm.memcpy.p0i8.p0i8.i64(i8* {}, i8* {}, i64 {}, i1 false)",

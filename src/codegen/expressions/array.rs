@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::{CayResult, codegen_error_at, ErrorCodes};
+use crate::miette_diagnostic::{CayResult, ErrorCodes, codegen_error_at};
 use crate::types::Type;
 
 impl IRGenerator {
@@ -44,7 +44,8 @@ impl IRGenerator {
 
         // 确保大小是整数类型
         if !size_type.starts_with("i") {
-            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
                 loc.clone(),
                 format!("Array size must be integer, got {}", size_type),
             ));
@@ -67,7 +68,8 @@ impl IRGenerator {
             let temp = self.new_temp();
             // 防御性检查：size_type 必须是纯整数类型
             if size_type.ends_with("*") {
-                return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                return Err(codegen_error_at(
+                    ErrorCodes::CODEGEN_INVALID_OPERATION,
                     loc.clone(),
                     format!("Array size must be an integer type, got {}", size_type),
                 ));
@@ -226,7 +228,8 @@ impl IRGenerator {
         // 2. 不自动分配子数组，由用户后续手动分配
 
         if sizes.len() < 2 {
-            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
                 loc.clone(),
                 "Multidimensional array needs at least 2 dimensions".to_string(),
             ));
@@ -402,7 +405,8 @@ impl IRGenerator {
 
         // 确保索引是整数类型
         if !index_type.starts_with("i") {
-            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
                 arr.loc.clone(),
                 format!("Array index must be integer, got {}", index_type),
             ));
@@ -466,7 +470,8 @@ impl IRGenerator {
     /// * `init` - 数组初始化表达式
     pub fn generate_array_init(&mut self, init: &ArrayInitExpr) -> CayResult<String> {
         if init.elements.is_empty() {
-            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
                 init.loc.clone(),
                 "Cannot generate code for empty array initializer".to_string(),
             ));
@@ -561,7 +566,8 @@ impl IRGenerator {
         target_type: &Type,
     ) -> CayResult<String> {
         if init.elements.is_empty() {
-            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
                 init.loc.clone(),
                 "Cannot generate code for empty array initializer".to_string(),
             ));

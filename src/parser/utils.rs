@@ -3,8 +3,8 @@
 //! 提供语法分析器的通用工具函数和增强的错误处理
 
 use super::Parser;
-use crate::miette_diagnostic::{CayError, CayResult, ErrorCodes};
 use crate::lexer::{Token, TokenWithLocation};
+use crate::miette_diagnostic::{CayError, CayResult, ErrorCodes};
 
 /// 检查是否到达令牌流末尾
 pub fn is_at_end(parser: &Parser) -> bool {

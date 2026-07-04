@@ -1,15 +1,18 @@
 //! 表达式类型推断辅助函数
 
 use super::super::analyzer::SemanticAnalyzer;
-use crate::miette_diagnostic::{semantic_error_with_file, SourceLocation, ErrorCodes};
 use crate::miette_diagnostic::CayError;
+use crate::miette_diagnostic::{ErrorCodes, SourceLocation, semantic_error_with_file};
 
 /// 辅助函数：根据SourceLocation创建语义错误
-pub fn semantic_error_at_loc(
-    loc: &SourceLocation,
-    message: impl Into<String>,
-) -> CayError {
-    semantic_error_with_file(ErrorCodes::SEMANTIC_INVALID_OPERATION, loc.file.clone(), loc.line, loc.column, message)
+pub fn semantic_error_at_loc(loc: &SourceLocation, message: impl Into<String>) -> CayError {
+    semantic_error_with_file(
+        ErrorCodes::SEMANTIC_INVALID_OPERATION,
+        loc.file.clone(),
+        loc.line,
+        loc.column,
+        message,
+    )
 }
 
 /// 检查成员访问权限

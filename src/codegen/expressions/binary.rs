@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::{SourceLocation, CayResult, codegen_error_at, ErrorCodes};
+use crate::miette_diagnostic::{CayResult, ErrorCodes, SourceLocation, codegen_error_at};
 
 /// 检查类型是否为整数类型（不包括指针）
 fn is_integer_type(ty: &str) -> bool {
@@ -342,7 +342,8 @@ impl IRGenerator {
             ));
             return Ok(format!("{} {}", promoted_type, temp));
         } else {
-            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
                 loc.clone(),
                 format!(
                     "Unsupported addition types: {} and {}",
@@ -392,7 +393,8 @@ impl IRGenerator {
             ));
             return Ok(format!("{} {}", promoted_type, temp));
         } else {
-            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
                 loc.clone(),
                 format!(
                     "Unsupported subtraction types: {} and {}",
@@ -442,7 +444,8 @@ impl IRGenerator {
             ));
             return Ok(format!("{} {}", promoted_type, temp));
         } else {
-            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
                 loc.clone(),
                 format!(
                     "Unsupported multiplication types: {} and {}",
@@ -494,7 +497,8 @@ impl IRGenerator {
             ));
             return Ok(format!("{} {}", promoted_type, temp));
         } else {
-            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
                 loc.clone(),
                 format!(
                     "Unsupported division types: {} and {}",
@@ -526,7 +530,8 @@ impl IRGenerator {
             ));
             return Ok(format!("{} {}", promoted_type, temp));
         } else {
-            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
                 loc.clone(),
                 format!("Unsupported modulo types: {} and {}", left_type, right_type),
             ));
@@ -609,7 +614,8 @@ impl IRGenerator {
             ));
             return Ok(format!("i1 {}", temp));
         } else {
-            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
                 loc.clone(),
                 format!(
                     "Unsupported equality comparison types: {} and {}",
@@ -695,7 +701,8 @@ impl IRGenerator {
             ));
             return Ok(format!("i1 {}", temp));
         } else {
-            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
                 loc.clone(),
                 format!(
                     "Unsupported inequality comparison types: {} and {}",
@@ -743,7 +750,8 @@ impl IRGenerator {
             ));
             return Ok(format!("i1 {}", temp));
         } else {
-            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
                 loc.clone(),
                 format!(
                     "Unsupported less-than comparison types: {} and {}",
@@ -791,7 +799,8 @@ impl IRGenerator {
             ));
             return Ok(format!("i1 {}", temp));
         } else {
-            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
                 loc.clone(),
                 format!(
                     "Unsupported less-or-equal comparison types: {} and {}",
@@ -838,7 +847,8 @@ impl IRGenerator {
                 temp, promoted_type, promoted_left, promoted_right
             ));
         } else {
-            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
                 loc.clone(),
                 format!(
                     "Unsupported greater-than comparison types: {} and {}",
@@ -886,7 +896,8 @@ impl IRGenerator {
                 temp, promoted_type, promoted_left, promoted_right
             ));
         } else {
-            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
                 loc.clone(),
                 format!(
                     "Unsupported greater-than-or-equal comparison types: {} and {}",
@@ -1013,7 +1024,8 @@ impl IRGenerator {
             ));
             return Ok(format!("{} {}", promoted_type, temp));
         } else {
-            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
                 loc.clone(),
                 format!(
                     "Bitwise AND requires integer operands, got {} and {}",
@@ -1043,7 +1055,8 @@ impl IRGenerator {
             ));
             return Ok(format!("{} {}", promoted_type, temp));
         } else {
-            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
                 loc.clone(),
                 format!(
                     "Bitwise OR requires integer operands, got {} and {}",
@@ -1073,7 +1086,8 @@ impl IRGenerator {
             ));
             return Ok(format!("{} {}", promoted_type, temp));
         } else {
-            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
                 loc.clone(),
                 format!(
                     "Bitwise XOR requires integer operands, got {} and {}",
@@ -1103,7 +1117,8 @@ impl IRGenerator {
             ));
             return Ok(format!("{} {}", promoted_type, temp));
         } else {
-            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
                 loc.clone(),
                 format!(
                     "Shift left requires integer operands, got {} and {}",
@@ -1133,7 +1148,8 @@ impl IRGenerator {
             ));
             return Ok(format!("{} {}", promoted_type, temp));
         } else {
-            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
                 loc.clone(),
                 format!(
                     "Arithmetic shift right requires integer operands, got {} and {}",
@@ -1163,7 +1179,8 @@ impl IRGenerator {
             ));
             return Ok(format!("{} {}", promoted_type, temp));
         } else {
-            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
                 loc.clone(),
                 format!(
                     "Unsigned shift right requires integer operands, got {} and {}",

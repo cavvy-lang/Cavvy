@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::{CayResult, codegen_error_at, ErrorCodes};
+use crate::miette_diagnostic::{CayResult, ErrorCodes, codegen_error_at};
 
 impl IRGenerator {
     /// 生成成员函数指针字段调用
@@ -26,7 +26,8 @@ impl IRGenerator {
                 func.is_static,
             )
         } else {
-            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
                 loc.clone(),
                 format!("Field '{}' is not a function pointer", member.member),
             ));
@@ -34,7 +35,8 @@ impl IRGenerator {
 
         // 检查参数数量
         if args.len() != param_types.len() {
-            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
                 loc.clone(),
                 format!(
                     "Function pointer call requires {} arguments, but got {}",
@@ -66,13 +68,15 @@ impl IRGenerator {
                 if let Type::Object(name) = obj_type {
                     name
                 } else {
-                    return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    return Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         loc.clone(),
                         "Object is not a class instance".to_string(),
                     ));
                 }
             } else {
-                return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                return Err(codegen_error_at(
+                    ErrorCodes::CODEGEN_INVALID_OPERATION,
                     loc.clone(),
                     "Cannot determine object type".to_string(),
                 ));
@@ -81,13 +85,15 @@ impl IRGenerator {
             if let Type::Object(name) = obj_type {
                 name
             } else {
-                return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                return Err(codegen_error_at(
+                    ErrorCodes::CODEGEN_INVALID_OPERATION,
                     loc.clone(),
                     "Object is not a class instance".to_string(),
                 ));
             }
         } else {
-            return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
                 loc.clone(),
                 "Cannot determine object type".to_string(),
             ));
@@ -98,7 +104,8 @@ impl IRGenerator {
             if let Some(field_info) = self.get_instance_field(&class_name, &member.member) {
                 field_info.offset
             } else {
-                return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                return Err(codegen_error_at(
+                    ErrorCodes::CODEGEN_INVALID_OPERATION,
                     loc.clone(),
                     format!(
                         "Field '{}' not found in class '{}'",

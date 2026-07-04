@@ -252,10 +252,7 @@ impl WorkspaceResolver {
 
         match self.security_level {
             SecurityLevel::Critical => {
-                bail!(
-                    "安全等级 Critical 禁止安装未经验证的 Git 依赖: {}",
-                    name
-                );
+                bail!("安全等级 Critical 禁止安装未经验证的 Git 依赖: {}", name);
             }
             SecurityLevel::Standard => {
                 eprintln!(
@@ -428,11 +425,7 @@ impl WorkspaceResolver {
     ///
     /// 尝试从官方安全源获取证书并验证本地包。
     /// 离线或网络失败时不报错（记录审计日志）。
-    fn verify_local_package_if_possible(
-        &self,
-        name: &str,
-        package_path: &Path,
-    ) -> Result<()> {
+    fn verify_local_package_if_possible(&self, name: &str, package_path: &Path) -> Result<()> {
         let mut registry_config = RegistryConfig::default();
         if let Ok(cache_dir) = super::registry::default_cache_dir() {
             registry_config.cache_dir = cache_dir;
@@ -451,10 +444,7 @@ impl WorkspaceResolver {
                         SecurityEventType::VerificationSkipped,
                         "verify_local_package",
                     )
-                    .with_details(&format!(
-                        "本地包 {} 无法获取索引进行验证（可能离线）",
-                        name
-                    )),
+                    .with_details(&format!("本地包 {} 无法获取索引进行验证（可能离线）", name)),
                 );
                 return Ok(());
             }
@@ -474,7 +464,8 @@ impl WorkspaceResolver {
                 );
                 bail!(
                     "本地包 {} 安全验证失败: {}。建议重新下载或检查配置。",
-                    name, e
+                    name,
+                    e
                 );
             }
 

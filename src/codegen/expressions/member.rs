@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::{CayResult, codegen_error_at, ErrorCodes};
+use crate::miette_diagnostic::{CayResult, ErrorCodes, codegen_error_at};
 
 impl IRGenerator {
     /// 生成数组长度访问代码（用于 .length 属性或 .length() 方法）
@@ -237,7 +237,8 @@ impl IRGenerator {
                         // 枚举存在但没有这个 variant，返回错误
                         let available: Vec<_> =
                             enum_info.variants.iter().map(|v| v.name.clone()).collect();
-                        return Err(crate::miette_diagnostic::codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                        return Err(crate::miette_diagnostic::codegen_error_at(
+                            ErrorCodes::CODEGEN_INVALID_OPERATION,
                             member.loc.clone(),
                             format!(
                                 "枚举 '{}' 中没有 variant '{}'。可选: {:?}",
@@ -262,7 +263,8 @@ impl IRGenerator {
                     || registry.get_enum_by_name(&base_class_name).is_some();
 
                 if known_static_target && !has_value_binding {
-                    return Err(codegen_error_at(ErrorCodes::CODEGEN_INVALID_OPERATION, 
+                    return Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
                         member.loc.clone(),
                         format!(
                             "Unknown static member '{}' for type '{}'",
@@ -305,11 +307,9 @@ impl IRGenerator {
         } else if let Expr::Call(call_expr) = &*member.object {
             // 方法调用返回对象: 从调用返回类型推断类名
             self.get_expression_type(&member.object)
-                .and_then(|ty| {
-                    match ty {
-                        crate::types::Type::Object(class_name) => Some(class_name),
-                        _ => None,
-                    }
+                .and_then(|ty| match ty {
+                    crate::types::Type::Object(class_name) => Some(class_name),
+                    _ => None,
                 })
         } else {
             None
@@ -524,13 +524,11 @@ impl IRGenerator {
         } else if let Expr::Call(_) = &*member.object {
             // 方法调用返回对象: 从调用返回类型推断类名
             self.get_expression_type(&member.object)
-                .and_then(|ty| {
-                    match ty {
-                        crate::types::Type::Object(class_name) => Some(class_name),
-                        _ => None,
-                    }
+                .and_then(|ty| match ty {
+                    crate::types::Type::Object(class_name) => Some(class_name),
+                    _ => None,
                 })
-        } else { 
+        } else {
             None
         };
 

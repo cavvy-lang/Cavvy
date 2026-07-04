@@ -4,10 +4,8 @@
 mod debug_common;
 
 use cavvy::ast::{InlineIrStmt, Program, Stmt};
-use cavvy::ir::{
-    IrBasicBlock, IrFunction, IrInstruction, IrModule, IrTerminator, LlvmBackend,
-};
 use cavvy::ir::inline_ir::InlineIrParser;
+use cavvy::ir::{IrBasicBlock, IrFunction, IrInstruction, IrModule, IrTerminator, LlvmBackend};
 use debug_common::*;
 use serde::Serialize;
 use std::process;
@@ -82,21 +80,14 @@ fn main() {
         }
     }
 
-    let module_result = build_module(&ast,
-        options.common.no_semantics,
-    );
+    let module_result = build_module(&ast, options.common.no_semantics);
 
     match module_result {
         Ok(module) => {
             if options.common.json_output {
-                output_module_json(&module,
-                    options.function_filter.as_deref(),
-                );
+                output_module_json(&module, options.function_filter.as_deref());
             } else {
-                print_module_pretty(
-                    &module,
-                    &options,
-                );
+                print_module_pretty(&module, &options);
             }
 
             if options.emit_llvm {
@@ -122,9 +113,7 @@ fn main() {
                     Err(e) => exit_with_error(&format!("JSON 序列化失败: {}", e)),
                 }
             } else {
-                print_inline_ir_entries(&entries,
-                    options.common.no_color,
-                );
+                print_inline_ir_entries(&entries, options.common.no_color);
             }
         }
     }
@@ -172,10 +161,7 @@ fn parse_sir_args(args: &[String]) -> Result<(SirOptions, String), String> {
     Ok((options, input_file))
 }
 
-fn build_module(
-    ast: &Program,
-    no_semantics: bool,
-) -> Result<IrModule, String> {
+fn build_module(ast: &Program, no_semantics: bool) -> Result<IrModule, String> {
     let mut builder = cavvy::ir::IrBuilder::new();
 
     if !no_semantics {
@@ -184,9 +170,7 @@ fn build_module(
         // This path is best-effort only.
     }
 
-    builder
-        .build_from_ast(ast)
-        .map_err(|e| format!("{}", e))
+    builder.build_from_ast(ast).map_err(|e| format!("{}", e))
 }
 
 fn output_module_json(module: &IrModule, function_filter: Option<&str>) {
@@ -209,16 +193,33 @@ fn output_module_json(module: &IrModule, function_filter: Option<&str>) {
 }
 
 fn print_module_pretty(module: &IrModule, options: &SirOptions) {
-    let header_color = if options.common.no_color { "" } else { "\x1b[1;36m" };
-    let section_color = if options.common.no_color { "" } else { "\x1b[1;35m" };
-    let func_color = if options.common.no_color { "" } else { "\x1b[1;33m" };
-    let block_color = if options.common.no_color { "" } else { "\x1b[1;34m" };
-    let reset = if options.common.no_color { "" } else { "\x1b[0m" };
+    let header_color = if options.common.no_color {
+        ""
+    } else {
+        "\x1b[1;36m"
+    };
+    let section_color = if options.common.no_color {
+        ""
+    } else {
+        "\x1b[1;35m"
+    };
+    let func_color = if options.common.no_color {
+        ""
+    } else {
+        "\x1b[1;33m"
+    };
+    let block_color = if options.common.no_color {
+        ""
+    } else {
+        "\x1b[1;34m"
+    };
+    let reset = if options.common.no_color {
+        ""
+    } else {
+        "\x1b[0m"
+    };
 
-    println!(
-        "{}=== Module: {} ==={}",
-        header_color, module.name, reset
-    );
+    println!("{}=== Module: {} ==={}", header_color, module.name, reset);
     println!("{}Target:{}", section_color, reset);
     println!("  {}", module.target_triple);
 
@@ -244,7 +245,11 @@ fn print_module_pretty(module: &IrModule, options: &SirOptions) {
         for global in &module.globals {
             println!(
                 "  {} {} = {:?}",
-                if global.is_constant { "constant" } else { "global" },
+                if global.is_constant {
+                    "constant"
+                } else {
+                    "global"
+                },
                 global.name,
                 global.initializer
             );
@@ -369,10 +374,7 @@ fn collect_inline_ir_entries(program: &Program) -> Vec<InlineIrEntry> {
                 });
             }
             Err(e) => {
-                eprintln!(
-                    "警告: 第 {} 行的 __ir 块解析失败: {}",
-                    stmt.loc.line, e
-                );
+                eprintln!("警告: 第 {} 行的 __ir 块解析失败: {}", stmt.loc.line, e);
             }
         }
     }

@@ -1,8 +1,8 @@
 //! Shared helpers for Cavvy debug CLI binaries (cay-ast, cay-pl, cay-sir).
 #![allow(dead_code)]
 
-use cavvy::miette_diagnostic::{CayError, print_error_with_context};
 use cavvy::lexer;
+use cavvy::miette_diagnostic::{CayError, print_error_with_context};
 use cavvy::parser;
 use cavvy::preprocessor;
 use std::env;
@@ -38,8 +38,7 @@ pub fn preprocess_source(source: &str, path: &str, no_preprocess: bool) -> Resul
         .and_then(|p| p.to_str())
         .unwrap_or(".");
 
-    preprocessor::preprocess(source, path, base_dir)
-        .map_err(|e| format!("预处理错误: {}", e))
+    preprocessor::preprocess(source, path, base_dir).map_err(|e| format!("预处理错误: {}", e))
 }
 
 /// Lex and parse source into an AST.
