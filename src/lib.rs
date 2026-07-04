@@ -76,6 +76,14 @@ impl Compiler {
         Self { options }
     }
 
+    /// 统一打印编译过程中收集到的警告
+    fn print_warnings(warnings: &[CayError], source: &str, filename: &str) {
+        if warnings.is_empty() {
+            return;
+        }
+        crate::miette_diagnostic::print_diagnostics_by_file(warnings, source, filename);
+    }
+
     /// 编译源代码为 LLVM IR
     ///
     /// # Arguments
@@ -85,8 +93,22 @@ impl Compiler {
     /// # Returns
     /// 编译成功返回 Ok(())
     pub fn compile(&self, source: &str, output_path: &str) -> CayResult<()> {
-        // 1. 词法分析
-        let tokens = lexer::lex(source)?;
+        let mut warnings: Vec<CayError> = Vec::new();
+        let default_filename = "";
+
+        // 1. 词法分析（同时收集警告）
+        let mut lexer = lexer::Lexer::new(source);
+        let tokens = match lexer.tokenize() {
+            Ok(tokens) => {
+                warnings.extend(lexer.take_warnings());
+                tokens
+            }
+            Err(e) => {
+                warnings.extend(lexer.take_warnings());
+                Self::print_warnings(&warnings, source, default_filename);
+                return Err(e);
+            }
+        };
 
         // 调试：打印所有token
         #[cfg(debug_assertions)]
@@ -120,7 +142,9 @@ impl Compiler {
             ir_gen.enable_test_mode();
         }
         // 注意：compile方法没有源文件路径，使用空字符串
-        let mut ir = ir_gen.generate(&ast, "")?;
+        let gen_result = ir_gen.generate(&ast, "");
+        warnings.extend(std::mem::take(&mut *ir_gen.warnings.borrow_mut()));
+        let mut ir = gen_result?;
 
         // 5. 如果启用了混淆，应用IR混淆
         if self.options.obfuscate {
@@ -135,6 +159,8 @@ impl Compiler {
             file: Some(output_path.to_string()),
             message: e.to_string(),
         })?;
+
+        Self::print_warnings(&warnings, source, default_filename);
 
         Ok(())
     }
@@ -204,9 +230,23 @@ impl Compiler {
     ) -> CayResult<()> {
         // 保留一份源映射用于语义分析错误定位
         let source_map_for_analyzer = source_map.clone();
+        let default_filename = main_file.as_deref().unwrap_or("");
+        let mut warnings: Vec<CayError> = Vec::new();
 
-        // 1. 词法分析（带源映射和当前文件路径）
-        let tokens = lexer::lex_with_source_map_and_file(source, source_map, main_file.clone())?;
+        // 1. 词法分析（带源映射和当前文件路径，同时收集警告）
+        let mut lexer =
+            lexer::Lexer::with_source_map_and_file(source, source_map, main_file.clone());
+        let tokens = match lexer.tokenize() {
+            Ok(tokens) => {
+                warnings.extend(lexer.take_warnings());
+                tokens
+            }
+            Err(e) => {
+                warnings.extend(lexer.take_warnings());
+                Self::print_warnings(&warnings, source, default_filename);
+                return Err(e);
+            }
+        };
 
         // 调试：打印所有token
         #[cfg(debug_assertions)]
@@ -256,7 +296,9 @@ impl Compiler {
         }
         // 设置源文件路径以启用源映射
         let source_file = main_file.as_deref().unwrap_or("");
-        let mut ir = ir_gen.generate(&ast, source_file)?;
+        let gen_result = ir_gen.generate(&ast, source_file);
+        warnings.extend(std::mem::take(&mut *ir_gen.warnings.borrow_mut()));
+        let mut ir = gen_result?;
 
         // 5. 如果启用了混淆，应用IR混淆
         if self.options.obfuscate {
@@ -271,6 +313,8 @@ impl Compiler {
             file: Some(output_path.to_string()),
             message: e.to_string(),
         })?;
+
+        Self::print_warnings(&warnings, source, default_filename);
 
         Ok(())
     }

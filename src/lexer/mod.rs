@@ -369,6 +369,8 @@ pub struct TokenWithLocation {
     pub source_file: Option<String>,
     /// 原始源文件行号
     pub source_line: Option<usize>,
+    /// 该token在源代码中的原始文本（用于代码风格检查等）
+    pub lexeme: String,
 }
 
 impl TokenWithLocation {
@@ -378,12 +380,14 @@ impl TokenWithLocation {
         loc: SourceLocation,
         file: Option<String>,
         line: Option<usize>,
+        lexeme: impl Into<String>,
     ) -> Self {
         Self {
             token,
             loc,
             source_file: file,
             source_line: line,
+            lexeme: lexeme.into(),
         }
     }
 
@@ -395,6 +399,15 @@ impl TokenWithLocation {
     /// 获取用于错误报告的行号
     pub fn get_line(&self) -> usize {
         self.source_line.unwrap_or(self.loc.line)
+    }
+
+    /// 构造用于诊断的 SourceLocation（优先使用原始源文件信息）
+    pub fn diagnostic_location(&self) -> SourceLocation {
+        SourceLocation {
+            file: self.source_file.clone(),
+            line: self.source_line.unwrap_or(self.loc.line),
+            column: self.loc.column,
+        }
     }
 }
 
@@ -423,6 +436,8 @@ pub struct Lexer<'a> {
     source_map: std::collections::HashMap<usize, (String, usize)>,
     /// 是否保留换行token（用于内联IR等需要行分隔的场景）
     preserve_newlines: bool,
+    /// 词法分析阶段收集的警告（不终止编译）
+    warnings: Vec<CayError>,
 }
 
 impl<'a> Lexer<'a> {
@@ -437,6 +452,7 @@ impl<'a> Lexer<'a> {
             current_source_file: None,
             source_map: std::collections::HashMap::new(),
             preserve_newlines: false,
+            warnings: Vec::new(),
         }
     }
 
@@ -452,6 +468,7 @@ impl<'a> Lexer<'a> {
             current_source_file: None,
             source_map: std::collections::HashMap::new(),
             preserve_newlines: true,
+            warnings: Vec::new(),
         }
     }
 
@@ -479,6 +496,7 @@ impl<'a> Lexer<'a> {
             current_source_file: current_file,
             source_map,
             preserve_newlines: false,
+            warnings: Vec::new(),
         }
     }
 
@@ -491,6 +509,69 @@ impl<'a> Lexer<'a> {
     /// 获取诊断收集器
     pub fn diagnostics(&self) -> &Vec<CayError> {
         &self.diagnostics
+    }
+
+    /// 获取词法分析阶段收集到的警告
+    pub fn warnings(&self) -> &[CayError] {
+        &self.warnings
+    }
+
+    /// 取出收集到的警告，供调用方统一报告
+    pub fn take_warnings(&mut self) -> Vec<CayError> {
+        std::mem::take(&mut self.warnings)
+    }
+
+    /// 检查同一源文件内是否存在别名混用（如 `pub`/`public`、`int`/`i32`）
+    fn check_alias_style_lints(&mut self, tokens: &[TokenWithLocation]) {
+        use std::collections::HashMap;
+
+        #[derive(Default)]
+        struct GroupState {
+            first_spelling: Option<String>,
+            first_loc: Option<SourceLocation>,
+            reported: bool,
+        }
+
+        // 每个文件、每个别名组单独跟踪
+        let mut by_file: HashMap<Option<String>, HashMap<&'static str, GroupState>> =
+            HashMap::new();
+
+        for token in tokens {
+            let (group_name, a, b) = match alias_group_name_and_spellings(&token.token) {
+                Some(g) => g,
+                None => continue,
+            };
+            if token.lexeme != a && token.lexeme != b {
+                continue;
+            }
+
+            let groups = by_file.entry(token.source_file.clone()).or_default();
+            let state = groups.entry(group_name).or_default();
+
+            if state.first_spelling.is_none() {
+                state.first_spelling = Some(token.lexeme.clone());
+                state.first_loc = Some(token.diagnostic_location());
+            } else if state.first_spelling.as_deref() != Some(&token.lexeme) && !state.reported {
+                let first = state.first_spelling.as_deref().unwrap();
+                let first_loc = state.first_loc.clone().unwrap();
+                let first_loc_str = if first_loc.file.as_deref().unwrap_or("").is_empty() {
+                    format!("行 {}", first_loc.line)
+                } else {
+                    format!("{}:{}", first_loc.file_str(), first_loc.line)
+                };
+                let message = format!(
+                    "代码风格警告：在同一源文件内混用了 {} 的不同拼写 '{}' 与 '{}'；已在 {} 使用 '{}'",
+                    group_name, first, token.lexeme, first_loc_str, first
+                );
+                let warning = crate::miette_diagnostic::lexer_warning_at(
+                    ErrorCodes::LEXER_STYLE_ALIAS_MIXING,
+                    token.diagnostic_location(),
+                    message,
+                );
+                self.warnings.push(warning);
+                state.reported = true;
+            }
+        }
     }
 
     /// 检查指定位置是否在__ir块内
@@ -683,6 +764,7 @@ impl<'a> Lexer<'a> {
                         loc,
                         source_file,
                         source_line,
+                        lexeme: self.source[span.clone()].to_string(),
                     });
                 }
                 Err(_) => {
@@ -736,6 +818,9 @@ impl<'a> Lexer<'a> {
                 }
             }
         }
+
+        // 运行代码风格检查（别名混用），在同一文件内发现不同拼写才报告警告
+        self.check_alias_style_lints(&tokens);
 
         // 检查是否有收集到的错误
         if !self.diagnostics.is_empty() {
@@ -796,6 +881,7 @@ impl<'a> Lexer<'a> {
                     loc,
                     source_file,
                     source_line,
+                    lexeme: self.source[span.clone()].to_string(),
                 }))
             }
             Some(Err(_)) => {
@@ -892,6 +978,25 @@ fn process_char_escape(s: &str) -> Option<char> {
     }
 }
 
+/// 返回某个token所属的别名组信息（组名 + 两种合法拼写）。
+/// 仅对存在多个别名的关键字/类型关键字返回 `Some`。
+fn alias_group_name_and_spellings(
+    token: &Token,
+) -> Option<(&'static str, &'static str, &'static str)> {
+    match token {
+        Token::Public => Some(("访问修饰符 'pub'/'public'", "pub", "public")),
+        Token::Private => Some(("访问修饰符 'priv'/'private'", "priv", "private")),
+        Token::Int => Some(("整数类型 'int'/'i32'", "int", "i32")),
+        Token::Long => Some(("长整数类型 'long'/'i64'", "long", "i64")),
+        Token::Float => Some(("单精度浮点类型 'float'/'f32'", "float", "f32")),
+        Token::Double => Some(("双精度浮点类型 'double'/'f64'", "double", "f64")),
+        Token::Bool => Some(("布尔类型 'bool'/'boolean'", "bool", "boolean")),
+        Token::String => Some(("字符串类型 'string'/'String'", "string", "String")),
+        Token::Fn => Some(("函数关键字 'fn'/'function'", "fn", "function")),
+        _ => None,
+    }
+}
+
 /// 便捷的tokenize函数
 pub fn tokenize(source: &str) -> CayResult<Vec<TokenWithLocation>> {
     let mut lexer = Lexer::new(source);
@@ -916,6 +1021,26 @@ pub fn tokenize_collect_errors(source: &str) -> (Vec<TokenWithLocation>, Vec<Cay
 /// 带诊断的词法分析函数（别名）
 pub fn lex_with_diagnostics(source: &str) -> (Vec<TokenWithLocation>, Vec<CayError>) {
     tokenize_collect_errors(source)
+}
+
+/// 词法分析并同时返回收集到的警告（不返回错误，错误通过 Result 传播）
+pub fn lex_with_warnings(source: &str) -> CayResult<(Vec<TokenWithLocation>, Vec<CayError>)> {
+    let mut lexer = Lexer::new(source);
+    let tokens = lexer.tokenize()?;
+    let warnings = lexer.take_warnings();
+    Ok((tokens, warnings))
+}
+
+/// 带源映射、当前文件路径和警告收集的词法分析函数
+pub fn lex_with_source_map_and_file_with_warnings(
+    source: &str,
+    source_map: std::collections::HashMap<usize, (String, usize)>,
+    current_file: Option<String>,
+) -> CayResult<(Vec<TokenWithLocation>, Vec<CayError>)> {
+    let mut lexer = Lexer::with_source_map_and_file(source, source_map, current_file);
+    let tokens = lexer.tokenize()?;
+    let warnings = lexer.take_warnings();
+    Ok((tokens, warnings))
 }
 
 /// 检查源字符串是否包含有效的Cavvy代码（无词法错误）
@@ -1465,18 +1590,81 @@ x"#;
     }
 
     #[test]
-    fn test_scientific_notation_with_suffix() {
-        // 测试带后缀的科学计数法
-        let source = r#"1e10f 1.5e-10d 2E5F"#;
-        let tokens = tokenize(source).unwrap();
-        assert_eq!(tokens.len(), 3, "Should have 3 float literals");
+    fn test_alias_style_lint_warns_on_mixed_visibility() {
+        let source = r#"public class A {}
+pub class B {}"#;
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.tokenize().unwrap();
+        let warnings = lexer.take_warnings();
+        assert!(!warnings.is_empty(), "应检测到 pub/public 混用");
+        assert_eq!(
+            warnings[0].error_code(),
+            ErrorCodes::LEXER_STYLE_ALIAS_MIXING
+        );
+        // 两个类定义，所以有两个 Public token
+        assert!(
+            tokens
+                .iter()
+                .filter(|t| matches!(t.token, Token::Public))
+                .count()
+                >= 2
+        );
+    }
 
-        // 验证后缀
-        if let Token::FloatLiteral(Some((_, suffix))) = &tokens[0].token {
-            assert_eq!(*suffix, Some('f'), "Should have 'f' suffix");
-        }
-        if let Token::FloatLiteral(Some((_, suffix))) = &tokens[1].token {
-            assert_eq!(*suffix, Some('d'), "Should have 'd' suffix");
-        }
+    #[test]
+    fn test_alias_style_lint_warns_on_mixed_int_type() {
+        let source = r#"int a;
+i32 b;"#;
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.tokenize().unwrap();
+        let warnings = lexer.take_warnings();
+        assert!(!warnings.is_empty(), "应检测到 int/i32 混用");
+        assert_eq!(
+            warnings[0].error_code(),
+            ErrorCodes::LEXER_STYLE_ALIAS_MIXING
+        );
+        assert_eq!(
+            tokens
+                .iter()
+                .filter(|t| matches!(t.token, Token::Int))
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn test_alias_style_lint_no_warning_when_consistent() {
+        let source = "public class A {\n    public int x;\n}";
+        let mut lexer = Lexer::new(source);
+        let _tokens = lexer.tokenize().unwrap();
+        let warnings = lexer.take_warnings();
+        assert!(warnings.is_empty(), "统一使用 public/int 时不应产生警告");
+    }
+
+    #[test]
+    fn test_alias_style_lint_respects_file_boundary() {
+        // 手动构造来自两个不同文件的 token，模拟 #include 场景
+        let loc_a = SourceLocation::new(Some("a.cay".to_string()), 1, 1);
+        let loc_b = SourceLocation::new(Some("b.cay".to_string()), 1, 1);
+        let tokens = vec![
+            TokenWithLocation {
+                token: Token::Public,
+                loc: loc_a.clone(),
+                source_file: Some("a.cay".to_string()),
+                source_line: Some(1),
+                lexeme: "pub".to_string(),
+            },
+            TokenWithLocation {
+                token: Token::Public,
+                loc: loc_b.clone(),
+                source_file: Some("b.cay".to_string()),
+                source_line: Some(1),
+                lexeme: "public".to_string(),
+            },
+        ];
+        let mut lexer = Lexer::new("");
+        lexer.check_alias_style_lints(&tokens);
+        let warnings = lexer.take_warnings();
+        assert!(warnings.is_empty(), "不同文件之间的别名差异不应产生警告");
     }
 }

@@ -1,6 +1,7 @@
 use cavvy::lexer;
 use cavvy::miette_diagnostic::{
-    CayError, get_error_help, get_error_location, get_error_message, print_error_with_context,
+    CayError, get_error_help, get_error_location, get_error_message, print_diagnostics_by_file,
+    print_error_with_context,
 };
 use cavvy::parser;
 use cavvy::preprocessor;
@@ -299,20 +300,31 @@ fn main() {
                 println!("");
             }
             println!("[1] 词法分析...");
-            let lex_result = if let Some(ref map) = source_map {
-                lexer::lex_with_source_map(&processed_source, map.clone())
+            let mut lexer = if let Some(ref map) = source_map {
+                lexer::Lexer::with_source_map(&processed_source, map.clone())
             } else {
-                lexer::lex(&processed_source)
+                lexer::Lexer::new(&processed_source)
             };
-            match lex_result {
+            match lexer.tokenize() {
                 Ok(tokens) => {
+                    let warnings = lexer.take_warnings();
+                    if !warnings.is_empty() {
+                        print_diagnostics_by_file(&warnings, &processed_source, &source_path);
+                    }
                     let elapsed = start_time.elapsed();
                     println!("  [+] 词法分析通过");
                     println!("      发现 {} 个 token", tokens.len());
+                    if !warnings.is_empty() {
+                        println!("      发现 {} 个警告", warnings.len());
+                    }
                     println!("");
                     println!("[+] 语法检查完成! (耗时: {:?})", elapsed);
                 }
                 Err(e) => {
+                    let warnings = lexer.take_warnings();
+                    if !warnings.is_empty() {
+                        print_diagnostics_by_file(&warnings, &processed_source, &source_path);
+                    }
                     print_error_with_context(&e, &processed_source, &source_path);
                     process::exit(1);
                 }
@@ -323,17 +335,25 @@ fn main() {
                 println!("");
             }
             println!("[1] 词法分析...");
-            let lex_result = if let Some(ref map) = source_map {
-                lexer::lex_with_source_map(&processed_source, map.clone())
+            let mut lexer = if let Some(ref map) = source_map {
+                lexer::Lexer::with_source_map(&processed_source, map.clone())
             } else {
-                lexer::lex(&processed_source)
+                lexer::Lexer::new(&processed_source)
             };
-            let tokens = match lex_result {
+            let tokens = match lexer.tokenize() {
                 Ok(tokens) => {
+                    let warnings = lexer.take_warnings();
+                    if !warnings.is_empty() {
+                        print_diagnostics_by_file(&warnings, &processed_source, &source_path);
+                    }
                     println!("  [+] 词法分析通过");
                     tokens
                 }
                 Err(e) => {
+                    let warnings = lexer.take_warnings();
+                    if !warnings.is_empty() {
+                        print_diagnostics_by_file(&warnings, &processed_source, &source_path);
+                    }
                     print_error_with_context(&e, &processed_source, &source_path);
                     process::exit(1);
                 }
@@ -360,17 +380,25 @@ fn main() {
                 println!("");
             }
             println!("[1] 词法分析...");
-            let lex_result = if let Some(ref map) = source_map {
-                lexer::lex_with_source_map(&processed_source, map.clone())
+            let mut lexer = if let Some(ref map) = source_map {
+                lexer::Lexer::with_source_map(&processed_source, map.clone())
             } else {
-                lexer::lex(&processed_source)
+                lexer::Lexer::new(&processed_source)
             };
-            let tokens = match lex_result {
+            let tokens = match lexer.tokenize() {
                 Ok(tokens) => {
+                    let warnings = lexer.take_warnings();
+                    if !warnings.is_empty() {
+                        print_diagnostics_by_file(&warnings, &processed_source, &source_path);
+                    }
                     println!("  [+] 词法分析通过");
                     tokens
                 }
                 Err(e) => {
+                    let warnings = lexer.take_warnings();
+                    if !warnings.is_empty() {
+                        print_diagnostics_by_file(&warnings, &processed_source, &source_path);
+                    }
                     print_error_with_context(&e, &processed_source, &source_path);
                     process::exit(1);
                 }

@@ -653,10 +653,7 @@ impl IRGenerator {
         // 添加链接库元数据（用于 #link 指令）
         self.emit_link_libraries_metadata(&program.link_libraries);
 
-        // 输出收集到的代码生成警告
-        for warning in self.warnings.borrow().iter() {
-            eprintln!("{}", warning);
-        }
+        // 代码生成警告由调用方（Compiler）统一收集和打印，避免重复输出
 
         Ok(self.output.clone())
     }

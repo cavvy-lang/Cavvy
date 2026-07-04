@@ -46,23 +46,33 @@ impl DiagnosticVec for Vec<CayError> {
     }
 }
 
-/// 创建一个语义警告（CayError 中只有 CodeGen 变体支持 is_warning）
+/// 创建一个语义警告（现在可通过 CayError::Lint 变体或 CodeGen is_warning 实现）
 fn semantic_warning(
     code: &'static str,
     line: usize,
     column: usize,
     message: impl Into<String>,
 ) -> CayError {
-    CayError::CodeGen {
+    CayError::Lint {
         error_code: code,
-        kind: "语义警告".to_string(),
+        phase_label: cavvy::miette_diagnostic::CompilationPhase::Semantic,
         file: None,
         line,
         column,
         message: message.into(),
         suggestion: ErrorCodes::get_suggestion(code).to_string(),
-        is_warning: true,
     }
+}
+
+#[test]
+fn test_lint_warning_is_severity_warning() {
+    let warning = semantic_warning(ErrorCodes::SEMANTIC_NON_STANDARD, 3, 5, "非标准用法");
+    assert_eq!(warning.severity(), Severity::Warning);
+    assert_eq!(
+        warning.phase(),
+        cavvy::miette_diagnostic::CompilationPhase::Semantic
+    );
+    assert_eq!(warning.error_code(), ErrorCodes::SEMANTIC_NON_STANDARD);
 }
 
 fn fatal_error(

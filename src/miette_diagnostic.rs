@@ -88,6 +88,7 @@ impl ErrorCodes {
     pub const PREPROCESSOR_DEPRECATED: &'static str = "W1002";
     pub const LEXER_DEPRECATED_SYNTAX: &'static str = "W2001";
     pub const LEXER_PORTABILITY: &'static str = "W2002";
+    pub const LEXER_STYLE_ALIAS_MIXING: &'static str = "W2003";
     pub const PARSER_DEPRECATED_FEATURE: &'static str = "W3001";
     pub const PARSER_EXTENSION: &'static str = "W3002";
     pub const SEMANTIC_WARN_UNUSED_VARIABLE: &'static str = "W4001";
@@ -162,6 +163,7 @@ impl ErrorCodes {
             Self::PREPROCESSOR_DEPRECATED => "预处理已弃用特性",
             Self::LEXER_DEPRECATED_SYNTAX => "已弃用的语法",
             Self::LEXER_PORTABILITY => "可移植性警告",
+            Self::LEXER_STYLE_ALIAS_MIXING => "代码风格警告：别名混用",
             Self::PARSER_DEPRECATED_FEATURE => "已弃用的语言特性",
             Self::PARSER_EXTENSION => "扩展语法",
             Self::SEMANTIC_WARN_UNUSED_VARIABLE => "未使用的变量",
@@ -177,6 +179,7 @@ impl ErrorCodes {
     pub fn get_suggestion(code: &str) -> &'static str {
         match code {
             Self::LEXER_INVALID_CHARACTER => "请删除非法字符或使用支持的字符",
+            Self::LEXER_STYLE_ALIAS_MIXING => "请在同一源文件内统一使用同一种拼写",
             Self::LEXER_UNTERMINATED_STRING => "请在字符串末尾添加双引号",
             Self::LEXER_INVALID_ESCAPE_SEQUENCE => "请使用有效的转义序列: \\n, \\t, \\\", \\\\",
             Self::PARSER_EXPECTED_SEMICOLON => "请在语句末尾添加分号 ';'",
@@ -278,6 +281,17 @@ impl CompilationPhase {
             CompilationPhase::Semantic => "类型错误",
             CompilationPhase::CodeGen => "代码生成错误",
             CompilationPhase::Linker => "链接错误",
+        }
+    }
+
+    pub fn warning_label(&self) -> &'static str {
+        match self {
+            CompilationPhase::Preprocessor => "预处理器警告",
+            CompilationPhase::Lexer => "词法警告",
+            CompilationPhase::Parser => "语法警告",
+            CompilationPhase::Semantic => "语义警告",
+            CompilationPhase::CodeGen => "代码生成警告",
+            CompilationPhase::Linker => "链接警告",
         }
     }
 }
@@ -447,6 +461,19 @@ pub enum CayError {
 
     #[error("发现 {} 个错误", errors.len())]
     MultipleErrors { errors: Vec<CayError> },
+
+    /// 统一的警告变体，可按阶段携带位置与建议。
+    /// 与错误变体分离，避免在每个错误变体上重复 `is_warning` 字段。
+    #[error("{phase_label} [{}:{line}:{column}]: {message}", file.as_deref().unwrap_or("<unknown>"))]
+    Lint {
+        error_code: &'static str,
+        phase_label: CompilationPhase,
+        file: Option<String>,
+        line: usize,
+        column: usize,
+        message: String,
+        suggestion: String,
+    },
 }
 
 pub type CayResult<T> = Result<T, CayError>;
@@ -463,6 +490,7 @@ impl CayError {
             | CayError::UndefinedIdentifier { error_code, .. }
             | CayError::DuplicateDefinition { error_code, .. }
             | CayError::Preprocessor { error_code, .. } => error_code,
+            CayError::Lint { error_code, .. } => error_code,
             CayError::Llvm(_) => ErrorCodes::CODEGEN_LLVM_ERROR,
             CayError::MultipleErrors { .. } => "E9999",
         }
@@ -479,13 +507,15 @@ impl CayError {
             CayError::Preprocessor { .. } => CompilationPhase::Preprocessor,
             CayError::Io { .. } | CayError::Llvm(_) => CompilationPhase::Linker,
             CayError::MultipleErrors { .. } => CompilationPhase::Semantic,
+            CayError::Lint { phase_label, .. } => *phase_label,
         }
     }
     pub fn severity(&self) -> Severity {
         match self {
             CayError::CodeGen {
                 is_warning: true, ..
-            } => Severity::Warning,
+            }
+            | CayError::Lint { .. } => Severity::Warning,
             _ => Severity::Error,
         }
     }
@@ -498,7 +528,8 @@ impl CayError {
             | CayError::TypeMismatch { suggestion, .. }
             | CayError::UndefinedIdentifier { suggestion, .. }
             | CayError::DuplicateDefinition { suggestion, .. }
-            | CayError::Preprocessor { suggestion, .. } => {
+            | CayError::Preprocessor { suggestion, .. }
+            | CayError::Lint { suggestion, .. } => {
                 if suggestion.is_empty() {
                     None
                 } else {
@@ -517,7 +548,8 @@ impl CayError {
             | CayError::TypeMismatch { line, column, .. }
             | CayError::UndefinedIdentifier { line, column, .. }
             | CayError::DuplicateDefinition { line, column, .. }
-            | CayError::Preprocessor { line, column, .. } => Some((*line, *column)),
+            | CayError::Preprocessor { line, column, .. }
+            | CayError::Lint { line, column, .. } => Some((*line, *column)),
             _ => None,
         }
     }
@@ -531,7 +563,8 @@ impl CayError {
             | CayError::TypeMismatch { file, .. }
             | CayError::UndefinedIdentifier { file, .. }
             | CayError::DuplicateDefinition { file, .. }
-            | CayError::Preprocessor { file, .. } => file.as_deref(),
+            | CayError::Preprocessor { file, .. }
+            | CayError::Lint { file, .. } => file.as_deref(),
             _ => None,
         }
     }
@@ -542,7 +575,8 @@ impl CayError {
             | CayError::Semantic { message, .. }
             | CayError::CodeGen { message, .. }
             | CayError::Io { message, .. }
-            | CayError::Preprocessor { message, .. } => message.clone(),
+            | CayError::Preprocessor { message, .. }
+            | CayError::Lint { message, .. } => message.clone(),
             CayError::TypeMismatch { message, .. } => message.clone(),
             CayError::UndefinedIdentifier { name, .. } => format!("未定义的标识符: '{}'", name),
             CayError::DuplicateDefinition { name, .. } => format!("重复定义: '{}'", name),
@@ -943,6 +977,114 @@ pub fn preprocessor_error(
     }
 }
 
+// ============================================================
+// 统一警告构造函数
+// ============================================================
+
+pub fn lint_warning(
+    phase: CompilationPhase,
+    code: &'static str,
+    line: usize,
+    column: usize,
+    message: impl Into<String>,
+) -> CayError {
+    CayError::Lint {
+        error_code: code,
+        phase_label: phase,
+        file: None,
+        line,
+        column,
+        message: message.into(),
+        suggestion: ErrorCodes::get_suggestion(code).to_string(),
+    }
+}
+
+pub fn lint_warning_at(
+    phase: CompilationPhase,
+    code: &'static str,
+    loc: SourceLocation,
+    message: impl Into<String>,
+) -> CayError {
+    CayError::Lint {
+        error_code: code,
+        phase_label: phase,
+        file: loc.file,
+        line: loc.line,
+        column: loc.column,
+        message: message.into(),
+        suggestion: ErrorCodes::get_suggestion(code).to_string(),
+    }
+}
+
+pub fn lexer_warning(
+    code: &'static str,
+    line: usize,
+    column: usize,
+    message: impl Into<String>,
+) -> CayError {
+    lint_warning(CompilationPhase::Lexer, code, line, column, message)
+}
+
+pub fn lexer_warning_at(
+    code: &'static str,
+    loc: SourceLocation,
+    message: impl Into<String>,
+) -> CayError {
+    lint_warning_at(CompilationPhase::Lexer, code, loc, message)
+}
+
+pub fn parser_warning(
+    code: &'static str,
+    line: usize,
+    column: usize,
+    message: impl Into<String>,
+) -> CayError {
+    lint_warning(CompilationPhase::Parser, code, line, column, message)
+}
+
+pub fn parser_warning_at(
+    code: &'static str,
+    loc: SourceLocation,
+    message: impl Into<String>,
+) -> CayError {
+    lint_warning_at(CompilationPhase::Parser, code, loc, message)
+}
+
+pub fn semantic_warning(
+    code: &'static str,
+    line: usize,
+    column: usize,
+    message: impl Into<String>,
+) -> CayError {
+    lint_warning(CompilationPhase::Semantic, code, line, column, message)
+}
+
+pub fn semantic_warning_at(
+    code: &'static str,
+    loc: SourceLocation,
+    message: impl Into<String>,
+) -> CayError {
+    lint_warning_at(CompilationPhase::Semantic, code, loc, message)
+}
+
+pub fn preprocessor_warning(
+    code: &'static str,
+    file: Option<String>,
+    line: usize,
+    column: usize,
+    message: impl Into<String>,
+) -> CayError {
+    CayError::Lint {
+        error_code: code,
+        phase_label: CompilationPhase::Preprocessor,
+        file,
+        line,
+        column,
+        message: message.into(),
+        suggestion: ErrorCodes::get_suggestion(code).to_string(),
+    }
+}
+
 pub fn io_error(file: Option<String>, message: impl Into<String>) -> CayError {
     CayError::Io {
         error_code: "I0001",
@@ -992,19 +1134,6 @@ pub fn print_miette_warning(warning_type: &str, message: &str, help: Option<&str
     eprintln!();
 }
 
-#[deprecated]
-pub fn print_compile_error(stage: &str, error: &str, source_path: &str, help: Option<&str>) {
-    eprintln!("\n  × cavvy::compile_error: {}阶段错误", stage);
-    eprintln!("   ╭─[{}]", source_path);
-    eprintln!("   │\n   │ {}\n   ╰────", error);
-    if let Some(h) = help {
-        if !h.is_empty() {
-            eprintln!("  help: {}", h);
-        }
-    }
-    eprintln!();
-}
-
 pub fn print_tool_error(tool: &str, message: &str, help: Option<&str>) {
     eprintln!("\n  × cavvy::tool_error: {} 执行失败", tool);
     eprintln!("   │\n   │ {}", message);
@@ -1016,14 +1145,6 @@ pub fn print_tool_error(tool: &str, message: &str, help: Option<&str>) {
 
 pub fn print_warning(message: &str) {
     eprintln!("  ⚠ cavvy::warning: {}", message);
-}
-
-#[deprecated]
-pub fn print_warning_with_location(message: &str, filename: &str, line: usize, column: usize) {
-    eprintln!(
-        "  ⚠ cavvy::warning: {}\n     位置: {}:{}:{}",
-        message, filename, line, column
-    );
 }
 
 // ============================================================
@@ -1069,7 +1190,11 @@ impl CayDiagnostic {
             help: error.suggestion_text().map(|s| s.to_string()),
             source: source.to_string(),
             filename: filename.to_string(),
-            phase_label: error.phase().label().to_string(),
+            phase_label: if error.severity() == Severity::Warning {
+                error.phase().warning_label().to_string()
+            } else {
+                error.phase().label().to_string()
+            },
             line,
             column,
             highlight_kind,
