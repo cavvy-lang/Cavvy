@@ -161,7 +161,7 @@ impl IRGenerator {
                     }
                     // 首先检查是否是已知的类名（静态方法调用）
                     if registry.class_exists(obj_name_str) {
-                        // 类名.方法名() 形式，如 Vector2.right()
+                        // 类名.方法名() 形式，如 Vector2.right() 或 Container.make(42)
                         let found = if let Some(types) = arg_types_slice {
                             registry.find_method(obj_name_str, &member.member, types)
                         } else {
@@ -169,6 +169,32 @@ impl IRGenerator {
                         }
                         .or_else(|| registry.get_method(obj_name_str, &member.member));
                         if let Some(method_info) = found {
+                            // 对泛型静态工厂方法，尝试从调用实参推断类型参数。
+                            // 例如 Container.make(42) 推断出 T = int，使返回类型
+                            // 变为 Container<int> 而非 Container<GenericParam("T")>。
+                            if let Some(class_info) = registry.get_class(obj_name_str) {
+                                if !class_info.type_params.is_empty() {
+                                    if let Some(inferred) = self
+                                        .infer_type_args_from_call_args_codegen(
+                                            &method_info.params,
+                                            &call.args,
+                                            &class_info.type_params,
+                                        )
+                                    {
+                                        let mapping: std::collections::HashMap<String, Type> =
+                                            class_info
+                                                .type_params
+                                                .iter()
+                                                .zip(inferred.iter())
+                                                .map(|(p, t)| (p.name.clone(), t.clone()))
+                                                .collect();
+                                        return Some(crate::types::substitute_type_params(
+                                            &method_info.return_type,
+                                            &mapping,
+                                        ));
+                                    }
+                                }
+                            }
                             return Some(method_info.return_type.clone());
                         }
                     }
@@ -300,6 +326,100 @@ impl IRGenerator {
 
         // 无法推断
         None
+    }
+
+    /// 从调用实参推断泛型类型实参（codegen 阶段辅助函数）。
+    /// 用于静态方法调用没有显式类型实参的场景，例如 Container.make(42) 推断出 T = int。
+    fn infer_type_args_from_call_args_codegen(
+        &self,
+        method_params: &[crate::types::ParameterInfo],
+        call_args: &[Expr],
+        type_params: &[crate::types::TypeParamInfo],
+    ) -> Option<Vec<Type>> {
+        let mut inferred: Vec<Option<Type>> = vec![None; type_params.len()];
+
+        let positional_args: Vec<&Expr> = call_args
+            .iter()
+            .filter(|a| !matches!(a, Expr::NamedArg(_)))
+            .collect();
+
+        for (param, arg) in method_params.iter().zip(positional_args.iter()) {
+            let arg_type = self.get_expression_type(arg)?;
+            self.infer_generic_substitution_codegen(
+                &param.param_type,
+                &arg_type,
+                type_params,
+                &mut inferred,
+            )?;
+        }
+
+        for (idx, param) in type_params.iter().enumerate() {
+            if inferred[idx].is_none() {
+                inferred[idx] = param.default_type.clone();
+            }
+        }
+
+        if inferred.iter().all(|t| t.is_some()) {
+            Some(inferred.into_iter().map(|t| t.unwrap()).collect())
+        } else {
+            None
+        }
+    }
+
+    /// 递归比较形参类型与实参类型，收集泛型参数映射（codegen 阶段）。
+    fn infer_generic_substitution_codegen(
+        &self,
+        param_type: &Type,
+        arg_type: &Type,
+        type_params: &[crate::types::TypeParamInfo],
+        inferred: &mut [Option<Type>],
+    ) -> Option<()> {
+        let param_name = match param_type {
+            Type::GenericParam(name) => Some(name.as_str()),
+            Type::Object(name) if type_params.iter().any(|p| &p.name == name) => {
+                Some(name.as_str())
+            }
+            _ => None,
+        };
+        if let Some(name) = param_name {
+            if let Some(idx) = type_params.iter().position(|p| p.name == name) {
+                if inferred[idx].is_none() {
+                    inferred[idx] = Some(arg_type.clone());
+                }
+            }
+            return Some(());
+        }
+
+        match (param_type, arg_type) {
+            (Type::Generic(p_base, p_args), Type::Generic(a_base, a_args))
+                if p_base == a_base && p_args.len() == a_args.len() =>
+            {
+                for (p, a) in p_args.iter().zip(a_args.iter()) {
+                    self.infer_generic_substitution_codegen(p, a, type_params, inferred)?;
+                }
+            }
+            (Type::Array(p_inner), Type::Array(a_inner)) => {
+                self.infer_generic_substitution_codegen(p_inner, a_inner, type_params, inferred)?;
+            }
+            (Type::Pointer(p_inner), Type::Pointer(a_inner)) => {
+                self.infer_generic_substitution_codegen(p_inner, a_inner, type_params, inferred)?;
+            }
+            (Type::Function(p_ft), Type::Function(a_ft))
+                if p_ft.params.len() == a_ft.params.len() =>
+            {
+                self.infer_generic_substitution_codegen(
+                    &p_ft.return_type,
+                    &a_ft.return_type,
+                    type_params,
+                    inferred,
+                )?;
+                for (p, a) in p_ft.params.iter().zip(a_ft.params.iter()) {
+                    self.infer_generic_substitution_codegen(p, a, type_params, inferred)?;
+                }
+            }
+            _ => {}
+        }
+        Some(())
     }
 
     /// 解析泛型返回类型

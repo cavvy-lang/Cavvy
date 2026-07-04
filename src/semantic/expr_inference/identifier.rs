@@ -266,6 +266,103 @@ impl SemanticAnalyzer {
         specialized
     }
 
+    /// 从调用实参推断泛型类型实参。
+    /// 用于静态方法调用没有显式类型实参的场景，例如 `Container.make(42)` 推断出 `T = int`。
+    fn infer_type_args_from_arguments(
+        &mut self,
+        method_params: &[crate::types::ParameterInfo],
+        call_args: &[Expr],
+        type_params: &[crate::types::TypeParamInfo],
+    ) -> Option<Vec<Type>> {
+        let mut inferred: Vec<Option<Type>> = vec![None; type_params.len()];
+
+        // 仅使用位置参数进行推断
+        let positional_args: Vec<&Expr> = call_args
+            .iter()
+            .filter(|a| !matches!(a, Expr::NamedArg(_)))
+            .collect();
+
+        for (param, arg) in method_params.iter().zip(positional_args.iter()) {
+            let arg_type = self.infer_expr_type_internal(arg).ok()?;
+            self.infer_generic_substitution(
+                &param.param_type,
+                &arg_type,
+                type_params,
+                &mut inferred,
+            )?;
+        }
+
+        // 未推断出的类型参数使用默认值
+        for (idx, param) in type_params.iter().enumerate() {
+            if inferred[idx].is_none() {
+                inferred[idx] = param.default_type.clone();
+            }
+        }
+
+        if inferred.iter().all(|t| t.is_some()) {
+            Some(inferred.into_iter().map(|t| t.unwrap()).collect())
+        } else {
+            None
+        }
+    }
+
+    /// 递归比较形参类型与实参类型，收集泛型参数映射。
+    fn infer_generic_substitution(
+        &self,
+        param_type: &Type,
+        arg_type: &Type,
+        type_params: &[crate::types::TypeParamInfo],
+        inferred: &mut [Option<Type>],
+    ) -> Option<()> {
+        // 将裸 Object("T") 与 GenericParam("T") 统一视为类型参数占位符。
+        let param_name = match param_type {
+            Type::GenericParam(name) => Some(name.as_str()),
+            Type::Object(name) if type_params.iter().any(|p| &p.name == name) => {
+                Some(name.as_str())
+            }
+            _ => None,
+        };
+        if let Some(name) = param_name {
+            if let Some(idx) = type_params.iter().position(|p| p.name == name) {
+                if inferred[idx].is_none() {
+                    inferred[idx] = Some(arg_type.clone());
+                }
+            }
+            return Some(());
+        }
+
+        match (param_type, arg_type) {
+            (Type::Generic(p_base, p_args), Type::Generic(a_base, a_args))
+                if p_base == a_base && p_args.len() == a_args.len() =>
+            {
+                for (p, a) in p_args.iter().zip(a_args.iter()) {
+                    self.infer_generic_substitution(p, a, type_params, inferred)?;
+                }
+            }
+            (Type::Array(p_inner), Type::Array(a_inner)) => {
+                self.infer_generic_substitution(p_inner, a_inner, type_params, inferred)?;
+            }
+            (Type::Pointer(p_inner), Type::Pointer(a_inner)) => {
+                self.infer_generic_substitution(p_inner, a_inner, type_params, inferred)?;
+            }
+            (Type::Function(p_ft), Type::Function(a_ft))
+                if p_ft.params.len() == a_ft.params.len() =>
+            {
+                self.infer_generic_substitution(
+                    &p_ft.return_type,
+                    &a_ft.return_type,
+                    type_params,
+                    inferred,
+                )?;
+                for (p, a) in p_ft.params.iter().zip(a_ft.params.iter()) {
+                    self.infer_generic_substitution(p, a, type_params, inferred)?;
+                }
+            }
+            _ => {}
+        }
+        Some(())
+    }
+
     pub(crate) fn qualify_type_for_class(&self, ty: &Type, owner_class: &str) -> Type {
         match ty {
             Type::Object(name) => {
@@ -539,12 +636,24 @@ impl SemanticAnalyzer {
                     .get_class(&owner_class)
                     .map(|ci| ci.type_params.clone())
                     .unwrap_or_default();
+                // 没有显式类型实参且类有泛型参数时，尝试从调用实参推断。
+                let inferred_type_args: Option<Vec<Type>> = if type_args.is_some()
+                    || owner_type_params.is_empty()
+                {
+                    type_args.clone()
+                } else {
+                    self.infer_type_args_from_arguments(
+                        &method_info.params,
+                        &call.args,
+                        &owner_type_params,
+                    )
+                };
                 (
                     owner_class,
                     self.specialize_method_info(
                         &method_info,
                         &owner_type_params,
-                        type_args.as_deref(),
+                        inferred_type_args.as_deref(),
                     ),
                 )
             })

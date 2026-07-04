@@ -1,0 +1,40 @@
+/**
+ * 泛型静态工厂与实例方法单态化回归测试
+ *
+ * 测试内容:
+ * - 静态工厂方法从调用实参推断泛型类型参数: Container.make(42)
+ * - 实例方法从接收者类型反推泛型类型参数: c2.put(10), c2.get()
+ */
+
+public class Container<T> {
+    public T data;
+
+    // 静态方法：编译器从调用点直接推断 T
+    public static Container<T> make(T value) {
+        Container<T> c = new Container<T>();
+        c.data = value;
+        return c;
+    }
+
+    // 实例方法，形参用 T：调用时必须从接收者类型反推 T
+    public fn put(T value) {
+        this.data = value;
+    }
+
+    public fn get() {
+        return this.data;
+    }
+}
+
+public class GenericStaticFactoryTest {
+    public static void main() {
+        // 静态工厂推断 T = int
+        let c1 = Container.make(42);
+        println(String.valueOf(c1.get()));
+
+        // 显式特化 + 实例方法从接收者反推 T = int
+        let c2 = new Container<int>();
+        c2.put(10);
+        println(String.valueOf(c2.get()));
+    }
+}

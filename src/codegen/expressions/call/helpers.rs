@@ -58,8 +58,30 @@ impl IRGenerator {
         let Some(obj) = obj_expr else {
             return;
         };
-        let Some(Type::Generic(base, args)) = self.get_expression_type(obj) else {
-            return;
+        // 支持 Type::Generic 和 Type::Object("Class<T>") 两种形式。
+        // 后者由 new Class<T>() 或变量类型推断产生，需要从字符串解析类型实参。
+        let (base, args): (String, Vec<Type>) = match self.get_expression_type(obj) {
+            Some(Type::Generic(base, args)) => (base, args),
+            Some(Type::Object(class_name)) => {
+                if class_name.contains('<') && class_name.ends_with('>') {
+                    if let Some(pos) = class_name.find('<') {
+                        let base = class_name[..pos].to_string();
+                        let args_str = &class_name[pos + 1..class_name.len() - 1];
+                        let args: Vec<Type> = args_str
+                            .split(',')
+                            .map(|s| s.trim())
+                            .filter(|s| !s.is_empty())
+                            .map(|s| parse_type_arg_str(s))
+                            .collect();
+                        (base, args)
+                    } else {
+                        return;
+                    }
+                } else {
+                    return;
+                }
+            }
+            _ => return,
         };
         if args.is_empty() {
             return;

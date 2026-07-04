@@ -415,15 +415,45 @@ impl SemanticAnalyzer {
                         return Err(semantic_error_at_loc(&call.loc, msg));
                     }
 
-                    // 如果对象是泛型类型，替换返回类型中的泛型参数
+                    // 如果对象是泛型类型，替换返回类型中的泛型参数。
+                    // 支持 Type::Generic 和 Type::Object("Class<T>") 两种形式，
+                    // 后者由 new Class<T>() 产生，需要解析字符串中的类型实参。
                     let scoped_return_type =
                         self.qualify_type_for_class(&return_type, &owner_class);
-                    let final_return_type = if let Type::Generic(_, type_args) = &obj_type {
+                    let obj_type_args: Option<Vec<Type>> = match &obj_type {
+                        Type::Generic(_, type_args) => Some(type_args.clone()),
+                        Type::Object(class_name) => {
+                            // 解析 "Container<int>" 中的类型参数
+                            if class_name.contains('<') && class_name.ends_with('>') {
+                                if let Some(pos) = class_name.find('<') {
+                                    let args_str =
+                                        &class_name[pos + 1..class_name.len() - 1];
+                                    let type_args: Vec<Type> = args_str
+                                        .split(',')
+                                        .map(|s| s.trim())
+                                        .filter(|s| !s.is_empty())
+                                        .map(|s| self.parse_type_string(s))
+                                        .collect();
+                                    if type_args.is_empty() {
+                                        None
+                                    } else {
+                                        Some(type_args)
+                                    }
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        }
+                        _ => None,
+                    };
+                    let final_return_type = if let Some(type_args) = obj_type_args {
                         if let Some(class_info) = self.type_registry.get_class(&owner_class) {
                             self.substitute_type_params(
                                 &scoped_return_type,
                                 &class_info.type_params,
-                                type_args,
+                                &type_args,
                             )
                         } else {
                             scoped_return_type

@@ -191,6 +191,21 @@ fn test_monomorphization() {
 }
 
 // ============================================================
+// 泛型静态工厂与实例方法单态化回归测试
+// ============================================================
+
+#[test]
+fn test_generic_static_factory() {
+    let output = compile_and_run_eol("examples/test_generic_static_factory.cay")
+        .expect("test_generic_static_factory.cay should compile and run");
+    assert_output_contains(
+        &output,
+        &["42", "10"],
+        "test_generic_static_factory",
+    );
+}
+
+// ============================================================
 // 已有 Optional 测试回归
 // ============================================================
 
