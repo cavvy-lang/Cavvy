@@ -165,14 +165,16 @@ pub fn compile_ir_to_object(
     let mut error_msg: *mut i8 = ptr::null_mut();
     let parse_result =
         unsafe { LLVMParseIRInContext2(context, buffer, &mut module, &mut error_msg) };
-    // // eprintln!("  [DEBUG] IR 解析结果: {}", parse_result);
     if parse_result != 0 {
         let error = if !error_msg.is_null() {
             let msg = unsafe {
-                let c_str = std::ffi::CStr::from_ptr(error_msg);
-                c_str.to_string_lossy().to_string()
+                std::ffi::CStr::from_ptr(error_msg)
+                    .to_string_lossy()
+                    .to_string()
             };
-            unsafe { LLVMDisposeMessage(error_msg) };
+            // 注意: 在当前 LLVM/Windows 构建上，对 LLVMParseIRInContext2 返回的某些
+            // error_msg 调用 LLVMDisposeMessage 会触发访问冲突崩溃。
+            // 这里只读取内容并返回错误；该内存会在进程退出或 LLVMContext 释放时清理。
             msg
         } else {
             "未知解析错误".to_string()
@@ -214,11 +216,19 @@ pub fn compile_ir_to_object(
         return Err(format!("IR 验证失败: {}", error));
     }
 
-    // 注意: 当使用 LLVMReturnStatusAction 且验证成功时，
-    // verify_msg 应该为 null。如果非 null，可能是内存损坏或LLVM版本差异。
-    // 暂时跳过释放，避免崩溃。这是一个已知的LLVM C API问题。
+    // LLVMVerifyModule 在 OutMessages 非空时，即使验证成功也可能返回一个
+    // 指向空字符串的非空指针；该指针不能安全地用 LLVMDisposeMessage 释放
+    // （在 Windows/当前 LLVM 构建上会崩溃），因此只读取其内容，非空时再输出。
     if !verify_msg.is_null() {
-        eprintln!("  [WARN] verify_msg 非空但验证成功，跳过释放以避免崩溃");
+        let msg = unsafe {
+            std::ffi::CStr::from_ptr(verify_msg)
+                .to_string_lossy()
+                .to_string()
+        };
+        let trimmed = msg.trim();
+        if !trimmed.is_empty() {
+            eprintln!("  [WARN] IR 验证警告: {}", trimmed);
+        }
     }
 
     // eprintln!("  [DEBUG] 模块验证成功");
