@@ -26,11 +26,17 @@ pub struct Rcpl {
     generator: CodeGenerator,
     debug_mode: bool,
     cay_run_path: PathBuf,
+    use_embedded_llc: bool,
 }
 
 impl Rcpl {
     /// 创建新的 RCPL 实例
     pub fn new() -> anyhow::Result<Self> {
+        Self::new_with_options(false)
+    }
+
+    /// 使用选项创建新的 RCPL 实例
+    pub fn new_with_options(use_embedded_llc: bool) -> anyhow::Result<Self> {
         let cay_run_path = Self::find_cay_run()?;
 
         Ok(Rcpl {
@@ -39,6 +45,7 @@ impl Rcpl {
             generator: CodeGenerator::new(),
             debug_mode: false,
             cay_run_path,
+            use_embedded_llc,
         })
     }
 
@@ -329,12 +336,15 @@ impl Rcpl {
             });
 
         // 执行 cay-run，使用 cay-run 所在目录作为工作目录
-        let output = Command::new(&self.cay_run_path)
-            .arg(&temp_file)
+        let mut cmd = Command::new(&self.cay_run_path);
+        cmd.arg(&temp_file)
             .current_dir(&cay_run_dir)
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()?;
+            .stderr(Stdio::piped());
+        if self.use_embedded_llc {
+            cmd.arg("--use-embedded-llc");
+        }
+        let output = cmd.output()?;
 
         // 清理临时文件
         let _ = std::fs::remove_file(&temp_file);

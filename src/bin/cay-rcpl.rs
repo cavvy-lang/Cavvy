@@ -16,8 +16,9 @@ fn print_usage() {
     println!("Usage: cay-rcpl [options]");
     println!();
     println!("Options:");
-    println!("  -h, --help     显示帮助信息");
-    println!("  -v, --version  显示版本号");
+    println!("  -h, --help            显示帮助信息");
+    println!("  -v, --version         显示版本号");
+    println!("  --use-embedded-llc    使用内嵌 llc 编译 IR (实验性)");
     println!();
     println!("在 REPL 中可用的命令:");
     println!("  :q, :quit, exit  退出 REPL");
@@ -31,6 +32,7 @@ fn print_usage() {
 fn main() {
     // 解析命令行参数
     let args: Vec<String> = env::args().collect();
+    let mut use_embedded_llc = false;
 
     for arg in &args[1..] {
         match arg.as_str() {
@@ -42,12 +44,15 @@ fn main() {
                 println!("cay-rcpl {}", VERSION);
                 return;
             }
+            "--use-embedded-llc" => {
+                use_embedded_llc = true;
+            }
             _ => {}
         }
     }
 
     // 运行 RCPL
-    match cavvy::rcpl::Rcpl::new() {
+    match cavvy::rcpl::Rcpl::new_with_options(use_embedded_llc) {
         Ok(mut rcpl) => {
             if let Err(e) = rcpl.run() {
                 print_miette_error(

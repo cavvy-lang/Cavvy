@@ -22,6 +22,7 @@ struct RunOptions {
     lib_paths: Vec<String>,      // -L: 库搜索路径
     optimize: String,            // -O: 优化级别
     features: Vec<String>,       // -F/--feature: 启用的语言特性
+    use_embedded_llc: bool,      // --use-embedded-llc: 使用内嵌 llc
 }
 
 impl Default for RunOptions {
@@ -37,6 +38,7 @@ impl Default for RunOptions {
             lib_paths: Vec::new(),
             optimize: "-O2".to_string(),
             features: Vec::new(),
+            use_embedded_llc: false,
         }
     }
 }
@@ -61,6 +63,7 @@ fn print_usage() {
     println!("  -F<feature>            启用语言特性 (如: -F=top_level_function)");
     println!("  --keep-temp            保留临时文件");
     println!("  --verbose, -v          显示详细编译信息");
+    println!("  --use-embedded-llc     使用内嵌 llc 编译 IR (实验性)");
     println!("  --version, -V          显示版本号");
     println!("  --help, -h             显示帮助信息");
     println!("");
@@ -116,6 +119,9 @@ fn parse_args(args: &[String]) -> Result<(RunOptions, String), String> {
                 }
                 "--verbose" | "-v" => {
                     options.verbose = true;
+                }
+                "--use-embedded-llc" => {
+                    options.use_embedded_llc = true;
                 }
                 "--keep-temp" => {
                     options.keep_temp = true;
@@ -475,6 +481,11 @@ fn compile_ir_to_executable(
 
     // 优化级别
     ir2exe_args.push(options.optimize.clone());
+
+    // 使用内嵌 llc
+    if options.use_embedded_llc {
+        ir2exe_args.push("--use-embedded-llc".to_string());
+    }
 
     // 额外库路径
     for path in &options.lib_paths {

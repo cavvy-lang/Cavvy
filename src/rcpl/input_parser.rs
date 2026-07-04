@@ -144,7 +144,7 @@ impl InputParser {
         let trimmed = code.trim_start();
 
         // 跳过修饰符
-        let keywords = ["public", "abstract", "final"];
+        let keywords = ["public", "pub", "abstract", "final"];
         let mut rest = trimmed;
 
         loop {
@@ -201,7 +201,9 @@ impl InputParser {
         // 收集修饰符
         let keywords = [
             "public",
+            "pub",
             "private",
+            "priv",
             "protected",
             "static",
             "final",
@@ -229,6 +231,20 @@ impl InputParser {
         // 现在应该是返回类型
         let ret_type_end = rest.find(|c: char| c.is_whitespace())?;
         let ret_type = &rest[..ret_type_end];
+
+        // 检查是否为 fn 关键字开头的方法（类型后置式）
+        // 格式: [modifiers] fn name(params) [-> ret] { body }
+        if ret_type == "fn" {
+            let after_fn = &rest[ret_type_end..].trim_start();
+            let name_end = after_fn.find('(')?;
+            let name = after_fn[..name_end].trim();
+            return Some(InputType::Method {
+                name: name.to_string(),
+                ret_type: "auto".to_string(),
+                modifiers: modifiers.join(" "),
+                code: code.to_string(),
+            });
+        }
 
         // 检查是否为有效的返回类型
         let valid_types = [
@@ -388,5 +404,34 @@ impl InputParser {
 impl Default for InputParser {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_fn_method() {
+        let parser = InputParser::new();
+        let input = "public static fn add(int a, int b) {\nreturn a+b;\n}";
+        let result = parser.parse(input);
+        assert!(
+            matches!(result, InputType::Method { ref name, .. } if name == "add"),
+            "expected Method, got {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_parse_fn_method_pub_alias() {
+        let parser = InputParser::new();
+        let input = "pub static fn add(int a, int b) {\nreturn a+b;\n}";
+        let result = parser.parse(input);
+        assert!(
+            matches!(result, InputType::Method { ref name, .. } if name == "add"),
+            "expected Method, got {:?}",
+            result
+        );
     }
 }

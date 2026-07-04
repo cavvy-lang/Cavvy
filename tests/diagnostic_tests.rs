@@ -1,112 +1,116 @@
 //! Cavvy 诊断系统测试
 //!
-//! 测试新的错误诊断系统，包括错误代码、多错误收集和友好的错误信息
+//! 测试错误诊断系统，包括错误代码、错误收集和友好的错误信息
 
 use cavvy::miette_diagnostic::*;
-use cavvy::lexer::{lex, lex_with_diagnostics};
-use cavvy::parser::parse;
+use cavvy::lexer::lex_with_diagnostics;
 
-// ==================== 诊断系统基础测试 ====================
+// ==================== 辅助 trait — 为 Vec<CayError> 添加便利方法 ====================
 
-#[test]
-fn test_diagnostic_collector_basic() {
-    let mut collector = DiagnosticCollector::new();
-
-    let diag = Diagnostic::error(
-        ErrorCodes::SEMANTIC_TYPE_MISMATCH,
-        CompilationPhase::Semantic,
-        "类型不匹配",
-        SourceLocation::new(None::<String>, 10, 5),
-    );
-
-    collector.add(diag);
-    assert!(collector.has_errors());
-    assert_eq!(collector.error_count(), 1);
-    assert_eq!(collector.warning_count(), 0);
+trait DiagnosticVec {
+    fn has_errors(&self) -> bool;
+    fn has_warnings(&self) -> bool;
+    fn error_count(&self) -> usize;
+    fn warning_count(&self) -> usize;
+    fn has_fatal_errors(&self) -> bool;
+    fn all_errors(&self) -> &[CayError];
+    fn get_error_code(&self, code: &str) -> Option<&CayError>;
 }
 
-#[test]
-fn test_diagnostic_collector_multiple_errors() {
-    let mut collector = DiagnosticCollector::new();
-
-    collector.add(Diagnostic::error(
-        ErrorCodes::SEMANTIC_UNDEFINED_IDENTIFIER,
-        CompilationPhase::Semantic,
-        "未定义变量 x",
-        SourceLocation::new(None::<String>, 5, 10),
-    ));
-
-    collector.add(Diagnostic::error(
-        ErrorCodes::SEMANTIC_TYPE_MISMATCH,
-        CompilationPhase::Semantic,
-        "类型不匹配",
-        SourceLocation::new(None::<String>, 8, 15),
-    ));
-
-    collector.add(Diagnostic::warning(
-        ErrorCodes::SEMANTIC_UNUSED_VARIABLE,
-        CompilationPhase::Semantic,
-        "未使用的变量",
-        SourceLocation::new(None::<String>, 12, 5),
-    ));
-
-    assert!(collector.has_errors());
-    assert_eq!(collector.error_count(), 2);
-    assert_eq!(collector.warning_count(), 1);
-    assert_eq!(collector.diagnostics().len(), 3);
-}
-
-#[test]
-fn test_diagnostic_collector_max_errors() {
-    let mut collector = DiagnosticCollector::new().with_max_errors(3);
-
-    for i in 0..5 {
-        collector.add(Diagnostic::error(
-            ErrorCodes::SEMANTIC_UNDEFINED_IDENTIFIER,
-            CompilationPhase::Semantic,
-            format!("错误 {}", i),
-            SourceLocation::new(None::<String>, i + 1, 1),
-        ));
+impl DiagnosticVec for Vec<CayError> {
+    fn has_errors(&self) -> bool {
+        self.iter().any(|e| matches!(e.severity(), Severity::Error | Severity::Fatal))
     }
+    fn has_warnings(&self) -> bool {
+        self.iter().any(|e| e.severity() == Severity::Warning)
+    }
+    fn error_count(&self) -> usize {
+        self.iter().filter(|e| matches!(e.severity(), Severity::Error | Severity::Fatal)).count()
+    }
+    fn warning_count(&self) -> usize {
+        self.iter().filter(|e| e.severity() == Severity::Warning).count()
+    }
+    fn has_fatal_errors(&self) -> bool {
+        self.iter().any(|e| e.severity() == Severity::Fatal)
+    }
+    fn all_errors(&self) -> &[CayError] {
+        self.as_slice()
+    }
+    fn get_error_code(&self, code: &str) -> Option<&CayError> {
+        self.iter().find(|e| e.error_code() == code)
+    }
+}
 
-    assert_eq!(collector.error_count(), 3);
-    assert!(collector.is_max_errors_reached());
+/// 创建一个语义警告（CayError 中只有 CodeGen 变体支持 is_warning）
+fn semantic_warning(code: &'static str, line: usize, column: usize, message: impl Into<String>) -> CayError {
+    CayError::CodeGen {
+        error_code: code,
+        kind: "语义警告".to_string(),
+        file: None,
+        line,
+        column,
+        message: message.into(),
+        suggestion: ErrorCodes::get_suggestion(code).to_string(),
+        is_warning: true,
+    }
+}
+
+fn fatal_error(code: &'static str, line: usize, column: usize, message: impl Into<String>) -> CayError {
+    CayError::CodeGen {
+        error_code: code,
+        kind: "致命错误".to_string(),
+        file: None,
+        line,
+        column,
+        message: message.into(),
+        suggestion: ErrorCodes::get_suggestion(code).to_string(),
+        is_warning: false,
+    }
+}
+
+// ==================== 构造测试（曾经的 DiagnosticCollector 功能） ====================
+
+#[test]
+fn test_collector_basic() {
+    let mut errors: Vec<CayError> = Vec::new();
+
+    errors.push(semantic_error(
+        ErrorCodes::SEMANTIC_TYPE_MISMATCH,
+        10, 5,
+        "类型不匹配",
+    ));
+
+    assert!(errors.has_errors());
+    assert_eq!(errors.error_count(), 1);
+    assert_eq!(errors.warning_count(), 0);
 }
 
 #[test]
-fn test_diagnostic_with_suggestions() {
-    let diag = Diagnostic::error(
-        ErrorCodes::PARSER_EXPECTED_SEMICOLON,
-        CompilationPhase::Parser,
-        "缺少分号",
-        SourceLocation::new(None::<String>, 5, 20),
-    )
-    .with_details("语句必须以分号结束")
-    .with_suggestion(
-        FixSuggestion::new("在语句末尾添加分号").with_replacement(";", SourceSpan::single(5, 20)),
-    );
+fn test_collector_multiple_errors() {
+    let mut errors: Vec<CayError> = Vec::new();
 
-    assert_eq!(diag.suggestions.len(), 1);
-    assert_eq!(diag.suggestions[0].description, "在语句末尾添加分号");
-    assert!(diag.suggestions[0].replacement.is_some());
-}
+    errors.push(semantic_error(
+        ErrorCodes::SEMANTIC_UNDEFINED_IDENTIFIER,
+        5, 10,
+        "未定义变量 x",
+    ));
 
-#[test]
-fn test_diagnostic_with_related_info() {
-    let diag = Diagnostic::error(
-        ErrorCodes::SEMANTIC_DUPLICATE_DEFINITION,
-        CompilationPhase::Semantic,
-        "重复定义变量 x",
-        SourceLocation::new(None::<String>, 10, 5),
-    )
-    .with_related_info(
-        "变量 x 首次定义在这里",
-        SourceLocation::new(None::<String>, 5, 5),
-    );
+    errors.push(semantic_error(
+        ErrorCodes::SEMANTIC_TYPE_MISMATCH,
+        8, 15,
+        "类型不匹配",
+    ));
 
-    assert_eq!(diag.related_info.len(), 1);
-    assert_eq!(diag.related_info[0].message, "变量 x 首次定义在这里");
-    assert_eq!(diag.related_info[0].location.line, 5);
+    errors.push(semantic_warning(
+        ErrorCodes::SEMANTIC_WARN_UNUSED_VARIABLE,
+        12, 5,
+        "未使用的变量",
+    ));
+
+    assert!(errors.has_errors());
+    assert_eq!(errors.error_count(), 2);
+    assert_eq!(errors.warning_count(), 1);
+    assert_eq!(errors.len(), 3);
 }
 
 // ==================== 错误代码测试 ====================
@@ -204,119 +208,62 @@ fn test_source_span() {
 #[test]
 fn test_lexer_diagnostics_collection() {
     let source = "int x = 42 #;"; // # 是非法字符
-    let (_tokens, diagnostics) = lex_with_diagnostics(source);
+    let (_tokens, errors) = lex_with_diagnostics(source);
 
     // 应该产生错误
-    assert!(diagnostics.has_errors());
+    assert!(!errors.is_empty());
+    assert!(errors.has_errors());
 }
 
 #[test]
 fn test_lexer_unterminated_string_detection() {
     let source = r#"String s = "hello;"#; // 未闭合的字符串
-    let (_tokens, diagnostics) = lex_with_diagnostics(source);
+    let (_tokens, errors) = lex_with_diagnostics(source);
 
     // 应该检测到未闭合的字符串
-    let has_unterminated = diagnostics
-        .diagnostics()
+    let has_unterminated = errors
         .iter()
-        .any(|d| d.code == ErrorCodes::LEXER_UNTERMINATED_STRING);
+        .any(|d| d.error_code() == ErrorCodes::LEXER_UNTERMINATED_STRING);
     assert!(has_unterminated, "应该检测到未闭合的字符串错误");
 }
 
-// ==================== 错误格式化测试 ====================
+// ==================== 诊断打印测试 ====================
 
 #[test]
-fn test_format_diagnostic() {
+fn test_print_diagnostics() {
     let source = "int x = 42;\nint y = x + 1;";
-    let diag = Diagnostic::error(
+    let mut errors: Vec<CayError> = Vec::new();
+
+    errors.push(semantic_error(
         ErrorCodes::SEMANTIC_UNDEFINED_IDENTIFIER,
-        CompilationPhase::Semantic,
+        2, 9,
         "未定义变量 x",
-        SourceLocation::new(None::<String>, 2, 9),
-    );
-
-    let formatted = format_diagnostic(&diag, source, "test.cay");
-
-    // 验证格式化输出包含关键信息
-    assert!(formatted.contains("错误"));
-    assert!(formatted.contains("E4001"));
-    assert!(formatted.contains("test.cay"));
-    assert!(formatted.contains("第 2 行"));
-}
-
-#[test]
-fn test_format_all_diagnostics() {
-    let mut collector = DiagnosticCollector::new();
-    let source = "int x = 42;";
-
-    collector.add(Diagnostic::error(
-        ErrorCodes::SEMANTIC_TYPE_MISMATCH,
-        CompilationPhase::Semantic,
-        "类型不匹配",
-        SourceLocation::new(None::<String>, 1, 5),
     ));
 
-    collector.add(Diagnostic::warning(
-        ErrorCodes::SEMANTIC_UNUSED_VARIABLE,
-        CompilationPhase::Semantic,
-        "未使用的变量",
-        SourceLocation::new(None::<String>, 1, 5),
-    ));
-
-    let formatted = format_all_diagnostics(&collector, source, "test.cay");
-
-    assert!(formatted.contains("错误"));
-    assert!(formatted.contains("警告"));
-    assert!(formatted.contains("1 个错误"));
-    assert!(formatted.contains("1 个警告"));
+    // print_diagnostics 应无 panic
+    print_diagnostics(&errors, source, "test.cay");
 }
 
-// ==================== 诊断收集器合并测试 ====================
+// ==================== 诊断收集器 clear 测试 ====================
 
 #[test]
-fn test_diagnostic_collector_merge() {
-    let mut collector1 = DiagnosticCollector::new();
-    let mut collector2 = DiagnosticCollector::new();
+fn test_collector_clear() {
+    let mut errors: Vec<CayError> = Vec::new();
 
-    collector1.add(Diagnostic::error(
+    errors.push(semantic_error(
         ErrorCodes::SEMANTIC_UNDEFINED_IDENTIFIER,
-        CompilationPhase::Semantic,
-        "错误1",
-        SourceLocation::new(None::<String>, 1, 1),
-    ));
-
-    collector2.add(Diagnostic::error(
-        ErrorCodes::SEMANTIC_TYPE_MISMATCH,
-        CompilationPhase::Semantic,
-        "错误2",
-        SourceLocation::new(None::<String>, 2, 1),
-    ));
-
-    collector1.merge(collector2);
-
-    assert_eq!(collector1.error_count(), 2);
-    assert_eq!(collector1.diagnostics().len(), 2);
-}
-
-#[test]
-fn test_diagnostic_collector_clear() {
-    let mut collector = DiagnosticCollector::new();
-
-    collector.add(Diagnostic::error(
-        ErrorCodes::SEMANTIC_UNDEFINED_IDENTIFIER,
-        CompilationPhase::Semantic,
+        1, 1,
         "错误",
-        SourceLocation::new(None::<String>, 1, 1),
     ));
 
-    assert!(collector.has_errors());
+    assert!(errors.has_errors());
 
-    collector.clear();
+    errors.clear();
 
-    assert!(!collector.has_errors());
-    assert_eq!(collector.error_count(), 0);
-    assert_eq!(collector.warning_count(), 0);
-    assert!(collector.diagnostics().is_empty());
+    assert!(!errors.has_errors());
+    assert_eq!(errors.error_count(), 0);
+    assert_eq!(errors.warning_count(), 0);
+    assert!(errors.is_empty());
 }
 
 // ==================== 修复建议测试 ====================
@@ -344,54 +291,41 @@ fn test_fix_suggestion_with_replacement() {
 #[test]
 fn test_comprehensive_error_scenario() {
     // 创建一个包含多种错误的场景
-    let mut collector = DiagnosticCollector::new();
+    let mut errors: Vec<CayError> = Vec::new();
 
     // 词法错误
-    collector.add(
-        Diagnostic::error(
-            ErrorCodes::LEXER_INVALID_CHARACTER,
-            CompilationPhase::Lexer,
-            "非法字符 '@'",
-            SourceLocation::new(None::<String>, 1, 10),
-        )
-        .with_suggestion(FixSuggestion::new("删除非法字符")),
-    );
-
-    // 语法错误
-    collector.add(
-        Diagnostic::error(
-            ErrorCodes::PARSER_EXPECTED_SEMICOLON,
-            CompilationPhase::Parser,
-            "缺少分号",
-            SourceLocation::new(None::<String>, 3, 15),
-        )
-        .with_suggestion(FixSuggestion::new("在语句末尾添加分号 ';'")),
-    );
-
-    // 语义错误
-    collector.add(
-        Diagnostic::error(
-            ErrorCodes::SEMANTIC_UNDEFINED_IDENTIFIER,
-            CompilationPhase::Semantic,
-            "未定义变量 'foo'",
-            SourceLocation::new(None::<String>, 5, 8),
-        )
-        .with_suggestion(FixSuggestion::new("声明变量 'foo' 或检查拼写")),
-    );
-
-    // 警告
-    collector.add(Diagnostic::warning(
-        ErrorCodes::SEMANTIC_UNUSED_VARIABLE,
-        CompilationPhase::Semantic,
-        "变量 'bar' 未使用",
-        SourceLocation::new(None::<String>, 7, 5),
+    errors.push(lexer_error(
+        ErrorCodes::LEXER_INVALID_CHARACTER,
+        1, 10,
+        "非法字符 '@'",
     ));
 
-    assert_eq!(collector.error_count(), 3);
-    assert_eq!(collector.warning_count(), 1);
+    // 语法错误
+    errors.push(parser_error(
+        ErrorCodes::PARSER_EXPECTED_SEMICOLON,
+        3, 15,
+        "缺少分号",
+    ));
+
+    // 语义错误
+    errors.push(semantic_error(
+        ErrorCodes::SEMANTIC_UNDEFINED_IDENTIFIER,
+        5, 8,
+        "未定义变量 'foo'",
+    ));
+
+    // 警告
+    errors.push(semantic_warning(
+        ErrorCodes::SEMANTIC_WARN_UNUSED_VARIABLE,
+        7, 5,
+        "变量 'bar' 未使用",
+    ));
+
+    assert_eq!(errors.error_count(), 3);
+    assert_eq!(errors.warning_count(), 1);
 
     // 验证每个诊断都有正确的阶段
-    let phases: Vec<_> = collector.diagnostics().iter().map(|d| d.phase).collect();
+    let phases: Vec<CompilationPhase> = errors.iter().map(|d| d.phase()).collect();
     assert!(phases.contains(&CompilationPhase::Lexer));
     assert!(phases.contains(&CompilationPhase::Parser));
     assert!(phases.contains(&CompilationPhase::Semantic));
@@ -407,30 +341,22 @@ fn test_empty_source_location() {
 }
 
 #[test]
-fn test_diagnostic_without_details() {
-    let diag = Diagnostic::error(
-        ErrorCodes::SEMANTIC_TYPE_MISMATCH,
-        CompilationPhase::Semantic,
-        "类型不匹配",
-        SourceLocation::new(None::<String>, 1, 1),
-    );
-
-    assert!(diag.details.is_none());
+fn test_error_without_suggestion() {
+    let err = io_error(None, "文件未找到");
+    assert!(err.suggestion_text().is_none());
 }
 
 #[test]
 fn test_fatal_error_detection() {
-    let mut collector = DiagnosticCollector::new();
+    let mut errors: Vec<CayError> = Vec::new();
 
-    collector.add(Diagnostic::new(
+    errors.push(fatal_error(
         ErrorCodes::CODEGEN_LLVM_ERROR,
-        Severity::Fatal,
-        CompilationPhase::CodeGen,
+        1, 1,
         "LLVM致命错误",
-        SourceLocation::new(None::<String>, 1, 1),
     ));
 
-    assert!(collector.has_fatal_errors());
+    assert!(errors.has_fatal_errors());
 }
 
 // ==================== 行号为0调试信息测试 ====================
@@ -442,15 +368,14 @@ fn test_zero_line_debug_info() {
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    let mut collector = DiagnosticCollector::new();
+    let mut errors: Vec<CayError> = Vec::new();
     let source = "public class Test {}";
 
     // 创建一个行号为0的诊断（模拟内部错误定位失败）
-    collector.add(Diagnostic::error(
-        ErrorCodes::SEMANTIC_DUPLICATE_DEFINITION,
-        CompilationPhase::Semantic,
-        "重复定义: 'Test'",
-        SourceLocation::new(Some("test.cay".to_string()), 0, 1),
+    errors.push(duplicate_definition_error_with_file(
+        Some("test.cay".to_string()),
+        0, 1,
+        "Test",
     ));
 
     // 获取当前时间戳用于查找生成的调试文件
@@ -461,7 +386,7 @@ fn test_zero_line_debug_info() {
 
     // 调用 print_diagnostics 触发调试信息输出
     // 注意：这会输出到 stderr 并可能创建 debug_*.txt 文件
-    print_diagnostics(&collector, source, "test.cay");
+    print_diagnostics(&errors, source, "test.cay");
 
     // 验证：查找是否生成了调试文件
     let entries = fs::read_dir(".").expect("无法读取当前目录");
