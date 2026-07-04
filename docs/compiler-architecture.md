@@ -61,13 +61,11 @@
 
 完整的 C 风格预处理器，支持：
 - `#include "file"` / `#include <file>` — 文件包含
-- `#define MACRO value` / `#define MACRO(args) body` — 宏定义
-- `#undef MACRO` — 取消宏定义
+- `#define MACRO value`  — 宏定义
 - `#ifdef` / `#ifndef` / `#if` / `#elif` / `#else` / `#endif` — 条件编译
 - `#pragma once` — 防止重复包含
-- `#line` — 行标记（用于错误定位）
 - `#error "message"` — 编译错误
-- 嵌套宏展开和字符串化
+- `#warning "message"` — 编译警告
 - 源映射（source map）维护，将预处理后的位置映射回原始位置
 
 ### 2. 词法分析器（`src/lexer/`）

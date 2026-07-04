@@ -11,8 +11,6 @@ Cavvy 在词法分析前运行完整的 C 风格预处理器，并保留源映�
 | 文件包含   | `#include "file"`         | 从当前文件所在目录搜索 |
 | 系统包含   | `#include <file>`         | 从系统包含路径搜索     |
 | 常量宏     | `#define NAME value`      | 定义常量宏             |
-| 函数宏     | `#define NAME(args) body` | 带参数的宏             |
-| 取消宏     | `#undef NAME`             | 取消宏定义             |
 | 条件定义   | `#ifdef NAME`             | 如果宏已定义           |
 | 条件未定义 | `#ifndef NAME`            | 如果宏未定义           |
 | 条件表达式 | `#if expr`                | 整数常量表达式         |
