@@ -129,7 +129,7 @@ let substituted = substitute_type_params(&generic_type, &type_args);
 
 RCPL 输入解析器新增对 `pub` 和 `priv` 修饰符的解析支持，允许在交互式环境中定义带访问控制的类和成员：
 
-```cay
+```cay ignore
 >> pub class MyClass {
 ..     priv int x;
 ..     pub int getX() { return this.x; }
@@ -140,7 +140,7 @@ RCPL 输入解析器新增对 `pub` 和 `priv` 修饰符的解析支持，允许
 
 扩展输入解析器支持 `fn` 关键字风格的方法定义，与文件中的语法保持一致：
 
-```cay
+```cay ignore
 >> pub fn hello() -> void {
 ..     println("Hello from REPL!");
 .. }

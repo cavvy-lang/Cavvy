@@ -138,7 +138,8 @@ def run_command(args: list[str], cwd: Path, timeout: int) -> subprocess.Complete
     return subprocess.run(
         args,
         cwd=str(cwd),
-        text=True,
+        encoding="utf-8",
+        errors="replace",
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         timeout=timeout,
