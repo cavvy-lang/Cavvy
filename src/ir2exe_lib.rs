@@ -931,6 +931,39 @@ fn compile_with_embedded_llc(
         .and_then(|p| p.parent().map(|p| p.to_path_buf()))
         .unwrap_or_else(|| PathBuf::from("."));
 
+    // 检查并自动构建 Cavvy 运行时库（如果需要）
+    let cayrt_path = exe_dir.join("caylibs/bin");
+    if cayrt_path.exists() {
+        // 检查是否需要自动编译 Linux 版本的运行时库
+        if options.target.contains("linux") {
+            let linux_lib = cayrt_path.join("libcayrt-linux.a");
+            if !linux_lib.exists() {
+                let build_script = cayrt_path.join("build.sh");
+                if build_script.exists() {
+                    eprintln!("  [I] 未找到 Linux 运行时库，正在自动编译...");
+                    let build_result = process::Command::new("bash")
+                        .arg(&build_script)
+                        .arg("linux")
+                        .current_dir(&cayrt_path)
+                        .output();
+
+                    match build_result {
+                        Ok(output) if output.status.success() => {
+                            eprintln!("  [+] Linux 运行时库编译成功");
+                        }
+                        Ok(output) => {
+                            let stderr = String::from_utf8_lossy(&output.stderr);
+                            eprintln!("  [!] 运行时库编译失败: {}", stderr);
+                        }
+                        Err(e) => {
+                            eprintln!("  [!] 无法执行构建脚本: {}", e);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // 生成临时目标文件路径
     let obj_file = format!("{}.obj", input_file);
 
