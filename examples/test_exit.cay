@@ -1,0 +1,7 @@
+public class main {
+    public static void main(String[] args) {
+        println("before exit");
+        exit(42);
+        println("after exit - should not print");
+    }
+}

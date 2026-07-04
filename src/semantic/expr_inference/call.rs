@@ -18,11 +18,24 @@ impl SemanticAnalyzer {
         if let Expr::Identifier(name) = call.callee.as_ref() {
             // 内置输入函数的类型推断
             match name.as_str() {
-                "print" | "println" => {
+                "print" | "println" | "eprint" | "eprintln" => {
                     // 推断所有参数类型以触发类型检查（包括访问控制）
                     for arg in &call.args {
                         self.infer_expr_type_collect_errors(arg);
                     }
+                    return Ok(Type::Void);
+                }
+                "exit" => {
+                    if call.args.len() != 1 {
+                        return Err(semantic_error_at_loc(
+                            &call.loc,
+                            format!(
+                                "Function 'exit' requires 1 argument, but got {}",
+                                call.args.len()
+                            ),
+                        ));
+                    }
+                    self.infer_expr_type_collect_errors(&call.args[0]);
                     return Ok(Type::Void);
                 }
                 "readInt" => return Ok(Type::Int32),

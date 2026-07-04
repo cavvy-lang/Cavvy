@@ -151,6 +151,12 @@ impl IRGenerator {
                 vec!["i8*", "i32", "i8*"],
                 "declare i8* @fgets(i8*, i32, i8*)",
             ),
+            (
+                "fprintf",
+                "i32",
+                vec!["i8*", "i8*", "..."],
+                "declare i32 @fprintf(i8*, i8*, ...)",
+            ),
         ];
 
         for (name, ret, params, decl) in extern_decls {
@@ -187,6 +193,7 @@ impl IRGenerator {
             }
         } else {
             self.emit_raw("@stdin = external global i8*");
+            self.emit_raw("@stderr = external global i8*");
         }
         self.emit_raw("");
 

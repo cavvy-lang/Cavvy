@@ -39,6 +39,8 @@ mod builtin;
 mod call;
 mod string_methods;
 
+pub use builtin::PrintStream;
+
 // 数组
 mod array;
 

@@ -91,7 +91,7 @@ impl IRGenerator {
         // 处理内置函数
         if let Expr::Identifier(name) = call.callee.as_ref() {
             match name.as_str() {
-                "print" | "println" => return Some(Type::Void),
+                "print" | "println" | "eprint" | "eprintln" | "exit" => return Some(Type::Void),
                 "readInt" => return Some(Type::Int32),
                 "readLong" => return Some(Type::Int64),
                 "readFloat" => return Some(Type::Float32),

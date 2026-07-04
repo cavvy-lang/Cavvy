@@ -1,0 +1,22 @@
+public class main {
+    public static void main(String[] args) {
+        // 测试 {} format 修复
+        println("format test: {}", 42);
+        println("format test: {}", 123456789L);
+        println("format test: {}", 3.14);
+        println("format test: {}", true);
+        println("format test: {}", 'A');
+        println("format test: {}", "hello");
+
+        // 测试 eprint/eprintln
+        eprint("error prefix: ");
+        eprintln("something went wrong");
+        eprintln("code: {}", 404);
+
+        // 测试 exit
+        if (args.length > 0) {
+            exit(0);
+        }
+        println("after exit guard");
+    }
+}

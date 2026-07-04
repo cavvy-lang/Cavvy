@@ -20,11 +20,42 @@ impl IRGenerator {
         // 进入本次调用前的泛型类型参数映射快照。下方静态工厂特化与接收者泛型安装
         // 都会修改该映射，调用结束时恢复到此快照，避免类型参数泄漏到后续代码。
         let entry_generic_args = self.generic_type_args.clone();
-        // 处理 print 和 println 函数
+        // 处理 print、println、eprint、eprintln 函数
         if let Expr::Identifier(name) = call.callee.as_ref() {
             match name.as_str() {
-                "print" => return self.generate_print_call(&call.args, false, &call.loc),
-                "println" => return self.generate_print_call(&call.args, true, &call.loc),
+                "print" => {
+                    return self.generate_print_call(
+                        &call.args,
+                        false,
+                        crate::codegen::expressions::PrintStream::Stdout,
+                        &call.loc,
+                    )
+                }
+                "println" => {
+                    return self.generate_print_call(
+                        &call.args,
+                        true,
+                        crate::codegen::expressions::PrintStream::Stdout,
+                        &call.loc,
+                    )
+                }
+                "eprint" => {
+                    return self.generate_print_call(
+                        &call.args,
+                        false,
+                        crate::codegen::expressions::PrintStream::Stderr,
+                        &call.loc,
+                    )
+                }
+                "eprintln" => {
+                    return self.generate_print_call(
+                        &call.args,
+                        true,
+                        crate::codegen::expressions::PrintStream::Stderr,
+                        &call.loc,
+                    )
+                }
+                "exit" => return self.generate_exit_call(&call.args, &call.loc),
                 "readInt" => return self.generate_read_int_call(&call.args, &call.loc),
                 "readLong" => return self.generate_read_long_call(&call.args, &call.loc),
                 "readFloat" => return self.generate_read_float_call(&call.args, &call.loc),
