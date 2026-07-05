@@ -4,6 +4,17 @@ use crate::miette_diagnostic::CayResult;
 use crate::miette_diagnostic::ErrorCodes;
 use crate::types::Type;
 
+/// ROADMAP 5.3.x 智能指针种类，用于 `__dtor` 注入分发。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SmartPtrKind {
+    /// 独占/作用域指针：__dtor 直接释放 __owned 指向的对象。
+    Owned,
+    /// 引用计数指针：__dtor 原子递减引用计数，归零时释放对象与计数块。
+    Rc,
+    /// 可选值容器：__dtor 在 hasValue 为真时析构 value 字段。
+    Optional,
+}
+
 /// 泛型特化：替换类型中的泛型参数为实际类型
 fn substitute_type_params(
     ty: &Type,
@@ -1108,6 +1119,9 @@ impl IRGenerator {
                                 .collect();
                             self.generate_constructor(&specialized_name, &specialized_ctor)?;
                         }
+                        ClassMember::Destructor(dtor) => {
+                            self.generate_destructor(&specialized_name, dtor)?;
+                        }
                         _ => {}
                     }
                 }
@@ -1719,6 +1733,8 @@ impl IRGenerator {
         }
 
         if method.return_type == Type::Void {
+            // ROADMAP 5.3.x 自动 RAII：void 方法默认返回前析构所有未退出作用域。
+            self.emit_all_scope_dtors();
             self.emit_line("  ret void");
         }
 
@@ -1890,6 +1906,9 @@ impl IRGenerator {
         self.generate_field_initializers(class_name)?;
 
         self.generate_block(&ctor.body)?;
+
+        // ROADMAP 5.3.x 自动 RAII：构造函数返回前析构所有未退出作用域。
+        self.emit_all_scope_dtors();
 
         self.emit_line("  ret void");
 
@@ -2109,12 +2128,27 @@ impl IRGenerator {
 
         self.emit_line("entry:");
 
+        // 进入函数作用域，确保 this 的 alloca 名不会与参数 %this 冲突。
+        // 构造函数（generate_constructor）在声明 this 前已调用 enter_scope，
+        // 析构函数必须保持一致，否则 %this = alloca i8* 会重复定义参数 %this。
+        self.scope_manager.enter_scope();
+
         let this_llvm_name = self.scope_manager.declare_var("this", "i8*");
         self.emit_line(&format!("  %{} = alloca i8*", this_llvm_name));
         self.emit_line(&format!("  store i8* %this, i8** %{}", this_llvm_name));
         self.var_types.insert("this".to_string(), "i8*".to_string());
 
         self.generate_block(&dtor.body)?;
+
+        // 退出函数作用域（与构造函数 enter_scope/exit_scope 对称）
+        self.scope_manager.exit_scope();
+
+        // ROADMAP 5.3.x 自动 RAII：析构函数返回前析构所有未退出作用域。
+        self.emit_all_scope_dtors();
+
+        // ROADMAP 5.3.x 智能指针注入：特化 UniquePtr/ScopedPtr/Rc 的 __dtor
+        // 在返回前自动调用托管 T 的 __dtor 并释放内存。
+        self.emit_smart_ptr_dtor_injection(class_name)?;
 
         self.emit_line("  ret void");
 
@@ -2123,6 +2157,374 @@ impl IRGenerator {
         self.emit_line("");
 
         Ok(())
+    }
+
+    /// ROADMAP 5.3.x 智能指针特化 `__dtor` 注入：
+    /// 为 `UniquePtr<T>` / `ScopedPtr<T>` / `Rc<T>` 的特化析构函数末尾自动插入
+    /// 对托管对象 `T` 的析构与内存释放。`WeakPtr<T>` 不托管对象，不注入。
+    ///
+    /// 注入逻辑在 `generate_destructor` 生成用户析构体之后、`ret void` 之前
+    /// 执行。仅对泛型特化类生效；非泛型类或不在名单内的类无任何影响。
+    fn emit_smart_ptr_dtor_injection(
+        &mut self,
+        class_name: &str,
+    ) -> CayResult<()> {
+        // 仅处理泛型特化类；提取基础类名（去掉类型实参）。
+        let base_name = if let Some(pos) = class_name.find('<') {
+            &class_name[..pos]
+        } else {
+            return Ok(());
+        };
+
+        let kind = match base_name {
+            "UniquePtr" | "std::UniquePtr" => SmartPtrKind::Owned,
+            "ScopedPtr" | "std::ScopedPtr" => SmartPtrKind::Owned,
+            "Rc" | "std::Rc" => SmartPtrKind::Rc,
+            "Optional" | "std::Optional" => SmartPtrKind::Optional,
+            _ => return Ok(()),
+        };
+
+        // 若当前基本块已被终止（如用户析构体以 return 结束），无法追加指令。
+        if self.current_block_terminated() {
+            return Ok(());
+        }
+
+        // 解析类型参数 T。
+        let t_type = self
+            .generic_type_args
+            .get("T")
+            .cloned()
+            .unwrap_or(crate::types::Type::Void);
+        if t_type == crate::types::Type::Void {
+            return Ok(());
+        }
+
+        // 确保 free 声明存在。
+        self.ensure_free_declared();
+
+        match kind {
+            SmartPtrKind::Owned => {
+                self.emit_owned_drop_injection(class_name, &t_type)?;
+            }
+            SmartPtrKind::Rc => {
+                self.emit_rc_drop_injection(class_name, &t_type)?;
+            }
+            SmartPtrKind::Optional => {
+                self.emit_optional_drop_injection(class_name, &t_type)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// 为 `UniquePtr<T>` / `ScopedPtr<T>` 注入 `__owned` 字段的析构与释放。
+    ///
+    /// 生成 IR（概念）：
+    /// ```llvm
+    /// %obj_i64 = load i64, i64* %__owned_field
+    /// %obj     = inttoptr i64 %obj_i64 to i8*
+    /// %is_null = icmp eq i8* %obj, null
+    /// br i1 %is_null, label %drop.end, label %drop.body
+    /// drop.body:
+    ///   call void @T.__dtor(i8* %obj)   ; 若 T 有析构函数
+    ///   call void @free(i8* %obj)
+    ///   br label %drop.end
+    /// drop.end:
+    /// ```
+    fn emit_owned_drop_injection(
+        &mut self,
+        class_name: &str,
+        t_type: &Type,
+    ) -> CayResult<()> {
+        let owned_offset = self.get_field_offset(class_name, "__owned")?;
+
+        let field_gep = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = getelementptr i8, i8* %this, i64 {}",
+            field_gep, owned_offset
+        ));
+        let field_ptr = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = bitcast i8* {} to i64*",
+            field_ptr, field_gep
+        ));
+        let owned_i64 = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = load i64, i64* {}",
+            owned_i64, field_ptr
+        ));
+        let obj = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = inttoptr i64 {} to i8*",
+            obj, owned_i64
+        ));
+
+        let is_null = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = icmp eq i8* {}, null",
+            is_null, obj
+        ));
+        let drop_body = self.new_label("drop.body");
+        let drop_end = self.new_label("drop.end");
+        self.emit_line(&format!(
+            "  br i1 {}, label %{}, label %{}",
+            is_null, drop_end, drop_body
+        ));
+        self.emit_line(&format!("{}:", drop_body));
+
+        // 若 T 是带析构函数的类，调用其 __dtor。
+        if let Some(t_class) = self.type_has_destructor(t_type) {
+            let dtor_fn = format!("{}.__dtor", self.get_qualified_class_name(&t_class));
+            self.emit_line(&format!(
+                "  call void @{}(i8* {})",
+                dtor_fn, obj
+            ));
+        }
+
+        self.emit_line(&format!(
+            "  call void @free(i8* {})",
+            obj
+        ));
+        self.emit_line(&format!(
+            "  br label %{}",
+            drop_end
+        ));
+        self.emit_line(&format!("{}:", drop_end));
+
+        Ok(())
+    }
+
+    /// 为 `Rc<T>` 注入引用计数递减与条件释放。
+    ///
+    /// 生成 IR（概念）：
+    /// ```llvm
+    /// %rc_i64 = load i64, i64* %__refcount_ptr_field
+    /// %rc      = inttoptr i64 %rc_i64 to i64*
+    /// %old     = atomicrmw sub i64* %rc, i64 1 seq_cst
+    /// %should_free = icmp eq i64 %old, 1
+    /// br i1 %should_free, label %rc.free, label %rc.end
+    /// rc.free:
+    ///   %obj_i64 = load i64, i64* %__owned_field
+    ///   %obj     = inttoptr i64 %obj_i64 to i8*
+    ///   call void @T.__dtor(i8* %obj)   ; 若 T 有析构函数
+    ///   call void @free(i8* %obj)
+    ///   call void @free(i8* %rc_i8)
+    ///   br label %rc.end
+    /// rc.end:
+    /// ```
+    fn emit_rc_drop_injection(
+        &mut self,
+        class_name: &str,
+        t_type: &Type,
+    ) -> CayResult<()> {
+        let owned_offset = self.get_field_offset(class_name, "__owned")?;
+        let rc_offset = self.get_field_offset(class_name, "__refcount_ptr")?;
+
+        // 加载引用计数指针。
+        let rc_field_gep = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = getelementptr i8, i8* %this, i64 {}",
+            rc_field_gep, rc_offset
+        ));
+        let rc_field_ptr = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = bitcast i8* {} to i64*",
+            rc_field_ptr, rc_field_gep
+        ));
+        let rc_i64 = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = load i64, i64* {}",
+            rc_i64, rc_field_ptr
+        ));
+        let rc_ptr = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = inttoptr i64 {} to i64*",
+            rc_ptr, rc_i64
+        ));
+
+        // 若控制块指针为空（对象已被 move/置空），直接跳过析构逻辑。
+        let rc_null = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = icmp eq i64 {}, 0",
+            rc_null, rc_i64
+        ));
+        let do_drop_label = self.new_label("rc.drop");
+        let end_label = self.new_label("rc.end");
+        self.emit_line(&format!(
+            "  br i1 {}, label %{}, label %{}",
+            rc_null, end_label, do_drop_label
+        ));
+        self.emit_line(&format!("{}:", do_drop_label));
+
+        // 原子递减并获取旧值。
+        let old_count = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = atomicrmw sub i64* {}, i64 1 seq_cst",
+            old_count, rc_ptr
+        ));
+        let should_free = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = icmp eq i64 {}, 1",
+            should_free, old_count
+        ));
+        let free_label = self.new_label("rc.free");
+        self.emit_line(&format!(
+            "  br i1 {}, label %{}, label %{}",
+            should_free, free_label, end_label
+        ));
+        self.emit_line(&format!("{}:", free_label));
+
+        // 加载托管对象指针。
+        let obj_field_gep = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = getelementptr i8, i8* %this, i64 {}",
+            obj_field_gep, owned_offset
+        ));
+        let obj_field_ptr = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = bitcast i8* {} to i64*",
+            obj_field_ptr, obj_field_gep
+        ));
+        let obj_i64 = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = load i64, i64* {}",
+            obj_i64, obj_field_ptr
+        ));
+        let obj = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = inttoptr i64 {} to i8*",
+            obj, obj_i64
+        ));
+
+        // 若 T 有析构函数，先调用。
+        if let Some(t_class) = self.type_has_destructor(t_type) {
+            let dtor_fn = format!("{}.__dtor", self.get_qualified_class_name(&t_class));
+            self.emit_line(&format!(
+                "  call void @{}(i8* {})",
+                dtor_fn, obj
+            ));
+        }
+
+        // 释放托管对象与计数块。
+        self.emit_line(&format!(
+            "  call void @free(i8* {})",
+            obj
+        ));
+        let rc_i8 = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = inttoptr i64 {} to i8*",
+            rc_i8, rc_i64
+        ));
+        self.emit_line(&format!(
+            "  call void @free(i8* {})",
+            rc_i8
+        ));
+        self.emit_line(&format!(
+            "  br label %{}",
+            end_label
+        ));
+        self.emit_line(&format!("{}:", end_label));
+
+        Ok(())
+    }
+
+    /// 为 `Optional<T>` 注入条件析构：当 `hasValue` 为真时调用 `value` 字段的 `__dtor`。
+    ///
+    /// 生成 IR（概念）：
+    /// ```llvm
+    /// %has = load i1, i1* %hasValue_field
+    /// br i1 %has, label %opt.drop, label %opt.end
+    /// opt.drop:
+    ///   %val = load i8*, i8** %value_field
+    ///   call void @T.__dtor(i8* %val)
+    ///   br label %opt.end
+    /// opt.end:
+    /// ```
+    fn emit_optional_drop_injection(
+        &mut self,
+        class_name: &str,
+        t_type: &Type,
+    ) -> CayResult<()> {
+        // 仅当 T 是带析构函数的类时才需要注入。
+        let Some(t_class) = self.type_has_destructor(t_type) else {
+            return Ok(());
+        };
+
+        let has_value_offset = self.get_field_offset(class_name, "hasValue")?;
+        let value_offset = self.get_field_offset(class_name, "value")?;
+
+        let has_gep = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = getelementptr i8, i8* %this, i64 {}",
+            has_gep, has_value_offset
+        ));
+        let has_ptr = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = bitcast i8* {} to i1*",
+            has_ptr, has_gep
+        ));
+        let has_value = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = load i1, i1* {}",
+            has_value, has_ptr
+        ));
+
+        let drop_label = self.new_label("opt.drop");
+        let end_label = self.new_label("opt.end");
+        self.emit_line(&format!(
+            "  br i1 {}, label %{}, label %{}",
+            has_value, drop_label, end_label
+        ));
+        self.emit_line(&format!("{}:", drop_label));
+
+        let value_gep = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = getelementptr i8, i8* %this, i64 {}",
+            value_gep, value_offset
+        ));
+        let value_ptr = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = bitcast i8* {} to i8**",
+            value_ptr, value_gep
+        ));
+        let value = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = load i8*, i8** {}",
+            value, value_ptr
+        ));
+
+        let dtor_fn = format!("{}.__dtor", self.get_qualified_class_name(&t_class));
+        self.emit_line(&format!(
+            "  call void @{}(i8* {})",
+            dtor_fn, value
+        ));
+        self.emit_line(&format!(
+            "  br label %{}",
+            end_label
+        ));
+        self.emit_line(&format!("{}:", end_label));
+
+        Ok(())
+    }
+
+    /// 判断某个 Cavvy 类型是否是声明了析构函数的类，返回其可用于调用 __dtor 的类名。
+    /// 对 Object 类型返回原类名；对 Generic 类型返回完整的 `Base<Args>` 字符串，
+    /// 以便定位到正确的特化类析构函数。
+    fn type_has_destructor(
+        &self,
+        ty: &Type,
+    ) -> Option<String> {
+        use crate::types::Type;
+        let base_name = match ty {
+            Type::Object(name) => name.as_str(),
+            Type::Generic(name, _) => name.as_str(),
+            _ => return None,
+        };
+        self.type_registry
+            .as_ref()
+            .and_then(|r| r.get_class(base_name))
+            .filter(|c| c.has_destructor)
+            .map(|_| ty.to_string())
     }
 
     fn generate_static_initializer(
@@ -2430,6 +2832,10 @@ impl IRGenerator {
         }
 
         self.generate_block(&func.body)?;
+
+        // ROADMAP 5.3.x 自动 RAII：函数体末尾默认返回前，析构所有尚未退出的
+        // 作用域（显式 return 已在 generate_return_statement 中处理）。
+        self.emit_all_scope_dtors();
 
         // 确保函数有返回指令 - 对于非 void 函数，如果没有显式 return，添加默认返回
         if func.return_type == Type::Void {

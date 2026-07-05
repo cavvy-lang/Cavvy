@@ -471,9 +471,33 @@ impl SpecializationCollector {
         }
     }
 
-    /// 简单类型字符串解析
+    /// 简单类型字符串解析（支持嵌套泛型，如 `Rc<T>`、`Optional<Rc<T>>`）。
     pub(crate) fn parse_type_str(&self, s: &str) -> Type {
-        match s.trim() {
+        let t = s.trim();
+
+        // 数组类型
+        if t.ends_with("[]") {
+            let inner = self.parse_type_str(&t[..t.len() - 2]);
+            return Type::Array(Box::new(inner));
+        }
+
+        // 泛型类型：Base<Arg1, Arg2, ...>
+        if let Some(lt_pos) = t.find('<') {
+            let gt_pos = t.rfind('>').unwrap_or(t.len());
+            if lt_pos < gt_pos {
+                let base = t[..lt_pos].trim().to_string();
+                let args_str = &t[lt_pos + 1..gt_pos];
+                let args: Vec<Type> = split_top_level_type_args(args_str)
+                    .iter()
+                    .map(|a| self.parse_type_str(a.trim()))
+                    .collect();
+                if !args.is_empty() {
+                    return Type::Generic(base, args);
+                }
+            }
+        }
+
+        match t {
             "int" => Type::Int32,
             "long" => Type::Int64,
             "float" => Type::Float32,
@@ -481,11 +505,7 @@ impl SpecializationCollector {
             "bool" | "boolean" => Type::Bool,
             "string" | "String" => Type::String,
             "char" => Type::Char,
-            t if t.ends_with("[]") => {
-                let inner = self.parse_type_str(&t[..t.len() - 2]);
-                Type::Array(Box::new(inner))
-            }
-            t => Type::Object(t.to_string()),
+            _ => Type::Object(t.to_string()),
         }
     }
 
@@ -662,6 +682,12 @@ impl SpecializationCollector {
             }
             Expr::MemberAccess(member) => {
                 self.collect_dependency_from_expr(&member.object, mapping, ns);
+                // 处理静态泛型方法调用，如 `Optional<Rc<T>>.of(result)`：
+                // object 是带泛型实参的类标识符，需替换类型参数后收集依赖特化。
+                if let Expr::Identifier(id) = &*member.object {
+                    let substituted = substitute_type_args_in_class_name(&id.name, mapping);
+                    self.collect_generic_class_name_with_ns(&substituted, ns);
+                }
             }
             Expr::ArrayAccess(arr) => {
                 self.collect_dependency_from_expr(&arr.array, mapping, ns);
@@ -757,9 +783,10 @@ pub(crate) fn split_top_level_type_args(s: &str) -> Vec<String> {
 
 /// 将类名字符串中的泛型类型参数按 mapping 替换为具体类型。
 ///
-/// 例如 `ArrayListIterator<T>` 在 mapping `{T -> int}` 下替换为 `ArrayListIterator<int>`。
-/// 仅处理简单的顶层类型参数，嵌套泛型保留原样。
-fn substitute_type_args_in_class_name(
+/// 例如 `ArrayListIterator<T>` 在 mapping `{T -> int}` 下替换为
+/// `ArrayListIterator<int>`；嵌套泛型如 `Optional<Rc<T>>` 会递归替换为
+/// `Optional<Rc<Tracked>>`。
+pub(crate) fn substitute_type_args_in_class_name(
     class_name: &str,
     mapping: &std::collections::HashMap<String, Type>,
 ) -> String {
@@ -769,16 +796,48 @@ fn substitute_type_args_in_class_name(
     let gt_pos = class_name.rfind('>').unwrap_or(class_name.len());
     let base = &class_name[..lt_pos];
     let args_str = &class_name[lt_pos + 1..gt_pos];
-    let args: Vec<String> = args_str.split(',').map(|s| s.trim().to_string()).collect();
+    let args: Vec<String> = split_top_level_type_args(args_str)
+        .iter()
+        .map(|s| s.trim().to_string())
+        .collect();
     let substituted: Vec<String> = args
         .iter()
-        .map(|arg| {
-            if let Some(ty) = mapping.get(arg) {
-                format!("{}", ty)
-            } else {
-                arg.clone()
-            }
-        })
+        .map(|arg| substitute_type_arg_str(arg, mapping))
         .collect();
     format!("{}<{}>", base, substituted.join(", "))
+}
+
+/// 递归替换单个类型实参字符串中的类型参数。
+fn substitute_type_arg_str(
+    arg: &str,
+    mapping: &std::collections::HashMap<String, Type>,
+) -> String {
+    let arg = arg.trim();
+
+    // 数组类型：递归替换元素类型
+    if arg.ends_with("[]") {
+        let inner = substitute_type_arg_str(&arg[..arg.len() - 2], mapping);
+        return format!("{}[]", inner);
+    }
+
+    // 泛型类型：递归替换每个类型实参
+    if let Some(lt_pos) = arg.find('<') {
+        let gt_pos = arg.rfind('>').unwrap_or(arg.len());
+        if lt_pos < gt_pos {
+            let base = &arg[..lt_pos];
+            let inner = &arg[lt_pos + 1..gt_pos];
+            let parts: Vec<String> = split_top_level_type_args(inner)
+                .iter()
+                .map(|s| substitute_type_arg_str(s.trim(), mapping))
+                .collect();
+            return format!("{}<{}>", base, parts.join(", "));
+        }
+    }
+
+    // 简单类型参数：直接查 mapping
+    if let Some(ty) = mapping.get(arg) {
+        format!("{}", ty)
+    } else {
+        arg.to_string()
+    }
 }

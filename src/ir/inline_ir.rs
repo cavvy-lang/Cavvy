@@ -91,6 +91,9 @@ impl InlineIrParser {
                 "phi".to_string(),
                 "switch".to_string(),
                 "unreachable".to_string(),
+                // 原子操作（ROADMAP 5.3.x：Rc<T> 引用计数所需）
+                "atomicrmw".to_string(),
+                "cmpxchg".to_string(),
             ],
             allow_all: false,
         }
@@ -232,9 +235,55 @@ impl InlineIrParser {
             "store" | "load" => {
                 // 允许内存操作，注意指针安全
             }
+            "atomicrmw" => {
+                // atomicrmw <op> <ty>* <ptr>, <val> <ordering>
+                // 例: %r = atomicrmw add i64* %p, 1 seq_cst
+                let parts: Vec<&str> = _line.split_whitespace().collect();
+                if parts.len() < 5 {
+                    return Err(format!(
+                        "Line {}: malformed atomicrmw instruction (expected 'atomicrmw <op> <ty>* <ptr>, <val> <ordering>')",
+                        line_num
+                    ));
+                }
+                let ordering = parts[parts.len() - 1];
+                if !Self::is_valid_atomic_ordering(ordering) {
+                    return Err(format!(
+                        "Line {}: invalid atomic ordering '{}' in atomicrmw (allowed: unordered, monotonic, acquire, release, acq_rel, seq_cst)",
+                        line_num, ordering
+                    ));
+                }
+            }
+            "cmpxchg" => {
+                // cmpxchg <ty>* <ptr>, <ty> <cmp>, <ty> <new> <success ord> <failure ord>
+                // 末尾两个 token 应为合法 ordering
+                let parts: Vec<&str> = _line.split_whitespace().collect();
+                if parts.len() < 8 {
+                    return Err(format!(
+                        "Line {}: malformed cmpxchg instruction (expected 'cmpxchg <ty>* <ptr>, <ty> <cmp>, <ty> <new> <success ord> <failure ord>')",
+                        line_num
+                    ));
+                }
+                let fail_ord = parts[parts.len() - 1];
+                let succ_ord = parts[parts.len() - 2];
+                if !Self::is_valid_atomic_ordering(succ_ord) || !Self::is_valid_atomic_ordering(fail_ord)
+                {
+                    return Err(format!(
+                        "Line {}: invalid atomic ordering in cmpxchg (got success='{}', failure='{}'; allowed: unordered, monotonic, acquire, release, acq_rel, seq_cst)",
+                        line_num, succ_ord, fail_ord
+                    ));
+                }
+            }
             _ => {}
         }
         Ok(())
+    }
+
+    /// 判断 token 是否为合法的 LLVM 原子内存序
+    fn is_valid_atomic_ordering(token: &str) -> bool {
+        matches!(
+            token,
+            "unordered" | "monotonic" | "acquire" | "release" | "acq_rel" | "seq_cst"
+        )
     }
 }
 

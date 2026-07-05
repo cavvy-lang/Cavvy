@@ -1,0 +1,24 @@
+#include <SmartPtr.cay>
+
+using std::UniquePtr;
+using std::ScopedPtr;
+
+public class Tracked {
+    public int v;
+    public Tracked(int v) { this.v = v; }
+    ~Tracked() { println("dtor " + this.v); }
+}
+
+public int main() {
+    scope {
+        UniquePtr<Tracked> p = UniquePtr<Tracked>.fromRaw(new Tracked(1));
+        if (p.isValid()) {
+            println("p.v=" + p.get().v);
+        }
+
+        ScopedPtr<Tracked> s = ScopedPtr<Tracked>.fromRaw(new Tracked(2));
+        println("s.v=" + s.get().v);
+    }
+    println("after scope");
+    return 0;
+}

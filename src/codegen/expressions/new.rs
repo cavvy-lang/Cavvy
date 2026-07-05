@@ -123,10 +123,20 @@ impl IRGenerator {
         // 优先使用 new 表达式自带的显式类型参数（如 `new Box<int>()`），
         // 否则回退到期望目标类型（如变量声明 `Box<int> b = new Box(42)`）。
         let concrete_type_args: Option<Vec<crate::types::Type>> = {
-            let class_type_params = self
-                .type_registry
-                .as_ref()
-                .and_then(|r| r.get_class(&base_class_name))
+            // 类可能位于命名空间中；先用裸名查找（依赖 TypeRegistry 的
+            // current_namespace 回退），若失败则显式构造限定名再查。
+            let class_info_opt = self.type_registry.as_ref().and_then(|r| {
+                r.get_class(&base_class_name).or_else(|| {
+                    if !base_class_name.contains("::") {
+                        if let Some(ns) = self.class_namespaces.get(&base_class_name) {
+                            let qualified = format!("{}::{}", ns.join("::"), base_class_name);
+                            return r.get_class(&qualified);
+                        }
+                    }
+                    None
+                })
+            });
+            let class_type_params = class_info_opt
                 .map(|c| c.type_params.clone())
                 .unwrap_or_default();
             if class_type_params.is_empty() {

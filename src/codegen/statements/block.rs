@@ -16,6 +16,13 @@ impl IRGenerator {
             self.generate_statement(stmt)?;
         }
 
+        // ROADMAP 5.3.x 自动 RAII：作用域正常退出前，逆序调用本层带析构函数
+        // 的局部变量的 `@ClassName.__dtor`。
+        //
+        // 若块已被 return 等终止指令结束，emit_scope_exit_dtors 会保留候选，
+        // 由 return 语句统一调用 emit_all_scope_dtors，避免在 ret 后追加指令。
+        self.emit_scope_exit_dtors();
+
         // 退出作用域
         self.scope_manager.exit_scope();
         Ok(())

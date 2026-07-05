@@ -1,0 +1,27 @@
+#include <SmartPtr.cay>
+
+using std::Rc;
+
+public class Tracked {
+    public int v;
+    public Tracked(int v) { this.v = v; }
+    ~Tracked() { println("dtor " + this.v); }
+}
+
+public int main() {
+    scope {
+        Rc<Tracked> rc = Rc<Tracked>.fromRaw(new Tracked(1));
+        long c1 = rc.refCount();
+        println("c1=" + c1);
+
+        Rc<Tracked> rc2 = rc.clone();
+        long c2 = rc.refCount();
+        println("c2=" + c2);
+
+        if (c2 == 2) {
+            println("clone ok");
+        }
+    }
+    println("after scope");
+    return 0;
+}

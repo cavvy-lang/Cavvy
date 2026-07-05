@@ -487,6 +487,16 @@ impl IRGenerator {
         // 推断类型参数（T=int），将 class_name 特化为 "Optional<int>" 并安装类型映射，
         // 使调用解析到单态化版本 Optional_int_.of。
         let mut class_name = class_name;
+        // 若 class_name 含未解析的泛型参数（如 WeakPtr<Tracked> 方法体内出现
+        // `Optional<Rc<T>>.of(...)`），用当前 generic_type_args 替换，避免链接到
+        // 未定义的类型擦除基础模板。
+        if class_name.contains('<') {
+            class_name = crate::codegen::specialization::substitute_type_args_in_class_name(
+                &class_name,
+                &self.generic_type_args,
+            );
+        }
+
         if is_static_call && !class_name.contains('<') {
             if let Some(crate::types::Type::Generic(exp_base, exp_args)) = &expected_static_type {
                 if !exp_args.is_empty() {

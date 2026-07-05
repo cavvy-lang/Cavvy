@@ -560,6 +560,11 @@ impl IRGenerator {
             _ => {}
         }
 
+        // ROADMAP 5.3.x 自动 RAII：若局部变量类型是带析构函数的类，
+        // 登记为析构候选，作用域退出时由 generate_block 自动调用 __dtor。
+        // （参数与 this 不走此路径——它们由 declare_var_with_flag 登记，is_parameter=true）
+        self.register_dtor_candidate_if_applicable(&var.name, &llvm_name, &actual_type);
+
         if let Some(init) = var.initializer.as_ref() {
             // 特殊处理数组初始化，传递目标类型信息
             if let Expr::ArrayInit(array_init) = init {

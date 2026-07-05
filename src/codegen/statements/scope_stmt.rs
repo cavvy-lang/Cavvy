@@ -68,6 +68,9 @@ impl IRGenerator {
         }
 
         // scope 结束时，生成清理代码
+        // ROADMAP 5.3.x 自动 RAII：调用本作用域内带析构函数的局部变量。
+        self.emit_scope_exit_dtors();
+
         // 注意：对于栈分配（alloca），实际上不需要显式释放
         // LLVM 在函数返回时自动清理所有 alloca
         // 但为了完整性，我们记录 scope 的结束

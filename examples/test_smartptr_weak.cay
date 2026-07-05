@@ -1,0 +1,41 @@
+#include <SmartPtr.cay>
+#include <Optional.cay>
+
+using std::Rc;
+using std::WeakPtr;
+using std::Optional;
+
+public class Tracked {
+    public int v;
+    public Tracked(int v) { this.v = v; }
+    ~Tracked() { println("dtor " + this.v); }
+}
+
+public int main() {
+    scope {
+        Rc<Tracked> rc = Rc<Tracked>.fromRaw(new Tracked(1));
+        println("rc.count=" + rc.refCount());
+
+        WeakPtr<Tracked> weak = WeakPtr<Tracked>.fromRc(rc);
+        if (weak.isExpired()) {
+            println("weak expired (bad)");
+        } else {
+            println("weak alive ok");
+        }
+
+        Optional<Rc<Tracked>> upgraded = weak.upgrade();
+        if (upgraded.isPresent()) {
+            println("upgraded present ok");
+            println("upgraded.v=" + upgraded.get().get().v);
+            if (rc.refCount() == 2) {
+                println("rc.count=2 ok");
+            } else {
+                println("rc.count not 2 (bad)");
+            }
+        } else {
+            println("upgraded empty (bad)");
+        }
+    }
+    println("after scope");
+    return 0;
+}

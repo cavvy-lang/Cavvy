@@ -91,6 +91,12 @@ public class Optional<T> {
             return defaultValue;
         }
     }
+    /**
+     * 析构函数：当 Optional 包含值时自动析构 value 字段。
+     * 具体 T 的析构调用由编译器在特化 __dtor 中注入。
+     */
+    ~Optional() {
+    }
 }
 } // namespace std
 

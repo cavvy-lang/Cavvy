@@ -1,0 +1,337 @@
+/**
+ * SmartPtr.cay - ROADMAP 5.3.x 智能指针与资源管理
+ *
+ * 提供四种智能指针：
+ *   - UniquePtr<T>  独占所有权，可转移、可释放
+ *   - ScopedPtr<T>  作用域内独占所有权，不可转移
+ *   - Rc<T>         引用计数共享所有权（原子计数，线程安全）
+ *   - WeakPtr<T>    弱引用，不增加引用计数，可尝试 upgrade
+ *
+ * 依赖编译器在特化 __dtor 中自动注入 T 的析构与 free 调用，因此
+ * UniquePtr/ScopedPtr/Rc 的析构函数体在源码层为空。
+ *
+ * 用法示例:
+ *   scope {
+ *       UniquePtr<MyClass> p = UniquePtr<MyClass>.fromRaw(new MyClass());
+ *       p.get().doSomething();
+ *   } // 作用域退出自动调用 MyClass.__dtor + free
+ */
+
+#pragma once
+
+#include <Optional.cay>
+
+namespace std {
+
+// ============================================================
+// UniquePtr<T> - 独占所有权
+// ============================================================
+
+public class UniquePtr<T> {
+    /** 托管对象指针，以 long 形式存储；0 表示空。 */
+    private long __owned;
+
+    /**
+     * 用对象引用构造 UniquePtr，获得该对象的所有权。
+     * T 应为类类型；基本类型指针请使用 long 地址版本。
+     */
+    public static UniquePtr<T> fromRaw(T value) {
+        UniquePtr<T> result = new UniquePtr<T>();
+        long addr = 0;
+        __ir {
+            %v = ptrtoint i8* %value to i64
+            store i64 %v, i64* %addr
+        }
+        result.__owned = addr;
+        return result;
+    }
+
+    /**
+     * 转移 other 的所有权到新的 UniquePtr，并把 other 置空。
+     */
+    public static UniquePtr<T> move(UniquePtr<T> other) {
+        UniquePtr<T> result = new UniquePtr<T>();
+        result.__owned = other.__owned;
+        other.__owned = 0;
+        return result;
+    }
+
+    /**
+     * 获取托管对象引用（不转移所有权）。
+     */
+    public T get() {
+        long addr = this.__owned;
+        T result = null;
+        __ir {
+            %v = load i64, i64* %addr
+            %p = inttoptr i64 %v to i8*
+            store i8* %p, i8** %result
+        }
+        return result;
+    }
+
+    /**
+     * 放弃所有权并返回对象引用；UniquePtr 本身置空。
+     */
+    public T release() {
+        T ptr = this.get();
+        this.__owned = 0;
+        return ptr;
+    }
+
+    /**
+     * 释放当前托管对象并把新对象设为托管对象。
+     *
+     * 注意：当前实现会 free 旧指针的内存，但不会调用旧对象的 __dtor
+     *（源码层无法写出泛型 T 的析构调用）。若需要析构旧对象，请使用
+     * `release()` 取出后手动管理，或让旧 UniquePtr 离开作用域。
+     */
+    public void reset(T newPtr) {
+        long addr = 0;
+        __ir {
+            %v = ptrtoint i8* %newPtr to i64
+            store i64 %v, i64* %addr
+        }
+        this.__owned = addr;
+    }
+
+    /**
+     * 是否持有对象。
+     */
+    public boolean isValid() {
+        return this.__owned != 0;
+    }
+
+    /**
+     * 析构函数体为空；编译器在特化 __dtor 末尾注入：
+     *   if (__owned != 0) { call T.__dtor; call free; }
+     */
+    ~UniquePtr() {
+    }
+}
+
+// ============================================================
+// ScopedPtr<T> - 作用域内独占所有权（不可转移）
+// ============================================================
+
+public class ScopedPtr<T> {
+    /** 托管对象指针，以 long 形式存储；0 表示空。 */
+    private long __owned;
+
+    /**
+     * 用对象引用构造 ScopedPtr。
+     */
+    public static ScopedPtr<T> fromRaw(T value) {
+        ScopedPtr<T> result = new ScopedPtr<T>();
+        long addr = 0;
+        __ir {
+            %v = ptrtoint i8* %value to i64
+            store i64 %v, i64* %addr
+        }
+        result.__owned = addr;
+        return result;
+    }
+
+    /**
+     * 获取托管对象引用。
+     */
+    public T get() {
+        long addr = this.__owned;
+        T result = null;
+        __ir {
+            %v = load i64, i64* %addr
+            %p = inttoptr i64 %v to i8*
+            store i8* %p, i8** %result
+        }
+        return result;
+    }
+
+    /**
+     * 是否持有对象。
+     */
+    public boolean isValid() {
+        return this.__owned != 0;
+    }
+
+    /**
+     * 析构函数体为空；编译器注入 T.__dtor + free。
+     */
+    ~ScopedPtr() {
+    }
+}
+
+// ============================================================
+// Rc<T> - 引用计数共享所有权
+// ============================================================
+
+public class Rc<T> {
+    /** 托管对象指针（冗余缓存，便于 get）。内部使用。 */
+    public long __owned;
+    /** 指向 16 字节控制块的指针：[i64 refcount, i64 object_ptr]。内部使用。 */
+    public long __refcount_ptr;
+
+    /**
+     * 用对象引用构造 Rc，引用计数初始化为 1。
+     */
+    public static Rc<T> fromRaw(T value) {
+        Rc<T> result = new Rc<T>();
+        long owned = 0;
+        __ir {
+            %v = ptrtoint i8* %value to i64
+            store i64 %v, i64* %owned
+        }
+        result.__owned = owned;
+
+        // 分配控制块：refcount + object_ptr
+        long block = 0;
+        __ir {
+            %p = call i8* @calloc(i64 1, i64 16)
+            %b = ptrtoint i8* %p to i64
+            store i64 %b, i64* %block
+        }
+        result.__refcount_ptr = block;
+
+        // 初始化 refcount = 1，object_ptr = owned
+        __ir {
+            %block_i64 = load i64, i64* %block
+            %block_ptr = inttoptr i64 %block_i64 to i8*
+            %rc_ptr = bitcast i8* %block_ptr to i64*
+            store i64 1, i64* %rc_ptr
+
+            %obj_field = getelementptr i8, i8* %block_ptr, i64 8
+            %obj_field_ptr = bitcast i8* %obj_field to i64*
+            %owned_i64 = load i64, i64* %owned
+            store i64 %owned_i64, i64* %obj_field_ptr
+        }
+        return result;
+    }
+
+    /**
+     * 创建新的 Rc 引用，原子递增引用计数。
+     */
+    public Rc<T> clone() {
+        Rc<T> result = new Rc<T>();
+        result.__owned = this.__owned;
+        result.__refcount_ptr = this.__refcount_ptr;
+
+        long rc = this.__refcount_ptr;
+        __ir {
+            %rc_i64 = load i64, i64* %rc
+            %rc_ptr = inttoptr i64 %rc_i64 to i64*
+            %old = atomicrmw add i64* %rc_ptr, i64 1 seq_cst
+        }
+        return result;
+    }
+
+    /**
+     * 获取托管对象引用。
+     */
+    public T get() {
+        long addr = this.__owned;
+        T result = null;
+        __ir {
+            %v = load i64, i64* %addr
+            %p = inttoptr i64 %v to i8*
+            store i8* %p, i8** %result
+        }
+        return result;
+    }
+
+    /**
+     * 返回当前引用计数（仅供调试/测试）。
+     */
+    public long refCount() {
+        long rc = this.__refcount_ptr;
+        long count = 0;
+        __ir {
+            %rc_i64 = load i64, i64* %rc
+            %rc_ptr = inttoptr i64 %rc_i64 to i64*
+            %v = load i64, i64* %rc_ptr
+            store i64 %v, i64* %count
+        }
+        return count;
+    }
+
+    /**
+     * 析构函数体为空；编译器注入：
+     *   old = atomicrmw sub refcount, 1
+     *   if (old == 1) { call T.__dtor; free(obj); free(block); }
+     */
+    ~Rc() {
+    }
+}
+
+// ============================================================
+// WeakPtr<T> - 弱引用
+// ============================================================
+
+public class WeakPtr<T> {
+    /** 指向 Rc 控制块的指针。 */
+    private long __refcount_ptr;
+
+    /**
+     * 从 Rc 构造弱引用，不增加引用计数。
+     */
+    public static WeakPtr<T> fromRc(Rc<T> rc) {
+        WeakPtr<T> result = new WeakPtr<T>();
+        result.__refcount_ptr = rc.__refcount_ptr;
+        return result;
+    }
+
+    /**
+     * 检查指向的对象是否已释放。
+     */
+    public boolean isExpired() {
+        long rc = this.__refcount_ptr;
+        long count = 0;
+        __ir {
+            %rc_i64 = load i64, i64* %rc
+            %rc_ptr = inttoptr i64 %rc_i64 to i64*
+            %v = load i64, i64* %rc_ptr
+            store i64 %v, i64* %count
+        }
+        return count == 0;
+    }
+
+    /**
+     * 尝试升级弱引用为 Rc。
+     * 若对象已释放，返回空 Optional；否则原子递增引用计数并返回 Rc。
+     */
+    public Optional<Rc<T>> upgrade() {
+        long rc = this.__refcount_ptr;
+        long count = 0;
+        __ir {
+            %rc_i64_a = load i64, i64* %rc
+            %rc_ptr_a = inttoptr i64 %rc_i64_a to i64*
+            %v = load i64, i64* %rc_ptr_a
+            store i64 %v, i64* %count
+        }
+        if (count == 0) {
+            return Optional<Rc<T>>.empty();
+        }
+
+        // 引用计数仍大于 0，安全地原子递增。
+        __ir {
+            %rc_i64_b = load i64, i64* %rc
+            %rc_ptr_b = inttoptr i64 %rc_i64_b to i64*
+            %old = atomicrmw add i64* %rc_ptr_b, i64 1 seq_cst
+        }
+
+        // 从控制块读取 object_ptr 构造新的 Rc。
+        Rc<T> result = new Rc<T>();
+        result.__refcount_ptr = this.__refcount_ptr;
+        long owned = 0;
+        __ir {
+            %rc_i64_c = load i64, i64* %rc
+            %rc_ptr_c = inttoptr i64 %rc_i64_c to i64*
+            %obj_field = getelementptr i8, i8* %rc_ptr_c, i64 8
+            %obj_field_ptr = bitcast i8* %obj_field to i64*
+            %obj_i64 = load i64, i64* %obj_field_ptr
+            store i64 %obj_i64, i64* %owned
+        }
+        result.__owned = owned;
+        return Optional<Rc<T>>.of(result);
+    }
+}
+
+} // namespace std

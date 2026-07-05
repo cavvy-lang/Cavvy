@@ -54,34 +54,56 @@ impl IRGenerator {
     /// 泛型方法的返回/参数类型会被降级为 i8*，既产生警告又导致类型不匹配。
     /// 调用方应在方法调用代码生成结束后恢复调用前的映射快照。
     pub fn install_receiver_generic_args(&mut self, obj_expr: &Option<Box<crate::ast::Expr>>) {
+        use crate::ast::Expr;
         use crate::types::Type;
         let Some(obj) = obj_expr else {
             return;
         };
-        // 支持 Type::Generic 和 Type::Object("Class<T>") 两种形式。
-        // 后者由 new Class<T>() 或变量类型推断产生，需要从字符串解析类型实参。
-        let (base, args): (String, Vec<Type>) = match self.get_expression_type(obj) {
-            Some(Type::Generic(base, args)) => (base, args),
-            Some(Type::Object(class_name)) => {
-                if class_name.contains('<') && class_name.ends_with('>') {
-                    if let Some(pos) = class_name.find('<') {
-                        let base = class_name[..pos].to_string();
-                        let args_str = &class_name[pos + 1..class_name.len() - 1];
-                        let args: Vec<Type> = args_str
-                            .split(',')
-                            .map(|s| s.trim())
-                            .filter(|s| !s.is_empty())
-                            .map(|s| parse_type_arg_str(s))
-                            .collect();
-                        (base, args)
-                    } else {
-                        return;
-                    }
+        // 支持三种形式：
+        // 1. 表达式类型已是 Type::Generic（如变量、new 表达式）。
+        // 2. 表达式类型是 Type::Object("Class<T>")（由变量类型推断产生）。
+        // 3. 表达式是裸类名标识符且自身就带泛型实参，如 `Rc<Tracked>.fromRaw(...)`。
+        //    此时 get_expression_type 对该标识符返回 None，需要直接从标识符名解析。
+        let (base, args): (String, Vec<Type>) = match obj.as_ref() {
+            Expr::Identifier(name)
+                if name.name.contains('<') && name.name.ends_with('>') =>
+            {
+                let name_str = &name.name;
+                if let Some(pos) = name_str.find('<') {
+                    let base = name_str[..pos].to_string();
+                    let args_str = &name_str[pos + 1..name_str.len() - 1];
+                    let args: Vec<Type> = crate::codegen::specialization::split_top_level_type_args(args_str)
+                        .iter()
+                        .map(|s| parse_type_arg_str(s.trim()))
+                        .collect();
+                    (base, args)
                 } else {
                     return;
                 }
             }
-            _ => return,
+            _ => match self.get_expression_type(obj) {
+                Some(Type::Generic(base, args)) => (base, args),
+                Some(Type::Object(class_name)) => {
+                    if class_name.contains('<') && class_name.ends_with('>') {
+                        if let Some(pos) = class_name.find('<') {
+                            let base = class_name[..pos].to_string();
+                            let args_str = &class_name[pos + 1..class_name.len() - 1];
+                            let args: Vec<Type> = args_str
+                                .split(',')
+                                .map(|s| s.trim())
+                                .filter(|s| !s.is_empty())
+                                .map(|s| parse_type_arg_str(s))
+                                .collect();
+                            (base, args)
+                        } else {
+                            return;
+                        }
+                    } else {
+                        return;
+                    }
+                }
+                _ => return,
+            },
         };
         if args.is_empty() {
             return;

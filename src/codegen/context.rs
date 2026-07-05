@@ -71,10 +71,28 @@ pub struct VarScope {
     pub is_parameter: bool, // 是否是参数（参数存储的是值，局部变量存储的是对象指针）
 }
 
+/// 析构候选：登记一个在作用域退出时需要自动调用 `@ClassName.__dtor` 的局部变量。
+///
+/// ROADMAP 5.3.x 自动 RAII：当局部变量的类型是带析构函数的类（或泛型特化类）
+/// 时，作用域正常退出前需逆序调用其 `__dtor`。提前 return/break/continue 时
+/// 也需先于跳转触发本层及外层（至函数/循环边界）的析构。
+#[derive(Debug, Clone)]
+pub struct DtorCandidate {
+    /// 变量名（Cavvy 源码名，用于查 llvm_name）
+    pub var_name: String,
+    /// 类名（普通类用基础名；泛型特化类用特化名如 "std::UniquePtr<int>"）
+    pub class_name: String,
+    /// 该变量的 LLVM alloca 名（直接持有对象指针 i8*）
+    pub llvm_name: String,
+}
+
 /// 作用域栈管理
 pub struct ScopeManager {
     scopes: Vec<HashMap<String, VarScope>>, // 作用域栈
     scope_counter: usize,                   // 作用域计数器（用于生成唯一名称）
+    /// 每层作用域的析构候选（与 scopes 索引对齐）。
+    /// 仅局部 VarDecl 登记；参数与 this 不登记。
+    dtor_candidates: Vec<Vec<DtorCandidate>>,
 }
 
 impl ScopeManager {
@@ -82,12 +100,14 @@ impl ScopeManager {
         Self {
             scopes: vec![HashMap::new()], // 全局作用域
             scope_counter: 0,
+            dtor_candidates: vec![Vec::new()],
         }
     }
 
     /// 进入新作用域
     pub fn enter_scope(&mut self) {
         self.scopes.push(HashMap::new());
+        self.dtor_candidates.push(Vec::new());
         self.scope_counter += 1;
     }
 
@@ -95,7 +115,67 @@ impl ScopeManager {
     pub fn exit_scope(&mut self) {
         if self.scopes.len() > 1 {
             self.scopes.pop();
+            self.dtor_candidates.pop();
         }
+    }
+
+    /// 登记一个析构候选到当前作用域（仅对带析构函数的类类型局部变量调用）
+    pub fn register_dtor_candidate(&mut self, candidate: DtorCandidate) {
+        if let Some(scope) = self.dtor_candidates.last_mut() {
+            scope.push(candidate);
+        }
+    }
+
+    /// 取出当前作用域的析构候选（逆序返回，符合 C++ 后构造先析构语义）。
+    /// 取出后清空当前作用域候选，避免重复析构。
+    pub fn drain_current_scope_dtors(&mut self) -> Vec<DtorCandidate> {
+        if let Some(scope) = self.dtor_candidates.last_mut() {
+            let mut v = std::mem::take(scope);
+            v.reverse();
+            v
+        } else {
+            Vec::new()
+        }
+    }
+
+    /// 取出所有作用域的析构候选，从内层到外层，每层内部逆序。
+    /// 用于 return 等提前退出路径：一次性析构所有尚未退出的作用域。
+    pub fn drain_all_scope_dtors(&mut self) -> Vec<DtorCandidate> {
+        let mut result = Vec::new();
+        for scope in self.dtor_candidates.iter_mut().rev() {
+            let mut v = std::mem::take(scope);
+            v.reverse();
+            result.extend(v);
+        }
+        result
+    }
+
+    /// 当前作用域是否有析构候选
+    pub fn current_scope_has_dtors(&self) -> bool {
+        self.dtor_candidates
+            .last()
+            .map_or(false, |s| !s.is_empty())
+    }
+
+    /// 按变量名移除析构候选（从内层作用域到外层搜索），返回被移除的候选。
+    ///
+    /// 用于 `return local_var;` 场景：返回的局部对象所有权转移给调用者，
+    /// 不应在当前函数末尾析构它。
+    pub fn remove_dtor_candidate_by_var_name(
+        &mut self,
+        var_name: &str,
+    ) -> Option<DtorCandidate> {
+        for scope in self.dtor_candidates.iter_mut().rev() {
+            if let Some(pos) = scope.iter().position(|c| c.var_name == var_name) {
+                return Some(scope.remove(pos));
+            }
+        }
+        None
+    }
+
+    /// 当前作用域栈深度（用于记录 return/break/continue 时的边界）
+    pub fn scope_depth(&self) -> usize {
+        self.scopes.len()
     }
 
     /// 声明变量（在当前作用域）
@@ -168,6 +248,8 @@ impl ScopeManager {
     pub fn reset(&mut self) {
         self.scopes.clear();
         self.scopes.push(HashMap::new());
+        self.dtor_candidates.clear();
+        self.dtor_candidates.push(Vec::new());
         self.scope_counter = 0;
     }
 
@@ -521,6 +603,20 @@ impl IRGenerator {
         )
     }
 
+    /// 确保 `declare void @free(i8*)` 在 IR 中出现一次。
+    /// ROADMAP 5.3.x 智能指针注入需要调用 free，但用户代码未必引用它。
+    pub fn ensure_free_declared(&mut self) {
+        if !self.code.contains("declare void @free(i8*)") {
+            // 在第一个 define 之前插入声明；如果还没有 define，直接追加。
+            let decl = "declare void @free(i8*)\n";
+            if let Some(pos) = self.code.find("define ") {
+                self.code.insert_str(pos, decl);
+            } else {
+                self.code.push_str(decl);
+            }
+        }
+    }
+
     /// 发射一行代码到当前代码缓冲区
     pub fn emit_line(&mut self, line: &str) {
         // 添加源映射注释（如果启用且不是LLVM注释行）
@@ -733,6 +829,127 @@ impl IRGenerator {
             .iter()
             .rev()
             .find(|ctx| ctx.label.as_deref() == Some(label))
+    }
+
+    /// ROADMAP 5.3.x 自动 RAII：作用域正常退出时为带析构函数的局部变量调用 `__dtor`。
+    ///
+    /// 在当前基本块尚未被终止指令结束时直接追加析构调用。若块已终止（如末尾
+    /// return），不追加也不 drain——析构候选留给 `emit_all_scope_dtors` 在 return
+    /// 路径统一处理，避免在 `ret` 之后生成指令。
+    pub fn emit_scope_exit_dtors(&mut self) {
+        if !self.scope_manager.current_scope_has_dtors() {
+            return;
+        }
+        // 若当前基本块已终止，不能再追加指令；保留候选给 return 路径处理。
+        if self.current_block_terminated() {
+            return;
+        }
+        let candidates = self.scope_manager.drain_current_scope_dtors();
+        self.emit_dtor_candidates(&candidates);
+    }
+
+    /// ROADMAP 5.3.x 自动 RAII：为所有尚未退出的作用域（内层优先）调用 `__dtor`。
+    ///
+    /// 用于 return 语句或函数默认返回前：把从当前内层到函数边界的所有析构候选
+    /// 按 C++ 后构造先析构顺序全部调用，并清空候选。
+    pub fn emit_all_scope_dtors(&mut self) {
+        let candidates = self.scope_manager.drain_all_scope_dtors();
+        self.emit_dtor_candidates(&candidates);
+    }
+
+    /// 为一组析构候选发射 `load` + `call @ClassName.__dtor` 指令。
+    fn emit_dtor_candidates(&mut self, candidates: &[DtorCandidate]) {
+        for cand in candidates {
+            // 局部类实例变量的 alloca 存储的是对象指针 i8*。
+            // 加载该指针并调用 @<QualifiedClass>.__dtor(i8* %obj)。
+            let dtor_fn = format!(
+                "{}.__dtor",
+                self.get_qualified_class_name(&cand.class_name)
+            );
+            let obj_temp = self.new_temp();
+            self.emit_line(&format!(
+                "  {} = load i8*, i8** %{}",
+                obj_temp, cand.llvm_name
+            ));
+            self.emit_line(&format!("  call void @{}(i8* {})", dtor_fn, obj_temp));
+        }
+    }
+
+    /// 判断当前已发射代码的最后一个非空、非注释行是否是 LLVM 终止指令。
+    /// 复用 if_stmt.rs 的终止检测模式。
+    pub fn current_block_terminated(&self) -> bool {
+        let lines: Vec<&str> = self.code.trim().lines().collect();
+        if let Some(last) = lines.last() {
+            let t = last.trim();
+            // 跳过标签行与空行
+            if t.is_empty() || t.ends_with(':') {
+                return false;
+            }
+            return t.starts_with("ret")
+                || t.starts_with("br ")
+                || t.starts_with("switch")
+                || t.starts_with("unreachable");
+        }
+        false
+    }
+
+    /// ROADMAP 5.3.x 自动 RAII：判断给定 Cavvy 类型是否是带析构函数的类，
+    /// 若是则把局部变量登记为析构候选。
+    ///
+    /// - `Type::Object(name)`：查 type_registry 该类 has_destructor。
+    /// - `Type::Generic(name, args)`：若全部具体，查基础类 has_destructor，
+    ///   并用特化名（如 "std::UniquePtr<int>"）登记，以便阶段 3 生成的特化
+    ///   `__dtor` 被正确调用。
+    ///
+    /// 仅由局部 VarDecl 调用；参数与 this 不调用此方法。
+    pub fn register_dtor_candidate_if_applicable(
+        &mut self,
+        var_name: &str,
+        llvm_name: &str,
+        cay_type: &crate::types::Type,
+    ) {
+        use crate::types::Type;
+        let (base_class, specialized_name): (Option<String>, Option<String>) = match cay_type {
+            Type::Object(name) => (Some(name.clone()), Some(name.clone())),
+            Type::Generic(name, args) => {
+                let resolved: Vec<Type> =
+                    args.iter().map(|t| self.resolve_type_arg_concrete(t)).collect();
+                let all_concrete =
+                    !resolved.is_empty() && resolved.iter().all(|t| self.type_arg_is_concrete(t));
+                if all_concrete {
+                    let args_str: Vec<String> = resolved.iter().map(|t| format!("{}", t)).collect();
+                    (
+                        Some(name.clone()),
+                        Some(format!("{}<{}>", name, args_str.join(", "))),
+                    )
+                } else {
+                    (None, None) // 类型参数未全部具体，无法生成特化 __dtor，跳过
+                }
+            }
+            _ => (None, None),
+        };
+
+        let (base_class, spec_name) = match (base_class, specialized_name) {
+            (Some(b), Some(s)) => (b, s),
+            _ => return,
+        };
+
+        // 查基础类是否声明了析构函数（has_destructor）。注意：基础类名可能含
+        // 命名空间（如 "std::UniquePtr"）；registry.get_class 会处理。
+        let has_dtor = self
+            .type_registry
+            .as_ref()
+            .and_then(|r| r.get_class(&base_class))
+            .map_or(false, |c| c.has_destructor);
+        if !has_dtor {
+            return;
+        }
+
+        self.scope_manager.register_dtor_candidate(DtorCandidate {
+            var_name: var_name.to_string(),
+            class_name: spec_name.clone(),
+            llvm_name: llvm_name.to_string(),
+        });
     }
 
     /// 替换类型中的泛型参数为实际类型（使用 generic_type_args 映射）
