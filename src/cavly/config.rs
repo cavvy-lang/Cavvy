@@ -62,6 +62,10 @@ pub struct CavlyConfig {
     #[serde(flatten)]
     pub extra: HashMap<String, toml::Value>,
 
+    /// 构建脚本配置（自定义执行命令等）
+    #[serde(default, rename = "build-script")]
+    pub build_script_config: Option<BuildScriptConfig>,
+
     /// 安全验证配置 (ESSO-10400 / ESSO-10430)
     #[serde(default)]
     pub security: SecurityConfig,
@@ -109,6 +113,12 @@ pub struct PackageConfig {
     /// 默认为 None，表示不使用构建脚本
     #[serde(default)]
     pub build_script: Option<String>,
+
+    /// 构建脚本执行器（解释器或命令）
+    /// 例如 "python"、"lua"、"sh"、"powershell"
+    /// 为空时根据扩展名自动推断，.cay/.eol 默认用 cayc 编译执行
+    #[serde(default)]
+    pub build_script_runner: Option<String>,
 }
 
 impl Default for PackageConfig {
@@ -124,6 +134,7 @@ impl Default for PackageConfig {
             src_dir: default_src_dir(),
             target_dir: default_target_dir(),
             build_script: None,
+            build_script_runner: None,
         }
     }
 }
@@ -308,6 +319,20 @@ pub struct BuildConfig {
 
 fn default_opt_level() -> String {
     "2".to_string()
+}
+
+// ============================================================
+// 构建脚本配置
+// ============================================================
+
+/// 自定义构建脚本配置
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct BuildScriptConfig {
+    /// 显式指定构建脚本执行命令
+    /// 例如 command = ["python", "build.py"]
+    /// 如果指定，优先于 package.build_script_runner 和扩展名推断
+    #[serde(default)]
+    pub command: Option<Vec<String>>,
 }
 
 /// FFI 配置
@@ -923,7 +948,8 @@ license = "MIT"
 main = "main.cay"
 src_dir = "src"
 target_dir = "target"
-# build_script = "build.cay"  # 构建脚本（可选）
+# build_script = "build.cay"        # 构建脚本路径（可选）
+# build_script_runner = "python"    # 构建脚本解释器（可选，如 python/lua/sh）
 
 # [[bin]] 定义多个二进制目标
 # 如果没有 [[bin]]，cavly 自动将 package.main 作为默认的单一二进制目标
@@ -966,6 +992,11 @@ libs = []
 lto = false
 opt_ir = false
 keep_ir = false
+
+# 自定义构建脚本配置（可选）
+# 默认 .cay/.eol 文件会用 cayc 编译执行
+# [build-script]
+# command = ["python", "build.py"]
 
 [ffi]
 # 系统库，如 "user32", "kernel32" (Windows) 或 "m", "pthread" (Linux)
@@ -1026,7 +1057,8 @@ project_type = "lib"
 main = "lib.cay"
 src_dir = "src"
 target_dir = "target"
-# build_script = "build.cay"  # 构建脚本（可选）
+# build_script = "build.cay"        # 构建脚本路径（可选）
+# build_script_runner = "python"    # 构建脚本解释器（可选，如 python/lua/sh）
 
 # [[test]] 库项目的测试目标
 # [[test]]
@@ -1051,6 +1083,10 @@ libs = []
 lto = false
 opt_ir = false
 keep_ir = false
+
+# 自定义构建脚本配置（可选）
+# [build-script]
+# command = ["python", "build.py"]
 
 [lib]
 # 库类型: static（静态库）或 dynamic（动态库）

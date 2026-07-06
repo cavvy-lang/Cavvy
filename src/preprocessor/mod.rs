@@ -135,6 +135,8 @@ enum Directive {
     PragmaOnce,
     /// #link "libname" 或 #link <libname>
     Link(String, bool), // (库名, 是否系统库)
+    /// #undef name
+    Undef(String),
 }
 
 /// 指令处理结果
@@ -193,6 +195,44 @@ impl Preprocessor {
             skipping: false,
             include_stack: Vec::new(),
             system_include_paths: include_paths,
+        }
+    }
+
+    /// 从命令行风格的定义字符串中解析 (name, value)
+    ///
+    /// 支持 "NAME" 和 "NAME=value" 两种形式。
+    fn parse_cli_define(s: &str) -> (String, String) {
+        let trimmed = s.trim();
+        if let Some(pos) = trimmed.find('=') {
+            let name = trimmed[..pos].trim().to_string();
+            let value = trimmed[pos + 1..].trim().to_string();
+            (name, value)
+        } else {
+            (trimmed.to_string(), String::new())
+        }
+    }
+
+    /// 预定义一组宏（通常来自命令行 -D/--define）
+    ///
+    /// 支持 "NAME" 和 "NAME=value" 形式；重复定义会覆盖之前的值。
+    pub fn seed_defines(&mut self, defines: &[String]) {
+        for d in defines {
+            let (name, value) = Self::parse_cli_define(d);
+            if !name.is_empty() {
+                self.defines.insert(name, value);
+            }
+        }
+    }
+
+    /// 预取消定义一组宏（通常来自命令行 -U/--undefine）
+    ///
+    /// 在构建种子定义之后调用，用于移除不应存在的宏。
+    pub fn seed_undefines(&mut self, undefines: &[String]) {
+        for u in undefines {
+            let name = u.trim();
+            if !name.is_empty() {
+                self.defines.remove(name);
+            }
         }
     }
 
@@ -349,6 +389,11 @@ impl Preprocessor {
                 let (name, value) = self.parse_define_args(args, line_num, file_path)?;
                 Ok(Some(Directive::Define(name, value)))
             }
+            "undef" => {
+                // 解析 #undef name
+                let name = self.parse_identifier(args, line_num, file_path)?;
+                Ok(Some(Directive::Undef(name)))
+            }
             "ifdef" => {
                 let name = self.parse_identifier(args, line_num, file_path)?;
                 Ok(Some(Directive::Ifdef(name)))
@@ -402,7 +447,7 @@ impl Preprocessor {
                     line: line_num,
                     column: 1,
                     message: format!("未知的预处理指令: {}", directive_name),
-                    suggestion: "支持的指令: #include, #define, #ifdef, #ifndef, #else, #elif, #endif, #error, #warning, #link".to_string(),
+                    suggestion: "支持的指令: #include, #define, #undef, #ifdef, #ifndef, #else, #elif, #endif, #error, #warning, #link".to_string(),
                 })
             }
         }
@@ -491,6 +536,13 @@ impl Preprocessor {
                     return Ok(DirectiveResult::Single(None));
                 }
                 self.defines.insert(name, value);
+                Ok(DirectiveResult::Single(None))
+            }
+            Directive::Undef(name) => {
+                if self.skipping {
+                    return Ok(DirectiveResult::Single(None));
+                }
+                self.defines.remove(&name);
                 Ok(DirectiveResult::Single(None))
             }
             Directive::Ifdef(name) => {
@@ -998,8 +1050,9 @@ impl Preprocessor {
     /// 压入条件编译状态
     fn push_conditional(&mut self, condition: bool) {
         if self.skipping {
-            // 如果已经在跳过状态，新条件也跳过
-            self.conditional_stack.push(ConditionalState::Inactive);
+            // 如果已经在跳过状态（外层条件为真），内层条件也应完全跳过。
+            // 使用 Done 状态确保 #else/#elif 不会错误激活内层分支。
+            self.conditional_stack.push(ConditionalState::Done);
         } else if condition {
             self.conditional_stack.push(ConditionalState::Active);
             self.skipping = false;
@@ -1541,5 +1594,57 @@ mod tests {
             )
             .unwrap();
         assert!(result.contains("int x = 1"));
+    }
+
+    #[test]
+    fn test_seed_define() {
+        let mut pp = Preprocessor::new(".");
+        pp.seed_defines(&vec!["FEATURE".to_string(), "VALUE=42".to_string()]);
+        let result = pp
+            .process("#ifdef FEATURE\nint feature = 1;\n#endif\nint x = VALUE;", "test.c")
+            .unwrap();
+        assert!(result.contains("int feature = 1;"));
+        assert!(result.contains("int x = 42;"));
+    }
+
+    #[test]
+    fn test_seed_undefine() {
+        let mut pp = Preprocessor::new(".");
+        pp.seed_defines(&vec!["FEATURE".to_string()]);
+        pp.seed_undefines(&vec!["FEATURE".to_string()]);
+        let result = pp
+            .process("#ifdef FEATURE\nint feature = 1;\n#endif\nint x = 2;", "test.c")
+            .unwrap();
+        assert!(!result.contains("int feature = 1;"));
+        assert!(result.contains("int x = 2;"));
+    }
+
+    #[test]
+    fn test_undef_directive() {
+        let mut pp = Preprocessor::new(".");
+        let result = pp
+            .process(
+                "#define FEATURE\n#ifdef FEATURE\nint a = 1;\n#endif\n#undef FEATURE\n#ifdef FEATURE\nint b = 2;\n#endif",
+                "test.c",
+            )
+            .unwrap();
+        assert!(result.contains("int a = 1;"));
+        assert!(!result.contains("int b = 2;"));
+    }
+
+    #[test]
+    fn test_nested_conditional_in_else() {
+        // 验证 #else 分支中嵌套的 #ifdef 不会错误激活
+        let mut pp = Preprocessor::new(".");
+        pp.seed_defines(&vec!["OUTER".to_string()]);
+        let result = pp
+            .process(
+                "#ifdef OUTER\nint a = 1;\n#else\n#ifdef INNER\nint a = 2;\n#else\nint a = 3;\n#endif\n#endif",
+                "test.c",
+            )
+            .unwrap();
+        assert!(result.contains("int a = 1;"));
+        assert!(!result.contains("int a = 2;"));
+        assert!(!result.contains("int a = 3;"));
     }
 }

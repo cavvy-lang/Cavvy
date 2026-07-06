@@ -375,6 +375,8 @@ impl Compiler {
         } else {
             preprocessor::Preprocessor::with_include_paths(base_dir, system_paths)
         };
+        pp.seed_defines(&self.options.defines);
+        pp.seed_undefines(&self.options.undefines);
         let result = pp.process_with_source_map(&source, input_path)?;
 
         let source_map = Self::convert_source_map(&result.source_map);

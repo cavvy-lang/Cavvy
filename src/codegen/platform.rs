@@ -31,8 +31,14 @@ impl PlatformConfig {
 
     /// 检查宏是否定义
     pub fn is_defined(&self, macro_name: &str) -> bool {
-        self.defines.iter().any(|d| d == macro_name)
-            && !self.undefines.iter().any(|d| d == macro_name)
+        self.defines.iter().any(|d| {
+            // 支持 "NAME" 和 "NAME=value" 两种形式
+            let name = d.split('=').next().unwrap_or(d).trim();
+            name == macro_name
+        }) && !self.undefines.iter().any(|d| {
+            let name = d.split('=').next().unwrap_or(d).trim();
+            name == macro_name
+        })
     }
 
     /// 生成平台特定的运行时声明

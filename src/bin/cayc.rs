@@ -78,6 +78,9 @@ struct CompileOptions {
     use_embedded_llc: bool, // --use-embedded-llc (实验性)
     // 语言特性
     features: Vec<String>, // -F/--feature=<feature>
+    // 宏定义
+    defines: Vec<String>,   // -D/--define=<macro>[=value]
+    undefines: Vec<String>, // -U/--undefine=<macro>
     // 测试模式
     test_mode: bool, // --test
 }
@@ -141,6 +144,8 @@ impl Default for CompileOptions {
             use_llc_lld: false,
             use_embedded_llc: false,
             features: Vec::new(),
+            defines: Vec::new(),
+            undefines: Vec::new(),
             test_mode: false,
         }
     }
@@ -190,6 +195,10 @@ fn print_usage() {
     println!("Language Features:");
     println!("  -F<feature>, --feature=<feature>  启用语言特性");
     println!("                                     top_level_function - 允许顶层函数");
+    println!("");
+    println!("Preprocessor:");
+    println!("  -D<macro>[=<value>], --define=<macro>[=<value>]  定义预处理器宏");
+    println!("  -U<macro>, --undefine=<macro>                        取消预处理器宏定义");
     println!("");
     println!("Other Options:");
     println!("  --version, -v         显示版本号");
@@ -395,6 +404,40 @@ fn parse_args(args: &[String]) -> Result<(CompileOptions, String, String), Strin
                 // --feature=<feature> 格式
                 options.features.push(arg[10..].to_string());
             }
+            "--define" | "-D" => {
+                i += 1;
+                if i >= args.len() {
+                    return Err("--define/-D 需要宏名称参数".to_string());
+                }
+                options.defines.push(args[i].clone());
+            }
+            "--undefine" | "-U" => {
+                i += 1;
+                if i >= args.len() {
+                    return Err("--undefine/-U 需要宏名称参数".to_string());
+                }
+                options.undefines.push(args[i].clone());
+            }
+            _ if arg.starts_with("--define=") => {
+                options.defines.push(arg[10..].to_string());
+            }
+            _ if arg.starts_with("--undefine=") => {
+                options.undefines.push(arg[12..].to_string());
+            }
+            _ if arg.starts_with("-D:") => {
+                // 兼容旧语法 -D:NAME
+                options.defines.push(arg[3..].to_string());
+            }
+            _ if arg.starts_with("-U:") => {
+                // 兼容旧语法 -U:NAME
+                options.undefines.push(arg[3..].to_string());
+            }
+            _ if arg.starts_with("-D") => {
+                options.defines.push(arg[2..].to_string());
+            }
+            _ if arg.starts_with("-U") => {
+                options.undefines.push(arg[2..].to_string());
+            }
             _ => {
                 if arg.starts_with('-') {
                     return Err(format!("未知选项: {}", arg));
@@ -545,8 +588,8 @@ fn main() {
         target_os: std::env::consts::OS.to_string(),
         features: options.features.clone(),
         no_features: Vec::new(),
-        defines: Vec::new(),
-        undefines: Vec::new(),
+        defines: options.defines.clone(),
+        undefines: options.undefines.clone(),
         obfuscate: false,
         debug: options.debug,
         include_paths: options.include_paths.clone(),

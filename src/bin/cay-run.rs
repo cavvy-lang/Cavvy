@@ -24,6 +24,8 @@ struct RunOptions {
     lib_paths: Vec<String>,      // -L: 库搜索路径
     optimize: String,            // -O: 优化级别
     features: Vec<String>,       // -F/--feature: 启用的语言特性
+    defines: Vec<String>,        // -D/--define: 预定义宏
+    undefines: Vec<String>,      // -U/--undefine: 取消预定义宏
     use_embedded_llc: bool,      // --use-embedded-llc: 使用内嵌 llc
 }
 
@@ -40,6 +42,8 @@ impl Default for RunOptions {
             lib_paths: Vec::new(),
             optimize: "-O2".to_string(),
             features: Vec::new(),
+            defines: Vec::new(),
+            undefines: Vec::new(),
             use_embedded_llc: false,
         }
     }
@@ -63,6 +67,8 @@ fn print_usage() {
     println!("  -L<path>               添加库搜索路径");
     println!("  -O<level>              优化级别 (0, 1, 2, 3, s, z)");
     println!("  -F<feature>            启用语言特性 (如: -F=top_level_function)");
+    println!("  -D<macro>[=<value>]    定义预处理器宏");
+    println!("  -U<macro>              取消预处理器宏定义");
     println!("  --keep-temp            保留临时文件");
     println!("  --verbose, -v          显示详细编译信息");
     println!("  --use-embedded-llc     使用内嵌 llc 编译 IR (实验性)");
@@ -177,6 +183,32 @@ fn parse_args(args: &[String]) -> Result<(RunOptions, String), String> {
                     } else {
                         return Err("-O 需要一个参数".to_string());
                     }
+                }
+                "--define" | "-D" => {
+                    i += 1;
+                    if i >= args.len() {
+                        return Err("--define/-D 需要宏名称参数".to_string());
+                    }
+                    options.defines.push(args[i].clone());
+                }
+                "--undefine" | "-U" => {
+                    i += 1;
+                    if i >= args.len() {
+                        return Err("--undefine/-U 需要宏名称参数".to_string());
+                    }
+                    options.undefines.push(args[i].clone());
+                }
+                arg if arg.starts_with("--define=") => {
+                    options.defines.push(arg[10..].to_string());
+                }
+                arg if arg.starts_with("--undefine=") => {
+                    options.undefines.push(arg[12..].to_string());
+                }
+                arg if arg.starts_with("-D") => {
+                    options.defines.push(arg[2..].to_string());
+                }
+                arg if arg.starts_with("-U") => {
+                    options.undefines.push(arg[2..].to_string());
                 }
                 _ => {
                     if arg.starts_with('-') {
@@ -311,8 +343,8 @@ fn compile_cay_to_ir(source_path: &str, options: &RunOptions) -> Result<String, 
         target_os: env::consts::OS.to_string(),
         features: options.features.clone(),
         no_features: Vec::new(),
-        defines: Vec::new(),
-        undefines: Vec::new(),
+        defines: options.defines.clone(),
+        undefines: options.undefines.clone(),
         obfuscate: options.obfuscate,
         debug: false,
         include_paths: Vec::new(),

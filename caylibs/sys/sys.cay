@@ -1,0 +1,127 @@
+/**
+ * std::sys - Cavvy 系统标准库
+ *
+ * 提供系统级常量、进程控制、环境变量访问和命令行参数包装。
+ */
+
+#pragma once
+#ifndef CAY_SYS_H
+#define CAY_SYS_H
+
+#include <std/ffi.cay>
+
+namespace std {
+
+/* ============================================================================
+ * 操作系统检测常量
+ * ============================================================================ */
+
+#ifdef _WIN32
+#define CAVVY_OS_WINDOWS 1
+#define CAVVY_OS_LINUX   0
+#define CAVVY_OS_MACOS   0
+#else
+#ifdef __linux__
+#define CAVVY_OS_WINDOWS 0
+#define CAVVY_OS_LINUX   1
+#define CAVVY_OS_MACOS   0
+#else
+#ifdef __APPLE__
+#define CAVVY_OS_WINDOWS 0
+#define CAVVY_OS_LINUX   0
+#define CAVVY_OS_MACOS   1
+#else
+#define CAVVY_OS_WINDOWS 0
+#define CAVVY_OS_LINUX   0
+#define CAVVY_OS_MACOS   0
+#endif
+#endif
+#endif
+
+/* ============================================================================
+ * 路径与平台常量
+ * ============================================================================ */
+
+#ifdef _WIN32
+#define CAVVY_PATH_SEPARATOR "\\"
+#define CAVVY_PATH_SEPARATOR_CHAR '\\'
+#else
+#define CAVVY_PATH_SEPARATOR "/"
+#define CAVVY_PATH_SEPARATOR_CHAR '/'
+#endif
+
+/* ============================================================================
+ * 退出状态码
+ * ============================================================================ */
+
+#define CAVVY_EXIT_SUCCESS 0
+#define CAVVY_EXIT_FAILURE 1
+
+/* ============================================================================
+ * 底层 C 函数声明
+ * ============================================================================ */
+
+extern {
+    void exit(c_int status) as sys_exit;
+    void abort() as sys_abort;
+    c_string getenv(c_string name) as sys_getenv;
+}
+
+/* ============================================================================
+ * 进程控制
+ * ============================================================================ */
+
+public class Process {
+    public static void exit(int code) {
+        sys_exit((c_int)code);
+    }
+
+    public static void abort() {
+        sys_abort();
+    }
+}
+
+/* ============================================================================
+ * 环境变量
+ * ============================================================================ */
+
+public class Environment {
+    public static String get(String name) {
+        return (String)sys_getenv((c_string)name);
+    }
+}
+
+/* ============================================================================
+ * 命令行参数包装
+ * ============================================================================ */
+
+public class Args {
+    public String[] values;
+
+    public Args(String[] values) {
+        this.values = values;
+    }
+
+    public int count() {
+        return this.values.length;
+    }
+
+    public int length() {
+        return this.values.length;
+    }
+
+    public String get(int index) {
+        return this.values[index];
+    }
+
+    public String programName() {
+        if (this.values.length > 0) {
+            return this.values[0];
+        }
+        return "";
+    }
+}
+
+} // namespace std
+
+#endif // CAY_SYS_H

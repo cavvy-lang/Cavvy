@@ -81,8 +81,10 @@ fn print_usage() {
     println!("  --obfuscate           混淆 IR 代码");
     println!("  -f:XX, --feature:XX   启用特定功能");
     println!("  -No:XX                禁用特定功能");
-    println!("  -D:XX                 定义宏");
-    println!("  -U:XX                 取消定义宏");
+    println!("  -D:XX                 定义宏（兼容旧语法）");
+    println!("  -U:XX                 取消定义宏（兼容旧语法）");
+    println!("  -D<macro>[=<value>], --define=<macro>[=<value>]  定义宏");
+    println!("  -U<macro>, --undefine=<macro>                        取消定义宏");
     println!("  -I<<XX>>              添加包含搜索路径");
     println!("  --version, -v         显示版本号");
     println!("  --help, -h            显示帮助信息");
@@ -166,6 +168,32 @@ fn parse_args(args: &[String]) -> Result<(CompileOptions, String, String), Strin
             arg if arg.starts_with("-I:") => {
                 let include_path = &arg[3..];
                 options.include_paths.push(include_path.to_string());
+            }
+            "--define" | "-D" => {
+                i += 1;
+                if i >= args.len() {
+                    return Err("--define/-D 需要宏名称参数".to_string());
+                }
+                options.defines.push(args[i].clone());
+            }
+            "--undefine" | "-U" => {
+                i += 1;
+                if i >= args.len() {
+                    return Err("--undefine/-U 需要宏名称参数".to_string());
+                }
+                options.undefines.push(args[i].clone());
+            }
+            arg if arg.starts_with("--define=") => {
+                options.defines.push(arg[10..].to_string());
+            }
+            arg if arg.starts_with("--undefine=") => {
+                options.undefines.push(arg[12..].to_string());
+            }
+            arg if arg.starts_with("-D") => {
+                options.defines.push(arg[2..].to_string());
+            }
+            arg if arg.starts_with("-U") => {
+                options.undefines.push(arg[2..].to_string());
             }
             _ => {
                 if arg.starts_with('-') {

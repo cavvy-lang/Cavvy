@@ -272,13 +272,15 @@ impl Builder {
         Ok(output_path)
     }
 
-    /// 执行构建脚本（build.cay）
+    /// 执行构建脚本
     ///
-    /// # 流程
-    /// 1. 检查是否配置了 build_script
-    /// 2. 编译 build.cay → target/build-script/build.exe
-    /// 3. 运行 build.exe，传入环境变量
-    /// 4. 检查退出码
+    /// 支持多种执行方式：
+    /// 1. [build-script].command 显式命令数组（最高优先级）
+    /// 2. [package].build_script_runner 指定解释器
+    /// 3. 根据扩展名自动推断（.py → python，.sh → sh，.lua → lua，.ps1 → powershell）
+    /// 4. .cay/.eol 默认用 cayc 编译执行（保持向后兼容）
+    ///
+    /// 所有方式都会注入标准环境变量：OUT_DIR、PROJECT_ROOT、PROFILE、OPT_LEVEL、TARGET。
     fn execute_build_script(&mut self) -> Result<()> {
         let script_path = match self.config.build_script_path(&self.project_root) {
             Some(p) if p.exists() => p,
@@ -291,12 +293,161 @@ impl Builder {
 
         self.state = BuildState::PreBuild;
 
+        if self.verbose {
+            println!("Cavly: 执行构建脚本: {}", script_path.display());
+        }
+
+        // 准备标准环境变量
+        let envs = self.build_script_envs()?;
+
+        // 决定执行方式
+        let command_parts = self.resolve_build_script_command(&script_path)?;
+
+        if self.verbose {
+            println!("Cavly:   运行命令: {}", command_parts.join(" "));
+        }
+
+        let mut cmd = Command::new(&command_parts[0]);
+        cmd.args(&command_parts[1..])
+            .current_dir(&self.project_root);
+        for (key, value) in &envs {
+            cmd.env(key, value);
+        }
+
+        let output = cmd
+            .output()
+            .with_context(|| format!("运行构建脚本失败: {}", script_path.display()))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            bail!(
+                "构建脚本执行失败 (退出码: {:?}):\nstdout:\n{}\nstderr:\n{}",
+                output.status.code(),
+                stdout,
+                stderr
+            );
+        }
+
+        if self.verbose {
+            println!("Cavly: 构建脚本执行成功");
+        }
+
+        Ok(())
+    }
+
+    /// 构建构建脚本所需的环境变量
+    fn build_script_envs(&self) -> Result<Vec<(&'static str, String)>> {
+        let target_dir = self.config.target_path(&self.project_root);
+        let out_dir = target_dir.join("build-script-out");
+        ensure_dir(&out_dir)?;
+
+        Ok(vec![
+            ("OUT_DIR", Self::normalize_path(&out_dir)),
+            (
+                "PROJECT_ROOT",
+                Self::normalize_path(&self.project_root),
+            ),
+            (
+                "PROFILE",
+                if self.config.build.debug {
+                    "debug".to_string()
+                } else {
+                    "release".to_string()
+                },
+            ),
+            ("OPT_LEVEL", self.config.build.opt_level.clone()),
+            (
+                "TARGET",
+                self.config
+                    .build
+                    .target
+                    .clone()
+                    .unwrap_or_else(|| "native".to_string()),
+            ),
+        ])
+    }
+
+    /// 解析构建脚本的执行命令
+    ///
+    /// 返回可执行的命令参数列表，第一个元素为可执行文件。
+    fn resolve_build_script_command(&self, script_path: &Path) -> Result<Vec<String>> {
+        // 1. [build-script].command 显式命令数组（最高优先级）
+        if let Some(ref build_script_config) = self.config.build_script_config {
+            if let Some(ref command) = build_script_config.command {
+                if !command.is_empty() {
+                    return Ok(command.clone());
+                }
+            }
+        }
+
+        // 2. [package].build_script_runner 指定解释器
+        if let Some(ref runner) = self.config.package.build_script_runner {
+            return Ok(vec![
+                runner.clone(),
+                script_path.to_string_lossy().to_string(),
+            ]);
+        }
+
+        // 3. 扩展名推断
+        let extension = script_path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+
+        match extension.as_str() {
+            "cay" | "eol" => {
+                // 默认 Cavvy 脚本：用 cayc 编译后执行
+                self.compile_cavvy_build_script(script_path)
+            }
+            "py" => Ok(vec![
+                "python".to_string(),
+                script_path.to_string_lossy().to_string(),
+            ]),
+            "sh" => Ok(vec![
+                "sh".to_string(),
+                script_path.to_string_lossy().to_string(),
+            ]),
+            "lua" => Ok(vec![
+                "lua".to_string(),
+                script_path.to_string_lossy().to_string(),
+            ]),
+            "ps1" => Ok(vec![
+                "powershell".to_string(),
+                "-ExecutionPolicy".to_string(),
+                "Bypass".to_string(),
+                "-File".to_string(),
+                script_path.to_string_lossy().to_string(),
+            ]),
+            "bat" | "cmd" => {
+                let shell = if cfg!(target_os = "windows") {
+                    "cmd"
+                } else {
+                    "cmd"
+                };
+                Ok(vec![
+                    shell.to_string(),
+                    "/C".to_string(),
+                    script_path.to_string_lossy().to_string(),
+                ])
+            }
+            _ => {
+                // 无扩展名时尝试直接执行
+                Ok(vec![script_path.to_string_lossy().to_string()])
+            }
+        }
+    }
+
+    /// 编译 Cavvy 构建脚本并返回可执行命令
+    fn compile_cavvy_build_script(&self,
+        script_path: &Path,
+    ) -> Result<Vec<String>> {
         let build_dir = self.config.build_script_dir(&self.project_root);
         ensure_dir(&build_dir)?;
 
         let cayc_path = find_cayc()?;
 
-        // 确定 build.exe 输出路径
         let build_exe = if cfg!(target_os = "windows") {
             build_dir.join("build.exe")
         } else {
@@ -304,7 +455,6 @@ impl Builder {
         };
 
         if self.verbose {
-            println!("Cavly: 执行构建脚本: {}", script_path.display());
             println!(
                 "Cavly:   编译构建脚本: {} {}",
                 cayc_path.display(),
@@ -312,8 +462,7 @@ impl Builder {
             );
         }
 
-        // 编译构建脚本为可执行文件
-        // 构建脚本使用 -O0 以加快编译速度（脚本通常很小）
+        // 构建脚本使用 -O0 以加快编译速度
         let build_args = vec![
             "-O0".to_string(),
             script_path.to_string_lossy().to_string(),
@@ -340,44 +489,7 @@ impl Builder {
             bail!("构建脚本编译未生成可执行文件: {}", build_exe.display());
         }
 
-        if self.verbose {
-            println!("Cavly:   运行构建脚本: {}", build_exe.display());
-        }
-
-        // 运行构建脚本，设置标准环境变量
-        let target_dir = self.config.target_path(&self.project_root);
-        let out_dir = target_dir.join("build-script-out");
-        ensure_dir(&out_dir)?;
-
-        let status = Command::new(&build_exe)
-            .env("OUT_DIR", &out_dir)
-            .env("PROJECT_ROOT", &self.project_root)
-            .env(
-                "PROFILE",
-                if self.config.build.debug {
-                    "debug"
-                } else {
-                    "release"
-                },
-            )
-            .env("OPT_LEVEL", &self.config.build.opt_level)
-            .env(
-                "TARGET",
-                self.config.build.target.as_deref().unwrap_or("native"),
-            )
-            .current_dir(&self.project_root)
-            .status()
-            .with_context(|| format!("运行构建脚本失败: {}", build_exe.display()))?;
-
-        if !status.success() {
-            bail!("构建脚本退出码: {:?}", status.code());
-        }
-
-        if self.verbose {
-            println!("Cavly: 构建脚本执行成功");
-        }
-
-        Ok(())
+        Ok(vec![build_exe.to_string_lossy().to_string()])
     }
 
     /// 确定 bin 的输出文件路径
@@ -769,6 +881,21 @@ extern "C" {{
             args.push(effective_build.ldflags.join(" "));
         }
 
+        // 自动预定义 Cavly 构建宏
+        let target_dir = self.config.target_path(&self.project_root);
+        let out_dir = target_dir.join("build-script-out");
+        let profile = if effective_build.debug { "debug" } else { "release" };
+        let target = effective_build.target.as_deref().unwrap_or("native");
+
+        args.push(format!("-DOUT_DIR={}", Self::normalize_path(&out_dir)));
+        args.push(format!(
+            "-DPROJECT_ROOT={}",
+            Self::normalize_path(&self.project_root)
+        ));
+        args.push(format!("-DPROFILE={}", profile));
+        args.push(format!("-DOPT_LEVEL={}", effective_build.opt_level));
+        args.push(format!("-DTARGET={}", target));
+
         // 输入文件（相对于项目根目录的路径）
         args.push(source_path.to_string_lossy().to_string());
 
@@ -785,6 +912,13 @@ extern "C" {{
         } else {
             cfg!(target_os = "windows")
         }
+    }
+
+    /// 将路径标准化为使用正斜杠的字符串
+    ///
+    /// 避免 Windows 反斜杠在宏值中被解释为转义字符。
+    fn normalize_path(path: &std::path::Path) -> String {
+        path.to_string_lossy().replace('\\', "/")
     }
 
     /// 清理构建产物
@@ -951,5 +1085,25 @@ mod tests {
         assert!(args.contains(&"-lm".to_string()));
         assert!(args.contains(&"src/main.cay".to_string()));
         assert!(args.contains(&"target/test.exe".to_string()));
+
+        // 验证 Cavly 自动预定义的构建宏
+        assert!(args.iter().any(|a| {
+            if let Some(out_dir_arg) = a.strip_prefix("-DOUT_DIR=") {
+                out_dir_arg.contains("build-script-out")
+            } else {
+                false
+            }
+        }));
+        assert!(args.iter().any(|a| {
+            if let Some(root_arg) = a.strip_prefix("-DPROJECT_ROOT=") {
+                root_arg == temp.path().to_string_lossy().replace('\\', "/")
+            } else {
+                false
+            }
+        }));
+        assert!(args.contains(&"-DPROFILE=debug".to_string()));
+        assert!(args.contains(&"-DOPT_LEVEL=3".to_string()));
+        assert!(args.contains(&"-DTARGET=native".to_string()));
     }
 }
+
