@@ -1,0 +1,5 @@
+#include_c "demo_user.h"
+pub fn main() {
+    demo_add(1,2);
+    return 42;
+}

@@ -1,0 +1,9 @@
+// 测试 #include_c 错误场景：既没有 .cay 包装，也没有可定位的真实 .h 文件
+
+#include_c <this_header_does_not_exist_anywhere.h>
+
+public class ErrorIncludeCMissing {
+    public static void main() {
+        println("This should not compile");
+    }
+}

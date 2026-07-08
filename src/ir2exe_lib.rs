@@ -94,6 +94,35 @@ pub fn parse_source_map_from_ir(ir_content: &str) -> IRSourceMap {
     source_map
 }
 
+/// 从 IR 内容中解析链接库元数据（`cayc`/`cay-run` 共用）
+///
+/// 格式: `; !link "libname"`（用户库）或 `; !link <libname>`（系统库）。
+/// 由 `codegen/generator.rs` 在生成 IR 时写入（对应 `#link` 声明与 `#include_c` 自动链接）。
+pub fn parse_link_libraries_from_ir(ir_content: &str) -> Vec<String> {
+    let mut libraries = Vec::new();
+
+    for line in ir_content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("; !link ") {
+            let lib_part = &trimmed[8..]; // 跳过 "; !link "
+            let lib_name = if lib_part.starts_with('"') && lib_part.ends_with('"') {
+                // 用户库: "libname"
+                &lib_part[1..lib_part.len() - 1]
+            } else if lib_part.starts_with('<') && lib_part.ends_with('>') {
+                // 系统库: <libname>
+                &lib_part[1..lib_part.len() - 1]
+            } else {
+                lib_part
+            };
+            if !lib_name.is_empty() && !libraries.contains(&lib_name.to_string()) {
+                libraries.push(lib_name.to_string());
+            }
+        }
+    }
+
+    libraries
+}
+
 /// 解析clang错误信息中的行号
 fn parse_clang_error_line(error_msg: &str) -> Option<usize> {
     for line in error_msg.lines() {

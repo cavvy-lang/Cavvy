@@ -217,3 +217,48 @@ fn test_error_link_empty_name() {
         error
     );
 }
+
+// ==================== #include_c 测试 ====================
+
+#[test]
+fn test_include_c_wrapper_mapping() {
+    let output = compile_and_run_eol("examples/demo_include_c.cay")
+        .expect("include_c wrapper-mapping demo should compile and run");
+    assert!(
+        output.contains("#include_c wrapper-mapping test passed!"),
+        "Should show wrapper-mapping test passed, got: {}",
+        output
+    );
+    assert!(
+        output.contains("value=42"),
+        "Should show printf-formatted value, got: {}",
+        output
+    );
+}
+
+#[test]
+fn test_include_c_real_header_fallback() {
+    let output = compile_and_run_eol("examples/demo_include_c_user.cay")
+        .expect("include_c real-header fallback demo should compile and run");
+    assert!(
+        output.contains("abs(-7)=7"),
+        "Should call abs() extracted from real header, got: {}",
+        output
+    );
+    assert!(
+        output.contains("rand() in range: true"),
+        "Should call rand() extracted from real header, got: {}",
+        output
+    );
+}
+
+#[test]
+fn test_error_include_c_missing() {
+    let error = compile_eol_expect_error("examples/errors/error_include_c_missing.cay")
+        .expect("missing header should fail to compile");
+    assert!(
+        error.contains("E1007") || error.contains("#include_c"),
+        "Should report include_c missing header error, got: {}",
+        error
+    );
+}

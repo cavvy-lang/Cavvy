@@ -1,0 +1,13 @@
+// 演示 #include_c：一键导入 C 头文件声明
+//
+// <stdio.h> 是系统形式，优先映射到已手写的 caylibs/c/stdio.cay 包装，
+// 直接得到 printf 等函数的 Cay extern 声明。libc 默认已链接，无需额外 #link。
+
+#include_c <stdio.h>
+
+public class DemoIncludeC {
+    public static void main() {
+        printf("#include_c wrapper-mapping test passed!\n");
+        printf("value=%d\n", 42);
+    }
+}

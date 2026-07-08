@@ -1,10 +1,9 @@
 use cavvy::Compiler;
 use cavvy::bytecode::obfuscator;
 use cavvy::bytecode::{jit, serializer};
+use cavvy::ir2exe_lib::parse_link_libraries_from_ir;
 use cavvy::miette_diagnostic::CayError;
-use cavvy::miette_diagnostic::{
-    print_error_with_context, print_miette_error, print_tool_error, print_warning,
-};
+use cavvy::miette_diagnostic::{print_error_with_context, print_miette_error, print_tool_error};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -27,6 +26,7 @@ struct RunOptions {
     defines: Vec<String>,        // -D/--define: 预定义宏
     undefines: Vec<String>,      // -U/--undefine: 取消预定义宏
     use_embedded_llc: bool,      // --use-embedded-llc: 使用内嵌 llc
+    include_paths: Vec<String>,  // -I: 额外包含路径（供 #include/#include_c 搜索）
 }
 
 impl Default for RunOptions {
@@ -45,6 +45,7 @@ impl Default for RunOptions {
             defines: Vec::new(),
             undefines: Vec::new(),
             use_embedded_llc: false,
+            include_paths: Vec::new(),
         }
     }
 }
@@ -65,6 +66,7 @@ fn print_usage() {
     println!("  --obfuscate-level <l>  混淆级别: light, normal, deep (默认: normal)");
     println!("  -l<lib>                链接指定库");
     println!("  -L<path>               添加库搜索路径");
+    println!("  -I<path>               添加头文件搜索路径（供 #include/#include_c 使用）");
     println!("  -O<level>              优化级别 (0, 1, 2, 3, s, z)");
     println!("  -F<feature>            启用语言特性 (如: -F=top_level_function)");
     println!("  -D<macro>[=<value>]    定义预处理器宏");
@@ -98,6 +100,9 @@ fn parse_args(args: &[String]) -> Result<(RunOptions, String), String> {
         } else if arg.starts_with("-L") && arg.len() > 2 {
             // -Lxxx 格式
             options.lib_paths.push(arg[2..].to_string());
+        } else if arg.starts_with("-I") && arg.len() > 2 {
+            // -Ixxx 格式（供 #include/#include_c 搜索真实 C 头）
+            options.include_paths.push(arg[2..].to_string());
         } else if arg.starts_with("-O") && arg.len() > 1 {
             // -Oxxx 格式
             options.optimize = format!("-O{}", &arg[2..]);
@@ -174,6 +179,14 @@ fn parse_args(args: &[String]) -> Result<(RunOptions, String), String> {
                         i += 1;
                     } else {
                         return Err("-L 需要一个参数".to_string());
+                    }
+                }
+                "-I" => {
+                    if i + 1 < args.len() {
+                        options.include_paths.push(args[i + 1].clone());
+                        i += 1;
+                    } else {
+                        return Err("-I 需要一个参数".to_string());
                     }
                 }
                 "-O" => {
@@ -268,77 +281,14 @@ fn generate_unique_filename(prefix: &str, ext: &str) -> PathBuf {
     get_temp_dir().join(format!("{}_{}_{}.{}", prefix, timestamp, pid, ext))
 }
 
-/// 获取系统包含路径（caylibs目录）
-fn get_system_include_paths() -> Vec<PathBuf> {
-    let mut paths = Vec::new();
-
-    // 1. 从可执行文件所在目录查找 caylibs
-    // 使用 canonicalize 解析符号链接（Linux上current_exe可能返回/proc/self/exe）
-    if let Ok(exe_path) = env::current_exe() {
-        let exe_path = exe_path.canonicalize().unwrap_or(exe_path);
-        if let Some(exe_dir) = exe_path.parent() {
-            let exe_caylibs = exe_dir.join("caylibs");
-            if exe_caylibs.exists() {
-                paths.push(exe_caylibs);
-            }
-        }
-    }
-
-    // 2. 从当前工作目录查找 caylibs
-    let cwd_caylibs = PathBuf::from("caylibs");
-    if cwd_caylibs.exists() && !paths.contains(&cwd_caylibs) {
-        paths.push(cwd_caylibs);
-    }
-
-    paths
-}
-
 /// 编译Cay源码为IR
+///
+/// 走 `Compiler::compile_file`（与 cayc 同路径）而非手动 预处理+`compile_with_source_map`：
+/// 后者会把预处理器收集到的 `link_libraries`（`#link` / `#include_c` 自动链接）传入
+/// `Vec::new()` 而彻底丢弃，导致这些声明在 cay-run 下不生效。`compile_file` 内部会
+/// 正确地将 link_libraries 转换为 AST 声明，最终由 codegen 写成 IR 里的 `; !link` 注释，
+/// 供 `compile_ir_to_executable` 解析并传给链接器。
 fn compile_cay_to_ir(source_path: &str, options: &RunOptions) -> Result<String, CayError> {
-    let source = fs::read_to_string(source_path).map_err(|e| CayError::Io {
-        error_code: "I0001",
-        file: Some(source_path.to_string()),
-        message: format!("读取源文件失败: {}", e),
-    })?;
-
-    // 预处理
-    let base_dir = Path::new(source_path)
-        .parent()
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| PathBuf::from("."));
-
-    // 获取系统包含路径
-    let system_paths = get_system_include_paths();
-
-    // 使用带系统路径的预处理器（带源映射）
-    let base_dir_str = base_dir.to_str().unwrap_or(".");
-    let preprocess_result = if system_paths.is_empty() {
-        let mut pp = cavvy::preprocessor::Preprocessor::new(base_dir_str);
-        pp.process_with_source_map(&source, source_path)
-    } else {
-        let mut pp =
-            cavvy::preprocessor::Preprocessor::with_include_paths(base_dir_str, system_paths);
-        pp.process_with_source_map(&source, source_path)
-    }
-    .map_err(|e| CayError::Preprocessor {
-        error_code: cavvy::miette_diagnostic::ErrorCodes::PREPROCESSOR_DEFINE_ERROR,
-        file: Some(source_path.to_string()),
-        line: 0,
-        column: 0,
-        message: format!("预处理失败: {:?}", e),
-        suggestion: "请检查预处理指令".to_string(),
-    })?;
-
-    // 转换源映射为HashMap格式
-    let source_map: std::collections::HashMap<usize, (String, usize)> = preprocess_result
-        .source_map
-        .mappings
-        .iter()
-        .enumerate()
-        .map(|(idx, pos)| (idx + 1, (pos.file.clone(), pos.line)))
-        .collect();
-
-    // 编译
     let compiler_options = cavvy::CompilerOptions {
         target_os: env::consts::OS.to_string(),
         features: options.features.clone(),
@@ -347,7 +297,7 @@ fn compile_cay_to_ir(source_path: &str, options: &RunOptions) -> Result<String, 
         undefines: options.undefines.clone(),
         obfuscate: options.obfuscate,
         debug: false,
-        include_paths: Vec::new(),
+        include_paths: options.include_paths.clone(),
         test_mode: false,
     };
 
@@ -360,7 +310,7 @@ fn compile_cay_to_ir(source_path: &str, options: &RunOptions) -> Result<String, 
         file: None,
         message: "临时文件路径包含无效UTF-8字符".to_string(),
     })?;
-    compiler.compile_with_source_map(&preprocess_result.code, source_map, temp_ir_str)?;
+    compiler.compile_file(source_path, temp_ir_str)?;
 
     let ir = fs::read_to_string(&temp_ir_file).map_err(|e| CayError::Io {
         error_code: "I0001",
@@ -532,9 +482,18 @@ fn compile_ir_to_executable(
         ir2exe_args.push("-lws2_32".to_string());
     }
 
-    // 额外库
+    // 已收集的库名（去重用），先放入用户显式 -l 指定的库
+    let mut linked_libs: Vec<String> = options.link_libs.clone();
     for lib in &options.link_libs {
         ir2exe_args.push(format!("-l{}", lib));
+    }
+
+    // 解析 IR 中的 `; !link` 注释（#link 声明 / #include_c 自动链接），去重后追加
+    for lib in parse_link_libraries_from_ir(ir_code) {
+        if !linked_libs.contains(&lib) {
+            ir2exe_args.push(format!("-l{}", lib));
+            linked_libs.push(lib);
+        }
     }
 
     // 输入输出文件

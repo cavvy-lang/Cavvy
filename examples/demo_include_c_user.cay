@@ -1,0 +1,20 @@
+// 演示 #include_c 兜底路径：真实 C 头文件（无 .cay 包装）
+//
+// "demo_user.h" 是引号形式，相对当前文件解析；由于它没有对应的 .cay 包装，
+// 会走保守提取器直接解析头文件文本，生成 extern 声明。abs/rand 与 Cay 内置
+// print 系列无命名冲突之外的两个函数正好本来就在 msvcrt/libc 默认链接范围内，
+// 因此不需要额外 #link 也能直接调用。
+
+#include_c "demo_user.h"
+
+public class DemoIncludeCUser {
+    public static void main() {
+        c_int a = abs_c(-7);
+        print("abs(-7)=");
+        println(a);
+
+        c_int r = rand();
+        print("rand() in range: ");
+        println(r >= 0);
+    }
+}

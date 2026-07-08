@@ -2,6 +2,8 @@
 //!
 //! 实现 0.3.5.0 版本的预处理指令系统：
 //! - #include "path"  - 文件包含（隐式 #pragma once）
+//! - #include_c <header.h> / "header.h"  - 导入 C 头文件的 Cay FFI 声明 + 自动链接
+//!   （优先映射到 caylibs/c/<name>.cay 包装；无包装时用保守提取器解析真实 .h）
 //! - #define NAME value  - 常量定义（无参数宏）
 //! - #ifdef / #ifndef / #else / #elif / #endif  - 条件编译
 //! - #error "message"  - 编译期错误
@@ -17,6 +19,8 @@
 use crate::miette_diagnostic::{CayError, CayResult, ErrorCodes};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+
+mod c_header;
 
 /// 源位置信息
 #[derive(Debug, Clone)]
@@ -135,6 +139,8 @@ enum Directive {
     PragmaOnce,
     /// #link "libname" 或 #link <libname>
     Link(String, bool), // (库名, 是否系统库)
+    /// #include_c "header.h" 或 #include_c <header.h> — 导入 C 头文件的 Cay FFI 声明
+    IncludeC(String, bool), // (路径, 是否系统路径)
     /// #undef name
     Undef(String),
 }
@@ -144,8 +150,15 @@ enum Directive {
 enum DirectiveResult {
     /// 单行输出（普通指令）
     Single(Option<String>),
-    /// 多行输出（包含文件）
-    Multi { code: String, source_map: SourceMap },
+    /// 多行输出（包含文件 / 生成的 extern 块）
+    /// `link_libraries` 为该包含/生成引入的链接库（含被包含文件内的 #link、
+    /// 以及 #include_c 的自动链接）。修复历史 bug：此前仅回传 code/source_map，
+    /// 导致被包含文件中的 #link 被丢弃。
+    Multi {
+        code: String,
+        source_map: SourceMap,
+        link_libraries: Vec<LinkLibrary>,
+    },
     /// 链接库声明
     Link { lib_name: String, is_system: bool },
 }
@@ -274,6 +287,7 @@ impl Preprocessor {
                             DirectiveResult::Multi {
                                 code,
                                 source_map: included_source_map,
+                                link_libraries: included_link_libraries,
                             } => {
                                 // 包含文件返回多行，需要合并源映射
                                 // 记录当前输出行数，用于正确对齐包含文件的源映射
@@ -296,16 +310,27 @@ impl Preprocessor {
                                 for mapping in included_source_map.mappings.iter() {
                                     source_map.add_mapping(mapping.file.clone(), mapping.line);
                                 }
+                                // 合并被包含文件/生成块引入的链接库（按 name 去重）
+                                for lib in included_link_libraries {
+                                    if !link_libraries
+                                        .iter()
+                                        .any(|l: &LinkLibrary| l.name == lib.name)
+                                    {
+                                        link_libraries.push(lib);
+                                    }
+                                }
                             }
                             DirectiveResult::Link {
                                 lib_name,
                                 is_system,
                             } => {
-                                // 收集链接库信息
-                                link_libraries.push(LinkLibrary {
-                                    name: lib_name,
-                                    is_system,
-                                });
+                                // 收集链接库信息（按 name 去重）
+                                if !link_libraries.iter().any(|l| l.name == lib_name) {
+                                    link_libraries.push(LinkLibrary {
+                                        name: lib_name,
+                                        is_system,
+                                    });
+                                }
                                 source_map.add_mapping(file_path.to_string(), line_number);
                                 output_lines.push("".to_string());
                             }
@@ -440,6 +465,12 @@ impl Preprocessor {
                 let (lib_name, is_system) = self.parse_link_args(args, line_num, file_path)?;
                 Ok(Some(Directive::Link(lib_name, is_system)))
             }
+            "include_c" => {
+                // 解析 #include_c "header.h" 或 #include_c <header.h>
+                // 语义与 #include 的路径解析一致，但优先映射到 .cay 包装并自动链接
+                let (path, is_system) = self.parse_include_path(args, line_num, file_path)?;
+                Ok(Some(Directive::IncludeC(path, is_system)))
+            }
             _ => {
                 Err(CayError::Preprocessor {
                     error_code: ErrorCodes::PREPROCESSOR_DEFINE_ERROR,
@@ -447,7 +478,7 @@ impl Preprocessor {
                     line: line_num,
                     column: 1,
                     message: format!("未知的预处理指令: {}", directive_name),
-                    suggestion: "支持的指令: #include, #define, #undef, #ifdef, #ifndef, #else, #elif, #endif, #error, #warning, #link".to_string(),
+                    suggestion: "支持的指令: #include, #include_c, #define, #undef, #ifdef, #ifndef, #else, #elif, #endif, #error, #warning, #link".to_string(),
                 })
             }
         }
@@ -519,10 +550,12 @@ impl Preprocessor {
                         // 处理完成后从栈中移除
                         self.include_stack.pop();
 
-                        // 返回处理后的内容和源映射
+                        // 返回处理后的内容和源映射（同时回传被包含文件引入的链接库，
+                        // 修复历史 bug：被包含文件中的 #link 此前会被丢弃）
                         Ok(DirectiveResult::Multi {
                             code: included_result.code,
                             source_map: included_result.source_map,
+                            link_libraries: included_result.link_libraries,
                         })
                     }
                     None => {
@@ -606,6 +639,9 @@ impl Preprocessor {
                     lib_name,
                     is_system,
                 })
+            }
+            Directive::IncludeC(path, is_system) => {
+                self.process_include_c(&path, is_system, file_path, line_num)
             }
         }
     }
@@ -813,6 +849,217 @@ impl Preprocessor {
                 suggestion: "检查文件路径是否正确，或使用系统包含路径 <path>".to_string(),
             })
         }
+    }
+
+    /// 处理 #include_c 指令：导入 C 头文件的 Cay FFI 声明并自动链接。
+    ///
+    /// 解析顺序：
+    /// 1. **首选 .cay 包装**（caylibs/c/<base>.cay 或 <base>.cay）—— 包装是手写、
+    ///    类型正确的 Cay 声明，命中即递归包含（复用 #pragma once / 循环检测）。
+    /// 2. **兜底真实 .h 解析**—— 当无包装时，定位磁盘上的真实头文件，用保守提取器
+    ///    （c_header 模块）把函数原型转成 Cay `extern {}`，只产出能干净映射的声明。
+    /// 3. 两层都按"头名→库"映射（c_header::c_header_link_libs）自动声明链接。
+    fn process_include_c(
+        &mut self,
+        path: &str,
+        is_system: bool,
+        current_file: &str,
+        line_num: usize,
+    ) -> CayResult<DirectiveResult> {
+        if self.skipping {
+            return Ok(DirectiveResult::Single(None));
+        }
+
+        // (a) 规范化头名：去掉 .h / .cay 后缀，保留子目录（如 sys/socket）
+        let base = Self::strip_header_ext(path);
+
+        // (b) 优先映射到 .cay 包装
+        if let Some(cay_path) = self.resolve_cay_wrapper(&base, is_system, current_file) {
+            return self.process_resolved_include(&cay_path, current_file, &base);
+        }
+
+        // (c) 兜底：定位真实 .h 并解析
+        if let Some(header_path) = self.resolve_real_header(path, is_system, current_file) {
+            let canon = std::fs::canonicalize(&header_path)
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or(header_path);
+            // 一次性去重（与 #pragma once / 包装路径共享 included_files）
+            if self.included_files.contains(&canon) {
+                return Ok(DirectiveResult::Single(Some(String::new())));
+            }
+            let content = std::fs::read_to_string(&canon).map_err(|e| CayError::Preprocessor {
+                error_code: ErrorCodes::PREPROCESSOR_INCLUDE_C_ERROR,
+                file: Some(canon.clone()),
+                line: 1,
+                column: 1,
+                message: format!("#include_c: 无法读取头文件 '{}': {}", canon, e),
+                suggestion: "检查文件路径与权限".to_string(),
+            })?;
+            let extract =
+                c_header::extract_c_header_text(&canon, &content, &self.defines)?;
+            for w in &extract.warnings {
+                eprintln!("警告: #include_c {}: {}", path, w);
+            }
+            // 自动链接：提取器推断 + 头名映射（去重）
+            let mut libs = extract.link_libraries;
+            for lib in c_header::c_header_link_libs(&base) {
+                if !libs.iter().any(|l| l.name == lib.name) {
+                    libs.push(lib);
+                }
+            }
+            // 合成 extern 块 + 每行源映射（指向头文件）
+            let (code, source_map) = synthesize_extern_block(&extract.extern_code, &canon);
+            self.included_files.insert(canon);
+            return Ok(DirectiveResult::Multi {
+                code,
+                source_map,
+                link_libraries: libs,
+            });
+        }
+
+        // 全找不到
+        Err(CayError::Preprocessor {
+            error_code: ErrorCodes::PREPROCESSOR_INCLUDE_C_ERROR,
+            file: Some(current_file.to_string()),
+            line: line_num,
+            column: 1,
+            message: format!(
+                "#include_c: 找不到 C 头文件 '{}' 的 Cay 包装或真实头",
+                path
+            ),
+            suggestion: "在 caylibs/c/ 下放置 <name>.cay 包装，或用 -I 指定头文件搜索路径，或用 #include 指定包装路径".to_string(),
+        })
+    }
+
+    /// 处理已解析路径的 .cay 包装：读取 + 一次性/循环检测 + 递归预处理 + 自动链接。
+    /// 不再走 `read_include_file` 的二次解析（避免对相对路径重复 join 当前目录）。
+    fn process_resolved_include(
+        &mut self,
+        resolved_path: &str,
+        current_file: &str,
+        base: &str,
+    ) -> CayResult<DirectiveResult> {
+        let canon = std::fs::canonicalize(resolved_path)
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| resolved_path.to_string());
+
+        // 循环包含检测
+        if self.include_stack.contains(&canon) {
+            return Err(CayError::Preprocessor {
+                error_code: ErrorCodes::PREPROCESSOR_CIRCULAR_INCLUDE,
+                file: Some(current_file.to_string()),
+                line: 1,
+                column: 1,
+                message: format!("检测到循环包含: {}", canon),
+                suggestion: "检查头文件之间的循环依赖".to_string(),
+            });
+        }
+        // 一次性（#pragma once 语义）
+        if self.included_files.contains(&canon) {
+            return Ok(DirectiveResult::Single(Some(String::new())));
+        }
+
+        let content = std::fs::read_to_string(&canon).map_err(|e| CayError::Preprocessor {
+            error_code: ErrorCodes::PREPROCESSOR_INCLUDE_ERROR,
+            file: Some(current_file.to_string()),
+            line: 1,
+            column: 1,
+            message: format!("无法读取包含文件 '{}': {}", canon, e),
+            suggestion: "检查文件路径是否正确".to_string(),
+        })?;
+        self.included_files.insert(canon.clone());
+
+        // 保存/重置条件编译状态，递归处理
+        self.include_stack.push(canon.clone());
+        let saved_conditional_stack = self.conditional_stack.clone();
+        let saved_skipping = self.skipping;
+        self.conditional_stack = Vec::new();
+        self.skipping = false;
+        let included_result = self.process_with_source_map(&content, &canon)?;
+        self.conditional_stack = saved_conditional_stack;
+        self.skipping = saved_skipping;
+        self.include_stack.pop();
+
+        // 合并被包含文件引入的链接库 + 头名自动链接（去重）
+        let mut libs = included_result.link_libraries;
+        for lib in c_header::c_header_link_libs(base) {
+            if !libs.iter().any(|l| l.name == lib.name) {
+                libs.push(lib);
+            }
+        }
+        Ok(DirectiveResult::Multi {
+            code: included_result.code,
+            source_map: included_result.source_map,
+            link_libraries: libs,
+        })
+    }
+
+    /// 解析 #include_c 对应的 .cay 包装路径（首选）。
+    /// 系统形式先查 `c/<base>.cay`（libc 包装所在），再查 `<base>.cay`；
+    /// 用户形式先查相对当前文件的 `<base>.cay`，再查 `c/<base>.cay`。
+    /// 复用 `resolve_include_path` 的搜索根（exe-dir/caylibs、cwd/caylibs、-I 等）。
+    fn resolve_cay_wrapper(&self, base: &str, is_system: bool, current_file: &str) -> Option<String> {
+        let candidates: Vec<String> = if is_system {
+            vec![format!("c/{}.cay", base), format!("{}.cay", base)]
+        } else {
+            vec![format!("{}.cay", base), format!("c/{}.cay", base)]
+        };
+        for cand in &candidates {
+            if let Ok(p) = self.resolve_include_path(cand, is_system, current_file) {
+                return Some(p);
+            }
+        }
+        None
+    }
+
+    /// 兜底：定位磁盘上的真实 .h。用户形式相对当前文件/基础目录；系统形式查 -I 与
+    /// 捆绑的 freestanding C 头目录。返回 None 表示找不到（不报错，由调用方决定）。
+    fn resolve_real_header(
+        &self,
+        path: &str,
+        is_system: bool,
+        current_file: &str,
+    ) -> Option<String> {
+        // 用户形式：相对当前文件目录、基础目录
+        if !is_system {
+            let current_dir = Path::new(current_file)
+                .parent()
+                .unwrap_or_else(|| Path::new("."));
+            let p = current_dir.join(path);
+            if p.exists() {
+                return Some(p.to_string_lossy().to_string());
+            }
+            let bp = self.base_dir.join(path);
+            if bp.exists() {
+                return Some(bp.to_string_lossy().to_string());
+            }
+        }
+        // -I 路径（两种形式都查）
+        for ip in &self.system_include_paths {
+            let p = ip.join(path);
+            if p.exists() {
+                return Some(p.to_string_lossy().to_string());
+            }
+        }
+        // 系统形式：捆绑的 freestanding C 头目录
+        if is_system {
+            for bp in bundled_c_include_paths() {
+                let p = bp.join(path);
+                if p.exists() {
+                    return Some(p.to_string_lossy().to_string());
+                }
+            }
+        }
+        None
+    }
+
+    /// 去掉头文件路径的单个 `.h` 或 `.cay` 后缀，保留其余（含子目录）。
+    fn strip_header_ext(p: &str) -> String {
+        let p = p.trim();
+        p.strip_suffix(".h")
+            .or_else(|| p.strip_suffix(".cay"))
+            .unwrap_or(p)
+            .to_string()
     }
 
     /// 解析 #define 参数
@@ -1143,6 +1390,34 @@ impl Preprocessor {
     }
 }
 
+/// 将生成的 `extern {}` 块文本拆分为多行，并构造每行指向头文件的源映射。
+/// 用于 `#include_c` 兜底解析真实 `.h` 的产物（每行映射到头文件路径，行号统一为 1）。
+fn synthesize_extern_block(extern_code: &str, header_path: &str) -> (String, SourceMap) {
+    let mut source_map = SourceMap::new();
+    let lines: Vec<&str> = extern_code.lines().collect();
+    for _ in &lines {
+        source_map.add_mapping(header_path.to_string(), 1);
+    }
+    (lines.join("\n"), source_map)
+}
+
+/// 捆绑的 freestanding C 头文件搜索目录（相对可执行文件）。
+/// bundled MinGW 不含完整 libc 头（如 stdio.h），仅 GCC freestanding 头与 clang 资源头；
+/// 这些目录主要用于 `<stdint.h>`/`<stddef.h>` 等的兜底解析。
+fn bundled_c_include_paths() -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    if let Ok(exe) = std::env::current_exe() {
+        let exe = exe.canonicalize().unwrap_or(exe);
+        if let Some(exe_dir) = exe.parent() {
+            paths.push(
+                exe_dir.join("lib/mingw64/lib/gcc/x86_64-w64-mingw32/15.2.0/include"),
+            );
+            paths.push(exe_dir.join("llvm-minimal/lib/clang/21/include"));
+        }
+    }
+    paths
+}
+
 /// 独立的预处理函数接口（兼容旧版本调用）
 ///
 /// # Arguments
@@ -1161,7 +1436,7 @@ pub fn preprocess(source: &str, file_path: &str, base_dir: &str) -> CayResult<St
 }
 
 /// 解析预处理器数字常量（支持十进制、十六进制、八进制、二进制）
-fn parse_preprocessor_number(s: &str) -> Result<i64, ()> {
+pub(crate) fn parse_preprocessor_number(s: &str) -> Result<i64, ()> {
     let trimmed = s.trim();
     if trimmed.is_empty() {
         return Err(());
@@ -1196,14 +1471,17 @@ fn parse_preprocessor_number(s: &str) -> Result<i64, ()> {
 /// 预处理器条件表达式解析器
 ///
 /// 支持完整的 C 预处理器条件表达式语法
-struct ConditionParser<'a> {
+pub(crate) struct ConditionParser<'a> {
     input: &'a str,
     pos: usize,
     defines: &'a std::collections::HashMap<String, String>,
 }
 
 impl<'a> ConditionParser<'a> {
-    fn new(input: &'a str, defines: &'a std::collections::HashMap<String, String>) -> Self {
+    pub(crate) fn new(
+        input: &'a str,
+        defines: &'a std::collections::HashMap<String, String>,
+    ) -> Self {
         Self {
             input,
             pos: 0,
@@ -1330,7 +1608,7 @@ impl<'a> ConditionParser<'a> {
     }
 
     /// 解析主表达式（处理 ||）
-    fn parse_expression(&mut self) -> Result<i64, ()> {
+    pub(crate) fn parse_expression(&mut self) -> Result<i64, ()> {
         let mut result = self.parse_and_expr()?;
 
         loop {

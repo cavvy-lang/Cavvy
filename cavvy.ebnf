@@ -28,6 +28,7 @@ preprocessor_directive = define_directive
                        | else_directive
                        | endif_directive
                        | include_directive
+                       | include_c_directive
                        | error_directive
                        | warning_directive
                        | pragma_directive
@@ -60,6 +61,12 @@ endif_directive = "#endif";
 include_directive = "#include", ( "<", header_name, ">" | '"', header_name, '"' );
 
 header_name = { any_character_except_angle_quote };
+
+(* #include_c 一键导入 C 头文件声明：<...> 形式优先映射到 caylibs/c/ 下的 Cay 包装
+ * （libc 头默认已链接），未命中包装时兜底真实解析磁盘上的 .h 文件；"..." 形式用于
+ * 用户/第三方头文件（相对当前文件或 -I 路径）。两种形式都会按"头名→库"映射自动
+ * 声明链接，效果等价于同时写一条 #link。*)
+include_c_directive = "#include_c", ( "<", header_name, ">" | '"', header_name, '"' );
 
 (* #error 编译期错误 *)
 error_directive = "#error", string_literal;
@@ -98,6 +105,10 @@ library_name = { any_character_except_angle_quote };
  *
  *   #link "ws2_32"      (* 链接用户库 *)
  *   #link <kernel32>    (* 链接系统库 *)
+ *
+ *   #include_c <stdio.h>     (* 系统 C 头：优先映射到 caylibs/c/stdio.cay 包装 *)
+ *   #include_c <winsock2.h>  (* 无包装的系统头：兜底真实解析 + 自动链接 ws2_32 *)
+ *   #include_c "myheader.h"  (* 用户头：相对当前文件解析，保守提取声明 *)
  *)
 
 (* ============================================================================
