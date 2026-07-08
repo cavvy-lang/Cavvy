@@ -857,15 +857,12 @@ impl IRGenerator {
         self.emit_dtor_candidates(&candidates);
     }
 
-    /// 为一组析构候选发射 `load` + `call @ClassName.__dtor` 指令。
+    /// 为一组析构候选发射 `load` + `call @_ZN...D1Ev` 指令。
     fn emit_dtor_candidates(&mut self, candidates: &[DtorCandidate]) {
         for cand in candidates {
             // 局部类实例变量的 alloca 存储的是对象指针 i8*。
-            // 加载该指针并调用 @<QualifiedClass>.__dtor(i8* %obj)。
-            let dtor_fn = format!(
-                "{}.__dtor",
-                self.get_qualified_class_name(&cand.class_name)
-            );
+            // 加载该指针并调用 Itanium ABI 析构函数名。
+            let dtor_fn = self.mangle_itanium_method(&cand.class_name, "D1", &[], false, true);
             let obj_temp = self.new_temp();
             self.emit_line(&format!(
                 "  {} = load i8*, i8** %{}",
@@ -1342,79 +1339,46 @@ impl IRGenerator {
         }
     }
 
-    /// 生成带参数签名的方法名以支持方法重载
-    /// 格式: _ZN<len>ns1<len>ns2<len>classNameE.methodName 或 _ZN<len>ns1<len>ns2<len>classNameE.__methodName_paramTypes
+    /// 使用标准 Itanium ABI 格式生成方法名，以便与 C++ 互操作。
+    /// 格式: _ZN<ns><cls><method-len><method>E<itanium-params>
     pub fn generate_method_name(
         &self,
         class_name: &str,
         method: &crate::ast::MethodDecl,
     ) -> String {
-        let cls = self.get_qualified_class_name(class_name);
-
-        // 只对泛型类尝试从类型注册表获取方法信息
-        // 因为类型注册表中的 MethodInfo 已经将泛型参数替换为 GenericParam 类型
-        if class_name.contains('<') {
+        // 对于泛型类，检查注册表以便支持特化。非泛型类直接使用 Itanium ABI。
+        let param_types: Vec<crate::types::Type> = if class_name.contains('<') {
             if let Some(ref registry) = self.type_registry {
-                // 提取基础类名（去除泛型参数）
                 let base_class_name = if let Some(pos) = class_name.find('<') {
                     &class_name[..pos]
                 } else {
                     class_name
                 };
-
                 if let Some(class_info) = registry.get_class(base_class_name) {
                     if !class_info.type_params.is_empty() {
                         if let Some(methods) = class_info.methods.get(&method.name) {
-                            // 找到参数数量匹配的方法
                             for method_info in methods {
                                 if method_info.params.len() == method.params.len() {
-                                    // 使用 MethodInfo 中的参数类型（已替换泛型参数）
-                                    if method_info.params.is_empty() {
-                                        return format!("{}.{}", cls, method.name);
-                                    } else {
-                                        let param_types: Vec<String> = method_info
-                                            .params
-                                            .iter()
-                                            .map(|p| {
-                                                if p.is_varargs {
-                                                    self.varargs_type_to_signature(&p.param_type)
-                                                } else {
-                                                    self.type_to_signature(&p.param_type)
-                                                }
-                                            })
-                                            .collect();
-                                        return format!(
-                                            "{}.__{}_{}",
-                                            cls,
-                                            method.name,
-                                            param_types.join("_")
-                                        );
-                                    }
+                                    return self.mangle_itanium_method(
+                                        class_name,
+                                        &method.name,
+                                        &method_info.params.iter().map(|p| p.param_type.clone()).collect::<Vec<_>>(),
+                                        false,
+                                        false,
+                                    );
                                 }
                             }
                         }
                     }
                 }
             }
-        }
-
-        // 回退：使用 AST 中的参数类型
-        if method.params.is_empty() {
-            format!("{}.{}", cls, method.name)
+            // 回退
+            method.params.iter().map(|p| p.param_type.clone()).collect()
         } else {
-            let param_types: Vec<String> = method
-                .params
-                .iter()
-                .map(|p| {
-                    if p.is_varargs {
-                        self.varargs_type_to_signature(&p.param_type)
-                    } else {
-                        self.type_to_signature(&p.param_type)
-                    }
-                })
-                .collect();
-            format!("{}.__{}_{}", cls, method.name, param_types.join("_"))
-        }
+            method.params.iter().map(|p| p.param_type.clone()).collect()
+        };
+
+        self.mangle_itanium_method(class_name, &method.name, &param_types, false, false)
     }
 
     /// 获取类的命名空间路径
@@ -1470,6 +1434,159 @@ impl IRGenerator {
         }
         result.push_str(&format!("{}{}E", name.len(), name));
         result
+    }
+
+    /// 生成 Itanium ABI 类前缀（不含尾部 `E`），用于在类名之后继续编码方法名。
+    /// 格式: _ZN<len>ns1<len>ns2<len>className
+    /// 与标准 C++ 编译器输出一致。
+    pub(crate) fn get_itanium_class_prefix(&self, class_name: &str) -> String {
+        let mut result = "_ZN".to_string();
+        // 如果 class_name 已经包含 :: 则直接使用，否则查 class_namespaces
+        let parts = if class_name.contains("::") {
+            let v: Vec<String> = class_name
+                .split("::")
+                .map(|s| self.mangle_itanium_entity_name(s))
+                .collect();
+            v
+        } else {
+            let base_name = if let Some(lt_pos) = class_name.find('<') {
+                &class_name[..lt_pos]
+            } else {
+                class_name
+            };
+            let ns = self.get_class_namespace(base_name);
+            let simple = if class_name.contains('<') {
+                // 特化名：将 <, >, ,, 空格 替换为 _ 生成唯一标识
+                self.mangle_itanium_entity_name(class_name)
+            } else {
+                class_name.to_string()
+            };
+            if ns.is_empty() {
+                vec![simple]
+            } else {
+                let mut v: Vec<String> = ns.into_iter().collect();
+                v.push(simple);
+                v
+            }
+        };
+        for part in &parts {
+            result.push_str(&format!("{}{}", part.len(), part));
+        }
+        result
+    }
+
+    /// Itanium ABI 类型编码：将 Cavvy type 转换为 Itanium mangled 类型字符串。
+    /// https://itanium-cxx-abi.github.io/cxx-abi/abi.html#mangling-type
+    pub fn type_to_itanium_sig(&self, ty: &crate::types::Type) -> String {
+        use crate::types::Type;
+        match ty {
+            Type::Void => "v".to_string(),
+            Type::Int32 => "i".to_string(),
+            Type::Int64 => "x".to_string(), // long long
+            Type::Float32 => "f".to_string(),
+            Type::Float64 => "d".to_string(),
+            Type::Bool => "b".to_string(),
+            Type::String => "Pc".to_string(), // char*
+            Type::Char => "c".to_string(),
+            Type::Object(name) => {
+                // 当作 class/struct 指针: P<qualified name>
+                let prefix = self.get_itanium_class_prefix(name);
+                format!("P{}E", &prefix[3..]) // strip _ZN prefix, use P + name + E
+            }
+            Type::Array(inner) => {
+                // 当作指针 (数组退化为指针)
+                format!("P{}", self.type_to_itanium_sig(inner))
+            }
+            Type::Function(_) => "PFvvE".to_string(), // 简化函数指针
+            Type::Auto => "v".to_string(),
+            Type::CInt => "i".to_string(),
+            Type::CUInt => "j".to_string(), // unsigned int
+            Type::CLong => {
+                if self.is_windows_target() { "i".to_string() } else { "l".to_string() }
+            }
+            Type::CULong => {
+                if self.is_windows_target() { "j".to_string() } else { "m".to_string() }
+            }
+            Type::CShort => "s".to_string(),
+            Type::CUShort => "t".to_string(),
+            Type::CChar => "c".to_string(),
+            Type::CUChar => "h".to_string(),
+            Type::CFloat => "f".to_string(),
+            Type::CDouble => "d".to_string(),
+            Type::SizeT => { if self.is_windows_target() { "y".to_string() } else { "m".to_string() } }
+            Type::SSizeT => "x".to_string(),
+            Type::UIntPtr => "y".to_string(),
+            Type::IntPtr => "l".to_string(),
+            Type::CVoid => "v".to_string(),
+            Type::CBool => "b".to_string(),
+            Type::Pointer(inner) => {
+                format!("P{}", self.type_to_itanium_sig(inner))
+            }
+            Type::Struct(name) => {
+                // struct 指针
+                let prefix = self.get_itanium_class_prefix(name);
+                format!("P{}E", &prefix[3..])
+            }
+            Type::GenericParam(name) => {
+                // 泛型参数的降级表示
+                format!("Pc") // 回退到 char*
+            }
+            Type::Generic(name, _args) => {
+                // 特化泛型类指针
+                let mangled_name = self.mangle_itanium_entity_name(name);
+                format!("P{}{}", mangled_name.len(), mangled_name)
+            }
+        }
+    }
+
+    /// 将类名中的 Itanium-非法字符（<, >, ,, 空格, ::）替换为 _。
+    /// 用于构建 LLVM 标识符时确保合法性，同时生成可识别的特化名称。
+    fn mangle_itanium_entity_name(&self, name: &str) -> String {
+        name.replace("::", "_")
+            .replace("<", "_")
+            .replace(">", "_")
+            .replace(",", "_")
+            .replace(" ", "_")
+            .replace("*", "P")
+            .replace("&", "R")
+    }
+
+    /// 生成完整的 Itanium ABI mangled 方法名。
+    ///
+    /// 格式（符合 g++/clang 标准）:
+    ///   _ZN<ns-lens><ns><cls-len><cls><method-len><method>E<param-types>
+    ///
+    /// 示例：`HHH::Helper::add(int, int)` →
+    ///   _ZN3HHH6Helper3addEii
+    pub fn mangle_itanium_method(
+        &self,
+        class_name: &str,
+        method_name: &str,
+        param_types: &[crate::types::Type],
+        is_constructor: bool,
+        is_destructor: bool,
+    ) -> String {
+        let prefix = self.get_itanium_class_prefix(class_name);
+
+        let method_enc = if is_constructor {
+            "C1".to_string() // C1 = complete object constructor
+        } else if is_destructor {
+            "D1".to_string() // D1 = complete object destructor
+        } else {
+            format!("{}{}", method_name.len(), method_name)
+        };
+
+        let params_enc: String = if is_destructor || param_types.is_empty() {
+            "v".to_string() // 无参函数按 Itanium ABI 编码为 v（destructor 恒为 D1Ev)
+        } else {
+            param_types
+                .iter()
+                .map(|t| self.type_to_itanium_sig(t))
+                .collect::<Vec<_>>()
+                .join("")
+        };
+
+        format!("{}{}E{}", prefix, method_enc, params_enc)
     }
 
     /// Mangle 变量名以确保是合法的 LLVM 标识符
@@ -1575,6 +1692,69 @@ impl IRGenerator {
             }
         }
         fallback_types.to_vec()
+    }
+
+    /// 与 `get_constructor_param_signatures` 相同的重载解析逻辑，但返回真实的
+    /// `Type` 列表而非签名字符串，供 Itanium ABI mangling（`mangle_itanium_method`）使用。
+    pub fn get_constructor_param_types(
+        &self,
+        class_name: &str,
+        arg_count: usize,
+        fallback_types: &[String],
+    ) -> Vec<crate::types::Type> {
+        if let Some(ref registry) = self.type_registry {
+            if let Some(class_info) = registry.get_class(class_name) {
+                let candidates: Vec<_> = class_info
+                    .constructors
+                    .iter()
+                    .filter(|c| c.params.len() == arg_count)
+                    .collect();
+
+                if candidates.is_empty() {
+                    return Vec::new();
+                }
+
+                if candidates.len() == 1 {
+                    return candidates[0]
+                        .params
+                        .iter()
+                        .map(|p| p.param_type.clone())
+                        .collect();
+                }
+
+                let best = candidates
+                    .iter()
+                    .max_by_key(|ctor| {
+                        let ctor_sigs: Vec<String> = ctor
+                            .params
+                            .iter()
+                            .map(|p| self.type_to_signature(&p.param_type))
+                            .collect();
+                        let mut score: i32 = 0;
+                        for (c_sig, f_sig) in ctor_sigs.iter().zip(fallback_types.iter()) {
+                            if c_sig == f_sig {
+                                score += 10;
+                            } else if Self::is_int_signature(c_sig) && Self::is_int_signature(f_sig)
+                            {
+                                score += 3;
+                            } else if Self::is_float_signature(c_sig)
+                                && Self::is_float_signature(f_sig)
+                            {
+                                score += 3;
+                            } else if c_sig.starts_with('o') && f_sig.starts_with('o') {
+                                score += if c_sig == f_sig { 5 } else { 1 };
+                            } else if (c_sig == "s") != (f_sig == "s") {
+                                score -= 100;
+                            }
+                        }
+                        score
+                    })
+                    .unwrap_or(&candidates[0]);
+
+                return best.params.iter().map(|p| p.param_type.clone()).collect();
+            }
+        }
+        Vec::new()
     }
 
     /// 检查签名是否是整数类型（i8, i16, i32, i64 等，但非指针）
@@ -1752,6 +1932,9 @@ impl IRGenerator {
     ///
     /// 对象内存布局: [type_id: i32][padding: i32][父类字段...][子类字段...]
     /// 返回对象总大小（字节）
+    ///
+    /// C++ 互操作类（ClassInfo.is_interop）无 16 字节对象头，字段从 offset 0 起，
+    /// 与普通 C++ 类布局一致。此类不继承 Cavvy 父类的对象头布局（互操作类必须是叶子类）。
     pub fn compute_class_layout(
         &mut self,
         class_name: &str,
@@ -1759,32 +1942,39 @@ impl IRGenerator {
         parent_name: Option<&str>,
     ) -> usize {
         // 对象头大小：type_id (4 bytes) + padding (4 bytes) + vtable_ptr (8 bytes) = 16 bytes
-        // vtable 指针偏移量
-        const VTABLE_OFFSET: usize = 8;
         const HEADER_SIZE: usize = 16;
-        let mut current_offset = HEADER_SIZE;
+        let is_interop = self
+            .type_registry
+            .as_ref()
+            .and_then(|r| r.get_class(class_name))
+            .map(|c| c.is_interop)
+            .unwrap_or(false);
+        let mut current_offset = if is_interop { 0 } else { HEADER_SIZE };
         let mut field_map = HashMap::new();
 
         // 如果有父类，先复制父类的字段布局
-        if let Some(parent) = parent_name {
-            // 先用简单名找，找不到就用限定名（class_layouts 现在用限定名存储）
-            let parent_layout = self
-                .class_layouts
-                .get(parent)
-                .or_else(|| {
-                    self.type_registry
-                        .as_ref()
-                        .and_then(|r| r.find_qualified_class(parent))
-                        .and_then(|q| self.class_layouts.get(&q))
-                })
-                .cloned();
-            if let Some(parent_layout) = parent_layout {
-                // 复制父类的所有字段信息
-                for (field_name, field_info) in &parent_layout.fields {
-                    field_map.insert(field_name.clone(), field_info.clone());
+        // 互操作类不继承 Cavvy 父类布局（否则会把父类的 16 字节头带进来，破坏 C++ 兼容）
+        if !is_interop {
+            if let Some(parent) = parent_name {
+                // 先用简单名找，找不到就用限定名（class_layouts 现在用限定名存储）
+                let parent_layout = self
+                    .class_layouts
+                    .get(parent)
+                    .or_else(|| {
+                        self.type_registry
+                            .as_ref()
+                            .and_then(|r| r.find_qualified_class(parent))
+                            .and_then(|q| self.class_layouts.get(&q))
+                    })
+                    .cloned();
+                if let Some(parent_layout) = parent_layout {
+                    // 复制父类的所有字段信息
+                    for (field_name, field_info) in &parent_layout.fields {
+                        field_map.insert(field_name.clone(), field_info.clone());
+                    }
+                    // 从父类布局的结束位置开始
+                    current_offset = parent_layout.total_size;
                 }
-                // 从父类布局的结束位置开始
-                current_offset = parent_layout.total_size;
             }
         }
 
@@ -2286,3 +2476,6 @@ impl IRGenerator {
         }
     }
 }
+
+#[cfg(test)]
+mod context_tests;

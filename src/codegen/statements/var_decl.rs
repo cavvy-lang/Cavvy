@@ -472,7 +472,7 @@ impl IRGenerator {
     }
 
     /// 将 LLVM 类型转换为 Cayvy 类型
-    fn llvm_type_to_cay_type(&self, llvm_type: &str) -> Option<Type> {
+    pub(crate) fn llvm_type_to_cay_type(&self, llvm_type: &str) -> Option<Type> {
         match llvm_type {
             "i32" => Some(Type::Int32),
             "i64" => Some(Type::Int64),

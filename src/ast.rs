@@ -241,6 +241,9 @@ pub enum Modifier {
     Final,
     Abstract,
     Native,
+    /// C++ 互操作类：对象无 16 字节头（type_id/vtable），字段从 offset 0 起，
+    /// 布局与普通 C++ 类一致，便于跨语言 new/字段访问。
+    Interop,
     Main,         // 标记主类，用于解决多main冲突
     Override,     // @Override 注解，标记方法重写
     Test,         // @Test 注解，标记测试方法

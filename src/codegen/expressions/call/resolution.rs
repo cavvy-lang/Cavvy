@@ -105,7 +105,6 @@ impl IRGenerator {
                 }
             };
             let arg_count = processed_args.len();
-            let llvm_current = self.get_qualified_class_name(&current_class_name);
 
             // 第一遍：精确类型签名匹配
             for method in methods.iter() {
@@ -117,30 +116,24 @@ impl IRGenerator {
                     .position(|p| p.is_varargs)
                     .unwrap_or(param_count);
 
-                if is_varargs && arg_count >= fixed_count {
-                    let method_sig = self.build_function_name_from_method(
-                        &current_class_name,
-                        method_name,
-                        &method.params,
-                        has_varargs_array,
-                    );
-                    let expected_sig =
-                        format!("{}.__{}_{}", llvm_current, method_name, arg_types.join("_"));
-                    if method_sig == expected_sig {
-                        return Some(method.clone());
-                    }
-                } else if param_count == arg_count {
-                    let method_sig = self.build_function_name_from_method(
-                        &current_class_name,
-                        method_name,
-                        &method.params,
-                        has_varargs_array,
-                    );
-                    let expected_sig =
-                        format!("{}.__{}_{}", llvm_current, method_name, arg_types.join("_"));
-                    if method_sig == expected_sig {
-                        return Some(method.clone());
-                    }
+                let sig_matches = if is_varargs {
+                    arg_count >= fixed_count
+                        && self.method_param_signatures_match(
+                            &method.params,
+                            &arg_types,
+                            has_varargs_array,
+                        )
+                } else {
+                    param_count == arg_count
+                        && self.method_param_signatures_match(
+                            &method.params,
+                            &arg_types,
+                            has_varargs_array,
+                        )
+                };
+
+                if sig_matches {
+                    return Some(method.clone());
                 }
             }
 

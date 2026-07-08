@@ -446,6 +446,7 @@ fn modifier_str(m: &cavvy::ast::Modifier) -> &'static str {
         cavvy::ast::Modifier::Final => "final",
         cavvy::ast::Modifier::Abstract => "abstract",
         cavvy::ast::Modifier::Native => "native",
+        cavvy::ast::Modifier::Interop => "interop",
         cavvy::ast::Modifier::Main => "main",
         cavvy::ast::Modifier::Override => "override",
         cavvy::ast::Modifier::Test => "@Test",

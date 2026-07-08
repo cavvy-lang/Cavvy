@@ -217,8 +217,19 @@ pub fn parse_class_member(parser: &mut Parser) -> CayResult<ClassMember> {
             let constructor_call = ctor_call_result.call;
 
             // 解析构造函数体
-            // 如果 Java 风格的构造链调用已经消耗了 {，则不需要再解析 {
-            let ctor_body = if ctor_call_result.consumed_lbrace {
+            // native/abstract 构造函数无实现体，以 ';' 结束
+            let ctor_body = if ctor_modifiers.contains(&Modifier::Native)
+                || ctor_modifiers.contains(&Modifier::Abstract)
+            {
+                parser.consume(
+                    &Token::Semicolon,
+                    "期望 ';'\n提示: native/abstract 构造函数声明应以 ';' 结束，例如: native MyClass();",
+                )?;
+                Block {
+                    statements: Vec::new(),
+                    loc: parser.current_loc(),
+                }
+            } else if ctor_call_result.consumed_lbrace {
                 // 已经消耗了 {，直接解析语句直到 }
                 let mut statements = Vec::new();
                 while !parser.check(&Token::RBrace) && !parser.is_at_end() {
@@ -330,7 +341,8 @@ pub fn parse_class_member(parser: &mut Parser) -> CayResult<ClassMember> {
             // 修饰符（但后面没有有效成员）
             crate::lexer::Token::Public | crate::lexer::Token::Private |
             crate::lexer::Token::Protected | crate::lexer::Token::Static |
-            crate::lexer::Token::Final | crate::lexer::Token::Abstract => {
+            crate::lexer::Token::Final | crate::lexer::Token::Abstract |
+            crate::lexer::Token::Interop => {
                 let kw = format!("{:?}", current_token).to_lowercase();
                 (
                     format!("关键字({})", kw),
@@ -749,6 +761,10 @@ pub fn parse_modifiers(parser: &mut Parser) -> CayResult<Vec<Modifier>> {
             }
             Token::Native => {
                 modifiers.push(Modifier::Native);
+                parser.advance();
+            }
+            Token::Interop => {
+                modifiers.push(Modifier::Interop);
                 parser.advance();
             }
             Token::AtOverride => {

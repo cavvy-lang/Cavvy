@@ -60,13 +60,13 @@ impl IRGenerator {
                 class_name
             };
             let mut lookup_class_name = base_class_name.to_string();
-            let llvm_current = self.get_qualified_class_name(class_name);
             loop {
                 if let Some(class_info) = registry.get_class(&lookup_class_name) {
                     if let Some(methods) = class_info.methods.get(method_name) {
                         let arg_count = processed_args.len();
 
-                        // 首先尝试找到参数类型完全匹配的方法
+                        // 首先尝试找到参数类型完全匹配的方法（用旧格式签名字符串比较，
+                        // 与实参 arg_types 语义一致；匹配后再用 Itanium ABI 生成最终函数名）
                         for method in methods {
                             let param_count = method.params.len();
                             let is_varargs = method.params.iter().any(|p| p.is_varargs);
@@ -76,44 +76,30 @@ impl IRGenerator {
                                 .position(|p| p.is_varargs)
                                 .unwrap_or(param_count);
 
-                            if is_varargs {
-                                // 可变参数方法
-                                if arg_count >= fixed_count {
-                                    // 使用实际定义方法的类名生成函数名（支持继承和接口）
-                                    let method_sig = self.build_function_name_from_method(
-                                        &lookup_class_name,
-                                        method_name,
+                            let sig_matches = if is_varargs {
+                                arg_count >= fixed_count
+                                    && self.method_param_signatures_match(
                                         &method.params,
+                                        &arg_types,
                                         has_varargs_array,
-                                    );
-                                    let expected_sig = format!(
-                                        "{}.__{}_{}",
-                                        llvm_current,
-                                        method_name,
-                                        arg_types.join("_")
-                                    );
-                                    if method_sig == expected_sig {
-                                        return method_sig;
-                                    }
-                                }
-                            } else if param_count == arg_count {
-                                // 非可变参数方法：检查参数类型是否匹配
+                                    )
+                            } else {
+                                param_count == arg_count
+                                    && self.method_param_signatures_match(
+                                        &method.params,
+                                        &arg_types,
+                                        has_varargs_array,
+                                    )
+                            };
+
+                            if sig_matches {
                                 // 使用实际定义方法的类名生成函数名（支持继承和接口）
-                                let method_sig = self.build_function_name_from_method(
+                                return self.build_function_name_from_method(
                                     &lookup_class_name,
                                     method_name,
                                     &method.params,
                                     has_varargs_array,
                                 );
-                                let expected_sig = format!(
-                                    "{}.__{}_{}",
-                                    llvm_current,
-                                    method_name,
-                                    arg_types.join("_")
-                                );
-                                if method_sig == expected_sig {
-                                    return method_sig;
-                                }
                             }
                         }
 
@@ -166,16 +152,39 @@ impl IRGenerator {
             }
         }
 
-        // 回退到使用实际参数类型生成函数名
-        // 顶层函数（class_name 为空）使用 __toplevel_ 前缀
+        // 回退：类型注册表中找不到方法定义时，直接用实参类型按 Itanium ABI 生成函数名
+        // 顶层函数（class_name 为空）使用 __toplevel_ 前缀（非 C++ 互操作场景）
         if class_name.is_empty() {
             // 顶层函数命名：__toplevel_func_name
             format!("__toplevel_{}", method_name)
-        } else if arg_types.is_empty() {
-            format!("{}.{}", llvm_class, method_name)
         } else {
-            format!("{}.__{}_{}", llvm_class, method_name, arg_types.join("_"))
+            let param_types: Vec<crate::types::Type> = processed_args
+                .iter()
+                .map(|r| {
+                    let (ty, _) = self.parse_typed_value(r);
+                    self.llvm_type_to_cay_type(&ty).unwrap_or(crate::types::Type::Int32)
+                })
+                .collect();
+            self.mangle_itanium_method(class_name, method_name, &param_types, false, false)
         }
+    }
+
+    /// 检查方法形参列表的旧格式签名是否与调用实参签名匹配（用于重载解析）。
+    /// 仅做匹配判断，不涉及最终函数名格式。
+    pub(crate) fn method_param_signatures_match(
+        &self,
+        params: &[crate::types::ParameterInfo],
+        arg_types: &[String],
+        has_varargs_array: bool,
+    ) -> bool {
+        let sigs: Vec<String> = params
+            .iter()
+            .map(|p| {
+                let is_param_varargs = has_varargs_array && p.is_varargs;
+                self.param_type_to_signature(&self.resolve_type(&p.param_type), is_param_varargs)
+            })
+            .collect();
+        sigs == arg_types
     }
 
     /// 为特化泛型类的方法调用生成与定义完全一致的函数名。
@@ -204,26 +213,17 @@ impl IRGenerator {
             .iter()
             .find(|m| m.params.len() == arg_count || m.params.iter().any(|p| p.is_varargs))
             .or_else(|| methods.first())?;
-        let cls = self.get_qualified_class_name(class_name);
-        if method_info.params.is_empty() {
-            Some(format!("{}.{}", cls, method_name))
-        } else {
-            let sigs: Vec<String> = method_info
-                .params
-                .iter()
-                .map(|p| {
-                    if p.is_varargs {
-                        self.varargs_type_to_signature(&p.param_type)
-                    } else {
-                        self.type_to_signature(&p.param_type)
-                    }
-                })
-                .collect();
-            Some(format!("{}.__{}_{}", cls, method_name, sigs.join("_")))
-        }
+        // 必须与 generate_method_name 的特化分支保持一致：使用注册表中的原始
+        // 参数类型（未经 generic_type_args 解析），否则会与已生成的单态化定义不匹配。
+        let param_types: Vec<crate::types::Type> = method_info
+            .params
+            .iter()
+            .map(|p| p.param_type.clone())
+            .collect();
+        Some(self.mangle_itanium_method(class_name, method_name, &param_types, false, false))
     }
 
-    /// 根据方法定义的参数类型构建函数名
+    /// 根据方法定义的参数类型构建函数名（Itanium ABI 格式，与 C++ 互操作）
     ///
     /// # Arguments
     /// * `class_name` - 类名
@@ -237,9 +237,8 @@ impl IRGenerator {
         params: &[crate::types::ParameterInfo],
         has_varargs_array: bool,
     ) -> String {
-        let llvm_cls = self.get_qualified_class_name(class_name);
         if params.is_empty() {
-            return format!("{}.{}", llvm_cls, method_name);
+            return self.mangle_itanium_method(class_name, method_name, &[], false, false);
         }
 
         // 获取基础类名（去除泛型参数）以查找类信息
@@ -259,43 +258,36 @@ impl IRGenerator {
             Vec::new()
         };
 
-        let param_types: Vec<String> = params
+        // 使用方法定义中的完整参数类型生成 Itanium 名称。
+        // 可变参数在方法定义中仍以 Array(Element) 形式存在，调用点传递数组指针
+        // 后函数签名与定义一致，因此不过滤 varargs 参数。
+        let param_types: Vec<crate::types::Type> = params
             .iter()
             .map(|p| {
-                let is_param_varargs = has_varargs_array && p.is_varargs;
                 let resolved_type = self.resolve_type(&p.param_type);
 
                 // 检查参数类型是否是泛型参数
-                // 如果是，使用泛型参数名（如 T）而不是具体类型
+                // 如果是，检查是否有特化映射；否则保留泛型参数（降级为 char* 编码）
                 match &resolved_type {
-                    crate::types::Type::Object(name) => {
-                        if class_type_params.iter().any(|p| &p.name == name) {
-                            // 这是泛型参数 - 检查是否有特化映射
-                            if let Some(actual_type) = self.generic_type_args.get(name) {
-                                self.param_type_to_signature(actual_type, is_param_varargs)
-                            } else {
-                                format!("g{}", name)
-                            }
-                        } else {
-                            self.param_type_to_signature(&resolved_type, is_param_varargs)
-                        }
+                    crate::types::Type::Object(name)
+                        if class_type_params.iter().any(|p| &p.name == name) =>
+                    {
+                        self.generic_type_args
+                            .get(name)
+                            .cloned()
+                            .unwrap_or(resolved_type)
                     }
-                    crate::types::Type::GenericParam(name) => {
-                        // 泛型参数类型 - 检查是否有特化映射
-                        if let Some(actual_type) = self.generic_type_args.get(name) {
-                            // 有特化映射，使用实际类型
-                            self.param_type_to_signature(actual_type, is_param_varargs)
-                        } else {
-                            // 无特化映射，使用泛型参数名
-                            format!("g{}", name)
-                        }
-                    }
-                    _ => self.param_type_to_signature(&resolved_type, is_param_varargs),
+                    crate::types::Type::GenericParam(name) => self
+                        .generic_type_args
+                        .get(name)
+                        .cloned()
+                        .unwrap_or(resolved_type),
+                    _ => resolved_type,
                 }
             })
             .collect();
 
-        format!("{}.__{}_{}", llvm_cls, method_name, param_types.join("_"))
+        self.mangle_itanium_method(class_name, method_name, &param_types, false, false)
     }
 
     /// 将参数类型转换为签名

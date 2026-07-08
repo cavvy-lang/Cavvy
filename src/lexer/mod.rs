@@ -29,6 +29,9 @@ pub enum Token {
     Abstract,
     #[token("native")]
     Native,
+    // C++ 互操作类：无 16 字节对象头，布局对齐普通 C++ 类
+    #[token("interop")]
+    Interop,
     // 注解 - 注意：@main 和 @Override 是完整的令牌，不是 @ + 标识符
     #[token("@main")]
     AtMain,
@@ -1071,6 +1074,7 @@ pub fn token_name(token: &Token) -> &'static str {
         Token::Final => "final",
         Token::Abstract => "abstract",
         Token::Native => "native",
+        Token::Interop => "interop",
         Token::AtMain => "@main",
         Token::AtOverride => "@Override",
         Token::AtTest => "@Test",

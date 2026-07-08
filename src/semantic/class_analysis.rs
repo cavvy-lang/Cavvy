@@ -147,6 +147,7 @@ impl SemanticAnalyzer {
         for class in &program.classes {
             let is_abstract = class.modifiers.contains(&Modifier::Abstract);
             let is_final = class.modifiers.contains(&Modifier::Final);
+            let is_interop = class.modifiers.contains(&Modifier::Interop);
             let mut class_info = ClassInfo {
                 name: class.name.clone(),
                 type_params: class
@@ -162,11 +163,17 @@ impl SemanticAnalyzer {
                 fields: std::collections::HashMap::new(),
                 constructors: Vec::new(),
                 has_destructor: false,
-                // 未显式指定父类时，默认继承 Object 根类
-                parent: class.parent.clone().or(Some("Object".to_string())),
+                // 未显式指定父类时，默认继承 Object 根类。
+                // C++ 互操作类（interop）不继承 Cavvy 根类，避免与外部 C++ 布局冲突。
+                parent: if is_interop {
+                    class.parent.clone()
+                } else {
+                    class.parent.clone().or(Some("Object".to_string()))
+                },
                 interfaces: class.interfaces.clone(),
                 is_abstract,
                 is_final,
+                is_interop,
                 vtable_layout: None,
             };
 
@@ -1070,6 +1077,20 @@ impl SemanticAnalyzer {
 
         // 为每个类计算 vtable 布局
         for class_name in &sorted_classes {
+            // 先用不可变借用判断是否互操作类，避免与下方 get_mut 冲突
+            let is_interop = self
+                .type_registry
+                .classes
+                .get(class_name)
+                .map(|c| c.is_interop)
+                .unwrap_or(false);
+            if is_interop {
+                if let Some(class_info) = self.type_registry.classes.get_mut(class_name) {
+                    // C++ 互操作类无对象头，不生成 vtable（虚函数派发/instanceof 对其不可用）
+                    class_info.vtable_layout = None;
+                }
+                continue;
+            }
             let layout = self.compute_single_class_vtable(class_name);
             if let Some(class_info) = self.type_registry.classes.get_mut(class_name) {
                 class_info.vtable_layout = Some(layout);

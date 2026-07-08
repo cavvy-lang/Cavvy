@@ -44,6 +44,32 @@ impl IRGenerator {
 
         self.emit_line(&format!("\n{}:", check_label));
 
+        // 读取对象头 offset 0 的 type_id 用于运行时类型判断。
+        // C++ 互操作（headerless）类无对象头，offset 0 是第一个字段而非 type_id，
+        // 因此对其做 instanceof 无意义——报编译错。
+        if expr_type.starts_with('%') && expr_type.ends_with('*') {
+            let operand_class = expr_type
+                .trim_start_matches('%')
+                .trim_end_matches('*')
+                .to_string();
+            let is_operand_interop = self
+                .type_registry
+                .as_ref()
+                .and_then(|r| r.get_class(&operand_class))
+                .map(|c| c.is_interop)
+                .unwrap_or(false);
+            if is_operand_interop {
+                return Err(codegen_error_at(
+                    ErrorCodes::CODEGEN_INVALID_OPERATION,
+                    instanceof.loc.clone(),
+                    format!(
+                        "instanceof 不支持 interop（无对象头）类 '{}'：它没有运行时 type_id",
+                        operand_class
+                    ),
+                ));
+            }
+        }
+
         let type_id_ptr = self.new_temp();
         self.emit_line(&format!(
             "  {} = bitcast {} {} to i32*",

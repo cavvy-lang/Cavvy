@@ -498,15 +498,21 @@ fn main() {
 
     if is_windows {
         // Windows平台：复制Windows版LLVM工具
-        copy_dir_all("llvm-minimal", &target_dir.join("llvm-minimal"))
-            .expect("Failed to copy llvm-minimal directory");
+        if PathBuf::from("llvm-minimal").exists() {
+            copy_dir_all("llvm-minimal", &target_dir.join("llvm-minimal"))
+                .expect("Failed to copy llvm-minimal directory");
+        }
 
-        // 复制 MinGW 库
-        copy_dir_all("lib", &target_dir.join("lib")).expect("Failed to copy lib directory");
+        // 复制 MinGW 库（若项目包含捆绑库）
+        if PathBuf::from("lib").exists() {
+            copy_dir_all("lib", &target_dir.join("lib")).expect("Failed to copy lib directory");
+        }
 
-        // 复制 MinGW 运行时DLL
-        copy_dir_all("mingw-minimal", &target_dir.join("mingw-minimal"))
-            .expect("Failed to copy mingw-minimal directory");
+        // 复制 MinGW 运行时DLL（若项目包含）
+        if PathBuf::from("mingw-minimal").exists() {
+            copy_dir_all("mingw-minimal", &target_dir.join("mingw-minimal"))
+                .expect("Failed to copy mingw-minimal directory");
+        }
 
         println!(
             "cargo:warning=Copied Windows toolchain (LLVM + MinGW) to {}",

@@ -100,6 +100,9 @@ pub struct ClassInfo {
     pub interfaces: Vec<Type>, // 实现的接口列表（支持泛型实参）
     pub is_abstract: bool,     // 是否是抽象类
     pub is_final: bool,        // 是否是final类（禁止继承）
+    /// C++ 互操作类：对象无 16 字节头，字段从 offset 0 起，与普通 C++ 类布局一致。
+    /// 此类不生成 vtable，instanceof/虚函数派发对其不可用。
+    pub is_interop: bool,
     pub vtable_layout: Option<VTableLayout>, // vtable 布局信息
 }
 
@@ -929,6 +932,7 @@ impl TypeRegistry {
             interfaces: Vec::new(),
             is_abstract: false,
             is_final: false,
+            is_interop: false,
             vtable_layout: None,
         };
 
@@ -997,6 +1001,7 @@ impl TypeRegistry {
             interfaces: Vec::new(),
             is_abstract: false,
             is_final: true, // String 是 final 类，不能被继承
+            is_interop: false,
             vtable_layout: None,
         };
 
@@ -1213,6 +1218,7 @@ impl TypeRegistry {
             interfaces: Vec::new(),
             is_abstract: false,
             is_final: true, // Integer 是 final 类，不能被继承
+            is_interop: false,
             vtable_layout: None,
         };
 

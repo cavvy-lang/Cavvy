@@ -961,6 +961,8 @@ impl IRGenerator {
             self.generate_vtable_global(&qname)?;
         }
 
+        let is_interop = class.modifiers.contains(&Modifier::Interop);
+
         // 检查是否有显式构造函数
         let has_explicit_ctor = class
             .members
@@ -989,11 +991,8 @@ impl IRGenerator {
             for member in &class.members {
                 match member {
                     ClassMember::Method(method) => {
-                        if !method.modifiers.contains(&Modifier::Native)
-                            && !method.modifiers.contains(&Modifier::Abstract)
-                        {
-                            self.generate_method(&qname, method)?;
-                        }
+                        // native/abstract 方法通过 generate_method 统一处理声明/跳过逻辑
+                        self.generate_method(&qname, method)?;
                     }
                     ClassMember::Field(field) => if !field.modifiers.contains(&Modifier::Static) {},
                     ClassMember::Constructor(ctor) => {
@@ -1009,8 +1008,10 @@ impl IRGenerator {
                 }
             }
 
-            // 如果没有显式构造函数，生成默认构造函数
-            if !has_explicit_ctor {
+            // 如果没有显式构造函数，生成默认构造函数。
+            // interop 类由外部 C++ 实现提供构造语义，不生成 Cavvy 默认构造函数，
+            // 避免链接时与外部定义重复。
+            if !has_explicit_ctor && !is_interop {
                 self.generate_default_constructor(&qname)?;
             }
         }
@@ -1504,24 +1505,15 @@ impl IRGenerator {
                             };
 
                             if matches {
-                                let llvm_class = self.get_qualified_class_name(&current);
-                                let fn_name = if method.params.is_empty() {
-                                    format!("{}.{}", llvm_class, method_name)
-                                } else {
-                                    let param_sigs: Vec<String> = method
-                                        .params
-                                        .iter()
-                                        .map(|p| self.type_to_signature(&p.param_type))
-                                        .collect();
-                                    format!(
-                                        "{}.__{}_{}",
-                                        llvm_class,
-                                        method_name,
-                                        param_sigs.join("_")
-                                    )
-                                };
                                 let param_types: Vec<crate::types::Type> =
                                     method.params.iter().map(|p| p.param_type.clone()).collect();
+                                let fn_name = self.mangle_itanium_method(
+                                    &current,
+                                    method_name,
+                                    &param_types,
+                                    false,
+                                    false,
+                                );
                                 return Some((fn_name, method.return_type.clone(), param_types));
                             }
                         }
@@ -1541,12 +1533,41 @@ impl IRGenerator {
     }
 
     fn generate_method(&mut self, class_name: &str, method: &MethodDecl) -> CayResult<()> {
-        // 跳过 native 方法的定义（它们在运行时或由外部提供）
+        let fn_name = self.generate_method_name(class_name, method);
+
+        // native 方法不生成实现体，但必须在 IR 中声明以便调用点引用
         if method.modifiers.contains(&Modifier::Native) {
+            if self.generated_methods.contains(&fn_name) {
+                return Ok(());
+            }
+            self.generated_methods.insert(fn_name.clone());
+
+            let ret_type = self.type_to_llvm(&method.return_type);
+            let mut params = vec!["i8*".to_string()];
+            for p in &method.params {
+                params.push(self.type_to_llvm(&p.param_type));
+            }
+            let cc_attr = self.calling_convention_to_llvm_attr(crate::ast::CallingConvention::Cdecl);
+            let decl = if cc_attr.is_empty() {
+                format!("declare {} @{}({})\n", ret_type, fn_name, params.join(", "))
+            } else {
+                format!(
+                    "declare {} @{}({}) {}\n",
+                    ret_type, fn_name, params.join(", "), cc_attr
+                )
+            };
+            let sig = format!("{}@{}@{}", fn_name, ret_type, params.join("@"));
+            if !self.is_extern_emitted(&sig) {
+                self.emit_raw(&decl);
+                self.mark_extern_emitted(sig);
+            }
             return Ok(());
         }
 
-        let fn_name = self.generate_method_name(class_name, method);
+        // 跳过 abstract 方法（无实现，也无外部符号）
+        if method.modifiers.contains(&Modifier::Abstract) {
+            return Ok(());
+        }
 
         // 防止重复生成相同名称的方法（泛型特化可能产生同名方法）
         if self.generated_methods.contains(&fn_name) {
@@ -1594,15 +1615,21 @@ impl IRGenerator {
 
         // 判断是否是 struct 方法（决定 this 指针类型）
         let is_struct_method = self.is_struct_type(class_name);
-        let this_llvm_type = if is_struct_method {
-            format!("%struct.{}", self.current_class)
+        // this 元素类型：class 为 i8*（对象地址），struct 为 %struct.Name（结构体值类型）。
+        // this 指针类型：class 为 i8*，struct 为 %struct.Name*。
+        let (this_elem_type, this_ptr_type) = if is_struct_method {
+            let elem = format!("%struct.{}", self.current_class);
+            let ptr = format!("{}*", elem);
+            (elem, ptr)
         } else {
-            "i8*".to_string()
+            ("i8*".to_string(), "i8*".to_string())
         };
 
         // 实例方法添加 this 参数
+        // 对于 class 类型，this 是 i8*；对于 struct 类型，this 是指向 struct 的指针。
+        // this 不应当有双重间接 (i8**)，C++ ABI 只需要一层指针。
         if !is_static {
-            params.push(format!("{}* %this", this_llvm_type));
+            params.push(format!("{} %this", this_ptr_type));
         }
 
         for param in &method.params {
@@ -1632,20 +1659,22 @@ impl IRGenerator {
         self.scope_manager.enter_scope();
 
         // 实例方法声明 this 变量
+        // class 方法中 this 在 alloca 中存储为 i8*；struct 方法中存储为 %struct.Name*。
+        // 两者都是指向对象/结构体的单层指针，与字段访问代码保持一致。
         if !is_static {
             let this_llvm_name = self
                 .scope_manager
-                .declare_var("this", &format!("{}*", this_llvm_type));
+                .declare_var("this", &this_ptr_type);
             self.emit_line(&format!(
-                "  %{} = alloca {}*",
-                this_llvm_name, this_llvm_type
+                "  %{} = alloca {}",
+                this_llvm_name, this_ptr_type
             ));
             self.emit_line(&format!(
-                "  store {}* %this, {}** %{}",
-                this_llvm_type, this_llvm_type, this_llvm_name
+                "  store {} %this, {}* %{}",
+                this_ptr_type, this_ptr_type, this_llvm_name
             ));
             self.var_types
-                .insert("this".to_string(), format!("{}*", this_llvm_type));
+                .insert("this".to_string(), this_ptr_type.clone());
             // 存储 this 的 Cavvy 类型信息，用于准确的类型推断
             let this_cay_type = crate::types::Type::Object(class_name.to_string());
             self.var_cay_types.insert("this".to_string(), this_cay_type);
@@ -1755,6 +1784,38 @@ impl IRGenerator {
     ) -> CayResult<()> {
         let fn_name = self.generate_constructor_name(class_name, ctor);
 
+        // native/abstract 构造函数由外部（如 C++ 互操作对象）提供实现，
+        // Cavvy 不生成其 LLVM 函数体，但需要在 IR 中声明以便 new 表达式调用。
+        if ctor.modifiers.contains(&crate::ast::Modifier::Native)
+            || ctor.modifiers.contains(&crate::ast::Modifier::Abstract)
+        {
+            if self.generated_methods.contains(&fn_name) {
+                return Ok(());
+            }
+            self.generated_methods.insert(fn_name.clone());
+
+            let mut params = vec!["i8*".to_string()];
+            for p in &ctor.params {
+                params.push(self.type_to_llvm(&p.param_type));
+            }
+            let cc_attr = self.calling_convention_to_llvm_attr(crate::ast::CallingConvention::Cdecl);
+            let decl = if cc_attr.is_empty() {
+                format!("declare void @{}({})\n", fn_name, params.join(", "))
+            } else {
+                format!(
+                    "declare void @{}({}) {}\n",
+                    fn_name, params.join(", "), cc_attr
+                )
+            };
+            let sig = format!("{}@void@{}", fn_name, params.join("@"));
+            if !self.is_extern_emitted(&sig) {
+                self.emit_raw(&decl);
+                self.mark_extern_emitted(sig);
+            }
+            return Ok(());
+        }
+
+
         // 防止重复生成相同名称的构造函数（泛型特化可能产生同名构造函数）
         if self.generated_methods.contains(&fn_name) {
             return Ok(());
@@ -1843,12 +1904,12 @@ impl IRGenerator {
         if let Some(ref call) = ctor.constructor_call {
             match call {
                 crate::ast::ConstructorCall::This(args) => {
-                    // 从类型注册表获取真实的构造函数参数类型签名
+                    // 从类型注册表获取真实的构造函数参数类型（用于 Itanium ABI mangling）
                     let fallback_types: Vec<String> = args
                         .iter()
                         .map(|arg| self.infer_expr_type_for_ctor(arg))
                         .collect();
-                    let param_types = self.get_constructor_param_signatures(
+                    let param_types = self.get_constructor_param_types(
                         class_name,
                         args.len(),
                         &fallback_types,
@@ -1870,12 +1931,12 @@ impl IRGenerator {
                     if let Some(ref registry) = self.type_registry {
                         if let Some(class_info) = registry.get_class(class_name) {
                             if let Some(ref parent_name) = class_info.parent {
-                                // 从类型注册表获取真实的父类构造函数参数类型签名
+                                // 从类型注册表获取真实的父类构造函数参数类型（用于 Itanium ABI mangling）
                                 let fallback_types: Vec<String> = args
                                     .iter()
                                     .map(|arg| self.infer_expr_type_for_ctor(arg))
                                     .collect();
-                                let param_types = self.get_constructor_param_signatures(
+                                let param_types = self.get_constructor_param_types(
                                     parent_name,
                                     args.len(),
                                     &fallback_types,
@@ -1924,8 +1985,7 @@ impl IRGenerator {
 
     /// 生成默认构造函数（无参构造函数）
     fn generate_default_constructor(&mut self, class_name: &str) -> CayResult<()> {
-        let llvm_class = self.get_qualified_class_name(class_name);
-        let fn_name = format!("{}.__ctor", llvm_class);
+        let fn_name = self.mangle_itanium_method(class_name, "C1", &[], true, false);
 
         // 防止重复生成相同名称的默认构造函数（泛型特化可能产生同名构造函数）
         if self.generated_methods.contains(&fn_name) {
@@ -1963,7 +2023,21 @@ impl IRGenerator {
         self.scope_manager.reset();
         self.loop_stack.clear();
 
-        self.emit_line(&format!("define void @{}(i8* %this) {{", fn_name));
+        // Object 根类默认构造函数在每个编译单元都会生成，使用 linkonce_odr
+        // 避免多个 Cavvy 对象文件链接时出现重复符号错误。
+        let linkage = if class_name == "Object" {
+            "linkonce_odr"
+        } else {
+            ""
+        };
+        if linkage.is_empty() {
+            self.emit_line(&format!("define void @{}(i8* %this) {{", fn_name));
+        } else {
+            self.emit_line(&format!(
+                "define {} void @{}(i8* %this) {{",
+                linkage, fn_name
+            ));
+        }
         self.indent += 1;
         self.emit_line("entry:");
 
@@ -1979,8 +2053,8 @@ impl IRGenerator {
         if let Some(ref registry) = self.type_registry {
             if let Some(class_info) = registry.get_class(class_name) {
                 if let Some(ref parent_name) = class_info.parent {
-                    let llvm_parent = self.get_qualified_class_name(parent_name);
-                    let parent_ctor_name = format!("{}.__ctor", llvm_parent);
+                    let parent_ctor_name =
+                        self.mangle_itanium_method(parent_name, "C1", &[], true, false);
                     self.emit_line(&format!("  call void @{}(i8* %this)", parent_ctor_name));
                 }
             }
@@ -2085,7 +2159,7 @@ impl IRGenerator {
         dtor: &crate::ast::DestructorDecl,
     ) -> CayResult<()> {
         let llvm_class = self.get_qualified_class_name(class_name);
-        let fn_name = format!("{}.__dtor", llvm_class);
+        let fn_name = self.mangle_itanium_method(class_name, "D1", &[], false, true);
 
         // 防止重复生成相同名称的析构函数（泛型特化可能产生同名析构函数）
         if self.generated_methods.contains(&fn_name) {
@@ -2274,7 +2348,7 @@ impl IRGenerator {
 
         // 若 T 是带析构函数的类，调用其 __dtor。
         if let Some(t_class) = self.type_has_destructor(t_type) {
-            let dtor_fn = format!("{}.__dtor", self.get_qualified_class_name(&t_class));
+            let dtor_fn = self.mangle_itanium_method(&t_class, "D1", &[], false, true);
             self.emit_line(&format!(
                 "  call void @{}(i8* {})",
                 dtor_fn, obj
@@ -2398,7 +2472,7 @@ impl IRGenerator {
 
         // 若 T 有析构函数，先调用。
         if let Some(t_class) = self.type_has_destructor(t_type) {
-            let dtor_fn = format!("{}.__dtor", self.get_qualified_class_name(&t_class));
+            let dtor_fn = self.mangle_itanium_method(&t_class, "D1", &[], false, true);
             self.emit_line(&format!(
                 "  call void @{}(i8* {})",
                 dtor_fn, obj
@@ -2493,7 +2567,7 @@ impl IRGenerator {
             value, value_ptr
         ));
 
-        let dtor_fn = format!("{}.__dtor", self.get_qualified_class_name(&t_class));
+        let dtor_fn = self.mangle_itanium_method(&t_class, "D1", &[], false, true);
         self.emit_line(&format!(
             "  call void @{}(i8* {})",
             dtor_fn, value
@@ -2573,105 +2647,62 @@ impl IRGenerator {
         class_name: &str,
         ctor: &crate::ast::ConstructorDecl,
     ) -> String {
-        let cls = self.get_qualified_class_name(class_name);
-
-        // 只对泛型类尝试从类型注册表获取构造函数信息
-        if class_name.contains('<') {
+        // 使用 Itanium ABI C1 前缀
+        let param_types: Vec<crate::types::Type> = if class_name.contains('<') {
             if let Some(ref registry) = self.type_registry {
                 let base_class_name = if let Some(pos) = class_name.find('<') {
                     &class_name[..pos]
                 } else {
                     class_name
                 };
-
                 if let Some(class_info) = registry.get_class(base_class_name) {
                     if !class_info.type_params.is_empty() {
-                        // 获取当前构造函数参数的签名（用于匹配）
-                        let ctor_sigs: Vec<String> = ctor
-                            .params
-                            .iter()
-                            .map(|p| self.type_to_signature(&p.param_type))
-                            .collect();
-
-                        // 找到参数数量和类型都匹配的构造函数
+                        let ctor_sigs: Vec<String> = ctor.params.iter().map(|p| self.type_to_signature(&p.param_type)).collect();
                         for ctor_info in &class_info.constructors {
-                            if ctor_info.params.len() != ctor.params.len() {
-                                continue;
-                            }
-
-                            // 获取注册表中构造函数的参数签名
-                            let info_sigs: Vec<String> = ctor_info
-                                .params
-                                .iter()
-                                .map(|p| self.type_to_signature(&p.param_type))
-                                .collect();
-
-                            // 比较签名是否匹配
+                            if ctor_info.params.len() != ctor.params.len() { continue; }
+                            let info_sigs: Vec<String> = ctor_info.params.iter().map(|p| self.type_to_signature(&p.param_type)).collect();
                             if ctor_sigs == info_sigs {
-                                if ctor_info.params.is_empty() {
-                                    return format!("{}.__ctor", cls);
-                                } else {
-                                    return format!("{}.__ctor_{}", cls, info_sigs.join("_"));
-                                }
+                                return self.mangle_itanium_method(
+                                    class_name, "C1",
+                                    &ctor_info.params.iter().map(|p| p.param_type.clone()).collect::<Vec<_>>(),
+                                    true, false,
+                                );
                             }
                         }
-
-                        // 如果没有精确匹配，回退到参数数量匹配（第一个）
+                        // fallback: first match by param count
                         for ctor_info in &class_info.constructors {
                             if ctor_info.params.len() == ctor.params.len() {
-                                let info_sigs: Vec<String> = ctor_info
-                                    .params
-                                    .iter()
-                                    .map(|p| self.type_to_signature(&p.param_type))
-                                    .collect();
-                                if ctor_info.params.is_empty() {
-                                    return format!("{}.__ctor", cls);
-                                } else {
-                                    return format!("{}.__ctor_{}", cls, info_sigs.join("_"));
-                                }
+                                return self.mangle_itanium_method(
+                                    class_name, "C1",
+                                    &ctor_info.params.iter().map(|p| p.param_type.clone()).collect::<Vec<_>>(),
+                                    true, false,
+                                );
                             }
                         }
                     }
                 }
             }
-        }
-
-        // 回退：使用 AST 中的参数类型
-        if ctor.params.is_empty() {
-            format!("{}.__ctor", cls)
+            ctor.params.iter().map(|p| p.param_type.clone()).collect()
         } else {
-            let param_types: Vec<String> = ctor
-                .params
-                .iter()
-                .map(|p| self.type_to_signature(&p.param_type))
-                .collect();
-            format!("{}.__ctor_{}", cls, param_types.join("_"))
-        }
+            ctor.params.iter().map(|p| p.param_type.clone()).collect()
+        };
+        self.mangle_itanium_method(class_name, "C1", &param_types, true, false)
     }
 
     /// 生成构造函数调用名称（基于参数类型列表）
     pub fn generate_constructor_call_name_with_types(
         &self,
         class_name: &str,
-        param_types: &[String],
+        param_types: &[crate::types::Type],
     ) -> String {
-        let cls = self.get_qualified_class_name(class_name);
-        if param_types.is_empty() {
-            format!("{}.__ctor", cls)
-        } else {
-            format!("{}.__ctor_{}", cls, param_types.join("_"))
-        }
+        self.mangle_itanium_method(class_name, "C1", param_types, true, false)
     }
 
-    /// 生成构造函数调用名称（基于参数数量 - 仅用于简单情况）
+    /// 生成构造函数调用名称（基于参数数量 - 仅用于简单情况，参数类型全部假定为 int）
     pub fn generate_constructor_call_name(&self, class_name: &str, arg_count: usize) -> String {
-        let cls = self.get_qualified_class_name(class_name);
-        if arg_count == 0 {
-            format!("{}.__ctor", cls)
-        } else {
-            let param_types: Vec<String> = (0..arg_count).map(|_| "i".to_string()).collect();
-            format!("{}.__ctor_{}", cls, param_types.join("_"))
-        }
+        let param_types: Vec<crate::types::Type> =
+            (0..arg_count).map(|_| crate::types::Type::Int32).collect();
+        self.mangle_itanium_method(class_name, "C1", &param_types, true, false)
     }
 
     /// 推断表达式类型（用于构造函数调用）

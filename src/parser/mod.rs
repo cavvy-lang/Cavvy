@@ -128,6 +128,7 @@ impl Parser {
             {
                 enums.push(self.parse_enum()?);
             } else if self.check(&crate::lexer::Token::Class)
+                || self.check(&crate::lexer::Token::Interop)
                 || self.check(&crate::lexer::Token::Private)
                 || self.check(&crate::lexer::Token::Protected)
                 || self.check(&crate::lexer::Token::AtMain)
@@ -1171,6 +1172,7 @@ impl Parser {
             {
                 enums.push(self.parse_enum()?);
             } else if self.check(&crate::lexer::Token::Class)
+                || self.check(&crate::lexer::Token::Interop)
                 || self.check(&crate::lexer::Token::Private)
                 || self.check(&crate::lexer::Token::Protected)
                 || self.check(&crate::lexer::Token::AtMain)

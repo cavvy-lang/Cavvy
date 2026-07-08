@@ -396,6 +396,7 @@ pub fn get_token_name(token: &Token) -> String {
         Token::Alias => "alias".to_string(),
         Token::Fn => "fn".to_string(),
         Token::As => "as".to_string(),
+        Token::Interop => "interop".to_string(),
     }
 }
 

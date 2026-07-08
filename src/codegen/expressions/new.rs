@@ -217,7 +217,6 @@ impl IRGenerator {
         } else {
             class_name.clone()
         };
-        let type_id_value = self.get_type_id_value(&registry_name).unwrap_or(0);
 
         // 获取类布局信息，确定对象大小（使用基础类名查找）
         let obj_size = self
@@ -256,44 +255,55 @@ impl IRGenerator {
 
         self.emit_line(&format!("\n{}:", new_ok));
 
-        let type_id_ptr = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = bitcast i8* {} to i32*",
-            type_id_ptr, calloc_temp
-        ));
-        self.emit_line(&format!(
-            "  store i32 {}, i32* {}",
-            type_id_value, type_id_ptr
-        ));
-
-        // 存储 vtable 指针到 offset 8（type_id 之后）
-        // 使用完整特化类名生成独立 vtable（如 Box<int>）
-        let llvm_class = self.get_qualified_class_name(&canonical_name);
-        let vtable_name = format!("{}.vtable", llvm_class);
-        let vtable_ptr_temp = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = getelementptr i8, i8* {}, i64 8",
-            vtable_ptr_temp, calloc_temp
-        ));
-        let vtable_global_temp = self.new_temp();
-        let vtable_size = self
+        // C++ 互操作类无 16 字节对象头：跳过 type_id（offset 0）和 vtable（offset 8）写入
+        let is_interop = self
             .type_registry
             .as_ref()
             .and_then(|r| r.get_class(&registry_name))
-            .and_then(|c| c.vtable_layout.as_ref())
-            .map(|v| v.size)
-            .unwrap_or(0);
-        if vtable_size > 0 {
+            .map(|c| c.is_interop)
+            .unwrap_or(false);
+
+        if !is_interop {
+            let type_id_value = self.get_type_id_value(&registry_name).unwrap_or(0);
+            let type_id_ptr = self.new_temp();
             self.emit_line(&format!(
-                "  {} = bitcast [{} x i8*]* @{} to i8*",
-                vtable_global_temp, vtable_size, vtable_name
+                "  {} = bitcast i8* {} to i32*",
+                type_id_ptr, calloc_temp
             ));
             self.emit_line(&format!(
-                "  store i8* {}, i8* {}",
-                vtable_global_temp, vtable_ptr_temp
+                "  store i32 {}, i32* {}",
+                type_id_value, type_id_ptr
             ));
-        } else {
-            self.emit_line(&format!("  store i8* null, i8* {}", vtable_ptr_temp));
+
+            // 存储 vtable 指针到 offset 8（type_id 之后）
+            // 使用完整特化类名生成独立 vtable（如 Box<int>）
+            let llvm_class = self.get_qualified_class_name(&canonical_name);
+            let vtable_name = format!("{}.vtable", llvm_class);
+            let vtable_ptr_temp = self.new_temp();
+            self.emit_line(&format!(
+                "  {} = getelementptr i8, i8* {}, i64 8",
+                vtable_ptr_temp, calloc_temp
+            ));
+            let vtable_global_temp = self.new_temp();
+            let vtable_size = self
+                .type_registry
+                .as_ref()
+                .and_then(|r| r.get_class(&registry_name))
+                .and_then(|c| c.vtable_layout.as_ref())
+                .map(|v| v.size)
+                .unwrap_or(0);
+            if vtable_size > 0 {
+                self.emit_line(&format!(
+                    "  {} = bitcast [{} x i8*]* @{} to i8*",
+                    vtable_global_temp, vtable_size, vtable_name
+                ));
+                self.emit_line(&format!(
+                    "  store i8* {}, i8* {}",
+                    vtable_global_temp, vtable_ptr_temp
+                ));
+            } else {
+                self.emit_line(&format!("  store i8* null, i8* {}", vtable_ptr_temp));
+            }
         }
 
         // 调用构造函数
@@ -302,7 +312,12 @@ impl IRGenerator {
             .iter()
             .map(|arg| self.infer_argument_type(arg))
             .collect();
-        let param_types = self.get_constructor_param_signatures(
+        let param_type_sigs = self.get_constructor_param_signatures(
+            &registry_name,
+            new_expr.args.len(),
+            &fallback_types,
+        );
+        let param_types = self.get_constructor_param_types(
             &registry_name,
             new_expr.args.len(),
             &fallback_types,
@@ -321,7 +336,7 @@ impl IRGenerator {
                             .iter()
                             .map(|p| self.type_to_signature(&p.param_type))
                             .collect();
-                        sigs == param_types
+                        sigs == param_type_sigs
                     })
                     .cloned()
             });
@@ -430,7 +445,7 @@ impl IRGenerator {
             .map(|arg| self.infer_argument_type(arg))
             .collect();
         let param_types =
-            self.get_constructor_param_signatures(&base_name, new_expr.args.len(), &fallback_types);
+            self.get_constructor_param_types(&base_name, new_expr.args.len(), &fallback_types);
 
         // 生成参数值
         let mut arg_values = Vec::new();

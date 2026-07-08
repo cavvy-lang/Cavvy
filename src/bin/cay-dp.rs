@@ -274,6 +274,7 @@ fn print_class(class: &ClassDecl, options: &Options, indent: usize) {
             cavvy::ast::Modifier::Final => "final",
             cavvy::ast::Modifier::Abstract => "abstract",
             cavvy::ast::Modifier::Native => "native",
+            cavvy::ast::Modifier::Interop => "interop",
             _ => "",
         })
         .filter(|s| !s.is_empty())
@@ -387,6 +388,7 @@ fn print_method(method: &MethodDecl, options: &Options, indent: usize) {
             cavvy::ast::Modifier::Final => "final",
             cavvy::ast::Modifier::Abstract => "abstract",
             cavvy::ast::Modifier::Native => "native",
+            cavvy::ast::Modifier::Interop => "interop",
             _ => "",
         })
         .filter(|s| !s.is_empty())
