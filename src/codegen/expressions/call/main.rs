@@ -609,6 +609,11 @@ impl IRGenerator {
 
         // 为实例方法添加 this 参数
         let mut final_args = Vec::new();
+        // 缓存 obj_expr 的求值结果，避免链式调用时重复生成内层链式表达式。
+        // 下方 final_args 构建和 resolved_this_val 计算都需要 obj 的值，
+        // 若 obj_expr 是带副作用的链式调用（如 sb.append("a").append("b")），
+        // 重复求值会导致重复执行，缓存一次即可。
+        let mut cached_obj_val: Option<String> = None;
 
         if is_instance_method {
             // 获取 this 指针
@@ -631,6 +636,7 @@ impl IRGenerator {
                         // 通过对象表达式获取 this 指针（如 obj1.getId()）
                         let obj_result = self.generate_expression(obj)?;
                         let (obj_type, obj_val) = self.parse_typed_value(&obj_result);
+                        cached_obj_val = Some(obj_val.clone());
                         if is_struct_target && obj_type.starts_with("%struct.") {
                             final_args.push(format!("{} {}", obj_type, obj_val));
                         } else {
@@ -638,9 +644,10 @@ impl IRGenerator {
                         }
                     }
                 } else {
-                    // 通过对象表达式获取 this 指针（如 obj1.getId()）
+                    // 通过对象表达式获取 this 指针（链式调用等）
                     let obj_result = self.generate_expression(obj)?;
                     let (obj_type, obj_val) = self.parse_typed_value(&obj_result);
+                    cached_obj_val = Some(obj_val.clone());
                     if is_struct_target && obj_type.starts_with("%struct.") {
                         final_args.push(format!("{} {}", obj_type, obj_val));
                     } else {
@@ -702,6 +709,8 @@ impl IRGenerator {
         let llvm_ret_type = self.type_to_llvm(&ret_type);
 
         // 预先计算 this 指针值（用于 vtable 分派和直接调用都可能需要）
+        // 对于非 super、非标识符的 obj_expr（链式调用），使用 final_args 构建
+        // 阶段已缓存的求值结果，避免重复生成带副作用的链式表达式代码。
         let resolved_this_val = if is_static_call {
             None
         } else if let Some(obj) = &obj_expr {
@@ -717,15 +726,15 @@ impl IRGenerator {
                     } else {
                         None
                     }
+                } else if let Some(ref cached_val) = cached_obj_val {
+                    Some(cached_val.clone())
                 } else {
-                    let obj_result = self.generate_expression(obj)?;
-                    let (_, obj_val) = self.parse_typed_value(&obj_result);
-                    Some(obj_val)
+                    None
                 }
+            } else if let Some(ref cached_val) = cached_obj_val {
+                Some(cached_val.clone())
             } else {
-                let obj_result = self.generate_expression(obj)?;
-                let (_, obj_val) = self.parse_typed_value(&obj_result);
-                Some(obj_val)
+                None
             }
         } else if let Some(this_llvm_name) = self.scope_manager.get_llvm_name("this") {
             let this_temp = self.new_temp();
