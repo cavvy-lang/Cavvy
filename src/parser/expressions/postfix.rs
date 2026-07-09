@@ -18,13 +18,14 @@ pub fn parse_postfix(parser: &mut Parser) -> CayResult<Expr> {
 
         // 检查是否是泛型参数: Type<T> 或 Type<T, U>
         // 这用于支持 FileResult<File>.ok(file) 语法
+        // 也用于支持省略 new 的泛型构造: Box<int>(42)
         if parser.check(&crate::lexer::Token::Lt) {
             // 向前看，检查是否是泛型参数列表
             let checkpoint = parser.pos;
             let type_args = crate::parser::classes::parse_generic_type_args(parser);
 
             if let Ok(type_args) = type_args {
-                // 成功解析泛型参数，检查后面是否有 '.'
+                // 成功解析泛型参数，检查后面是否有 '.' 或 '('
                 if parser.check(&crate::lexer::Token::Dot) {
                     // 这是泛型静态方法调用: Type<T>.method()
                     // 将标识符和泛型参数组合成新的标识符
@@ -44,10 +45,36 @@ pub fn parse_postfix(parser: &mut Parser) -> CayResult<Expr> {
                         });
                         continue; // 继续循环，处理 '.'
                     }
+                } else if parser.check(&crate::lexer::Token::LParen) {
+                    // 这是省略 new 的泛型对象创建: Type<T>(args)
+                    // 等价于 new Type<T>(args)
+                    if let Expr::Identifier(ident) = &expr {
+                        parser.advance(); // 消费 '('
+                        let args = parse_arguments(parser)?;
+                        parser.consume(
+                            &crate::lexer::Token::RParen,
+                            "期望 ')'\n提示: 泛型构造参数列表应以 ')' 结束，例如: Box<int>(42)",
+                        )?;
+                        let class_name = format!(
+                            "{}<{}>",
+                            ident.name,
+                            type_args
+                                .iter()
+                                .map(|t| t.to_string())
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        );
+                        expr = Expr::New(NewExpr {
+                            class_name,
+                            args,
+                            loc: loc.clone(),
+                        });
+                        continue; // 继续循环，处理后续后缀
+                    }
                 }
             }
 
-            // 不是泛型静态方法调用，回退
+            // 不是泛型静态方法调用或泛型构造，回退
             parser.pos = checkpoint;
         }
 

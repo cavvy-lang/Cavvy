@@ -1,0 +1,73 @@
+/**
+ * 命名空间式 :: 静态类方法访问测试
+ *
+ * 测试内容:
+ * - ClassName::staticMethod(args) 调用静态方法
+ * - Namespace::ClassName::staticMethod(args) 调用限定类静态方法
+ * - 原有 ClassName.staticMethod(args) 继续可用
+ */
+
+namespace math {
+    public class Calculator {
+        public static int add(int a, int b) {
+            return a + b;
+        }
+
+        public static int multiply(int a, int b) {
+            return a * b;
+        }
+
+        public static String format(int value) {
+            return "value=" + String.valueOf(value);
+        }
+    }
+}
+
+public class LegacyMath {
+    public static int add(int a, int b) {
+        return a + b;
+    }
+}
+
+public class Greeter {
+    public static String greet(String name) {
+        return "Hello, " + name;
+    }
+
+    public static String hello() {
+        return "Hello";
+    }
+}
+
+public class TestStaticMethodColon {
+    public static void main() {
+        println("=== 命名空间式 :: 静态方法测试 ===");
+
+        // 简单类静态方法 :: 调用
+        String h = Greeter::hello();
+        println("Greeter::hello() = " + h);
+
+        String g = Greeter::greet("Cavvy");
+        println("Greeter::greet(\"Cavvy\") = " + g);
+
+        // 带参数并参与表达式
+        int sum = math::Calculator::add(10, 20);
+        println("math::Calculator::add(10, 20) = " + String.valueOf(sum));
+
+        int product = math::Calculator::multiply(6, 7);
+        println("math::Calculator::multiply(6, 7) = " + String.valueOf(product));
+
+        String fmt = math::Calculator::format(42);
+        println("math::Calculator::format(42) = " + fmt);
+
+        // 原有 . 静态方法调用仍可用
+        int sum2 = LegacyMath.add(1, 2);
+        println("LegacyMath.add(1, 2) = " + String.valueOf(sum2));
+
+        // 表达式中直接使用
+        println("Calculator::add(1, 2) + Calculator::multiply(2, 3) = " +
+                String.valueOf(math::Calculator::add(1, 2) + math::Calculator::multiply(2, 3)));
+
+        println("=== 命名空间式 :: 静态方法测试通过 ===");
+    }
+}

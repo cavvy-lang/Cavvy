@@ -72,6 +72,37 @@ impl IRGenerator {
                 "__cay_read_int" => return self.generate_cay_read_int_call(&call.args, &call.loc),
                 _ => {}
             }
+
+            // 5.3.0: 支持省略 new 的类实例化 ClassName(args) / ClassName<T>(args)
+            // 当标识符是类名且不被局部变量/函数遮蔽时，生成 new 表达式代码
+            if let Some(class_name) = self.try_resolve_class_instantiation(name.as_ref()) {
+                return self.generate_new_expression(&NewExpr {
+                    class_name,
+                    args: call.args.clone(),
+                    loc: call.loc.clone(),
+                });
+            }
+
+            // 5.3.0: 支持命名空间式静态类方法调用 ClassName::staticMethod(args)
+            // 当标识符形如 ClassName::methodName 且前缀为类、后缀为静态方法时，
+            // 将其重写为 ClassName.staticMethod(args) 进行代码生成
+            if let Some((class_name, method_name)) =
+                self.try_resolve_static_method_call(name.as_ref())
+            {
+                let member_call = CallExpr {
+                    callee: Box::new(Expr::MemberAccess(MemberAccessExpr {
+                        object: Box::new(Expr::Identifier(IdentifierExpr {
+                            name: class_name,
+                            loc: call.callee.location().clone(),
+                        })),
+                        member: method_name,
+                        loc: call.callee.location().clone(),
+                    })),
+                    args: call.args.clone(),
+                    loc: call.loc.clone(),
+                };
+                return self.generate_call_expression(&member_call);
+            }
         }
 
         // 处理 String 方法调用: str.method(args)

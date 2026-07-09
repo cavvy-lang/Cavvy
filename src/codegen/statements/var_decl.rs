@@ -101,6 +101,18 @@ impl IRGenerator {
                 "readBool" => return Some(Type::Bool),
                 _ => {}
             }
+
+            // 5.3.0: 省略 new 的类实例化类型推断
+            if let Some(class_name) = self.try_resolve_class_instantiation(name.as_ref()) {
+                return Some(Type::Object(class_name));
+            }
+
+            // 5.3.0: 命名空间式静态方法调用类型推断
+            if let Some(return_type) =
+                self.infer_static_method_call_return_type(name.as_ref(), &call.args)
+            {
+                return Some(return_type);
+            }
         }
 
         // 尝试从类型注册表获取（支持方法重载）

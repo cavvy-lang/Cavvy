@@ -1,7 +1,7 @@
 (*
  * Cavvy 编程语言语法规范 - EBNF 表示
- * 版本: 5.1.0-a.3
- * 构建号: 36
+ * 版本: 5.3.0
+ * 构建号: 37
  *
  * 本文件使用扩展巴科斯-瑙尔范式 (EBNF) 描述 Cavvy 编程语言的语法结构。
  * 符号约定:
@@ -530,6 +530,9 @@ lambda_body = expression
  *)
 
 (* 方法引用 *)
+(* 当方法引用后紧跟 '(' 时，视为静态方法调用：
+ *   ClassName::staticMethod(args)  -> 调用类的静态方法
+ *)
 method_reference = qualified_name, "::", identifier
                  | qualified_name, "::", "new"
                  | "this", "::", identifier
@@ -541,6 +544,7 @@ method_reference = qualified_name, "::", identifier
  *   String::length
  *   System.out::println
  *   ArrayList::new
+ *   Math::max(a, b)      (* 命名空间式静态方法调用 *)
  *)
 
 (* 内存分配表达式 *)
@@ -554,7 +558,20 @@ array_creation_expression = "new", type, "[", expression, "]", { "[", expression
                           | "new", type, "[", expression, "]", "(", ")";  (* 零初始化 *)
 
 object_creation_expression = "new", qualified_name, "(", [ argument_list ], ")"
-                           | qualified_name, ".", "new", identifier, "(", [ argument_list ], ")";
+                           | qualified_name, ".", "new", identifier, "(", [ argument_list ], ")"
+                           | qualified_name, "(", [ argument_list ], ")"
+                           | qualified_name, "<", type_argument_list, ">", "(", [ argument_list ], ")";
+
+(* 对象创建示例：
+ *   new MyClass()
+ *   new MyClass(1, 2)
+ *   MyClass()              (* 5.3.0: 允许省略 new *)
+ *   MyClass(1, 2)          (* 5.3.0: 允许省略 new *)
+ *   Box<int>(42)           (* 5.3.0: 允许省略 new *)
+ *   Optional<String>.empty()
+ *)
+
+type_argument_list = type, { ",", type };
 
 (* ============================================================================
  * 11. 常量表达式 (用于 switch case、数组大小等)

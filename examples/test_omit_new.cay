@@ -1,0 +1,87 @@
+/**
+ * 省略 new 的实例化语法测试
+ *
+ * 测试内容:
+ * - ClassName() 等价于 new ClassName()
+ * - ClassName(args) 等价于 new ClassName(args)
+ * - ClassName<T>(args) 等价于 new ClassName<T>(args)
+ * - 原有 new 表达式继续可用
+ */
+
+public class Point {
+    int x;
+    int y;
+
+    public Point() {
+        this.x = 0;
+        this.y = 0;
+    }
+
+    public Point(int x, int y) {
+        this.x = x;
+        this.y = y;
+    }
+
+    public int getX() {
+        return x;
+    }
+
+    public int getY() {
+        return y;
+    }
+}
+
+public class Box<T> {
+    T value;
+
+    public Box(T value) {
+        this.value = value;
+    }
+
+    public T get() {
+        return value;
+    }
+}
+
+public class Container {
+    int count;
+
+    public Container() {
+        this.count = 0;
+    }
+
+    public int getCount() {
+        return count;
+    }
+}
+
+public class TestOmitNew {
+    public static void main() {
+        println("=== 省略 new 实例化测试 ===");
+
+        // 无参构造省略 new
+        Container c = Container();
+        println("Container().getCount() = " + String.valueOf(c.getCount()));
+
+        // 有参构造省略 new
+        Point p = Point(3, 4);
+        println("Point(3, 4).getX() = " + String.valueOf(p.getX()));
+        println("Point(3, 4).getY() = " + String.valueOf(p.getY()));
+
+        // 泛型构造省略 new
+        Box<int> bi = Box<int>(42);
+        println("Box<int>(42).get() = " + String.valueOf(bi.get()));
+
+        Box<String> bs = Box<String>("Hello OmitNew");
+        println("Box<String>(\"Hello OmitNew\").get() = " + bs.get());
+
+        // 原有 new 表达式仍可用
+        Point p2 = new Point(7, 8);
+        println("new Point(7, 8).getX() = " + String.valueOf(p2.getX()));
+
+        // 表达式中直接使用
+        println("Point(10, 20).getX() = " + String.valueOf(Point(10, 20).getX()));
+
+        println("=== 省略 new 实例化测试通过 ===");
+    }
+}

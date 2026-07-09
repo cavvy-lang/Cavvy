@@ -101,6 +101,38 @@ impl SemanticAnalyzer {
                 _ => {}
             }
 
+            // 5.3.0: 支持省略 new 的类实例化 ClassName(args) / ClassName<T>(args)
+            // 当标识符是类名且不被值绑定遮蔽时，将函数调用语法解释为对象创建
+            if let Some(class_name) = self.try_resolve_class_instantiation(name.as_ref()) {
+                let new_expr = NewExpr {
+                    class_name,
+                    args: call.args.clone(),
+                    loc: call.loc.clone(),
+                };
+                return self.infer_new_type(&new_expr);
+            }
+
+            // 5.3.0: 支持命名空间式静态类方法调用 ClassName::staticMethod(args)
+            // 当标识符形如 ClassName::methodName 且前缀为类、后缀为静态方法时，
+            // 将其重写为 ClassName.staticMethod(args) 进行类型推断
+            if let Some((class_name, method_name)) =
+                self.try_resolve_static_method_call(name.as_ref())
+            {
+                let member_call = CallExpr {
+                    callee: Box::new(Expr::MemberAccess(MemberAccessExpr {
+                        object: Box::new(Expr::Identifier(IdentifierExpr {
+                            name: class_name,
+                            loc: call.callee.location().clone(),
+                        })),
+                        member: method_name,
+                        loc: call.callee.location().clone(),
+                    })),
+                    args: call.args.clone(),
+                    loc: call.loc.clone(),
+                };
+                return self.infer_call_type(&member_call);
+            }
+
             // 检查是否是 extern 函数（全局函数）
             // 注意：如果extern函数有别名，只能通过别名调用
             let extern_func_info = if let Some(ref prog) = self.program {
@@ -630,5 +662,70 @@ impl SemanticAnalyzer {
             &call.loc,
             "Cannot resolve method call".to_string(),
         ))
+    }
+
+    /// 检查名称是否是 extern 函数（按别名或原名匹配）
+    /// 时间复杂度: O(e * f)，e 为 extern 声明块数，f 为每块函数数
+    fn is_extern_function_name(&self, name: &str) -> bool {
+        if let Some(ref prog) = self.program {
+            for extern_decl in &prog.extern_declarations {
+                for extern_func in &extern_decl.functions {
+                    let is_match = match &extern_func.alias {
+                        Some(alias) => alias == name,
+                        None => extern_func.name == name,
+                    };
+                    if is_match {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    /// 5.3.0: 尝试将标识符调用解析为省略 new 的类实例化
+    ///
+    /// 返回 Some(类名) 当且仅当：
+    /// - name 是已注册的类/struct/限定类名
+    /// - name 不被局部变量、参数、字段或函数等值绑定遮蔽
+    /// - name 不是 extern 函数
+    fn try_resolve_class_instantiation(&self, name: &str) -> Option<String> {
+        if self.identifier_has_value_binding(name) || self.is_extern_function_name(name) {
+            return None;
+        }
+        let is_class = self.type_registry.class_exists(name)
+            || self.type_registry.get_struct(name).is_some()
+            || self.type_registry.find_qualified_class(name).is_some();
+        if is_class {
+            Some(name.to_string())
+        } else {
+            None
+        }
+    }
+
+    /// 5.3.0: 尝试将形如 ClassName::methodName 的标识符解析为静态方法调用
+    ///
+    /// 返回 Some((类前缀, 方法名)) 当且仅当：
+    /// - name 包含 '::' 且前后段非空
+    /// - name 不被值绑定或 extern 函数遮蔽
+    /// - 类前缀解析到一个类，且该类包含同名的静态方法
+    fn try_resolve_static_method_call(&self, name: &str) -> Option<(String, String)> {
+        if !name.contains("::") {
+            return None;
+        }
+        if self.identifier_has_value_binding(name) || self.is_extern_function_name(name) {
+            return None;
+        }
+        let (class_prefix, method_name) = name.rsplit_once("::")?;
+        if class_prefix.is_empty() || method_name.is_empty() {
+            return None;
+        }
+        let class_info = self.type_registry.get_class(class_prefix)?;
+        let methods = class_info.methods.get(method_name)?;
+        if methods.iter().any(|m| m.is_static) {
+            Some((class_prefix.to_string(), method_name.to_string()))
+        } else {
+            None
+        }
     }
 }

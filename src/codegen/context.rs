@@ -1173,6 +1173,124 @@ impl IRGenerator {
         }
     }
 
+    /// 5.3.0: 检查标识符是否是省略 new 的类实例化目标
+    ///
+    /// 返回 true 当且仅当 name 是已注册的类/struct/限定类名，
+    /// 且不被局部变量、顶层函数或 extern 函数遮蔽。
+    pub(crate) fn is_class_instantiation_target(&self, name: &str) -> bool {
+        // 被局部变量遮蔽
+        if self.get_variable_type(name).is_some()
+            || self.scope_manager.get_var_type(name).is_some()
+            || self.var_types.contains_key(name)
+            || self.var_class_map.contains_key(name)
+        {
+            return false;
+        }
+        // 与顶层函数/extern函数同名时，保留函数调用语义
+        if self.is_top_level_function(name) || self.is_extern_function(name) {
+            return false;
+        }
+        self.type_registry.as_ref().map_or(false, |registry| {
+            registry.class_exists(name)
+                || registry.get_struct(name).is_some()
+                || registry.find_qualified_class(name).is_some()
+        })
+    }
+
+    /// 5.3.0: 尝试将标识符解析为省略 new 的类实例化类名
+    pub(crate) fn try_resolve_class_instantiation(&self, name: &str) -> Option<String> {
+        if self.is_class_instantiation_target(name) {
+            Some(name.to_string())
+        } else {
+            None
+        }
+    }
+
+    /// 5.3.0: 检查标识符是否是命名空间式静态类方法调用目标
+    pub(crate) fn is_static_method_call_target(&self, name: &str) -> bool {
+        if !name.contains("::") {
+            return false;
+        }
+        let Some((class_prefix, method_name)) = name.rsplit_once("::") else {
+            return false;
+        };
+        if class_prefix.is_empty() || method_name.is_empty() {
+            return false;
+        }
+        // 被局部变量/函数遮蔽
+        if self.get_variable_type(name).is_some()
+            || self.scope_manager.get_var_type(name).is_some()
+            || self.var_types.contains_key(name)
+            || self.var_class_map.contains_key(name)
+            || self.is_top_level_function(name)
+            || self.is_extern_function(name)
+        {
+            return false;
+        }
+        let Some(registry) = self.type_registry.as_ref() else {
+            return false;
+        };
+        let Some(class_info) = registry.get_class(class_prefix) else {
+            return false;
+        };
+        class_info
+            .methods
+            .get(method_name)
+            .map_or(false, |methods| methods.iter().any(|m| m.is_static))
+    }
+
+    /// 5.3.0: 尝试将形如 ClassName::methodName 的标识符解析为静态方法调用
+    ///
+    /// 返回 (类前缀, 方法名)。调用方需自行从类型注册表查找具体方法重载并推断返回类型。
+    pub(crate) fn try_resolve_static_method_call(&self, name: &str) -> Option<(String, String)> {
+        if !self.is_static_method_call_target(name) {
+            return None;
+        }
+        let (class_prefix, method_name) = name.rsplit_once("::")?;
+        Some((class_prefix.to_string(), method_name.to_string()))
+    }
+
+    /// 5.3.0: 推断命名空间式静态方法调用的返回类型
+    ///
+    /// 在可能的情况下根据实参类型选择最匹配的重载。
+    pub(crate) fn infer_static_method_call_return_type(
+        &self,
+        name: &str,
+        call_args: &[crate::ast::Expr],
+    ) -> Option<crate::types::Type> {
+        let (class_prefix, method_name) = self.try_resolve_static_method_call(name)?;
+        let registry = self.type_registry.as_ref()?;
+        let class_info = registry.get_class(&class_prefix)?;
+        let methods = class_info.methods.get(&method_name)?;
+        let static_methods: Vec<_> = methods.iter().filter(|m| m.is_static).collect();
+        if static_methods.is_empty() {
+            return None;
+        }
+
+        // 推断实参类型以选择重载
+        let mut arg_types = Vec::new();
+        let mut resolved = true;
+        for arg in call_args {
+            if let Some(t) = self.get_expression_type(arg) {
+                arg_types.push(t);
+            } else {
+                resolved = false;
+                break;
+            }
+        }
+
+        let method_info = if resolved {
+            registry
+                .find_method(&class_prefix, &method_name, &arg_types)
+                .filter(|m| m.is_static)
+                .or_else(|| static_methods.first().copied())
+        } else {
+            static_methods.first().copied()
+        }?;
+
+        Some(method_info.return_type.clone())
+    }
+
     /// 将 LLVM 类型字符串映射到 Cavvy 类型
     fn map_llvm_type_to_cay(llvm_type: &str) -> Option<crate::types::Type> {
         use crate::types::Type;

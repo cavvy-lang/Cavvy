@@ -206,6 +206,56 @@ fn test_generic_static_factory() {
 }
 
 // ============================================================
+// 5.3.0: 省略 new 的实例化语法
+// ============================================================
+
+#[test]
+fn test_omit_new_instantiation() {
+    let output = compile_and_run_eol("examples/test_omit_new.cay")
+        .expect("test_omit_new.cay should compile and run");
+    assert_output_contains(
+        &output,
+        &[
+            "=== 省略 new 实例化测试 ===",
+            "Container().getCount() = 0",
+            "Point(3, 4).getX() = 3",
+            "Point(3, 4).getY() = 4",
+            "Box<int>(42).get() = 42",
+            "Box<String>(\"Hello OmitNew\").get() = Hello OmitNew",
+            "new Point(7, 8).getX() = 7",
+            "Point(10, 20).getX() = 10",
+            "=== 省略 new 实例化测试通过 ===",
+        ],
+        "test_omit_new",
+    );
+}
+
+// ============================================================
+// 5.3.0: 命名空间式 :: 静态类方法访问
+// ============================================================
+
+#[test]
+fn test_static_method_colon_access() {
+    let output = compile_and_run_eol("examples/test_static_method_colon.cay")
+        .expect("test_static_method_colon.cay should compile and run");
+    assert_output_contains(
+        &output,
+        &[
+            "=== 命名空间式 :: 静态方法测试 ===",
+            "Greeter::hello() = Hello",
+            "Greeter::greet(\"Cavvy\") = Hello, Cavvy",
+            "math::Calculator::add(10, 20) = 30",
+            "math::Calculator::multiply(6, 7) = 42",
+            "math::Calculator::format(42) = value=42",
+            "LegacyMath.add(1, 2) = 3",
+            "Calculator::add(1, 2) + Calculator::multiply(2, 3) = 9",
+            "=== 命名空间式 :: 静态方法测试通过 ===",
+        ],
+        "test_static_method_colon",
+    );
+}
+
+// ============================================================
 // 已有 Optional 测试回归
 // ============================================================
 
