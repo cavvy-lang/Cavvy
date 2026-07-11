@@ -1455,6 +1455,8 @@ impl IRGenerator {
                 .unwrap_or(method_sig);
 
         // 解析方法签名：方法名(参数类型1,参数类型2,...)
+        // 注意：参数类型字符串本身可能包含逗号（如 Generic("ArrayList", [GenericParam("T")])），
+        // 因此拆分逗号时必须忽略嵌套在 () / [] / {} 内部的逗号。
         let (method_name, param_types_str) = if let Some(pos) = method_sig.find('(') {
             let name = &method_sig[..pos];
             let params = &method_sig[pos + 1..method_sig.len() - 1]; // 去掉结尾的 )
@@ -1463,7 +1465,24 @@ impl IRGenerator {
                 if params.is_empty() {
                     Vec::new()
                 } else {
-                    params.split(',').map(|s| s.to_string()).collect()
+                    let mut parts = Vec::new();
+                    let mut depth = 0i32;
+                    let mut start = 0;
+                    for (i, c) in params.char_indices() {
+                        match c {
+                            '(' | '[' | '{' => depth += 1,
+                            ')' | ']' | '}' => depth -= 1,
+                            ',' if depth == 0 => {
+                                parts.push(params[start..i].to_string());
+                                start = i + 1;
+                            }
+                            _ => {}
+                        }
+                    }
+                    if start < params.len() {
+                        parts.push(params[start..].to_string());
+                    }
+                    parts
                 },
             )
         } else {
@@ -2642,6 +2661,45 @@ impl IRGenerator {
         Ok(())
     }
 
+    /// 判断构造函数形参类型在单态化后是否匹配。
+    /// 泛型参数（GenericParam）作为通配符可匹配任意具体类型，
+    /// 其余类型按结构递归比较。
+    fn constructor_param_type_matches(
+        &self,
+        base: &crate::types::Type,
+        specialized: &crate::types::Type,
+    ) -> bool {
+        use crate::types::Type;
+        match (base, specialized) {
+            (Type::GenericParam(_), _) => true,
+            (Type::Void, Type::Void)
+            | (Type::Int32, Type::Int32)
+            | (Type::Int64, Type::Int64)
+            | (Type::Float32, Type::Float32)
+            | (Type::Float64, Type::Float64)
+            | (Type::Bool, Type::Bool)
+            | (Type::String, Type::String)
+            | (Type::Char, Type::Char) => true,
+            (Type::Object(a), Type::Object(b)) => a == b,
+            (Type::Array(a), Type::Array(b)) => {
+                self.constructor_param_type_matches(a, b)
+            }
+            (Type::Pointer(a), Type::Pointer(b)) => {
+                self.constructor_param_type_matches(a, b)
+            }
+            (Type::Generic(name_a, args_a), Type::Generic(name_b, args_b)) => {
+                if name_a != name_b || args_a.len() != args_b.len() {
+                    return false;
+                }
+                args_a
+                    .iter()
+                    .zip(args_b.iter())
+                    .all(|(a, b)| self.constructor_param_type_matches(a, b))
+            }
+            _ => false,
+        }
+    }
+
     fn generate_constructor_name(
         &self,
         class_name: &str,
@@ -2657,6 +2715,7 @@ impl IRGenerator {
                 };
                 if let Some(class_info) = registry.get_class(base_class_name) {
                     if !class_info.type_params.is_empty() {
+                        // 先按签名精确匹配
                         let ctor_sigs: Vec<String> = ctor.params.iter().map(|p| self.type_to_signature(&p.param_type)).collect();
                         for ctor_info in &class_info.constructors {
                             if ctor_info.params.len() != ctor.params.len() { continue; }
@@ -2669,9 +2728,20 @@ impl IRGenerator {
                                 );
                             }
                         }
-                        // fallback: first match by param count
+                        // 精确匹配失败时，按泛型通配规则匹配（处理泛型参数被替换后的情况）
                         for ctor_info in &class_info.constructors {
-                            if ctor_info.params.len() == ctor.params.len() {
+                            if ctor_info.params.len() != ctor.params.len() { continue; }
+                            let all_match = ctor_info
+                                .params
+                                .iter()
+                                .zip(ctor.params.iter())
+                                .all(|(info_param, ctor_param)| {
+                                    self.constructor_param_type_matches(
+                                        &info_param.param_type,
+                                        &ctor_param.param_type,
+                                    )
+                                });
+                            if all_match {
                                 return self.mangle_itanium_method(
                                     class_name, "C1",
                                     &ctor_info.params.iter().map(|p| p.param_type.clone()).collect::<Vec<_>>(),

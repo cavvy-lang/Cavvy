@@ -1,0 +1,143 @@
+#include <std/arraylist.cay>
+#include <c/stdio.cay>
+
+using std::ArrayList;
+
+public struct Student {
+    string name;
+    int age;
+    float score;
+}
+
+public int main() {
+    /* 基本追加与容量 */
+    ArrayList<int> nums = new ArrayList<int>();
+    println("empty initial = " + String.valueOf(nums.isEmpty()));
+    println("size initial = " + String.valueOf(nums.size()));
+    println("capacity initial = " + String.valueOf(nums.capacity()));
+
+    nums.add(10);
+    nums.add(20);
+    nums.add(30);
+    println("size after add = " + String.valueOf(nums.size()));
+    println("capacity after add = " + String.valueOf(nums.capacity()));
+    println("isEmpty after add = " + String.valueOf(nums.isEmpty()));
+
+    /* 访问与修改 */
+    println("get(0) = " + String.valueOf(nums.get(0)));
+    println("get(1) = " + String.valueOf(nums.get(1)));
+    println("get(2) = " + String.valueOf(nums.get(2)));
+    nums.set(1, 25);
+    println("get(1) after set = " + String.valueOf(nums.get(1)));
+
+    /* 插入 */
+    nums.add(1, 15);
+    println("size after insert = " + String.valueOf(nums.size()));
+    println("get(0) = " + String.valueOf(nums.get(0)));
+    println("get(1) = " + String.valueOf(nums.get(1)));
+    println("get(2) = " + String.valueOf(nums.get(2)));
+    println("get(3) = " + String.valueOf(nums.get(3)));
+
+    /* 查找 */
+    println("indexOf 25 = " + String.valueOf(nums.indexOf(25)));
+    println("indexOf 99 = " + String.valueOf(nums.indexOf(99)));
+    println("lastIndexOf 10 = " + String.valueOf(nums.lastIndexOf(10)));
+    println("contains 30 = " + String.valueOf(nums.contains(30)));
+    println("contains 99 = " + String.valueOf(nums.contains(99)));
+
+    /* 按索引删除 */
+    int removed = nums.remove(2);
+    println("removed index 2 = " + String.valueOf(removed));
+    println("size after remove = " + String.valueOf(nums.size()));
+    println("get(2) after remove = " + String.valueOf(nums.get(2)));
+
+    /* 按值删除 */
+    nums.removeValue(25);
+    println("size after remove value 25 = " + String.valueOf(nums.size()));
+    println("indexOf 25 after remove = " + String.valueOf(nums.indexOf(25)));
+
+    /* removeLast */
+    int last = nums.removeLast();
+    println("removeLast = " + String.valueOf(last));
+    println("size after removeLast = " + String.valueOf(nums.size()));
+
+    /* 批量添加 */
+    ArrayList<int> more = new ArrayList<int>();
+    more.add(100);
+    more.add(200);
+    nums.addAll(more);
+    println("size after addAll = " + String.valueOf(nums.size()));
+    println("get after addAll 0 = " + String.valueOf(nums.get(0)));
+    println("get after addAll 1 = " + String.valueOf(nums.get(1)));
+    println("get after addAll 2 = " + String.valueOf(nums.get(2)));
+    println("get after addAll 3 = " + String.valueOf(nums.get(3)));
+
+    /* 容量操作 */
+    nums.reserve(32);
+    println("capacity after reserve 32 = " + String.valueOf(nums.capacity()));
+    nums.ensureCapacity(40);
+    println("capacity after ensureCapacity 40 = " + String.valueOf(nums.capacity()));
+    nums.trimToSize();
+    println("capacity after trimToSize = " + String.valueOf(nums.capacity()));
+    println("size after trimToSize = " + String.valueOf(nums.size()));
+
+    /* toArray */
+    int[] arr = nums.toArray();
+    int arrSum = 0;
+    for (int i = 0; i < arr.length; i = i + 1) {
+        arrSum = arrSum + arr[i];
+    }
+    println("toArray sum = " + String.valueOf(arrSum));
+
+    /* 清空与复用 */
+    nums.clear();
+    println("size after clear = " + String.valueOf(nums.size()));
+    println("isEmpty after clear = " + String.valueOf(nums.isEmpty()));
+    nums.add(77);
+    println("get after clear reuse = " + String.valueOf(nums.get(0)));
+
+    /* 指定初始容量 */
+    ArrayList<int> withCap = new ArrayList<int>(10);
+    println("reserved capacity = " + String.valueOf(withCap.capacity()));
+
+    /* foreach */
+    ArrayList<int> loopList = new ArrayList<int>();
+    loopList.add(1);
+    loopList.add(2);
+    loopList.add(3);
+    int sum = 0;
+    for (int x : loopList) {
+        sum = sum + x;
+    }
+    println("foreach sum = " + String.valueOf(sum));
+
+    /* struct 类型 */
+    ArrayList<Student> students = new ArrayList<Student>();
+    Student zhang = new Student();
+    zhang.name = "Zhang";
+    zhang.age = 18;
+    zhang.score = 90.0;
+    students.add(zhang);
+
+    Student li = new Student();
+    li.name = "Li";
+    li.age = 19;
+    li.score = 85.0;
+    students.add(1, li);
+
+    printf(
+        "student 0 = %s, %d, %f\n",
+        students.get(0).name.c_str(),
+        students.get(0).age,
+        students.get(0).score
+    );
+    printf(
+        "student 1 = %s, %d, %f\n",
+        students.get(1).name.c_str(),
+        students.get(1).age,
+        students.get(1).score
+    );
+
+    println("std::ArrayList tests passed");
+    return 0;
+}

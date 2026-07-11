@@ -194,6 +194,65 @@ impl IRGenerator {
         Ok(format!("i32 {}", temp))
     }
 
+    /// 生成 __cay_array_base 内建函数调用
+    /// 返回数组数据指针前 8 字节的分配基址（i64），用于析构时 deallocate。
+    pub fn generate_array_base_call(
+        &mut self,
+        args: &[Expr],
+        loc: &crate::miette_diagnostic::SourceLocation,
+    ) -> CayResult<String> {
+        if args.len() != 1 {
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
+                loc.clone(),
+                "__cay_array_base requires 1 argument".to_string(),
+            ));
+        }
+
+        // 生成数组表达式
+        let arg_result = self.generate_expression(&args[0])?;
+        let (arg_type, arg_val) = self.parse_typed_value(&arg_result);
+
+        // 数组类型都是指针；先统一转成 i8*
+        let arr_i8 = if arg_type == "i8*" {
+            arg_val.to_string()
+        } else if arg_type.ends_with("*") {
+            let temp = self.new_temp();
+            self.emit_line(&format!(
+                "  {} = bitcast {} {} to i8*",
+                temp, arg_type, arg_val
+            ));
+            temp
+        } else {
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
+                loc.clone(),
+                format!(
+                    "__cay_array_base expects an array, got {}",
+                    arg_type
+                ),
+            ));
+        };
+
+        // 数据指针 - 8 字节 = 分配基址
+        let base_ptr = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = getelementptr i8, i8* {}, i64 -8",
+            base_ptr, arr_i8
+        )
+        );
+
+        // 转成 i64 返回
+        let base_i64 = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = ptrtoint i8* {} to i64",
+            base_i64, base_ptr
+        )
+        );
+
+        Ok(format!("i64 {}", base_i64))
+    }
+
     /// 生成 String.valueOf() 静态方法调用
     /// 支持多种类型：int, long, float, double, bool, char
     pub fn generate_string_valueof_call(

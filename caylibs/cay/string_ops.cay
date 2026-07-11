@@ -1,0 +1,133 @@
+/*
+ *  cay/string_ops.cay  包装Cavvy Runtime中StringOps部分
+ */
+
+
+#ifndef STRING_OPS_H
+#define STRING_OPS_H
+
+extern {
+    string   __cay_string_concat(c_char* a, c_char* b);
+    c_int    __cay_string_length(c_char* str);
+    string   __cay_string_substring(c_char* str, c_int begin, c_int end);
+    c_int    __cay_string_indexof(c_char* str, c_char* substr);
+    c_int    __cay_string_indexof_from(c_char* str, c_char* substr, c_int start);
+    c_int    __cay_string_lastindexof(c_char* str, c_char* substr);
+    bool     __cay_string_startswith(c_char* str, c_char* prefix);
+    bool     __cay_string_endswith(c_char* str, c_char* suffix);
+    c_char   __cay_string_charat(c_char* str, c_int index);
+    string   __cay_string_replace(c_char* str, c_char* old, c_char* new_str);
+    bool     __cay_string_isempty(c_char* str);
+    bool     __cay_string_equals(c_char* str1, c_char* str2);
+    bool     __cay_string_equals_ignorecase(c_char* str1, c_char* str2);
+    string   __cay_string_trim(c_char* str);
+}
+
+public class StringOps {
+    public static string StringConcat(string a, string b) {
+        return __cay_string_concat(a.c_str(),b.c_str());
+    }
+    public static int StringLength(string str) {
+        return __cay_string_length(str.c_str());
+    }
+    public static string Substring(string str, int begin, int end) {
+        return __cay_string_substring(str.c_str(), begin, end);
+    }
+    public static int IndexOf(string str, string substr) {
+        return __cay_string_indexof(str.c_str(), substr.c_str());
+    }
+    public static int IndexOfFrom(string str, string substr, int start) {
+        return __cay_string_indexof_from(str.c_str(), substr.c_str(), start);
+    }
+    public static int LastIndexOf(string str, string substr) {
+        return __cay_string_lastindexof(str.c_str(), substr.c_str());
+    }
+    public static bool StartsWith(string str, string prefix) {
+        return __cay_string_startswith(str.c_str(), prefix.c_str());
+    }
+    public static bool EndsWith(string str, string suffix) {    
+        return __cay_string_endswith(str.c_str(), suffix.c_str());
+    }
+    public static char CharAt(string str, int index) {
+        return __cay_string_charat(str.c_str(), index);
+    }
+    public static string Replace(string str, string old, string newStr) {
+        return __cay_string_replace(str.c_str(), old.c_str(), newStr.c_str());
+    }
+    public static bool IsEmpty(string str) {
+        return __cay_string_isempty(str.c_str());
+    }
+    public static bool Equals(string str1, string str2) {
+        return __cay_string_equals(str1.c_str(), str2.c_str());
+    }
+    public static bool EqualsIgnoreCase(string str1, string str2) {
+        return __cay_string_equals_ignorecase(str1.c_str(), str2.c_str());
+    }
+    public static string Trim(string str) {
+        return __cay_string_trim(str.c_str());
+    }
+}
+
+#endif
+
+#ifdef CAY_TEST_STRING_OPS_H
+
+public int main() {
+    string a = "Hello";
+    string b = "World";
+    
+    // 测试字符串拼接
+    string concatResult = StringOps.StringConcat(a, b);
+    println("Concat: " + concatResult);
+    
+    // 测试字符串长度
+    int len = StringOps.StringLength(a);
+    println("Length of '" + a + "': " + len);
+    
+    // 测试截取子串
+    string sub = StringOps.Substring("Hello Cavvy", 0, 5);
+    println("Substring: " + sub);
+    
+    // 测试查找子串位置
+    int idx = StringOps.IndexOf("Hello Cavvy", "Cavvy");
+    println("IndexOf 'Cavvy': " + idx);
+    
+    int idxFrom = StringOps.IndexOfFrom("Hello Cavvy Cavvy", "Cavvy", 7);
+    println("IndexOfFrom 'Cavvy' from 7: " + idxFrom);
+    
+    int lastIdx = StringOps.LastIndexOf("Hello Cavvy Cavvy", "Cavvy");
+    println("LastIndexOf 'Cavvy': " + lastIdx);
+    
+    // 测试前缀和后缀判断
+    bool starts = StringOps.StartsWith("Hello Cavvy", "Hello");
+    println("StartsWith 'Hello': " + string.valueOf(starts));
+    
+    bool ends = StringOps.EndsWith("Hello Cavvy", "Cavvy");
+    println("EndsWith 'Cavvy': " + string.valueOf(ends));
+    
+    // 测试获取指定位置字符
+    char ch = StringOps.CharAt("Hello", 1);
+    println("CharAt 1: " + ch);
+    
+    // 测试字符串替换
+    string replaced = StringOps.Replace("Hello Cavvy", "Cavvy", "World");
+    println("Replace: " + replaced);
+    
+    // 测试判空
+    bool empty = StringOps.IsEmpty("");
+    println("IsEmpty '': " + string.valueOf(empty));
+    
+    // 测试字符串比较
+    bool equals = StringOps.Equals("Hello", "Hello");
+    println("Equals 'Hello' and 'Hello': " + string.valueOf(equals));
+    
+    bool equalsIgnore = StringOps.EqualsIgnoreCase("Hello", "hello");
+    println("EqualsIgnoreCase 'Hello' and 'hello': " + string.valueOf(equalsIgnore));
+    
+    // 测试去除首尾空格
+    string trimmed = StringOps.Trim("  Hello Cavvy  ");
+    println("Trim: '" + trimmed + "'");
+    
+    return 0;
+}
+#endif

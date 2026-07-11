@@ -8,9 +8,36 @@
 
 #pragma once
 
+#include <std/iterator.cay>
+
 namespace std {
 
-public class vector<T> {
+/**
+ * vector 迭代器实现。
+ */
+public class VectorIterator<T> implements Iterator<T> {
+    private T[] data;
+    private int size;
+    private int index;
+
+    public VectorIterator(T[] data, int size) {
+        this.data = data;
+        this.size = size;
+        this.index = 0;
+    }
+
+    public bool hasNext() {
+        return this.index < this.size;
+    }
+
+    public T next() {
+        T value = this.data[this.index];
+        this.index = this.index + 1;
+        return value;
+    }
+}
+
+public class vector<T> implements Iterable<T> {
     public T[] data;
     public int size;
 
@@ -223,6 +250,10 @@ public class vector<T> {
         move_slots_left(this.data, index, this.size - index - 1);
         this.size = this.size - 1;
         clear_slots(this.data, this.size, 1);
+    }
+
+    public Iterator<T> iterator() {
+        return new VectorIterator<T>(this.data, this.size);
     }
 }
 

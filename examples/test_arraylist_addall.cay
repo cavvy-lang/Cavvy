@@ -1,0 +1,27 @@
+#include <std/arraylist.cay>
+#include <c/stdio.cay>
+
+using std::ArrayList;
+
+public int main() {
+    println("A");
+    ArrayList<int> nums = new ArrayList<int>();
+    println("B");
+    nums.add(10);
+    println("C");
+    nums.add(20);
+    println("D size = " + String.valueOf(nums.size()));
+
+    ArrayList<int> more = new ArrayList<int>();
+    println("E");
+    more.add(100);
+    println("F");
+    more.add(200);
+    println("G");
+
+    nums.addAll(more);
+    println("H");
+    println("after addAll size = " + String.valueOf(nums.size()));
+
+    return 0;
+}

@@ -1,0 +1,114 @@
+#include <std/arraylist.cay>
+#include <c/stdio.cay>
+
+using std::ArrayList;
+using std::Allocator;
+
+/**
+ * 自定义 Arena/Bump 分配器，用于验证 ArrayList 的内存确实来自该分配器。
+ *
+ * 每个 BumpAlloc 实例拥有独立的 buffer/current/end，通过默认构造函数
+ * 申请 4096 字节的初始块。allocate 按 8 字节对齐向上 bump；deallocate 为
+ * 空操作（arena 一次性释放）。
+ */
+public class BumpAlloc implements Allocator {
+    private long buffer;
+    private long current;
+    private long end;
+
+    public BumpAlloc() {
+        long cap = 4096;
+        long buf;
+        __ir {
+            %p = call i8* @malloc(i64 4096)
+            %v = ptrtoint i8* %p to i64
+            store i64 %v, i64* %buf
+        }
+        this.buffer = buf;
+        this.current = buf;
+        this.end = buf + cap;
+    }
+
+    public long allocate(long size) {
+        long alignment = 8;
+        return this.allocateAligned(size, alignment);
+    }
+
+    public long allocateAligned(long size, long alignBytes) {
+        long mask = alignBytes - 1;
+        long aligned = (this.current + mask) & ~mask;
+        long next = aligned + size;
+        if (next > this.end) {
+            return 0;
+        }
+        this.current = next;
+        return aligned;
+    }
+
+    public void deallocate(long ptr) {
+        /* Arena 不单独释放 */
+    }
+
+    public long used() {
+        return this.current - this.buffer;
+    }
+
+    public long remaining() {
+        return this.end - this.current;
+    }
+}
+
+public int main() {
+    long before;
+    long after;
+
+    /* 使用默认 GlobalAlloc 的 ArrayList */
+    ArrayList<int> globalList = new ArrayList<int>();
+    globalList.add(1);
+    globalList.add(2);
+    globalList.add(3);
+    println("global list size = " + String.valueOf(globalList.size()));
+
+    /* 使用自定义 BumpAlloc 的 ArrayList */
+    BumpAlloc bump = new BumpAlloc();
+    before = bump.used();
+    println("arena used before adds = " + String.valueOf((int)before));
+
+    ArrayList<int, BumpAlloc> arenaList = new ArrayList<int, BumpAlloc>(bump);
+    arenaList.add(10);
+    arenaList.add(20);
+    arenaList.add(30);
+    arenaList.add(40);
+    arenaList.add(50);
+
+    after = bump.used();
+    println("arena used after 5 adds = " + String.valueOf((int)after));
+
+    if (after <= before) {
+        println("FAIL: arena used did not increase");
+        return 1;
+    }
+
+    /* 强制扩容，验证 reallocate 也走 allocator */
+    arenaList.ensureCapacity(64);
+    long afterReserve = bump.used();
+    println("arena used after reserve = " + String.valueOf((int)afterReserve));
+
+    if (afterReserve <= after) {
+        println("FAIL: arena used did not increase after reserve");
+        return 1;
+    }
+
+    /* 验证数据正确 */
+    if (arenaList.size() != 5) {
+        println("FAIL: size mismatch");
+        return 1;
+    }
+    if (arenaList.get(0) != 10 || arenaList.get(4) != 50) {
+        println("FAIL: value mismatch");
+        return 1;
+    }
+
+    println("arena-backed ArrayList tests passed");
+    return 0;
+}

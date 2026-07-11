@@ -1045,7 +1045,11 @@ impl IRGenerator {
             Type::Object(name) => self
                 .type_registry
                 .as_ref()
-                .map(|r| r.get_class(name).is_some() || r.get_interface(name).is_some())
+                .map(|r| {
+                    r.get_class(name).is_some()
+                        || r.get_interface(name).is_some()
+                        || r.get_struct(name).is_some()
+                })
                 .unwrap_or(false),
             Type::Array(inner) | Type::Pointer(inner) => self.type_arg_is_concrete(inner),
             Type::Generic(_, args) => args.iter().all(|a| self.type_arg_is_concrete(a)),
@@ -1100,7 +1104,10 @@ impl IRGenerator {
                                         if let Some(field_info) =
                                             class_info.fields.get(&member.member)
                                         {
-                                            return Some(field_info.field_type.clone());
+                                            let field_type = self.resolve_type_arg_concrete(
+                                                &field_info.field_type,
+                                            );
+                                            return Some(field_type);
                                         }
                                     }
                                 }
@@ -1117,6 +1124,9 @@ impl IRGenerator {
                                             let mut field_type = field_info.field_type.clone();
                                             // 如果字段类型包含泛型参数，使用类型参数映射替换
                                             field_type = self.substitute_generic_params(field_type);
+                                            field_type = self.resolve_type_arg_concrete(
+                                                &field_type,
+                                            );
                                             return Some(field_type);
                                         }
                                     }
@@ -1144,7 +1154,10 @@ impl IRGenerator {
                                         if let Some(field_info) =
                                             class_info.fields.get(&member.member)
                                         {
-                                            return Some(field_info.field_type.clone());
+                                            let field_type = self.resolve_type_arg_concrete(
+                                                &field_info.field_type,
+                                            );
+                                            return Some(field_type);
                                         }
                                     }
                                 }

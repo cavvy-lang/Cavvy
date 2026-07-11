@@ -1,0 +1,30 @@
+#include <std/vector.cay>
+#include <c/stdio.cay>
+
+using std::vector;
+
+public struct Student {
+    string name;
+    int age;
+    float score;
+}
+
+public int main() {
+    vector<Student> students = new vector();
+
+    Student zhang = new Student();
+    zhang.name = "Zhang";
+    zhang.age = 18;
+    zhang.score = 90.0;
+    students.push_back(zhang);
+
+    Student li = new Student();
+    li.name = "Li";
+    li.age = 19;
+    li.score = 85.0;
+    students.push_back(li);
+
+    for(Student x : students) {
+        printf("student: %s, %d, %f",x.name, x.age, x.score);
+    }
+}

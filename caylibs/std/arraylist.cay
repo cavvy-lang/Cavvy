@@ -2,6 +2,11 @@
  * Cavvy 动态数组标准库 - 0.5.2.x
  *
  * 泛型单态化实现：ArrayList<T, A: Allocator = GlobalAlloc>
+ *
+ * 内部存储通过编译器内建表达式 __cay_alloc_array<T>(allocator, count)
+ * 向分配器 A 申请内存，数据指针前 8 字节为 [i32 length][i32 padding]。
+ * 析构时通过 __cay_array_base(data) 回退到分配基址，调用 allocator.deallocate
+ * 释放 backing buffer。
  */
 
 #pragma once
@@ -13,6 +18,9 @@ namespace std {
 
 /**
  * ArrayList 迭代器实现。
+ *
+ * 创建时快照当前 data 数组与有效长度，因此遍历期间对列表的结构性修改
+ * 不会反映到迭代器上（与 std::vector 迭代器行为一致）。
  */
 public class ArrayListIterator<T> implements Iterator<T> {
     private T[] data;
@@ -39,19 +47,23 @@ public class ArrayListIterator<T> implements Iterator<T> {
 /**
  * 动态数组，支持泛型类型参数 T 与分配器参数 A。
  *
- * 默认分配器为 GlobalAlloc，可通过构造函数显式指定 Arena 等。
- * 当前实现使用 Cavvy 内置 T[] 数组作为存储；分配器参数 A 保留在
- * 签名中以保持 API 兼容性。
+ * 默认分配器为 GlobalAlloc。API 风格贴近 Java ArrayList，同时保留
+ * `reserve`/`trimToSize` 等 C++ 风格命名以方便迁移。
  */
 public class ArrayList<T, A: Allocator = GlobalAlloc> implements Iterable<T> {
     private T[] data;
     private int size;
+    private A allocator;
+    private long buffer;
 
     /**
-     * 默认构造，使用 GlobalAlloc。
+     * 默认构造，使用 GlobalAlloc。内部预留 1 个槽位，避免空列表时
+     * 越界回退访问到未分配内存。
      */
     public ArrayList() {
-        this.data = new T[0];
+        this.allocator = new A();
+        this.buffer = 0;
+        this.allocate(1);
         this.size = 0;
     }
 
@@ -59,10 +71,12 @@ public class ArrayList<T, A: Allocator = GlobalAlloc> implements Iterable<T> {
      * 指定初始容量，使用 GlobalAlloc。
      */
     public ArrayList(int initialCapacity) {
-        if (initialCapacity < 0) {
-            initialCapacity = 0;
+        if (initialCapacity < 1) {
+            initialCapacity = 1;
         }
-        this.data = new T[initialCapacity];
+        this.allocator = new A();
+        this.buffer = 0;
+        this.allocate(initialCapacity);
         this.size = 0;
     }
 
@@ -70,7 +84,9 @@ public class ArrayList<T, A: Allocator = GlobalAlloc> implements Iterable<T> {
      * 指定分配器。
      */
     public ArrayList(A allocator) {
-        this.data = new T[0];
+        this.allocator = allocator;
+        this.buffer = 0;
+        this.allocate(1);
         this.size = 0;
     }
 
@@ -78,53 +94,141 @@ public class ArrayList<T, A: Allocator = GlobalAlloc> implements Iterable<T> {
      * 指定初始容量与分配器。
      */
     public ArrayList(int initialCapacity, A allocator) {
-        if (initialCapacity < 0) {
-            initialCapacity = 0;
+        if (initialCapacity < 1) {
+            initialCapacity = 1;
         }
-        this.data = new T[initialCapacity];
+        this.allocator = allocator;
+        this.buffer = 0;
+        this.allocate(initialCapacity);
         this.size = 0;
     }
 
     /**
-     * 预分配容量。
+     * 析构函数：释放 backing buffer。注意只释放内部数组内存，
+     * 不逐个调用 T 的析构函数（当前语言无泛型元素析构机制）。
      */
-    public void reserve(int capacity) {
-        if (capacity <= this.data.length) {
-            return;
+    ~ArrayList() {
+        if (this.buffer != 0) {
+            this.allocator.deallocate(this.buffer);
+            this.buffer = 0;
         }
-        T[] newData = new T[capacity];
-        for (int i = 0; i < this.size; i = i + 1) {
-            newData[i] = this.data[i];
-        }
-        this.data = newData;
     }
 
     /**
-     * 追加元素。
+     * 向分配器申请容量为 capacity 的 backing buffer。
+     */
+    private void allocate(int capacity) {
+        this.data = __cay_alloc_array<T>(this.allocator, capacity);
+        this.buffer = __cay_array_base(this.data);
+    }
+
+    /**
+     * 确保容量至少为 minCapacity。容量按 2 倍增长，直到满足需求。
+     */
+    public void ensureCapacity(int minCapacity) {
+        if (minCapacity <= this.data.length) {
+            return;
+        }
+
+        int newCapacity = this.data.length;
+        if (newCapacity < 1) {
+            newCapacity = 1;
+        }
+        while (newCapacity < minCapacity) {
+            newCapacity = newCapacity * 2;
+        }
+
+        this.reallocate(newCapacity);
+    }
+
+    /**
+     * 预分配容量（ensureCapacity 的别名）。
+     */
+    public void reserve(int capacity) {
+        this.ensureCapacity(capacity);
+    }
+
+    /**
+     * 追加元素到末尾。
      */
     public void add(T value) {
-        if (this.size >= this.data.length) {
-            int newCapacity = this.data.length * 2;
-            if (newCapacity < 1) {
-                newCapacity = 1;
-            }
-            this.reserve(newCapacity);
-        }
+        this.ensureCapacity(this.size + 1);
         this.data[this.size] = value;
         this.size = this.size + 1;
     }
 
     /**
-     * 获取指定位置元素。
+     * 在指定索引处插入元素。index 范围 [0, size]。
+     */
+    public void add(int index, T value) {
+        if (index < 0 || index > this.size) {
+            return;
+        }
+        this.ensureCapacity(this.size + 1);
+        for (int i = this.size; i > index; i = i - 1) {
+            this.data[i] = this.data[i - 1];
+        }
+        this.data[index] = value;
+        this.size = this.size + 1;
+    }
+
+    /**
+     * 将另一个列表的所有元素追加到末尾。
+     */
+    public void addAll(ArrayList<T> other) {
+        this.addAll(this.size, other);
+    }
+
+    /**
+     * 将另一个列表的所有元素插入到指定索引处。index 范围 [0, size]。
+     */
+    public void addAll(int index, ArrayList<T> other) {
+        if (other == null) {
+            return;
+        }
+        if (index < 0 || index > this.size) {
+            return;
+        }
+
+        int otherSize = other.size();
+        if (otherSize <= 0) {
+            return;
+        }
+
+        /* 先快照 other 的元素，避免 this 与 other 是同一对象时
+         * 搬移过程中读错数据。 */
+        T[] temp = new T[otherSize];
+        for (int i = 0; i < otherSize; i = i + 1) {
+            temp[i] = other.get(i);
+        }
+
+        this.ensureCapacity(this.size + otherSize);
+        for (int i = this.size - 1; i >= index; i = i - 1) {
+            this.data[i + otherSize] = this.data[i];
+        }
+        for (int i = 0; i < otherSize; i = i + 1) {
+            this.data[index + i] = temp[i];
+        }
+        this.size = this.size + otherSize;
+    }
+
+    /**
+     * 获取指定位置元素。index 越界时返回 data[0]（预留槽位，值为零/空）。
      */
     public T get(int index) {
+        if (index < 0 || index >= this.size) {
+            return this.data[0];
+        }
         return this.data[index];
     }
 
     /**
-     * 设置指定位置元素。
+     * 设置指定位置元素。index 越界时不执行任何操作。
      */
     public void set(int index, T value) {
+        if (index < 0 || index >= this.size) {
+            return;
+        }
         this.data[index] = value;
     }
 
@@ -150,18 +254,102 @@ public class ArrayList<T, A: Allocator = GlobalAlloc> implements Iterable<T> {
     }
 
     /**
-     * 清空列表。
+     * 清空列表。容量保持不变。
      */
     public void clear() {
         this.size = 0;
     }
 
     /**
-     * 移除并返回末尾元素。
+     * 移除并返回指定索引处的元素。index 越界时返回 data[0]。
+     */
+    public T remove(int index) {
+        if (index < 0 || index >= this.size) {
+            return this.data[0];
+        }
+        T value = this.data[index];
+        for (int i = index; i < this.size - 1; i = i + 1) {
+            this.data[i] = this.data[i + 1];
+        }
+        this.size = this.size - 1;
+        return value;
+    }
+
+    /**
+     * 移除第一个与 value 相等的元素。相等性使用 `==` 判断：
+     * 对 primitive 为值比较，对对象/字符串为引用比较。
+     *
+     * 命名为 removeValue 而非 remove(T)，避免与 remove(int index) 在
+     * T = int 时产生无法区分的方法重载，并规避泛型单态化 vtable 命名冲突。
+     */
+    public void removeValue(T value) {
+        int index = this.indexOf(value);
+        if (index >= 0) {
+            this.remove(index);
+        }
+    }
+
+    /**
+     * 移除并返回末尾元素。列表为空时返回 data[0]。
      */
     public T removeLast() {
+        if (this.size <= 0) {
+            return this.data[0];
+        }
         this.size = this.size - 1;
         return this.data[this.size];
+    }
+
+    /**
+     * 返回 value 第一次出现的索引，未找到返回 -1。
+     */
+    public int indexOf(T value) {
+        for (int i = 0; i < this.size; i = i + 1) {
+            if (this.data[i] == value) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * 返回 value 最后一次出现的索引，未找到返回 -1。
+     */
+    public int lastIndexOf(T value) {
+        for (int i = this.size - 1; i >= 0; i = i - 1) {
+            if (this.data[i] == value) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * 是否包含 value。
+     */
+    public bool contains(T value) {
+        return this.indexOf(value) >= 0;
+    }
+
+    /**
+     * 将容量收缩到与元素数量相等。若列表为空则容量保持为 1。
+     */
+    public void trimToSize() {
+        if (this.size != this.data.length) {
+            this.reallocate(this.size);
+        }
+    }
+
+    /**
+     * 返回包含当前所有元素的新数组（长度为 size）。
+     * 该数组使用全局 calloc 分配，作为独立副本由调用者持有。
+     */
+    public T[] toArray() {
+        T[] result = new T[this.size];
+        for (int i = 0; i < this.size; i = i + 1) {
+            result[i] = this.data[i];
+        }
+        return result;
     }
 
     /**
@@ -169,6 +357,34 @@ public class ArrayList<T, A: Allocator = GlobalAlloc> implements Iterable<T> {
      */
     public Iterator<T> iterator() {
         return new ArrayListIterator<T>(this.data, this.size);
+    }
+
+    /**
+     * 重新分配内部数组。newCapacity 至少为 1。
+     */
+    private void reallocate(int newCapacity) {
+        if (newCapacity < 1) {
+            newCapacity = 1;
+        }
+
+        long oldBuffer = this.buffer;
+        T[] oldData = this.data;
+        int oldSize = this.size;
+
+        this.allocate(newCapacity);
+
+        int limit = oldSize;
+        if (limit > newCapacity) {
+            limit = newCapacity;
+        }
+        for (int i = 0; i < limit; i = i + 1) {
+            this.data[i] = oldData[i];
+        }
+        this.size = limit;
+
+        if (oldBuffer != 0) {
+            this.allocator.deallocate(oldBuffer);
+        }
     }
 }
 

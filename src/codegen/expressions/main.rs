@@ -72,6 +72,9 @@ impl IRGenerator {
             // 0.5.0.0: 内存释放表达式
             Expr::Dealloc(dealloc) => self.generate_dealloc_expression(dealloc),
 
+            // 0.5.2.x: 分配器-backed 数组分配表达式
+            Expr::AllocArray(alloc_array) => self.generate_alloc_array_expression(alloc_array),
+
             // 命名参数（生成内部值即可）
             Expr::NamedArg(named) => self.generate_expression(&named.value),
         }

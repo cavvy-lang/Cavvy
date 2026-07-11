@@ -1,0 +1,110 @@
+#include <std/arraylist.cay>
+#include <c/stdio.cay>
+
+using std::ArrayList;
+
+public int main() {
+    println("start");
+    ArrayList<int> nums = new ArrayList<int>();
+    println("created");
+    nums.add(10);
+    println("added 10");
+    nums.add(20);
+    println("added 20");
+    nums.add(30);
+    println("added 30");
+
+    nums.add(1, 15);
+    println("inserted 15 at 1");
+
+    println("indexOf 25 = " + String.valueOf(nums.indexOf(25)));
+
+    nums.removeValue(25);
+    println("removed value 25");
+
+    int removed = nums.remove(2);
+    println("removed index 2 = " + String.valueOf(removed));
+
+    int last = nums.removeLast();
+    println("removeLast = " + String.valueOf(last));
+
+    /* 批量添加 */
+    ArrayList<int> more = new ArrayList<int>();
+    more.add(100);
+    more.add(200);
+    nums.addAll(more);
+    println("size after addAll = " + String.valueOf(nums.size()));
+
+    nums.reserve(32);
+    println("reserved 32");
+
+    nums.ensureCapacity(40);
+    println("ensured 40");
+
+    nums.trimToSize();
+    println("trimmed");
+
+    int[] arr = nums.toArray();
+    int arrSum = 0;
+    for (int i = 0; i < arr.length; i = i + 1) {
+        arrSum = arrSum + arr[i];
+    }
+    println("toArray sum = " + String.valueOf(arrSum));
+
+    nums.clear();
+    println("cleared");
+
+    /* struct 类型 */
+    ArrayList<Student> students = new ArrayList<Student>();
+    println("created students");
+    Student zhang = new Student();
+    zhang.name = "Zhang";
+    zhang.age = 18;
+    zhang.score = 90.0;
+    students.add(zhang);
+    println("added zhang");
+
+    Student li = new Student();
+    li.name = "Li";
+    li.age = 19;
+    li.score = 85.0;
+    students.add(1, li);
+    println("added li");
+
+    printf(
+        "student 0 = %s, %d, %f\n",
+        students.get(0).name.c_str(),
+        students.get(0).age,
+        students.get(0).score
+    );
+    printf(
+        "student 1 = %s, %d, %f\n",
+        students.get(1).name.c_str(),
+        students.get(1).age,
+        students.get(1).score
+    );
+
+    /* 指定初始容量 */
+    ArrayList<int> withCap = new ArrayList<int>(10);
+    println("reserved capacity = " + String.valueOf(withCap.capacity()));
+
+    /* foreach */
+    ArrayList<int> loopList = new ArrayList<int>();
+    loopList.add(1);
+    loopList.add(2);
+    loopList.add(3);
+    int sum = 0;
+    for (int x : loopList) {
+        sum = sum + x;
+    }
+    println("foreach sum = " + String.valueOf(sum));
+
+    println("done");
+    return 0;
+}
+
+public struct Student {
+    string name;
+    int age;
+    float score;
+}

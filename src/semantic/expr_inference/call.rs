@@ -98,6 +98,20 @@ impl SemanticAnalyzer {
                     }
                     return Ok(Type::Void);
                 }
+                "__cay_array_base" => {
+                    // 检查参数数量
+                    if call.args.len() != 1 {
+                        return Err(semantic_error_at_loc(
+                            &call.loc,
+                            format!(
+                                "Function '__cay_array_base' requires 1 argument, but got {}",
+                                call.args.len()
+                            ),
+                        ));
+                    }
+                    self.infer_expr_type_collect_errors(&call.args[0]);
+                    return Ok(Type::Int64);
+                }
                 _ => {}
             }
 

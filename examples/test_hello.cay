@@ -1,0 +1,6 @@
+#include <c/stdio.cay>
+
+public int main() {
+    println("hello");
+    return 0;
+}

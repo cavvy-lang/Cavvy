@@ -12,7 +12,11 @@ use std::time::Duration;
 /// 获取当前平台的 cayc 可执行文件路径
 /// Windows: ./target/release/cayc.exe
 /// Linux: ./target/release/cayc
+/// 可通过环境变量 CAYC_PATH 覆盖（用于隔离构建或 CI）。
 fn get_cayc_path() -> String {
+    if let Ok(path) = std::env::var("CAYC_PATH") {
+        return path;
+    }
     if cfg!(target_os = "windows") {
         "./target/release/cayc.exe".to_string()
     } else {

@@ -205,6 +205,243 @@ impl IRGenerator {
         Ok(format!("{}* {}", elem_type, result_temp))
     }
 
+    /// 生成分配器-backed 数组分配表达式代码
+    /// __cay_alloc_array<T>(allocator, count)
+    /// 内存布局与 new T[n] 相同: [长度:i32][填充:i32][元素0]...
+    /// 通过 Allocator 接口 vtable slot 0 (allocate(long)) 申请内存。
+    pub fn generate_alloc_array_expression(
+        &mut self,
+        alloc_array: &AllocArrayExpr,
+    ) -> CayResult<String> {
+        // 单态化后解析出具体元素类型
+        let element_type = self.resolve_type_arg_concrete(&alloc_array.element_type);
+
+        // 生成大小表达式
+        let size_val_expr = self.generate_expression(&alloc_array.size)?;
+        let (size_type, size_val) = self.parse_typed_value(&size_val_expr);
+
+        if !size_type.starts_with("i") {
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
+                alloc_array.loc.clone(),
+                format!("Array size must be integer, got {}", size_type),
+            ));
+        }
+
+        // 转换为 i64（用于分配）和 i32（用于存储长度）
+        let size_i64 = if size_type != "i64" {
+            let temp = self.new_temp();
+            self.emit_line(&format!("  {} = sext {} {} to i64", temp, size_type, size_val)
+            );
+            temp
+        } else {
+            size_val.to_string()
+        };
+
+        let size_i32 = if size_type != "i32" {
+            let temp = self.new_temp();
+            if size_type.ends_with("*") {
+                return Err(codegen_error_at(
+                    ErrorCodes::CODEGEN_INVALID_OPERATION,
+                    alloc_array.loc.clone(),
+                    format!("Array size must be an integer type, got {}", size_type),
+                ));
+            }
+            self.emit_line(&format!("  {} = trunc {} {} to i32", temp, size_type, size_val)
+            );
+            temp
+        } else {
+            size_val.to_string()
+        };
+
+        let elem_type = self.type_to_llvm(&element_type);
+        let elem_size = self.get_type_size(&elem_type);
+
+        // 数据字节数 = count * elem_size
+        let data_bytes_temp = self.new_temp();
+        self.emit_line(&format!("  {} = mul i64 {}, {}", data_bytes_temp, size_i64, elem_size)
+        );
+
+        // 总字节数 = 8 (length header) + data
+        let total_bytes_temp = self.new_temp();
+        self.emit_line(&format!("  {} = add i64 {}, 8", total_bytes_temp, data_bytes_temp)
+        );
+
+        // 生成 allocator 表达式，得到 i8* 对象指针
+        let allocator_result = self.generate_expression(&alloc_array.allocator)?;
+        let (allocator_type, allocator_val) = self.parse_typed_value(&allocator_result);
+
+        // 确保 allocator 是对象指针（i8*）
+        let allocator_i8 = if allocator_type == "i8*" {
+            allocator_val.to_string()
+        } else if allocator_type.ends_with("*") {
+            let temp = self.new_temp();
+            self.emit_line(&format!("  {} = bitcast {} {} to i8*", temp, allocator_type, allocator_val)
+            );
+            temp
+        } else {
+            let temp = self.new_temp();
+            self.emit_line(&format!("  {} = inttoptr {} {} to i8*", temp, allocator_type, allocator_val)
+            );
+            temp
+        };
+
+        // 通过 vtable 分派调用 Allocator.allocate(long)
+        // vtable 指针位于对象指针偏移 8 字节处
+        let vtable_ptr_temp = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = getelementptr i8, i8* {}, i64 8",
+            vtable_ptr_temp, allocator_i8
+        )
+        );
+
+        let vtable_temp = self.new_temp();
+        self.emit_line(&format!("  {} = load i8*, i8* {}", vtable_temp, vtable_ptr_temp)
+        );
+
+        let vtable_array_temp = self.new_temp();
+        self.emit_line(&format!("  {} = bitcast i8* {} to i8**", vtable_array_temp, vtable_temp)
+        );
+
+        // 获取 allocate(long) 在 Allocator 接口 vtable 中的槽位
+        let interface_names = ["std::Allocator", "Allocator"];
+        let mut slot = None;
+        for interface_name in &interface_names {
+            if self.interface_has_vtable_slot(interface_name, "allocate", &[Type::Int64]) {
+                slot = Some(self.get_interface_vtable_slot(interface_name, "allocate", &[Type::Int64]));
+                break;
+            }
+        }
+        let slot = slot.unwrap_or(0);
+
+        let slot_offset_temp = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = getelementptr i8*, i8** {}, i64 {}",
+            slot_offset_temp, vtable_array_temp, slot
+        )
+        );
+
+        let fn_ptr_temp = self.new_temp();
+        self.emit_line(&format!("  {} = load i8*, i8** {}", fn_ptr_temp, slot_offset_temp)
+        );
+
+        // 函数指针类型: i64 (i8*, i64)*
+        let fn_ptr_cast_temp = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = bitcast i8* {} to i64 (i8*, i64)*",
+            fn_ptr_cast_temp, fn_ptr_temp
+        )
+        );
+
+        let raw_ptr_i64 = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = call i64 {}(i8* {}, i64 {})",
+            raw_ptr_i64, fn_ptr_cast_temp, allocator_i8, total_bytes_temp
+        )
+        );
+
+        // 将 long 转回 i8*
+        let raw_ptr_i8 = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = inttoptr i64 {} to i8*",
+            raw_ptr_i8, raw_ptr_i64
+        )
+        );
+
+        // 准备返回槽
+        let arr_ptr_type = format!("{}*", elem_type);
+        let result_slot = self.new_temp();
+        self.emit_line(&format!("  {} = alloca {}", result_slot, arr_ptr_type)
+        );
+
+        // 检查分配是否失败（返回 0/null）
+        let is_null = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = icmp eq i8* {}, null",
+            is_null, raw_ptr_i8
+        )
+        );
+        let ok_label = self.new_label("arr.alloc.ok");
+        let fail_label = self.new_label("arr.alloc.fail");
+        let merge_label = self.new_label("arr.alloc.merge");
+
+        self.emit_line(&format!(
+            "  br i1 {}, label %{}, label %{}",
+            is_null, fail_label, ok_label
+        )
+        );
+
+        // 失败分支
+        self.emit_line(&format!("\n{}:", fail_label)
+        );
+        self.emit_line(&format!(
+            "  store {} null, {}* {}",
+            arr_ptr_type, arr_ptr_type, result_slot
+        )
+        );
+        self.emit_line(&format!("  br label %{}", merge_label)
+        );
+
+        // 成功分支：写长度头并返回数据指针
+        self.emit_line(&format!("\n{}:", ok_label)
+        );
+
+        // 用 llvm.memset 清零整块内存（保持与 calloc 类似的零初始化语义）
+        self.emit_line(&format!(
+            "  call void @llvm.memset.p0i8.i64(i8* {}, i8 0, i64 {}, i1 false)",
+            raw_ptr_i8, total_bytes_temp
+        )
+        );
+
+        // 存储长度
+        let len_ptr = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = bitcast i8* {} to i32*",
+            len_ptr, raw_ptr_i8
+        )
+        );
+        self.emit_line(&format!(
+            "  store i32 {}, i32* {}, align 4",
+            size_i32, len_ptr
+        )
+        );
+
+        // 计算数据起始地址（跳过 8 字节长度头）
+        let data_ptr = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = getelementptr i8, i8* {}, i64 8",
+            data_ptr, raw_ptr_i8
+        )
+        );
+
+        // 转换为元素类型指针
+        let cast_temp = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = bitcast i8* {} to {}*",
+            cast_temp, data_ptr, elem_type
+        )
+        );
+        self.emit_line(&format!(
+            "  store {}* {}, {}* {}",
+            arr_ptr_type, cast_temp, arr_ptr_type, result_slot
+        )
+        );
+        self.emit_line(&format!("  br label %{}", merge_label)
+        );
+
+        // 合并点
+        self.emit_line(&format!("\n{}:", merge_label)
+        );
+        let result_temp = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = load {}*, {}* {}",
+            result_temp, arr_ptr_type, arr_ptr_type, result_slot
+        )
+        );
+
+        Ok(format!("{}* {}", elem_type, result_temp))
+    }
+
     /// 生成多维数组创建: new Type[size1][size2]...[sizeN] 或 new Type[size][] (不规则数组)
     ///
     /// # Arguments

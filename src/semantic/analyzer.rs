@@ -378,6 +378,7 @@ impl SemanticAnalyzer {
             Expr::MethodRef(e) => (e.loc.line, e.loc.column),
             Expr::Alloc(e) => (e.loc.line, e.loc.column),
             Expr::Dealloc(e) => (e.loc.line, e.loc.column),
+            Expr::AllocArray(e) => (e.loc.line, e.loc.column),
             Expr::NamedArg(e) => (e.loc.line, e.loc.column),
         }
     }
@@ -406,6 +407,7 @@ impl SemanticAnalyzer {
             Expr::MethodRef(e) => e.loc.clone(),
             Expr::Alloc(e) => e.loc.clone(),
             Expr::Dealloc(e) => e.loc.clone(),
+            Expr::AllocArray(e) => e.loc.clone(),
             Expr::NamedArg(e) => e.loc.clone(),
         }
     }

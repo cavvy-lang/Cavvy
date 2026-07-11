@@ -75,6 +75,46 @@ impl SemanticAnalyzer {
         Ok(Type::Array(Box::new(arr.element_type.clone())))
     }
 
+    /// 推断分配器-backed 数组分配表达式类型
+    /// __cay_alloc_array<T>(allocator, count) 返回 T[]
+    pub(crate) fn infer_alloc_array_type(
+        &mut self,
+        alloc_array: &AllocArrayExpr,
+    ) -> crate::miette_diagnostic::CayResult<Type> {
+        // 检查 allocator 表达式是否为对象/接口类型（Allocator 接口）
+        // 在泛型类体内，allocator 可能是类型参数 A，此时也允许，
+        // 具体类型在单态化后的 codegen 阶段解析。
+        let allocator_type = self.infer_expr_type_internal(&alloc_array.allocator)?;
+        match allocator_type {
+            Type::Object(_) | Type::Generic(_, _) | Type::GenericParam(_) => {
+                // 接受任何类/接口实例或类型参数作为分配器。
+            }
+            _ => {
+                return Err(semantic_error_at_loc(
+                    &alloc_array.loc,
+                    format!(
+                        "__cay_alloc_array allocator must be an object, got {}",
+                        allocator_type
+                    ),
+                ));
+            }
+        }
+
+        // 检查 count 是否为整数
+        let size_type = self.infer_expr_type_internal(&alloc_array.size)?;
+        if !size_type.is_integer() {
+            return Err(semantic_error_at_loc(
+                &alloc_array.loc,
+                format!(
+                    "__cay_alloc_array count must be integer, got {}",
+                    size_type
+                ),
+            ));
+        }
+
+        Ok(Type::Array(Box::new(alloc_array.element_type.clone())))
+    }
+
     /// 推断数组初始化表达式类型
     pub(crate) fn infer_array_init_type(
         &mut self,

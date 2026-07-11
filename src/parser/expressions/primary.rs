@@ -96,6 +96,38 @@ pub fn parse_primary(parser: &mut Parser) -> CayResult<Expr> {
             let loc = parser.current_loc();
             parser.advance();
 
+            // 0.5.2.x: 处理内建分配器数组表达式 __cay_alloc_array<T>(allocator, count)
+            if name == "__cay_alloc_array" {
+                if parser.check(&crate::lexer::Token::Lt) {
+                    let type_args = crate::parser::classes::parse_generic_type_args(parser)?;
+                    if type_args.len() != 1 {
+                        return Err(parser.error(
+                            "__cay_alloc_array 需要恰好一个泛型类型参数\n提示: 用法为 __cay_alloc_array<T>(allocator, count)"));
+                    }
+                    parser.consume(
+                        &crate::lexer::Token::LParen,
+                        "期望 '('\n提示: __cay_alloc_array<T> 后应跟 (allocator, count)",
+                    )?;
+                    let args = parse_arguments(parser)?;
+                    parser.consume(
+                        &crate::lexer::Token::RParen,
+                        "期望 ')'\n提示: __cay_alloc_array 参数列表应以 ')' 结束",
+                    )?;
+                    if args.len() != 2 {
+                        return Err(parser.error(
+                            "__cay_alloc_array 需要恰好两个参数\n提示: 用法为 __cay_alloc_array<T>(allocator, count)"));
+                    }
+                    return Ok(Expr::AllocArray(AllocArrayExpr {
+                        element_type: type_args.into_iter().next().unwrap(),
+                        allocator: Box::new(args[0].clone()),
+                        size: Box::new(args[1].clone()),
+                        loc,
+                    }));
+                }
+                return Err(parser.error(
+                    "__cay_alloc_array 必须指定泛型类型参数\n提示: 用法为 __cay_alloc_array<T>(allocator, count)"));
+            }
+
             // 检查是否是方法引用或命名空间限定名: A::B 或 A::B::C
             if parser.check(&crate::lexer::Token::DoubleColon) {
                 let save_pos = parser.pos;

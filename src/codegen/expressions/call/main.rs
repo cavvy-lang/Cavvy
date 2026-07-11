@@ -70,6 +70,7 @@ impl IRGenerator {
                 "__cay_write_ptr" => return self.generate_write_ptr_call(&call.args, &call.loc),
                 "__cay_write_int" => return self.generate_write_int_call(&call.args, &call.loc),
                 "__cay_read_int" => return self.generate_cay_read_int_call(&call.args, &call.loc),
+                "__cay_array_base" => return self.generate_array_base_call(&call.args, &call.loc),
                 _ => {}
             }
 

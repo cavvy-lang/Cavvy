@@ -435,6 +435,7 @@ pub enum Expr {
     InstanceOf(InstanceOfExpr), // instanceof 运算符: obj instanceof Type
     Alloc(AllocExpr),           // 0.5.0.0: 内存分配表达式: __cay_alloc(size)
     Dealloc(DeallocExpr),       // 0.5.0.0: 内存释放表达式: __cay_free(ptr)
+    AllocArray(AllocArrayExpr), // 0.5.2.x: 分配器-backed 数组: __cay_alloc_array<T>(allocator, count)
     NamedArg(NamedArgExpr),     // 命名参数: name=value
 }
 
@@ -459,6 +460,7 @@ impl HasLocation for Expr {
             Expr::InstanceOf(instance) => &instance.loc,
             Expr::Alloc(alloc) => &alloc.loc,
             Expr::Dealloc(dealloc) => &dealloc.loc,
+            Expr::AllocArray(alloc_array) => &alloc_array.loc,
             Expr::NamedArg(named) => &named.loc,
         }
     }
@@ -469,6 +471,17 @@ impl HasLocation for Expr {
 pub struct AllocExpr {
     pub size: Box<Expr>,
     pub align: Option<Box<Expr>>,
+    pub loc: SourceLocation,
+}
+
+/// 0.5.2.x: 分配器-backed 数组分配表达式
+/// 源码形式: __cay_alloc_array<T>(allocator, count)
+/// 在单态化时由 codegen 按 T 的实际大小向 allocator 申请内存并包装成 T[]。
+#[derive(Debug, Clone, Serialize)]
+pub struct AllocArrayExpr {
+    pub element_type: Type,
+    pub allocator: Box<Expr>,
+    pub size: Box<Expr>,
     pub loc: SourceLocation,
 }
 
