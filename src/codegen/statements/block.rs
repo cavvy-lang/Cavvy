@@ -9,6 +9,9 @@ use crate::miette_diagnostic::CayResult;
 impl IRGenerator {
     /// 生成语句块代码（带作用域管理）
     pub fn generate_block(&mut self, block: &Block) -> CayResult<()> {
+        // DWARF 词法块作用域
+        self.enter_debug_lexical_block(block.loc.line, block.loc.column);
+
         // 进入新作用域
         self.scope_manager.enter_scope();
 
@@ -25,6 +28,7 @@ impl IRGenerator {
 
         // 退出作用域
         self.scope_manager.exit_scope();
+        self.exit_debug_lexical_block();
         Ok(())
     }
 

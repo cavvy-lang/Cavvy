@@ -537,6 +537,14 @@ impl IRGenerator {
             "  %{} = alloca {}, align {}",
             llvm_name, var_type, align
         ));
+        // DWARF 调试信息: 声明变量位置（局部变量非参数）
+        self.emit_dbg_declare(
+            &var.name,
+            &llvm_name,
+            &var_type,
+            var.loc.line,
+            None,
+        );
         // 同时存储到旧系统以保持兼容性
         self.var_types.insert(var.name.clone(), var_type.clone());
         // 存储Cavvy类型信息，用于准确的类型推断

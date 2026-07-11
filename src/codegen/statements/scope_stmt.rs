@@ -58,6 +58,9 @@ impl IRGenerator {
         // 生成 scope 入口标签（用于调试和可读性）
         self.emit_line(&format!("; ====== scope {} start ======", scope_id));
 
+        // DWARF 词法块作用域
+        self.enter_debug_lexical_block(stmt.loc.line, stmt.loc.column);
+
         // 在 scope 开始时创建一个新的作用域层级
         // 这使得 scope 内部声明的变量不会与外部冲突
         self.scope_manager.enter_scope();
@@ -78,6 +81,7 @@ impl IRGenerator {
 
         // 弹出 scope 层级
         self.scope_manager.exit_scope();
+        self.exit_debug_lexical_block();
 
         Ok(())
     }

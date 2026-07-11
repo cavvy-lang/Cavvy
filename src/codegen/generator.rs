@@ -1673,6 +1673,8 @@ impl IRGenerator {
                 "  store {} %this, {}* %{}",
                 this_ptr_type, this_ptr_type, this_llvm_name
             ));
+            // DWARF 调试信息: 声明 this 指针
+            self.emit_dbg_declare("this", &this_llvm_name, &this_ptr_type, method.loc.line, None);
             self.var_types
                 .insert("this".to_string(), this_ptr_type.clone());
             // 存储 this 的 Cavvy 类型信息，用于准确的类型推断
@@ -1735,6 +1737,14 @@ impl IRGenerator {
                     "  store {} %{}.{}, {}* %{}",
                     param_type, self.current_class, param.name, param_type, llvm_name
                 ));
+                // DWARF 调试信息: 声明参数变量
+                self.emit_dbg_declare(
+                    &param.name,
+                    &llvm_name,
+                    &param_type,
+                    method.loc.line,
+                    None,
+                );
                 self.var_types
                     .insert(param.name.clone(), param_type.clone());
                 // 存储Cavvy类型信息，用于准确的类型推断
