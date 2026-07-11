@@ -177,9 +177,20 @@ jobs:
         "FULL_ZIP=$fullName" >> $env:GITHUB_OUTPUT
         "CORE_ZIP=$coreName" >> $env:GITHUB_OUTPUT
 
-    - name: Delete previous nightly tag (if exists)
+    - name: Delete previous nightly release and tag (if exists)
       shell: pwsh
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
+        $ErrorActionPreference = "Stop"
+        # 删除已存在的 nightly-latest release（避免旧 release 的 draft 状态被继承）
+        try {
+          gh release delete nightly-latest --yes 2>$null
+          Write-Host "Deleted existing nightly-latest release"
+        } catch {
+          Write-Host "No existing nightly-latest release to delete"
+        }
+        # 删除本地和远程 tag
         git tag -d nightly-latest 2>$null
         git push origin :refs/tags/nightly-latest 2>$null
         Write-Host "Cleaned up old nightly tag"
