@@ -133,7 +133,11 @@ jobs:
         # 复制完整版内容
         Copy-Item -Path "lib/*" -Destination "packaging/full/lib/" -Recurse -Force
         Copy-Item -Path "caylibs/*" -Destination "packaging/full/caylibs/" -Recurse -Force
-        Copy-Item -Path "mingw-minimal/*" -Destination "packaging/full/mingw-minimal/" -Recurse -Force
+        if (Test-Path "mingw-minimal") {
+            Copy-Item -Path "mingw-minimal/*" -Destination "packaging/full/mingw-minimal/" -Recurse -Force
+        } else {
+            Write-Warning "mingw-minimal 目录不存在，已跳过复制（新版工具链不再需要）"
+        }
         Copy-Item -Path "llvm-minimal/*" -Destination "packaging/full/llvm-minimal/" -Recurse -Force
         Copy-Item -Path "$buildDir/cayc.exe" -Destination "packaging/full/" -Force
         Copy-Item -Path "$buildDir/cay-ir.exe" -Destination "packaging/full/" -Force
