@@ -211,6 +211,11 @@ impl IRGenerator {
         // ================================================================
         self.emit_runtime_declarations();
 
+        // DWARF 调试内建函数声明
+        self.emit_raw("declare void @llvm.dbg.declare(metadata, metadata, metadata)");
+        self.emit_raw("declare void @llvm.dbg.value(metadata, metadata, metadata)");
+        self.emit_raw("");
+
         // 插入标记，供 generator.rs 定位声明插入点
         self.emit_raw("; --- END OF HEADER ---");
     }
