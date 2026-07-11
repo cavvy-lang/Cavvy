@@ -335,6 +335,12 @@ pub struct IRGenerator {
     debug_file_node: usize,                  // DIFile 节点编号
     debug_empty_node: usize,                 // 空元组节点编号
     debug_subprograms: Vec<DebugSubprogram>, // 记录所有子程序元数据
+    // DWARF 调试信息增强（per-instruction 级别）
+    pub debug_scope_stack: Vec<usize>,               // 当前调试作用域栈（DISubprogram/DILexicalBlock）
+    debug_locations: Vec<DebugLocation>,              // DILocation 节点列表
+    debug_lexical_blocks: Vec<DebugLexicalBlock>,     // DILexicalBlock 节点列表
+    debug_variables: Vec<DebugVariable>,              // DILocalVariable 节点列表
+    debug_location_cache: HashMap<(usize, usize, usize), usize>, // (line, col, scope) -> node_id
     // 测试模式
     pub test_mode: bool,                     // 是否生成测试入口
     pub test_methods: Vec<(String, String)>, // (类名, 方法名) 列表
@@ -373,6 +379,36 @@ struct DebugSubprogram {
     source_line: usize,  // 源行号
     node_id: usize,      // DISubprogram 节点编号
     type_node_id: usize, // DISubroutineType 节点编号
+}
+
+/// DILocation 元数据节点（指令级别的源位置）
+#[derive(Debug, Clone)]
+struct DebugLocation {
+    line: usize,
+    column: usize,
+    scope_node_id: usize, // DISubprogram 或 DILexicalBlock
+    node_id: usize,
+}
+
+/// DILexicalBlock 元数据节点（作用域嵌套信息）
+#[derive(Debug, Clone)]
+struct DebugLexicalBlock {
+    parent_scope_id: usize,
+    file_node_id: usize,
+    line: usize,
+    column: usize,
+    node_id: usize,
+}
+
+/// DILocalVariable 元数据节点（变量调试信息）
+#[derive(Debug, Clone)]
+struct DebugVariable {
+    name: String,
+    scope_node_id: usize,
+    file_node_id: usize,
+    line: usize,
+    node_id: usize,
+    arg: Option<usize>, // 参数编号（函数参数时使用）
 }
 
 impl IRGenerator {
@@ -430,6 +466,11 @@ impl IRGenerator {
             debug_file_node: 3,
             debug_empty_node: 4,
             debug_subprograms: Vec::new(),
+            debug_scope_stack: Vec::new(),
+            debug_locations: Vec::new(),
+            debug_lexical_blocks: Vec::new(),
+            debug_variables: Vec::new(),
+            debug_location_cache: HashMap::new(),
             test_mode: false,
             test_methods: Vec::new(),
             field_initializers: HashMap::new(),
@@ -631,7 +672,7 @@ impl IRGenerator {
             }
         }
 
-        // DWARF 调试信息: 为 define 行注入 !dbg 注解
+        // DWARF 调试信息: 处理指令级别的 !dbg 注解
         let actual_line = if self.debug_info && line.trim_start().starts_with("define ") {
             let trimmed = line.trim_start();
             if let Some(at_pos) = trimmed.find('@') {
@@ -647,6 +688,8 @@ impl IRGenerator {
                     let sf = self.source_file.clone();
                     let sl = self.source_line;
                     let node_id = self.allocate_debug_subprogram(&func_name, &sf, sl);
+                    // 将 DISubprogram 压入作用域栈，后续指令的 DILocation 引用它
+                    self.debug_scope_stack.push(node_id);
 
                     if let Some(brace_pos) = line.rfind('{') {
                         let before_brace = &line[..brace_pos];
@@ -661,6 +704,33 @@ impl IRGenerator {
             } else {
                 line.to_string()
             }
+        } else if self.debug_info && !self.debug_scope_stack.is_empty() {
+            // 为指令行附加 DILocation 节点引用
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with(';') || trimmed == "}" || trimmed.ends_with(':')
+            {
+                line.to_string()
+            } else {
+                let line_num = self.source_line;
+                let col = self.source_column;
+                let scope_id = *self.debug_scope_stack.last().unwrap();
+                let cache_key = (line_num, col, scope_id);
+                let loc_node_id = if let Some(&id) = self.debug_location_cache.get(&cache_key) {
+                    id
+                } else {
+                    let id = self.debug_node_counter;
+                    self.debug_node_counter += 1;
+                    self.debug_locations.push(DebugLocation {
+                        line: line_num,
+                        column: col,
+                        scope_node_id: scope_id,
+                        node_id: id,
+                    });
+                    self.debug_location_cache.insert(cache_key, id);
+                    id
+                };
+                format!("{}, !dbg !{}", line.trim_end(), loc_node_id)
+            }
         } else {
             line.to_string()
         };
@@ -671,6 +741,11 @@ impl IRGenerator {
         self.code.push_str(&actual_line);
         self.code.push('\n');
         self.current_ir_line += 1;
+
+        // DWARF: 闭合函数时弹出作用域
+        if self.debug_info && line.trim() == "}" && !self.debug_scope_stack.is_empty() {
+            self.debug_scope_stack.pop();
+        }
     }
 
     /// 发射代码但不添加缩进（用于全局声明）
@@ -687,9 +762,8 @@ impl IRGenerator {
             }
         }
 
-        // DWARF 调试信息: 为 define 行注入 !dbg 注解
-        if self.debug_info && line.trim_start().starts_with("define ") {
-            // 提取函数名: "define <type> @<name>(...)" -> "<name>"
+        // DWARF 调试信息: 处理指令级别的 !dbg 注解
+        let annotated_line = if self.debug_info && line.trim_start().starts_with("define ") {
             let trimmed = line.trim_start();
             if let Some(at_pos) = trimmed.find('@') {
                 let after_at = &trimmed[at_pos + 1..];
@@ -699,16 +773,14 @@ impl IRGenerator {
                     after_at.to_string()
                 };
 
-                // 查找该函数是否已分配子程序节点
-                // 检查是否来自运行时（没有源文件位置），跳过
                 let has_source = !self.source_file.is_empty();
 
                 if has_source {
                     let sf = self.source_file.clone();
                     let sl = self.source_line;
                     let node_id = self.allocate_debug_subprogram(&func_name, &sf, sl);
+                    self.debug_scope_stack.push(node_id);
 
-                    // 在 { 之前注入 !dbg !N
                     if let Some(brace_pos) = line.rfind('{') {
                         let before_brace = &line[..brace_pos];
                         let after_brace = &line[brace_pos..];
@@ -718,14 +790,53 @@ impl IRGenerator {
                         ));
                         self.current_ir_line += 1;
                         return;
+                    } else {
+                        line.to_string()
                     }
+                } else {
+                    line.to_string()
                 }
+            } else {
+                line.to_string()
             }
-        }
+        } else if self.debug_info && !self.debug_scope_stack.is_empty() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with(';') || trimmed == "}" || trimmed.ends_with(':')
+            {
+                line.to_string()
+            } else {
+                let line_num = self.source_line;
+                let col = self.source_column;
+                let scope_id = *self.debug_scope_stack.last().unwrap();
+                let cache_key = (line_num, col, scope_id);
+                let loc_node_id = if let Some(&id) = self.debug_location_cache.get(&cache_key) {
+                    id
+                } else {
+                    let id = self.debug_node_counter;
+                    self.debug_node_counter += 1;
+                    self.debug_locations.push(DebugLocation {
+                        line: line_num,
+                        column: col,
+                        scope_node_id: scope_id,
+                        node_id: id,
+                    });
+                    self.debug_location_cache.insert(cache_key, id);
+                    id
+                };
+                format!("{}, !dbg !{}", line.trim_end(), loc_node_id)
+            }
+        } else {
+            line.to_string()
+        };
 
-        self.output.push_str(line);
+        self.output.push_str(&annotated_line);
         self.output.push('\n');
         self.current_ir_line += 1;
+
+        // DWARF: 闭合函数时弹出作用域
+        if self.debug_info && line.trim() == "}" && !self.debug_scope_stack.is_empty() {
+            self.debug_scope_stack.pop();
+        }
     }
 
     /// 设置当前源位置
@@ -2502,6 +2613,74 @@ impl IRGenerator {
         self.test_mode = true;
     }
 
+    /// 推送调试作用域节点（DISubprogram 或 DILexicalBlock）
+    /// 后续指令的 DILocation 将以此节点为 scope
+    pub fn push_debug_scope(&mut self, node_id: usize) {
+        self.debug_scope_stack.push(node_id);
+    }
+
+    /// 弹出当前调试作用域
+    pub fn pop_debug_scope(&mut self) -> Option<usize> {
+        self.debug_scope_stack.pop()
+    }
+
+    /// 进入词法块作用域：创建 DILexicalBlock 并入栈
+    pub fn enter_debug_lexical_block(&mut self, line: usize, column: usize) {
+        if !self.debug_info {
+            return;
+        }
+        let parent_scope_id = *self.debug_scope_stack.last().unwrap_or(&0);
+        let node_id = self.debug_node_counter;
+        self.debug_node_counter += 1;
+        self.debug_lexical_blocks.push(DebugLexicalBlock {
+            parent_scope_id,
+            file_node_id: self.debug_file_node,
+            line,
+            column,
+            node_id,
+        });
+        self.debug_scope_stack.push(node_id);
+    }
+
+    /// 退出词法块作用域
+    pub fn exit_debug_lexical_block(&mut self) {
+        if !self.debug_info {
+            return;
+        }
+        self.debug_scope_stack.pop();
+    }
+
+    /// 为变量发射 dbg.declare 内建调用
+    /// 使调试器能定位变量的栈上地址
+    /// `arg_num`: 函数参数编号（1-indexed），None 表示非参数变量
+    pub fn emit_dbg_declare(
+        &mut self,
+        var_name: &str,
+        llvm_name: &str,
+        llvm_type: &str,
+        line: usize,
+        arg_num: Option<usize>,
+    ) {
+        if !self.debug_info || self.debug_scope_stack.is_empty() {
+            return;
+        }
+        let scope_id = *self.debug_scope_stack.last().unwrap();
+        let var_node_id = self.debug_node_counter;
+        self.debug_node_counter += 1;
+        self.debug_variables.push(DebugVariable {
+            name: var_name.to_string(),
+            scope_node_id: scope_id,
+            file_node_id: self.debug_file_node,
+            line,
+            node_id: var_node_id,
+            arg: arg_num,
+        });
+        self.emit_line(&format!(
+            "call void @llvm.dbg.declare(metadata {}* %{}, metadata !{}, metadata !DIExpression())",
+            llvm_type, llvm_name, var_node_id
+        ));
+    }
+
     /// 为函数定义分配 DWARF 子程序元数据节点
     /// 返回用于 `!dbg !N` 注解的节点编号
     pub fn allocate_debug_subprogram(
@@ -2604,6 +2783,52 @@ impl IRGenerator {
                 cu_node, sp_file_node, sp.source_line,
                 sp.type_node_id, sp.source_line, cu_node
             ));
+        }
+
+        // 发射 DILexicalBlock 节点（必须在 DILocation 之前）
+        for lb in &self.debug_lexical_blocks {
+            self.output.push_str(&format!(
+                "!{} = !DILexicalBlock(scope: !{}, file: !{}, line: {}, column: {})\n",
+                lb.node_id, lb.parent_scope_id, lb.file_node_id, lb.line, lb.column
+            ));
+        }
+        if !self.debug_lexical_blocks.is_empty() {
+            self.output.push('\n');
+        }
+
+        // 发射 DILocation 节点（指令级别的源位置映射）
+        for loc in &self.debug_locations {
+            self.output.push_str(&format!(
+                "!{} = !DILocation(line: {}, column: {}, scope: !{})\n",
+                loc.node_id, loc.line, loc.column, loc.scope_node_id
+            ));
+        }
+        if !self.debug_locations.is_empty() {
+            self.output.push('\n');
+        }
+
+        // 发射 DILocalVariable 节点（变量调试信息）
+        if !self.debug_variables.is_empty() {
+            // 分配一个通用 DIBasicType 占位节点
+            let void_type_node = self.debug_node_counter;
+            self.debug_node_counter += 1;
+            self.output.push_str(&format!(
+                "!{} = !DIBasicType(name: \"int\", size: 32, encoding: DW_ATE_signed)\n",
+                void_type_node
+            ));
+
+            for dv in &self.debug_variables {
+                let arg_str = if let Some(arg_num) = dv.arg {
+                    format!(", arg: {}", arg_num)
+                } else {
+                    String::new()
+                };
+                self.output.push_str(&format!(
+                    "!{} = !DILocalVariable(name: \"{}\", scope: !{}, file: !{}, line: {}, type: !{}{})\n",
+                    dv.node_id, dv.name, dv.scope_node_id, dv.file_node_id, dv.line, void_type_node, arg_str
+                ));
+            }
+            self.output.push('\n');
         }
     }
 }
