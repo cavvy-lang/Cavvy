@@ -511,7 +511,7 @@ public class Optional<T> {
 
 #### 5.3.x 智能指针与资源管理
 
-- [x] **UniquePtr `<T>`** - 独占所有权，可移动（move），不可复制，自动调用析构
+- [X] **UniquePtr `<T>`** - 独占所有权，可移动（move），不可复制，自动调用析构
 
   ```java
   public class UniquePtr<T> {
@@ -536,7 +536,7 @@ public class Optional<T> {
       // 析构时自动 delete 管理的对象
   }
   ```
-- [x] **ScopedPtr `<T>`** - 栈作用域指针，禁止堆分配
+- [X] **ScopedPtr `<T>`** - 栈作用域指针，禁止堆分配
 
   ```java
   // 编译器保证 ScopedPtr 仅在栈上创建
@@ -548,7 +548,7 @@ public class Optional<T> {
       public T& operator*();
   }
   ```
-- [x] **Rc `<T>`（引用计数）**- 循环依赖检测（debug 模式），为 G2 的借用检查做过渡
+- [X] **Rc `<T>`（引用计数）**- 循环依赖检测（debug 模式），为 G2 的借用检查做过渡
 
   ```java
   public class Rc<T> {
@@ -562,7 +562,7 @@ public class Optional<T> {
       // 启用 --detect-cycles 编译选项时插入运行时检测代码
   }
   ```
-- [x] **弱引用基础** - `WeakPtr<T>`，解决循环引用（此时需手动打破循环）
+- [X] **弱引用基础** - `WeakPtr<T>`，解决循环引用（此时需手动打破循环）
 
   ```java
   public class WeakPtr<T> {
@@ -571,13 +571,6 @@ public class Optional<T> {
       public bool isExpired();                     // 原始对象是否已释放
   }
   ```
-
-> **实现说明（0.5.3.x 已完成）**：四种智能指针已在 `caylibs/SmartPtr.cay` 实现，
-> 并依托编译器级自动 RAII 在作用域退出时调用 `__dtor`。`UniquePtr`/`ScopedPtr`/`Rc`
-> 的 `__dtor` 由编译器在泛型特化时自动注入对托管 `T` 的析构与 `free`；`Optional<T>`
-> 同样注入了条件析构，确保包裹 `Rc<T>` 时引用计数正确递减。`Rc` 使用原子引用计数
->（`atomicrmw`），`WeakPtr` 不增加计数且 `upgrade()` 在对象仍存活时原子递增计数。
-> `@stack_only` 属性尚无属性系统支持，暂以文档约定替代；循环引用检测为 debug 占位。
 
 <details>
 <summary>智能指针与0.6.1.x的错误处理集成</summary>
