@@ -2510,6 +2510,7 @@ impl IRGenerator {
             defines: config.defines.clone(),
             undefines: config.undefines.clone(),
             obfuscate: config.obfuscate,
+            detect_cycles: config.detect_cycles,
         };
         self.platform_config = Some(platform_config);
     }

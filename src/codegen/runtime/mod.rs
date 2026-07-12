@@ -93,6 +93,14 @@ impl IRGenerator {
                 }
                 _ => {}
             }
+            // ROADMAP 5.3.x: Rc 循环引用检测运行时函数声明
+            if config.detect_cycles {
+                declarations.push_str("declare void @__cay_rc_set_detect(i32)\n");
+                declarations.push_str("declare void @__cay_rc_register(i8*, i8*)\n");
+                declarations.push_str("declare void @__cay_rc_unregister(i8*)\n");
+                declarations.push_str("declare void @__cay_rc_edge_add(i8*, i8*)\n");
+                declarations.push_str("declare void @__cay_rc_check_cycle(i8*)\n");
+            }
             declarations
         } else if self.target_triple.contains("windows") || self.target_triple.contains("mingw32") {
             "declare void @SetConsoleOutputCP(i32)\n".to_string()

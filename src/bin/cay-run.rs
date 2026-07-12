@@ -27,6 +27,7 @@ struct RunOptions {
     undefines: Vec<String>,      // -U/--undefine: 取消预定义宏
     use_embedded_llc: bool,      // --use-embedded-llc: 使用内嵌 llc
     include_paths: Vec<String>,  // -I: 额外包含路径（供 #include/#include_c 搜索）
+    detect_cycles: bool,         // --detect-cycles: 启用 Rc 循环引用检测
 }
 
 impl Default for RunOptions {
@@ -46,6 +47,7 @@ impl Default for RunOptions {
             undefines: Vec::new(),
             use_embedded_llc: false,
             include_paths: Vec::new(),
+            detect_cycles: false,
         }
     }
 }
@@ -64,6 +66,7 @@ fn print_usage() {
     println!("  --no-run               只编译不运行");
     println!("  --obfuscate            混淆字节码（仅对.cay文件）");
     println!("  --obfuscate-level <l>  混淆级别: light, normal, deep (默认: normal)");
+    println!("  --detect-cycles        启用 Rc<T> 循环引用运行时检测");
     println!("  -l<lib>                链接指定库");
     println!("  -L<path>               添加库搜索路径");
     println!("  -I<path>               添加头文件搜索路径（供 #include/#include_c 使用）");
@@ -141,6 +144,9 @@ fn parse_args(args: &[String]) -> Result<(RunOptions, String), String> {
                 }
                 "--no-run" => {
                     options.no_run = true;
+                }
+                "--detect-cycles" => {
+                    options.detect_cycles = true;
                 }
                 "--obfuscate" => {
                     options.obfuscate = true;
@@ -299,6 +305,7 @@ fn compile_cay_to_ir(source_path: &str, options: &RunOptions) -> Result<String, 
         debug: false,
         include_paths: options.include_paths.clone(),
         test_mode: false,
+        detect_cycles: options.detect_cycles,
     };
 
     let compiler = Compiler::with_options(compiler_options);

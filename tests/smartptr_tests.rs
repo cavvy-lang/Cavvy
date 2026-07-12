@@ -3,7 +3,9 @@
 //! 覆盖 ROADMAP 5.3.x 四种智能指针：UniquePtr、ScopedPtr、Rc、WeakPtr。
 
 mod common;
-use common::compile_and_run_eol;
+use common::{
+    compile_and_run_eol, compile_and_run_eol_with_features, compile_eol_expect_error,
+};
 
 #[test]
 fn test_smartptr_basic() {
@@ -98,6 +100,55 @@ fn test_smartptr_weak() {
     assert!(
         output.contains("dtor 1"),
         "Managed object should be destroyed after scope exit, got: {}",
+        output
+    );
+}
+
+#[test]
+fn test_stack_only_ok() {
+    let output = compile_and_run_eol("examples/test_stack_only.cay")
+        .expect("@stack_only valid usage should compile and run");
+
+    assert!(
+        output.contains("value=42"),
+        "StackBox should dereference managed Widget, got: {}",
+        output
+    );
+    assert!(
+        output.contains("dtor 42"),
+        "Widget destructor should be called when StackBox leaves scope, got: {}",
+        output
+    );
+}
+
+#[test]
+fn test_stack_only_heap_error() {
+    let error = compile_eol_expect_error("examples/test_stack_only_error.cay")
+        .expect("@stack_only class allocated with new should fail to compile");
+
+    assert!(
+        error.contains("@stack_only") && error.contains("new"),
+        "Error message should mention @stack_only and new, got: {}",
+        error
+    );
+}
+
+#[test]
+fn test_rc_cycle_detection() {
+    let output = compile_and_run_eol_with_features(
+        "examples/test_rc_cycle.cay",
+        &["--detect-cycles"],
+    )
+    .expect("Rc cycle detection example should compile and run");
+
+    assert!(
+        output.contains("refcount=2"),
+        "Program should print refcount=2, got: {}",
+        output
+    );
+    assert!(
+        output.contains("potential Rc reference cycle detected"),
+        "--detect-cycles should report potential cycle, got: {}",
         output
     );
 }

@@ -41,6 +41,8 @@ pub enum Token {
     AtTest,
     #[token("@FreeFunction")]
     AtFreeFunction,
+    #[token("@stack_only")]
+    AtStackOnly,
     #[token("@")]
     At,
     #[token("class")]
@@ -1079,6 +1081,7 @@ pub fn token_name(token: &Token) -> &'static str {
         Token::AtOverride => "@Override",
         Token::AtTest => "@Test",
         Token::AtFreeFunction => "@FreeFunction",
+        Token::AtStackOnly => "@stack_only",
         Token::At => "@",
         Token::Class => "class",
         Token::Struct => "struct",

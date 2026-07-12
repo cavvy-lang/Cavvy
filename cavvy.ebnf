@@ -1,7 +1,7 @@
 (*
  * Cavvy 编程语言语法规范 - EBNF 表示
- * 版本: 5.3.0
- * 构建号: 37
+ * 版本: 5.3.3
+ * 构建号: 38
  *
  * 本文件使用扩展巴科斯-瑙尔范式 (EBNF) 描述 Cavvy 编程语言的语法结构。
  * 符号约定:
@@ -189,6 +189,13 @@ annotation_argument = identifier, "=", expression
  *   @main
  *   public class MainClass {
  *       public static void main() { }
+ *   }
+ *
+ * @stack_only 注解示例（ROADMAP 5.3.x 智能指针）：
+ *   @stack_only
+ *   public class ScopedPtr<T> {
+ *       private long __owned;
+ *       ...
  *   }
  *)
 

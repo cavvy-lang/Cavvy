@@ -103,6 +103,8 @@ pub struct ClassInfo {
     /// C++ 互操作类：对象无 16 字节头，字段从 offset 0 起，与普通 C++ 类布局一致。
     /// 此类不生成 vtable，instanceof/虚函数派发对其不可用。
     pub is_interop: bool,
+    /// @stack_only 类：禁止通过 new 在堆上分配，只能作为局部变量/值类型使用。
+    pub is_stack_only: bool,
     pub vtable_layout: Option<VTableLayout>, // vtable 布局信息
 }
 
@@ -933,6 +935,7 @@ impl TypeRegistry {
             is_abstract: false,
             is_final: false,
             is_interop: false,
+            is_stack_only: false,
             vtable_layout: None,
         };
 
@@ -1002,6 +1005,7 @@ impl TypeRegistry {
             is_abstract: false,
             is_final: true, // String 是 final 类，不能被继承
             is_interop: false,
+            is_stack_only: false,
             vtable_layout: None,
         };
 
@@ -1219,6 +1223,7 @@ impl TypeRegistry {
             is_abstract: false,
             is_final: true, // Integer 是 final 类，不能被继承
             is_interop: false,
+            is_stack_only: false,
             vtable_layout: None,
         };
 

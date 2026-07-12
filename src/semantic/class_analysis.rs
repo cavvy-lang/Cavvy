@@ -2,7 +2,7 @@
 
 use super::analyzer::SemanticAnalyzer;
 use crate::ast::{ClassMember, MethodDecl, Modifier, Program};
-use crate::miette_diagnostic::{CayResult, ErrorCodes, semantic_error, semantic_error_with_file};
+use crate::miette_diagnostic::{CayResult, ErrorCodes, SourceLocation, semantic_error, semantic_error_with_file};
 use crate::types::{ClassInfo, FieldInfo, MethodInfo, ParameterInfo, Type};
 
 impl SemanticAnalyzer {
@@ -148,6 +148,7 @@ impl SemanticAnalyzer {
             let is_abstract = class.modifiers.contains(&Modifier::Abstract);
             let is_final = class.modifiers.contains(&Modifier::Final);
             let is_interop = class.modifiers.contains(&Modifier::Interop);
+            let is_stack_only = class.modifiers.contains(&Modifier::StackOnly);
             let mut class_info = ClassInfo {
                 name: class.name.clone(),
                 type_params: class
@@ -174,6 +175,7 @@ impl SemanticAnalyzer {
                 is_abstract,
                 is_final,
                 is_interop,
+                is_stack_only,
                 vtable_layout: None,
             };
 
@@ -263,6 +265,33 @@ impl SemanticAnalyzer {
             } else {
                 self.type_registry
                     .register_class(class_info, file, line, class.loc.column)?;
+            }
+
+            // 验证 @stack_only 只能用于类声明，不能用于成员。
+            for member in &class.members {
+                let has_stack_only = match member {
+                    ClassMember::Method(m) => m.modifiers.contains(&Modifier::StackOnly),
+                    ClassMember::Field(f) => f.modifiers.contains(&Modifier::StackOnly),
+                    ClassMember::Constructor(c) => c.modifiers.contains(&Modifier::StackOnly),
+                    ClassMember::Destructor(d) => d.modifiers.contains(&Modifier::StackOnly),
+                    _ => false,
+                };
+                if has_stack_only {
+                    let (member_kind, loc) = match member {
+                        ClassMember::Method(m) => ("方法", m.loc.clone()),
+                        ClassMember::Field(f) => ("字段", f.loc.clone()),
+                        ClassMember::Constructor(c) => ("构造函数", c.loc.clone()),
+                        ClassMember::Destructor(d) => ("析构函数", d.loc.clone()),
+                        _ => ("成员", SourceLocation::default()),
+                    };
+                    return Err(semantic_error_with_file(
+                        ErrorCodes::SEMANTIC_INVALID_OPERATION,
+                        self.current_file.clone(),
+                        loc.line,
+                        loc.column,
+                        format!("@stack_only 只能用于类声明，不能用于{}", member_kind),
+                    ));
+                }
             }
         }
         Ok(())

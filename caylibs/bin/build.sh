@@ -22,6 +22,7 @@ SOURCES=(
     "$SRC_DIR/memory.c"
     "$SRC_DIR/array_ops.c"
     "$SRC_DIR/allocator.c"
+    "$SRC_DIR/rc_cycle.c"
 )
 
 CFLAGS="-O2 -std=c11 -Wall -Wextra -fPIC -ffunction-sections -fdata-sections"

@@ -43,6 +43,8 @@ pub struct CompilerOptions {
     pub include_paths: Vec<String>,
     /// 测试模式：生成 __cavvy_test_main 入口，自动调用所有 @Test 方法
     pub test_mode: bool,
+    /// 启用 Rc<T> 循环引用运行时检测（--detect-cycles）。
+    pub detect_cycles: bool,
 }
 
 impl Default for CompilerOptions {
@@ -57,6 +59,7 @@ impl Default for CompilerOptions {
             debug: false,
             include_paths: Vec::new(),
             test_mode: false,
+            detect_cycles: false,
         }
     }
 }

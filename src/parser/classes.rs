@@ -783,6 +783,10 @@ pub fn parse_modifiers(parser: &mut Parser) -> CayResult<Vec<Modifier>> {
                 modifiers.push(Modifier::FreeFunction);
                 parser.advance();
             }
+            Token::AtStackOnly => {
+                modifiers.push(Modifier::StackOnly);
+                parser.advance();
+            }
             _ => break,
         }
     }

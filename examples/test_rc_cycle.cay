@@ -1,0 +1,33 @@
+/**
+ * test_rc_cycle.cay - Rc<T> 循环引用检测测试
+ *
+ * 使用 --detect-cycles 编译时，当 Rc 被 drop 后强引用计数仍大于 0，
+ * 运行时输出潜在循环引用警告。
+ */
+
+#include <SmartPtr.cay>
+
+using std::Rc;
+
+public class Node {
+    public int id;
+
+    public Node(int id) {
+        this.id = id;
+    }
+
+    ~Node() {
+        println("dtor " + this.id);
+    }
+}
+
+public int main() {
+    Rc<Node> a = Rc<Node>.fromRaw(new Node(1));
+    {
+        Rc<Node> b = a.clone();
+        println("refcount=" + b.refCount());
+        // b 被 drop，refcount 从 2 降到 1；--detect-cycles 报告警告
+    }
+    println("after inner scope");
+    return 0;
+}

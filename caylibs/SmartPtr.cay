@@ -114,6 +114,7 @@ public class UniquePtr<T> {
 // ScopedPtr<T> - 作用域内独占所有权（不可转移）
 // ============================================================
 
+@stack_only
 public class ScopedPtr<T> {
     /** 托管对象指针，以 long 形式存储；0 表示空。 */
     private long __owned;
@@ -167,7 +168,7 @@ public class ScopedPtr<T> {
 public class Rc<T> {
     /** 托管对象指针（冗余缓存，便于 get）。内部使用。 */
     public long __owned;
-    /** 指向 16 字节控制块的指针：[i64 refcount, i64 object_ptr]。内部使用。 */
+    /** 指向 24 字节控制块的指针：[i64 refcount, i64 weak_count, i64 object_ptr]。内部使用。 */
     public long __refcount_ptr;
 
     /**
@@ -182,23 +183,27 @@ public class Rc<T> {
         }
         result.__owned = owned;
 
-        // 分配控制块：refcount + object_ptr
+        // 分配控制块：refcount + weak_count + object_ptr
         long block = 0;
         __ir {
-            %p = call i8* @calloc(i64 1, i64 16)
+            %p = call i8* @calloc(i64 1, i64 24)
             %b = ptrtoint i8* %p to i64
             store i64 %b, i64* %block
         }
         result.__refcount_ptr = block;
 
-        // 初始化 refcount = 1，object_ptr = owned
+        // 初始化 refcount = 1，weak_count = 0，object_ptr = owned
         __ir {
             %block_i64 = load i64, i64* %block
             %block_ptr = inttoptr i64 %block_i64 to i8*
             %rc_ptr = bitcast i8* %block_ptr to i64*
             store i64 1, i64* %rc_ptr
 
-            %obj_field = getelementptr i8, i8* %block_ptr, i64 8
+            %weak_field = getelementptr i8, i8* %block_ptr, i64 8
+            %weak_field_ptr = bitcast i8* %weak_field to i64*
+            store i64 0, i64* %weak_field_ptr
+
+            %obj_field = getelementptr i8, i8* %block_ptr, i64 16
             %obj_field_ptr = bitcast i8* %obj_field to i64*
             %owned_i64 = load i64, i64* %owned
             store i64 %owned_i64, i64* %obj_field_ptr
@@ -253,9 +258,8 @@ public class Rc<T> {
     }
 
     /**
-     * 析构函数体为空；编译器注入：
-     *   old = atomicrmw sub refcount, 1
-     *   if (old == 1) { call T.__dtor; free(obj); free(block); }
+     * 析构函数体为空；编译器注入 24 字节控制块 [refcount, weak_count, object_ptr] 的
+     * 引用计数递减、条件析构与弱引用感知释放。
      */
     ~Rc() {
     }
@@ -270,11 +274,20 @@ public class WeakPtr<T> {
     private long __refcount_ptr;
 
     /**
-     * 从 Rc 构造弱引用，不增加引用计数。
+     * 从 Rc 构造弱引用，不增加引用计数但递增弱引用计数。
      */
     public static WeakPtr<T> fromRc(Rc<T> rc) {
         WeakPtr<T> result = new WeakPtr<T>();
         result.__refcount_ptr = rc.__refcount_ptr;
+
+        long rc_ptr = result.__refcount_ptr;
+        __ir {
+            %rc_i64 = load i64, i64* %rc_ptr
+            %block_ptr = inttoptr i64 %rc_i64 to i8*
+            %weak_field = getelementptr i8, i8* %block_ptr, i64 8
+            %weak_field_ptr = bitcast i8* %weak_field to i64*
+            %old = atomicrmw add i64* %weak_field_ptr, i64 1 seq_cst
+        }
         return result;
     }
 
@@ -324,13 +337,20 @@ public class WeakPtr<T> {
         __ir {
             %rc_i64_c = load i64, i64* %rc
             %rc_ptr_c = inttoptr i64 %rc_i64_c to i64*
-            %obj_field = getelementptr i8, i8* %rc_ptr_c, i64 8
+            %obj_field = getelementptr i8, i8* %rc_ptr_c, i64 16
             %obj_field_ptr = bitcast i8* %obj_field to i64*
             %obj_i64 = load i64, i64* %obj_field_ptr
             store i64 %obj_i64, i64* %owned
         }
         result.__owned = owned;
         return Optional<Rc<T>>.of(result);
+    }
+
+    /**
+     * 析构函数体为空；编译器注入弱引用计数递减。
+     * 当弱引用计数归零且强引用计数为 0 时释放控制块。
+     */
+    ~WeakPtr() {
     }
 }
 

@@ -248,6 +248,7 @@ pub enum Modifier {
     Override,     // @Override 注解，标记方法重写
     Test,         // @Test 注解，标记测试方法
     FreeFunction, // @FreeFunction 注解，将类方法导出为可直接调用的顶层函数
+    StackOnly,    // @stack_only 注解，禁止类被堆分配
 }
 
 #[derive(Debug, Clone, Serialize)]

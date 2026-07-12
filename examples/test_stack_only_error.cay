@@ -1,0 +1,21 @@
+/**
+ * test_stack_only_error.cay - @stack_only 错误用法测试
+ *
+ * 从类外部使用 new 分配 @stack_only 类应触发编译错误。
+ */
+
+@stack_only
+public class StackOnlyClass {
+    public int x;
+
+    public StackOnlyClass() {
+        this.x = 1;
+    }
+}
+
+public int main() {
+    // 错误：@stack_only 类不能在堆上分配
+    StackOnlyClass obj = new StackOnlyClass();
+    println("x=" + obj.x);
+    return 0;
+}

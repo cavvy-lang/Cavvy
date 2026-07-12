@@ -10,6 +10,8 @@ pub struct PlatformConfig {
     pub defines: Vec<String>,
     pub undefines: Vec<String>,
     pub obfuscate: bool,
+    /// 启用 Rc<T> 循环引用运行时检测（--detect-cycles）。
+    pub detect_cycles: bool,
 }
 
 impl PlatformConfig {
@@ -21,6 +23,7 @@ impl PlatformConfig {
             defines: Vec::new(),
             undefines: Vec::new(),
             obfuscate: false,
+            detect_cycles: false,
         }
     }
 
@@ -44,6 +47,15 @@ impl PlatformConfig {
     /// 生成平台特定的运行时声明
     pub fn generate_platform_declarations(&self) -> String {
         let mut declarations = String::new();
+
+        // Rc 循环引用检测运行时函数声明
+        if self.detect_cycles {
+            declarations.push_str("declare void @__cay_rc_set_detect(i32)\n");
+            declarations.push_str("declare void @__cay_rc_register(i8*, i8*)\n");
+            declarations.push_str("declare void @__cay_rc_unregister(i8*)\n");
+            declarations.push_str("declare void @__cay_rc_edge_add(i8*, i8*)\n");
+            declarations.push_str("declare void @__cay_rc_check_cycle(i8*)\n");
+        }
 
         match self.target_os.as_str() {
             "windows" => {
@@ -77,6 +89,11 @@ impl PlatformConfig {
     /// 生成平台特定的初始化代码
     pub fn generate_platform_init(&self) -> String {
         let mut code = String::new();
+
+        // 在 main 入口最开头启用 Rc 循环引用检测
+        if self.detect_cycles {
+            code.push_str("  call void @__cay_rc_set_detect(i32 1)\n");
+        }
 
         match self.target_os.as_str() {
             "windows" => {
@@ -121,6 +138,11 @@ impl PlatformCodeGenerator {
     /// 生成平台特定的初始化代码
     pub fn generate_platform_init(&self) -> String {
         let mut code = String::new();
+
+        if self.config.detect_cycles {
+            code.push_str("  ; Enable Rc cycle detection\n");
+            code.push_str("  call void @__cay_rc_set_detect(i32 1)\n");
+        }
 
         match self.config.target_os.as_str() {
             "windows" => {

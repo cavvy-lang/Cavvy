@@ -451,5 +451,6 @@ fn modifier_str(m: &cavvy::ast::Modifier) -> &'static str {
         cavvy::ast::Modifier::Override => "override",
         cavvy::ast::Modifier::Test => "@Test",
         cavvy::ast::Modifier::FreeFunction => "@FreeFunction",
+        cavvy::ast::Modifier::StackOnly => "@stack_only",
     }
 }

@@ -1,0 +1,33 @@
+/**
+ * test_stack_only.cay - @stack_only 属性集成测试
+ *
+ * 验证 @stack_only 类可以在其作用域内通过工厂方法创建局部实例，
+ * 并在作用域退出时调用析构函数释放托管资源。
+ */
+
+#include <SmartPtr.cay>
+
+using std::ScopedPtr;
+
+public class Widget {
+    public int value;
+
+    public Widget(int v) {
+        this.value = v;
+    }
+
+    public int getValue() {
+        return this.value;
+    }
+
+    ~Widget() {
+        println("dtor " + this.value);
+    }
+}
+
+public int main() {
+    Widget w = new Widget(42);
+    ScopedPtr<Widget> box = ScopedPtr<Widget>.fromRaw(w);
+    println("value=" + box.get().getValue());
+    return 0;
+}

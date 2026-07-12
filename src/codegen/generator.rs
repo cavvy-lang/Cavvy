@@ -11,6 +11,8 @@ enum SmartPtrKind {
     Owned,
     /// 引用计数指针：__dtor 原子递减引用计数，归零时释放对象与计数块。
     Rc,
+    /// 弱引用指针：__dtor 递减弱引用计数，归零且强引用计数为 0 时释放计数块。
+    WeakPtr,
     /// 可选值容器：__dtor 在 hasValue 为真时析构 value 字段。
     Optional,
 }
@@ -119,21 +121,24 @@ impl PlatformAbstraction {
 
     /// 生成平台特定的初始化代码
     pub fn generate_platform_init(&self) -> String {
+        let mut init = String::new();
+
         match self.target_os.as_str() {
             "windows" => {
                 if self.features.contains(&"console_utf8".to_string()) {
-                    return format!("  call void @SetConsoleOutputCP(i32 {})\n", UTF8_CODEPAGE);
+                    init.push_str(&format!("  call void @SetConsoleOutputCP(i32 {})\n", UTF8_CODEPAGE));
                 }
             }
             "linux" | "macos" => {
                 // Linux/macOS 使用 setlocale 设置 UTF-8
                 if self.features.contains(&"console_utf8".to_string()) {
-                    return "  call void @setlocale(i32 0, i8* getelementptr inbounds ([6 x i8], [6 x i8]* @.str.locale, i32 0, i32 0))\n".to_string();
+                    init.push_str("  call void @setlocale(i32 0, i8* getelementptr inbounds ([6 x i8], [6 x i8]* @.str.locale, i32 0, i32 0))\n");
                 }
             }
             _ => {}
         }
-        String::new()
+
+        init
     }
 
     /// 生成平台特定的运行时声明
@@ -2283,6 +2288,7 @@ impl IRGenerator {
             "UniquePtr" | "std::UniquePtr" => SmartPtrKind::Owned,
             "ScopedPtr" | "std::ScopedPtr" => SmartPtrKind::Owned,
             "Rc" | "std::Rc" => SmartPtrKind::Rc,
+            "WeakPtr" | "std::WeakPtr" => SmartPtrKind::WeakPtr,
             "Optional" | "std::Optional" => SmartPtrKind::Optional,
             _ => return Ok(()),
         };
@@ -2311,6 +2317,9 @@ impl IRGenerator {
             }
             SmartPtrKind::Rc => {
                 self.emit_rc_drop_injection(class_name, &t_type)?;
+            }
+            SmartPtrKind::WeakPtr => {
+                self.emit_weakptr_drop_injection(class_name)?;
             }
             SmartPtrKind::Optional => {
                 self.emit_optional_drop_injection(class_name, &t_type)?;
@@ -2399,22 +2408,9 @@ impl IRGenerator {
 
     /// 为 `Rc<T>` 注入引用计数递减与条件释放。
     ///
-    /// 生成 IR（概念）：
-    /// ```llvm
-    /// %rc_i64 = load i64, i64* %__refcount_ptr_field
-    /// %rc      = inttoptr i64 %rc_i64 to i64*
-    /// %old     = atomicrmw sub i64* %rc, i64 1 seq_cst
-    /// %should_free = icmp eq i64 %old, 1
-    /// br i1 %should_free, label %rc.free, label %rc.end
-    /// rc.free:
-    ///   %obj_i64 = load i64, i64* %__owned_field
-    ///   %obj     = inttoptr i64 %obj_i64 to i8*
-    ///   call void @T.__dtor(i8* %obj)   ; 若 T 有析构函数
-    ///   call void @free(i8* %obj)
-    ///   call void @free(i8* %rc_i8)
-    ///   br label %rc.end
-    /// rc.end:
-    /// ```
+    /// 控制块布局：[i64 refcount, i64 weak_count, i64 object_ptr]。
+    /// 当强引用计数归零时：调用 T.__dtor、free(obj)，并在 weak_count 为 0 时释放控制块。
+    /// 当强引用计数仍大于 0 时：调用 `__cay_rc_check_cycle` 进行 best-effort 循环检测。
     fn emit_rc_drop_injection(
         &mut self,
         class_name: &str,
@@ -2471,27 +2467,52 @@ impl IRGenerator {
             should_free, old_count
         ));
         let free_label = self.new_label("rc.free");
+        let check_cycle_label = self.new_label("rc.check");
         self.emit_line(&format!(
             "  br i1 {}, label %{}, label %{}",
-            should_free, free_label, end_label
+            should_free, free_label, check_cycle_label
         ));
         self.emit_line(&format!("{}:", free_label));
 
-        // 加载托管对象指针。
-        let obj_field_gep = self.new_temp();
+        // 强引用归零：注销运行时跟踪（仅在 --detect-cycles 时）。
+        let detect_enabled = self
+            .platform_config
+            .as_ref()
+            .map(|c| c.detect_cycles)
+            .unwrap_or(false);
+        if detect_enabled {
+            let rc_i8_for_unregister = self.new_temp();
+            self.emit_line(&format!(
+                "  {} = inttoptr i64 {} to i8*",
+                rc_i8_for_unregister, rc_i64
+            ));
+            self.emit_line(&format!(
+                "  call void @__cay_rc_unregister(i8* {})",
+                rc_i8_for_unregister
+            ));
+        }
+
+        // 将控制块指针转为 i8* 供后续释放与字段访问使用。
+        let rc_i8 = self.new_temp();
         self.emit_line(&format!(
-            "  {} = getelementptr i8, i8* %this, i64 {}",
-            obj_field_gep, owned_offset
+            "  {} = inttoptr i64 {} to i8*",
+            rc_i8, rc_i64
         ));
-        let obj_field_ptr = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = bitcast i8* {} to i64*",
-            obj_field_ptr, obj_field_gep
-        ));
+
+        // 加载托管对象指针（控制块 offset 16）。
         let obj_i64 = self.new_temp();
         self.emit_line(&format!(
+            "  %obj_field_ptr = bitcast i8* {} to i64*",
+            rc_i8
+        ));
+        let obj_field_gep2 = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = getelementptr i64, i64* %obj_field_ptr, i64 2",
+            obj_field_gep2
+        ));
+        self.emit_line(&format!(
             "  {} = load i64, i64* {}",
-            obj_i64, obj_field_ptr
+            obj_i64, obj_field_gep2
         ));
         let obj = self.new_temp();
         self.emit_line(&format!(
@@ -2508,11 +2529,149 @@ impl IRGenerator {
             ));
         }
 
-        // 释放托管对象与计数块。
+        // 释放托管对象。
         self.emit_line(&format!(
             "  call void @free(i8* {})",
             obj
         ));
+
+        // 读取 weak_count；为 0 时才释放控制块。
+        let weak_count_ptr = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = getelementptr i64, i64* %obj_field_ptr, i64 1",
+            weak_count_ptr
+        ));
+        let weak_count = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = load i64, i64* {}",
+            weak_count, weak_count_ptr
+        ));
+        let weak_zero = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = icmp eq i64 {}, 0",
+            weak_zero, weak_count
+        ));
+        let free_block_label = self.new_label("rc.free_block");
+        self.emit_line(&format!(
+            "  br i1 {}, label %{}, label %{}",
+            weak_zero, free_block_label, end_label
+        ));
+        self.emit_line(&format!("{}:", free_block_label));
+        self.emit_line(&format!(
+            "  call void @free(i8* {})",
+            rc_i8
+        ));
+        self.emit_line(&format!(
+            "  br label %{}",
+            end_label
+        ));
+
+        // 强引用未归零：best-effort 循环检测（仅在 --detect-cycles 时）。
+        self.emit_line(&format!("{}:", check_cycle_label));
+        if detect_enabled {
+            let rc_i8_for_check = self.new_temp();
+            self.emit_line(&format!(
+                "  {} = inttoptr i64 {} to i8*",
+                rc_i8_for_check, rc_i64
+            ));
+            self.emit_line(&format!(
+                "  call void @__cay_rc_check_cycle(i8* {})",
+                rc_i8_for_check
+            ));
+        }
+        self.emit_line(&format!(
+            "  br label %{}",
+            end_label
+        ));
+        self.emit_line(&format!("{}:", end_label));
+
+        Ok(())
+    }
+
+    /// 为 `WeakPtr<T>` 注入弱引用计数递减与条件释放。
+    ///
+    /// 控制块布局：[i64 refcount, i64 weak_count, i64 object_ptr]。
+    /// 当弱引用计数归零且强引用计数为 0 时释放控制块。
+    fn emit_weakptr_drop_injection(&mut self, class_name: &str) -> CayResult<()> {
+        let rc_offset = self.get_field_offset(class_name, "__refcount_ptr")?;
+
+        // 加载引用计数指针。
+        let rc_field_gep = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = getelementptr i8, i8* %this, i64 {}",
+            rc_field_gep, rc_offset
+        ));
+        let rc_field_ptr = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = bitcast i8* {} to i64*",
+            rc_field_ptr, rc_field_gep
+        ));
+        let rc_i64 = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = load i64, i64* {}",
+            rc_i64, rc_field_ptr
+        ));
+
+        // 若控制块指针为空，直接跳过。
+        let rc_null = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = icmp eq i64 {}, 0",
+            rc_null, rc_i64
+        ));
+        let do_drop_label = self.new_label("weak.drop");
+        let end_label = self.new_label("weak.end");
+        self.emit_line(&format!(
+            "  br i1 {}, label %{}, label %{}",
+            rc_null, end_label, do_drop_label
+        ));
+        self.emit_line(&format!("{}:", do_drop_label));
+
+        let rc_ptr = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = inttoptr i64 {} to i64*",
+            rc_ptr, rc_i64
+        ));
+
+        // 原子递减 weak_count 并获取旧值。
+        let weak_ptr = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = getelementptr i64, i64* {}, i64 1",
+            weak_ptr, rc_ptr
+        ));
+        let old_weak = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = atomicrmw sub i64* {}, i64 1 seq_cst",
+            old_weak, weak_ptr
+        ));
+        let weak_zero = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = icmp eq i64 {}, 1",
+            weak_zero, old_weak
+        ));
+        let check_ref_label = self.new_label("weak.check_ref");
+        self.emit_line(&format!(
+            "  br i1 {}, label %{}, label %{}",
+            weak_zero, check_ref_label, end_label
+        ));
+        self.emit_line(&format!("{}:", check_ref_label));
+
+        // weak_count 刚刚归零：若 refcount 也为 0 则释放控制块。
+        let refcount = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = load i64, i64* {}",
+            refcount, rc_ptr
+        ));
+        let ref_zero = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = icmp eq i64 {}, 0",
+            ref_zero, refcount
+        ));
+        let free_block_label = self.new_label("weak.free_block");
+        self.emit_line(&format!(
+            "  br i1 {}, label %{}, label %{}",
+            ref_zero, free_block_label, end_label
+        ));
+        self.emit_line(&format!("{}:", free_block_label));
         let rc_i8 = self.new_temp();
         self.emit_line(&format!(
             "  {} = inttoptr i64 {} to i8*",

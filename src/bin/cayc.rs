@@ -59,6 +59,8 @@ struct CompileOptions {
     undefines: Vec<String>, // -U/--undefine=<macro>
     // 测试模式
     test_mode: bool, // --test
+    // Rc 循环引用检测
+    detect_cycles: bool, // --detect-cycles
 }
 
 /// 根据当前操作系统自动选择默认目标平台
@@ -123,6 +125,7 @@ impl Default for CompileOptions {
             defines: Vec::new(),
             undefines: Vec::new(),
             test_mode: false,
+            detect_cycles: false,
         }
     }
 }
@@ -165,6 +168,7 @@ fn print_usage() {
     println!("  --use-clang           强制使用 clang 工具链");
     println!("  --use-llc-lld         强制使用 llc+lld 工具链（默认）");
     println!("  --use-embedded-llc    实验性: 使用内嵌 llc (llvm-sys) 提高编译速度");
+    println!("  --detect-cycles       启用 Rc<T> 循环引用运行时检测");
     println!("  -fno-exceptions       禁用异常处理");
     println!("  -fno-rtti             禁用运行时类型信息");
     println!("");
@@ -253,6 +257,9 @@ fn parse_args(args: &[String]) -> Result<(CompileOptions, String, String), Strin
             }
             "--test" => {
                 options.test_mode = true;
+            }
+            "--detect-cycles" => {
+                options.detect_cycles = true;
             }
             "--mneon" => {
                 options.mneon = true;
@@ -570,6 +577,7 @@ fn main() {
         debug: options.debug,
         include_paths: options.include_paths.clone(),
         test_mode: options.test_mode,
+        detect_cycles: options.detect_cycles,
     };
     let compiler = cavvy::Compiler::with_options(compiler_options);
     match compiler.compile_file(&source_path, &ir_file) {

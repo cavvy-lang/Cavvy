@@ -132,6 +132,7 @@ impl Parser {
                 || self.check(&crate::lexer::Token::Private)
                 || self.check(&crate::lexer::Token::Protected)
                 || self.check(&crate::lexer::Token::AtMain)
+                || self.check(&crate::lexer::Token::AtStackOnly)
             {
                 classes.push(self.parse_class()?);
             } else if self.check(&crate::lexer::Token::Public) {
@@ -1176,6 +1177,7 @@ impl Parser {
                 || self.check(&crate::lexer::Token::Private)
                 || self.check(&crate::lexer::Token::Protected)
                 || self.check(&crate::lexer::Token::AtMain)
+                || self.check(&crate::lexer::Token::AtStackOnly)
             {
                 classes.push(self.parse_class()?);
             } else if self.check(&crate::lexer::Token::Public) {

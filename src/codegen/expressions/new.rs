@@ -4,7 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::CayResult;
+use crate::miette_diagnostic::{CayResult, ErrorCodes, codegen_error_at};
 
 /// 将类型中的泛型参数（`GenericParam` 或裸 `Object("T")`）替换为具体类型实参。
 /// 用于将构造函数形参在 new 单态化时解析为具体类型。
@@ -118,6 +118,30 @@ impl IRGenerator {
         } else {
             base_class_name.clone()
         };
+
+        // ROADMAP 5.3.x @stack_only：禁止对标注 @stack_only 的类执行堆分配。
+        // 例外：类自身的静态工厂/构造函数中允许 new，以便在栈上构造返回对象。
+        let is_stack_only = self
+            .type_registry
+            .as_ref()
+            .and_then(|r| r.get_class(&registry_name))
+            .map(|c| c.is_stack_only)
+            .unwrap_or(false);
+        let is_same_class_factory = {
+            let current_base = self.current_class.split('<').next().unwrap_or("");
+            let registry_base = registry_name.split('<').next().unwrap_or("");
+            current_base == registry_base || current_base.ends_with(&format!("::{}", registry_base))
+        };
+        if is_stack_only && !is_same_class_factory {
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
+                new_expr.loc.clone(),
+                format!(
+                    "无法使用 'new' 分配 @stack_only 类 '{}' 的实例\n提示: @stack_only 类只能作为局部变量在栈上使用，不能通过 new 在堆上创建",
+                    registry_name
+                ),
+            ));
+        }
 
         // 单态化：解析该 new 表达式的具体类型参数。
         // 优先使用 new 表达式自带的显式类型参数（如 `new Box<int>()`），

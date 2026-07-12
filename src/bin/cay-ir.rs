@@ -47,6 +47,7 @@ struct CompileOptions {
     undefines: Vec<String>,     // -U:XX 取消定义宏
     obfuscate: bool,            // --obfuscate 混淆 IR 代码
     include_paths: Vec<String>, // -I:XX 包含路径
+    detect_cycles: bool,        // --detect-cycles 启用 Rc 循环引用检测
 }
 
 impl Default for CompileOptions {
@@ -63,6 +64,7 @@ impl Default for CompileOptions {
             defines: Vec::new(),
             undefines: Vec::new(),
             obfuscate: false,
+            detect_cycles: false,
         }
     }
 }
@@ -79,6 +81,7 @@ fn print_usage() {
     println!("  --emit-optimized      输出优化后的 IR (与 --opt-ir 一起使用)");
     println!("  --target <os>         目标操作系统 (windows, linux, macos)");
     println!("  --obfuscate           混淆 IR 代码");
+    println!("  --detect-cycles       启用 Rc<T> 循环引用运行时检测");
     println!("  -f:XX, --feature:XX   启用特定功能");
     println!("  -No:XX                禁用特定功能");
     println!("  -D:XX                 定义宏（兼容旧语法）");
@@ -136,6 +139,9 @@ fn parse_args(args: &[String]) -> Result<(CompileOptions, String, String), Strin
             }
             "-g" => {
                 options.debug = true;
+            }
+            "--detect-cycles" => {
+                options.detect_cycles = true;
             }
             "-o" => {
                 if i + 1 < args.len() {
@@ -302,6 +308,7 @@ fn main() {
         debug: options.debug,
         include_paths: Vec::new(),
         test_mode: false,
+        detect_cycles: options.detect_cycles,
     };
 
     // 编译 Cavvy → IR

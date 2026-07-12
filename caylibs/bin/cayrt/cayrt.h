@@ -142,6 +142,16 @@ char*            __cay_arena_alloc(ArenaAllocator* arena, int64_t size, int64_t 
 void             __cay_arena_reset(ArenaAllocator* arena);
 void             __cay_arena_free(ArenaAllocator* arena);
 
+/* ================================================================
+ * Rc 循环引用检测 (rc_cycle.c)
+ * ================================================================ */
+
+void __cay_rc_set_detect(int enabled);
+void __cay_rc_register(void* block, void* object);
+void __cay_rc_unregister(void* block);
+void __cay_rc_edge_add(void* owner, void* target_block);
+void __cay_rc_check_cycle(void* block);
+
 #ifdef __cplusplus
 }
 #endif
