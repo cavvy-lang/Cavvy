@@ -1,0 +1,571 @@
+/**
+ * Mmap - 内存映射文件标准库
+ *
+ * 提供大文件零拷贝访问能力：
+ * - Mmap: 文件内存映射主类
+ * - MmapSlice: 映射区域的零拷贝切片视图
+ * - MmapError: 内存映射错误类型常量
+ * - MmapResult<T>: 类型安全的操作结果封装
+ *
+ * 特性：
+ * - 跨平台实现（Windows: CreateFileMapping/MapViewOfFile, Linux: mmap）
+ * - RAII 资源管理（finalize 自动解除映射并关闭文件句柄）
+ * - 零拷贝切片视图（不复制底层数据）
+ * - 完整的错误处理（MmapResult<T>）
+ *
+ * 实现文件: caylibs/Mmap.cay
+ * 版本: 0.5.4.0
+ * 时间复杂度: 标注于各方法
+ * 磁盘I/O: 所有映射/同步操作涉及磁盘I/O
+ */
+
+#ifndef CAY_MMAP_H
+#define CAY_MMAP_H
+
+#include <std/ffi.cay>
+#include <File.cay>
+
+namespace std {
+
+/* ============================================================================
+ * 常量定义
+ * ============================================================================ */
+
+/* 内存映射错误码 */
+#define MMAP_ERROR_NONE            0
+#define MMAP_ERROR_NOT_FOUND       1
+#define MMAP_ERROR_ACCESS_DENIED   2
+#define MMAP_ERROR_IO              3
+#define MMAP_ERROR_INVALID_SIZE    4
+#define MMAP_ERROR_INVALID_OFFSET  5
+#define MMAP_ERROR_ALREADY_MAPPED  6
+#define MMAP_ERROR_NOT_MAPPED      7
+#define MMAP_ERROR_UNSUPPORTED     8
+#define MMAP_ERROR_UNKNOWN         9
+
+/* 文件打开/创建模式（Windows 与 Linux 在平台分支中定义） */
+
+/* Windows 常量 */
+#ifdef _WIN32
+#define MMAP_GENERIC_READ         0x80000000
+#define MMAP_GENERIC_WRITE        0x40000000
+#define MMAP_FILE_SHARE_READ      0x00000001
+#define MMAP_FILE_SHARE_WRITE     0x00000002
+#define MMAP_OPEN_EXISTING        3
+#define MMAP_CREATE_ALWAYS        2
+#define MMAP_PAGE_READONLY        2
+#define MMAP_PAGE_READWRITE       4
+#define MMAP_FILE_MAP_READ        4
+#define MMAP_FILE_MAP_WRITE       2
+#define MMAP_FILE_MAP_ALL_ACCESS  0xF001F
+#define MMAP_INVALID_HANDLE       -1
+#else
+/* Linux/POSIX 常量 */
+#define MMAP_O_RDONLY   0
+#define MMAP_O_RDWR     2
+#define MMAP_O_CREAT    64
+#define MMAP_O_TRUNC    512
+#define MMAP_PROT_READ  1
+#define MMAP_PROT_WRITE 2
+#define MMAP_MAP_SHARED 1
+#define MMAP_MS_SYNC    4
+#define MMAP_SEEK_SET   0
+#define MMAP_SEEK_END   2
+#endif
+
+/* ============================================================================
+ * 底层平台特定函数声明
+ * ============================================================================ */
+
+#ifdef _WIN32
+#link <kernel32>
+extern {
+    /* 文件与文件映射 */
+    c_void* CreateFileA(c_string lpFileName, c_uint dwDesiredAccess, c_uint dwShareMode, c_void* lpSecurityAttributes, c_uint dwCreationDisposition, c_uint dwFlagsAndAttributes, c_void* hTemplateFile);
+    c_int   CloseHandle(c_void* hObject);
+    c_int   GetFileSizeEx(c_void* hFile, c_long* lpFileSize);
+    c_void* CreateFileMappingA(c_void* hFile, c_void* lpSecurityAttributes, c_uint flProtect, c_uint dwMaximumSizeHigh, c_uint dwMaximumSizeLow, c_string lpName);
+    c_void* MapViewOfFile(c_void* hFileMappingObject, c_uint dwDesiredAccess, c_uint dwFileOffsetHigh, c_uint dwFileOffsetLow, size_t dwNumberOfBytesToMap);
+    c_int   UnmapViewOfFile(c_void* lpBaseAddress);
+    c_int   FlushViewOfFile(c_void* lpBaseAddress, size_t dwNumberOfBytesToFlush);
+}
+#else
+extern {
+    /* POSIX 文件与内存映射 */
+    c_int   open(c_string pathname, c_int flags, ...);
+    c_int   close(c_int fd);
+    c_long  lseek(c_int fd, c_long offset, c_int whence);
+    c_long  write(c_int fd, c_void* buf, size_t count);
+    c_void* mmap(c_void* addr, size_t length, c_int prot, c_int flags, c_int fd, c_long offset);
+    c_int   munmap(c_void* addr, size_t length);
+    c_int   msync(c_void* addr, size_t length, c_int flags);
+}
+#endif
+
+/* ============================================================================
+ * MmapError 与 MmapResult<T>
+ * ============================================================================ */
+
+/**
+ * 内存映射错误类型 - 使用类常量模拟枚举
+ * 时间复杂度: O(1)
+ * 空间复杂度: O(1)
+ */
+public class MmapError {
+    public static final int None = 0;
+    public static final int NotFound = 1;
+    public static final int AccessDenied = 2;
+    public static final int IoError = 3;
+    public static final int InvalidSize = 4;
+    public static final int InvalidOffset = 5;
+    public static final int AlreadyMapped = 6;
+    public static final int NotMapped = 7;
+    public static final int Unsupported = 8;
+    public static final int Unknown = 9;
+
+    private int value;
+
+    private MmapError(int value) {
+        this.value = value;
+    }
+
+    public int getValue() {
+        return this.value;
+    }
+
+    public static MmapError fromInt(int value) {
+        return new MmapError(value);
+    }
+}
+
+/**
+ * 内存映射结果类型 - 泛型实现 MmapResult<T>
+ * 提供类型安全的操作结果封装
+ * 时间复杂度: O(1) 所有操作
+ * 空间复杂度: O(1) 固定大小
+ */
+public class MmapResult<T> {
+    private T value;
+    private int errorCode;
+    private bool isSuccess;
+
+    private MmapResult(T value) {
+        this.value = value;
+        this.errorCode = MmapError.None;
+        this.isSuccess = true;
+    }
+
+    private MmapResult(int errorCode) {
+        this.errorCode = errorCode;
+        this.isSuccess = false;
+    }
+
+    public static MmapResult<T> ok(T value) {
+        return new MmapResult<T>(value);
+    }
+
+    public static MmapResult<T> err(int errorCode) {
+        return new MmapResult<T>(errorCode);
+    }
+
+    public bool isOk() {
+        return this.isSuccess;
+    }
+
+    public bool isErr() {
+        return !this.isSuccess;
+    }
+
+    public T unwrap() {
+        return this.value;
+    }
+
+    public int getError() {
+        return this.errorCode;
+    }
+}
+
+/* ============================================================================
+ * Mmap 类 - 文件内存映射
+ * ============================================================================ */
+
+/**
+ * 内存映射文件类
+ * 封装跨平台内存映射系统调用，提供统一的只读/读写映射接口。
+ */
+public class Mmap {
+    private long data;     /* 映射区域起始地址（作为整数存储） */
+    private long size;     /* 映射区域大小（字节） */
+    private bool mapped;   /* 当前是否处于映射状态 */
+    private int lastError; /* 最后错误码 */
+
+#ifdef _WIN32
+    private c_void* hFile;    /* Windows 文件句柄 */
+    private c_void* hMapping; /* Windows 文件映射对象 */
+#else
+    private c_int fd;         /* Linux 文件描述符 */
+#endif
+
+    private Mmap() {
+        this.data = 0L;
+        this.size = 0L;
+        this.mapped = false;
+        this.lastError = MmapError.None;
+#ifdef _WIN32
+        this.hFile = null;
+        this.hMapping = null;
+#else
+        this.fd = -1;
+#endif
+    }
+
+    /**
+     * 析构函数 - 自动解除映射并释放资源
+     * 时间复杂度: O(1)
+     * 磁盘I/O: sync 可能触发磁盘刷新
+     */
+    public void finalize() {
+        this.unmap();
+    }
+
+    /**
+     * 创建只读内存映射
+     * @param path 文件路径
+     * @return MmapResult<Mmap> 成功返回映射对象，失败返回错误码
+     * 时间复杂度: O(1)（仅建立映射，不读取数据）
+     * 磁盘I/O: 打开文件并查询大小
+     */
+    public static MmapResult<Mmap> mapReadOnly(String path) {
+        if (path == null || path.isEmpty()) {
+            return MmapResult<Mmap>.err(MmapError.NotFound);
+        }
+
+        /* 使用 File.getSize 跨平台获取文件大小 */
+        long fileSize = File.getSize(path);
+        if (fileSize < 0) {
+            return MmapResult<Mmap>.err(MmapError.NotFound);
+        }
+        if (fileSize == 0) {
+            /* 空文件允许映射，返回大小为 0 的 Mmap */
+            Mmap emptyMmap = new Mmap();
+            emptyMmap.size = 0L;
+            emptyMmap.mapped = true;
+            return MmapResult<Mmap>.ok(emptyMmap);
+        }
+
+        Mmap mmap = new Mmap();
+
+#ifdef _WIN32
+        c_void* hFile = CreateFileA(path.c_str(), (c_uint)MMAP_GENERIC_READ, (c_uint)MMAP_FILE_SHARE_READ, null, (c_uint)MMAP_OPEN_EXISTING, (c_uint)0, null);
+        if (hFile == null || hFile == (c_void*)MMAP_INVALID_HANDLE) {
+            return MmapResult<Mmap>.err(MmapError.NotFound);
+        }
+
+        c_void* hMapping = CreateFileMappingA(hFile, null, (c_uint)MMAP_PAGE_READONLY, (c_uint)0, (c_uint)0, null);
+        if (hMapping == null) {
+            CloseHandle(hFile);
+            return MmapResult<Mmap>.err(MmapError.IoError);
+        }
+
+        c_void* view = MapViewOfFile(hMapping, (c_uint)MMAP_FILE_MAP_READ, (c_uint)0, (c_uint)0, (size_t)fileSize);
+        if (view == null) {
+            CloseHandle(hMapping);
+            CloseHandle(hFile);
+            return MmapResult<Mmap>.err(MmapError.IoError);
+        }
+
+        mmap.hFile = hFile;
+        mmap.hMapping = hMapping;
+        mmap.data = (long)view;
+        mmap.size = fileSize;
+        mmap.mapped = true;
+#else
+        c_int fd = open(path.c_str(), MMAP_O_RDONLY);
+        if (fd < 0) {
+            return MmapResult<Mmap>.err(MmapError.NotFound);
+        }
+
+        c_void* addr = mmap(null, (size_t)fileSize, MMAP_PROT_READ, MMAP_MAP_SHARED, fd, 0L);
+        if ((long)addr == -1L) {
+            close(fd);
+            return MmapResult<Mmap>.err(MmapError.IoError);
+        }
+
+        mmap.fd = fd;
+        mmap.data = (long)addr;
+        mmap.size = fileSize;
+        mmap.mapped = true;
+#endif
+
+        return MmapResult<Mmap>.ok(mmap);
+    }
+
+    /**
+     * 创建读写内存映射
+     * 若文件不存在则创建，若已存在则截断至指定大小。
+     * @param path 文件路径
+     * @param size 映射大小（字节），必须大于 0
+     * @return MmapResult<Mmap> 成功返回映射对象，失败返回错误码
+     * 时间复杂度: O(1)（仅建立映射）
+     * 磁盘I/O: 创建/截断文件并建立映射
+     */
+    public static MmapResult<Mmap> mapReadWrite(String path, long size) {
+        if (path == null || path.isEmpty()) {
+            return MmapResult<Mmap>.err(MmapError.NotFound);
+        }
+        if (size <= 0L) {
+            return MmapResult<Mmap>.err(MmapError.InvalidSize);
+        }
+
+        Mmap mmap = new Mmap();
+
+#ifdef _WIN32
+        c_void* hFile = CreateFileA(path.c_str(), (c_uint)(MMAP_GENERIC_READ | MMAP_GENERIC_WRITE),
+                                      (c_uint)(MMAP_FILE_SHARE_READ | MMAP_FILE_SHARE_WRITE),
+                                      null, (c_uint)MMAP_CREATE_ALWAYS, (c_uint)0, null);
+        if (hFile == null || hFile == (c_void*)MMAP_INVALID_HANDLE) {
+            return MmapResult<Mmap>.err(MmapError.NotFound);
+        }
+
+        c_uint sizeHigh = (c_uint)(size >> 32);
+        c_uint sizeLow = (c_uint)(size & 0xFFFFFFFFL);
+        c_void* hMapping = CreateFileMappingA(hFile, null, (c_uint)MMAP_PAGE_READWRITE, sizeHigh, sizeLow, null);
+        if (hMapping == null) {
+            CloseHandle(hFile);
+            return MmapResult<Mmap>.err(MmapError.IoError);
+        }
+
+        c_void* view = MapViewOfFile(hMapping, (c_uint)MMAP_FILE_MAP_WRITE, (c_uint)0, (c_uint)0, (size_t)size);
+        if (view == null) {
+            CloseHandle(hMapping);
+            CloseHandle(hFile);
+            return MmapResult<Mmap>.err(MmapError.IoError);
+        }
+
+        mmap.hFile = hFile;
+        mmap.hMapping = hMapping;
+        mmap.data = (long)view;
+        mmap.size = size;
+        mmap.mapped = true;
+#else
+        c_int fd = open(path.c_str(), MMAP_O_RDWR | MMAP_O_CREAT | MMAP_O_TRUNC, 0666);
+        if (fd < 0) {
+            return MmapResult<Mmap>.err(MmapError.NotFound);
+        }
+
+        /* 扩展文件到指定大小：lseek 到 size-1（从开头计算）并写入一个字节 */
+        c_long seekResult = lseek(fd, size - 1L, MMAP_SEEK_SET);
+        if (seekResult < 0) {
+            close(fd);
+            return MmapResult<Mmap>.err(MmapError.IoError);
+        }
+        c_char zeroByte = (c_char)0;
+        c_long writeResult = write(fd, &zeroByte, 1);
+        if (writeResult != 1) {
+            close(fd);
+            return MmapResult<Mmap>.err(MmapError.IoError);
+        }
+        /* 重置文件偏移到开头，避免影响后续映射 */
+        lseek(fd, 0L, MMAP_SEEK_SET);
+
+        c_void* addr = mmap(null, (size_t)size, MMAP_PROT_READ | MMAP_PROT_WRITE, MMAP_MAP_SHARED, fd, 0L);
+        if ((long)addr == -1L) {
+            close(fd);
+            return MmapResult<Mmap>.err(MmapError.IoError);
+        }
+
+        mmap.fd = fd;
+        mmap.data = (long)addr;
+        mmap.size = size;
+        mmap.mapped = true;
+#endif
+
+        return MmapResult<Mmap>.ok(mmap);
+    }
+
+    /**
+     * 获取映射区域起始地址
+     * @return 映射起始地址（作为 long 存储的指针值）
+     */
+    public long data() {
+        return this.data;
+    }
+
+    /**
+     * 获取映射区域大小
+     * @return 大小（字节）
+     */
+    public long size() {
+        return this.size;
+    }
+
+    /**
+     * 检查当前是否处于有效映射状态
+     * @return true 如果映射有效
+     */
+    public bool isMapped() {
+        return this.mapped;
+    }
+
+    /**
+     * 获取最后错误码
+     * @return MmapError 常量
+     */
+    public int getLastError() {
+        return this.lastError;
+    }
+
+    /**
+     * 将映射区域的修改同步回磁盘
+     * 时间复杂度: O(n) n=映射大小（由内核决定实际刷新范围）
+     * 磁盘I/O: 触发磁盘刷新
+     */
+    public void sync() {
+        if (!this.mapped || this.data == 0L || this.size == 0L) {
+            return;
+        }
+#ifdef _WIN32
+        FlushViewOfFile((c_void*)this.data, (size_t)this.size);
+#else
+        msync((c_void*)this.data, (size_t)this.size, MMAP_MS_SYNC);
+#endif
+    }
+
+    /**
+     * 解除映射并释放所有关联资源
+     * 时间复杂度: O(1)
+     * 磁盘I/O: 可能触发脏页回写
+     */
+    public void unmap() {
+        if (!this.mapped) {
+            return;
+        }
+
+        if (this.data != 0L && this.size > 0L) {
+#ifdef _WIN32
+            UnmapViewOfFile((c_void*)this.data);
+#else
+            munmap((c_void*)this.data, (size_t)this.size);
+#endif
+        }
+
+#ifdef _WIN32
+        if (this.hMapping != null) {
+            CloseHandle(this.hMapping);
+            this.hMapping = null;
+        }
+        if (this.hFile != null && this.hFile != (c_void*)MMAP_INVALID_HANDLE) {
+            CloseHandle(this.hFile);
+            this.hFile = null;
+        }
+#else
+        if (this.fd >= 0) {
+            close(this.fd);
+            this.fd = -1;
+        }
+#endif
+
+        this.data = 0L;
+        this.size = 0L;
+        this.mapped = false;
+        this.lastError = MmapError.None;
+    }
+
+    /**
+     * 创建映射区域的切片视图
+     * @param offset 切片在映射区域内的起始偏移
+     * @param length 切片长度（字节）
+     * @return MmapSlice 切片视图（不复制数据）
+     * 时间复杂度: O(1)
+     * 空间复杂度: O(1)
+     */
+    public MmapSlice slice(long offset, long length) {
+        return MmapSlice.create(this, offset, length);
+    }
+}
+
+/* ============================================================================
+ * MmapSlice 类 - 零拷贝切片视图
+ * ============================================================================ */
+
+/**
+ * 内存映射切片视图
+ * 对 Mmap 映射区域的某一段进行引用，不复制底层数据。
+ */
+public class MmapSlice {
+    private Mmap mmap;
+    private long offset;
+    private long length;
+
+    private MmapSlice(Mmap mmap, long offset, long length) {
+        this.mmap = mmap;
+        this.offset = offset;
+        this.length = length;
+    }
+
+    /**
+     * 创建切片视图
+     * @param mmap 底层映射对象
+     * @param offset 起始偏移
+     * @param length 长度
+     * @return MmapSlice
+     */
+    public static MmapSlice create(Mmap mmap, long offset, long length) {
+        return new MmapSlice(mmap, offset, length);
+    }
+
+    /**
+     * 获取切片大小
+     * @return 切片长度（字节）
+     */
+    public long size() {
+        return this.length;
+    }
+
+    /**
+     * 获取切片指定位置的字节
+     * @param index 切片内索引，0-based
+     * @return 该位置字节值；越界或未映射时返回 0
+     * 时间复杂度: O(1)
+     * 空间复杂度: O(1)
+     */
+    public c_uchar get(long index) {
+        if (this.mmap == null || !this.mmap.isMapped() || index < 0L || index >= this.length) {
+            return (c_uchar)0;
+        }
+
+        long addr = this.mmap.data() + this.offset + index;
+        c_uchar value = (c_uchar)0;
+        __ir {
+            %addr_val = load i64, i64* %addr
+            %ptr = inttoptr i64 %addr_val to i8*
+            %val = load i8, i8* %ptr
+            store i8 %val, i8* %value
+        }
+        return value;
+    }
+
+    /**
+     * 设置切片指定位置的字节
+     * @param index 切片内索引，0-based
+     * @param value 要写入的字节值
+     * 时间复杂度: O(1)
+     * 空间复杂度: O(1)
+     */
+    public void set(long index, c_uchar value) {
+        if (this.mmap == null || !this.mmap.isMapped() || index < 0L || index >= this.length) {
+            return;
+        }
+
+        long addr = this.mmap.data() + this.offset + index;
+        __ir {
+            %addr_val = load i64, i64* %addr
+            %ptr = inttoptr i64 %addr_val to i8*
+            store i8 %value, i8* %ptr
+        }
+    }
+}
+
+} // namespace std
+
+#endif // CAY_MMAP_H

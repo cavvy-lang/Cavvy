@@ -1,0 +1,264 @@
+// Mmap 内存映射文件测试
+// 验证 ROADMAP 0.5.4.0 内存映射文件功能
+
+#include <std/ffi.cay>
+#include <File.cay>
+#include <Mmap.cay>
+
+using std::File;
+using std::Mmap;
+using std::MmapSlice;
+using std::MmapResult;
+using std::MmapError;
+
+public class TestMmap {
+
+    public static int main() {
+        String path = "test_mmap_data.txt";
+        String content = "Hello, Mmap!";
+
+        // 1. 准备测试文件
+        if (!File.writeAllText(path, content)) {
+            println("Failed to write test file");
+            return 1;
+        }
+
+        // 2. 测试只读映射
+        MmapResult<Mmap> roResult = Mmap.mapReadOnly(path);
+        if (roResult.isErr()) {
+            println("mapReadOnly failed with error: " + String.valueOf(roResult.getError()));
+            File.delete(path);
+            return 1;
+        }
+
+        Mmap roMmap = roResult.unwrap();
+        if (roMmap.size() != content.length()) {
+            println("Read-only mmap size mismatch: " + String.valueOf((int)roMmap.size()) + " vs " + String.valueOf(content.length()));
+            File.delete(path);
+            return 1;
+        }
+
+        // 3. 通过切片读取并验证内容
+        MmapSlice slice = roMmap.slice(0L, roMmap.size());
+        bool readOk = true;
+        int i = 0;
+        while (i < content.length()) {
+            c_uchar b = slice.get((long)i);
+            int expected = (int)content.charAt(i);
+            if ((int)b != expected) {
+                readOk = false;
+                println("Byte mismatch at index " + String.valueOf(i));
+                break;
+            }
+            i = i + 1;
+        }
+        if (!readOk) {
+            File.delete(path);
+            return 1;
+        }
+        println("Read-only mmap content verified");
+
+        // 4. 测试子切片
+        MmapSlice subSlice = roMmap.slice(7L, 4L); // "Mmap"
+        if (subSlice.size() != 4L) {
+            println("Sub-slice size mismatch");
+            File.delete(path);
+            return 1;
+        }
+        if ((int)subSlice.get(0L) != (int)'M' || (int)subSlice.get(3L) != (int)'p') {
+            println("Sub-slice content mismatch");
+            File.delete(path);
+            return 1;
+        }
+        println("Sub-slice content verified");
+
+        // 5. 测试越界访问返回 0
+        if (slice.get(1000L) != (c_uchar)0) {
+            println("Out-of-bounds read should return 0");
+            File.delete(path);
+            return 1;
+        }
+        println("Out-of-bounds read handled");
+
+        roMmap.unmap();
+
+        // 6. 测试读写映射
+        String rwPath = "test_mmap_rw.txt";
+        long rwSize = 16L;
+        MmapResult<Mmap> rwResult = Mmap.mapReadWrite(rwPath, rwSize);
+        if (rwResult.isErr()) {
+            println("mapReadWrite failed with error: " + String.valueOf(rwResult.getError()));
+            File.delete(path);
+            File.delete(rwPath);
+            return 1;
+        }
+
+        Mmap rwMmap = rwResult.unwrap();
+        if (rwMmap.size() != rwSize) {
+            println("Read-write mmap size mismatch");
+            File.delete(path);
+            File.delete(rwPath);
+            return 1;
+        }
+
+        MmapSlice rwSlice = rwMmap.slice(0L, rwSize);
+        // 写入一些字节
+        rwSlice.set(0L, (c_uchar)(int)'R');
+        rwSlice.set(1L, (c_uchar)(int)'W');
+        rwSlice.set(15L, (c_uchar)(int)'!');
+        rwMmap.sync();
+
+        // 读取回验证
+        if ((int)rwSlice.get(0L) != (int)'R' || (int)rwSlice.get(1L) != (int)'W' || (int)rwSlice.get(15L) != (int)'!') {
+            println("Read-write mmap byte write/read failed");
+            File.delete(path);
+            File.delete(rwPath);
+            return 1;
+        }
+        println("Read-write mmap byte write/read verified");
+
+        rwMmap.unmap();
+
+        // 7. 测试无效路径
+        MmapResult<Mmap> badResult = Mmap.mapReadOnly("non_existent_file_for_mmap_test.xyz");
+        if (badResult.isOk()) {
+            println("mapReadOnly on missing file should fail");
+            File.delete(path);
+            File.delete(rwPath);
+            return 1;
+        }
+        println("Invalid path handled correctly");
+
+        // 8. 测试无效大小
+        MmapResult<Mmap> invalidSizeResult = Mmap.mapReadWrite("test_mmap_invalid.txt", 0L);
+        if (invalidSizeResult.isOk()) {
+            println("mapReadWrite with size 0 should fail");
+            File.delete(path);
+            File.delete(rwPath);
+            File.delete("test_mmap_invalid.txt");
+            return 1;
+        }
+        println("Invalid size handled correctly");
+
+        // 9. 测试空文件映射
+        String emptyPath = "test_mmap_empty.txt";
+        File.writeAllText(emptyPath, "");
+        MmapResult<Mmap> emptyResult = Mmap.mapReadOnly(emptyPath);
+        if (emptyResult.isErr()) {
+            println("mapReadOnly on empty file failed");
+            File.delete(path);
+            File.delete(rwPath);
+            File.delete(emptyPath);
+            return 1;
+        }
+        Mmap emptyMmap = emptyResult.unwrap();
+        if (emptyMmap.size() != 0L) {
+            println("Empty file mmap size should be 0");
+            File.delete(path);
+            File.delete(rwPath);
+            File.delete(emptyPath);
+            return 1;
+        }
+        emptyMmap.unmap();
+        File.delete(emptyPath);
+        println("Empty file mmap handled correctly");
+
+        // 10. 测试读写映射持久化（umap 后重新只读映射验证）
+        String persistPath = "test_mmap_persist.txt";
+        long persistSize = 8L;
+        MmapResult<Mmap> persistWriteResult = Mmap.mapReadWrite(persistPath, persistSize);
+        if (persistWriteResult.isErr()) {
+            println("mapReadWrite for persist test failed");
+            File.delete(path);
+            File.delete(rwPath);
+            File.delete(persistPath);
+            return 1;
+        }
+        Mmap persistWrite = persistWriteResult.unwrap();
+        MmapSlice persistSlice = persistWrite.slice(0L, persistSize);
+        persistSlice.set(0L, (c_uchar)(int)'P');
+        persistSlice.set(7L, (c_uchar)(int)'Q');
+        persistWrite.sync();
+        persistWrite.unmap();
+
+        MmapResult<Mmap> persistReadResult = Mmap.mapReadOnly(persistPath);
+        if (persistReadResult.isErr()) {
+            println("mapReadOnly for persist test failed");
+            File.delete(path);
+            File.delete(rwPath);
+            File.delete(persistPath);
+            return 1;
+        }
+        Mmap persistRead = persistReadResult.unwrap();
+        MmapSlice persistReadSlice = persistRead.slice(0L, persistSize);
+        if ((int)persistReadSlice.get(0L) != (int)'P' || (int)persistReadSlice.get(7L) != (int)'Q') {
+            println("Persisted bytes mismatch");
+            File.delete(path);
+            File.delete(rwPath);
+            File.delete(persistPath);
+            return 1;
+        }
+        persistRead.unmap();
+        File.delete(persistPath);
+        println("Read-write persistence verified");
+
+        // 11. 压力测试：64KB 大文件顺序写入与回读
+        String stressPath = "test_mmap_stress.txt";
+        long stressSize = 65536L;
+        MmapResult<Mmap> stressWriteResult = Mmap.mapReadWrite(stressPath, stressSize);
+        if (stressWriteResult.isErr()) {
+            println("mapReadWrite for stress test failed");
+            File.delete(path);
+            File.delete(rwPath);
+            File.delete(stressPath);
+            return 1;
+        }
+        Mmap stressWrite = stressWriteResult.unwrap();
+        MmapSlice stressSlice = stressWrite.slice(0L, stressSize);
+        long j = 0L;
+        while (j < stressSize) {
+            c_uchar b = (c_uchar)(int)(j % 256L);
+            stressSlice.set(j, b);
+            j = j + 1L;
+        }
+        stressWrite.sync();
+        stressWrite.unmap();
+
+        MmapResult<Mmap> stressReadResult = Mmap.mapReadOnly(stressPath);
+        if (stressReadResult.isErr()) {
+            println("mapReadOnly for stress test failed");
+            File.delete(path);
+            File.delete(rwPath);
+            File.delete(stressPath);
+            return 1;
+        }
+        Mmap stressRead = stressReadResult.unwrap();
+        MmapSlice stressReadSlice = stressRead.slice(0L, stressSize);
+        j = 0L;
+        bool stressOk = true;
+        while (j < stressSize) {
+            int expected = (int)(j % 256L);
+            if ((int)stressReadSlice.get(j) != expected) {
+                stressOk = false;
+                break;
+            }
+            j = j + 1L;
+        }
+        stressRead.unmap();
+        File.delete(stressPath);
+        if (!stressOk) {
+            println("Stress test byte mismatch");
+            File.delete(path);
+            File.delete(rwPath);
+            return 1;
+        }
+        println("64KB stress test passed");
+
+        // 清理
+        File.delete(path);
+        File.delete(rwPath);
+
+        println("All Mmap tests passed!");
+        return 0;
+    }
+}

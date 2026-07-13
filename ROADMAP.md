@@ -15,12 +15,12 @@ Cavvy (原Ethernos Object Language) 是一个始终编译为原生机器码的�
 
 ## 版本号规范 (GB.M.P)
 
-| 位置 | 名称       | 含义         | 示例                                  |
-| ---- | ---------- | ------------ | ------------------------------------- |
-| G    | Generation | 架构代际     | 0=LLVM后端, 1=自托管, 2=内存安全      |
-| B    | Big        | 功能域里程碑 | 0.1=原型, 0.2=当前, 0.3=控制流完善... |
-| M    | Middle     | 特性集群     | 0.3.1.x=循环家族                      |
-| P    | Patch      | 每日构建修复 | 0.3.1.0->0.3.1.1                      |
+| 位置 | 名称       | 含义         | 示例           |
+| ---- | ---------- | ------------ | -------------- |
+| G    | Generation | 架构代际     | 0, 10, 20      |
+| B    | Big        | 功能域里程碑 | 1, 2, 3        |
+| M    | Middle     | 特性集群     | 3.1.x=循环家族 |
+| P    | Patch      | 每日构建修复 | 3.1.0->3.1.1   |
 
 ---
 
@@ -607,7 +607,7 @@ public static Result<UniquePtr<File>, IOError> openFile(String path) {
 
   - `readAllLines()`: 流式两遍读取，避免双倍内存峰值
   - `writeInterpolated()`: 使用 StringBuilder 优化格式化写入，O(n) 复杂度
-- [ ] **内存映射文件** - `Mmap` 类型，支持大文件零拷贝处理
+- [X] **内存映射文件** - `Mmap` 类型，支持大文件零拷贝处理 (5.4.0 完成)
 
   ```java
   public class Mmap {
@@ -631,6 +631,11 @@ public static Result<UniquePtr<File>, IOError> openFile(String path) {
       public long size();
   }
   ```
+  - 实现文件: `caylibs/Mmap.cay`
+  - `MmapResult<T>`: 在泛型 `Result<T, E>` 完成前提供的专用结果类型
+  - 跨平台实现: Windows `CreateFileMappingA`/`MapViewOfFile`, Linux `mmap`/`munmap`
+  - RAII 资源管理: `finalize()` 自动调用 `unmap()` 关闭句柄/描述符
+  - 测试文件: `examples/test_mmap.cay`, 集成测试: `tests/file_lib_tests.rs`
 - [X] **错误处理基础** - `FileResult`/`FileError` 已有基础实现
 
   - 当前为非泛型版本，使用 `Object` 作为值容器
@@ -640,7 +645,7 @@ public static Result<UniquePtr<File>, IOError> openFile(String path) {
 
 ---
 
-### 阶段四：错误处理与并发 (0.6.x.x)
+### 阶段四：错误处理与并发 (6.x.x)
 
 **目标**：建立系统级的错误传播机制和零成本并发抽象。
 
@@ -853,7 +858,7 @@ public static Result<UniquePtr<File>, IOError> openFile(String path) {
 
 ---
 
-### 阶段五：模块系统与工具链 (0.7.x.x)
+### 阶段五：模块系统与工具链 (7.x.x)
 
 **目标**：建立生产级工程能力，支持中大型项目开发。
 
@@ -960,7 +965,7 @@ debug = true
 
 ---
 
-### 阶段六：底层控制与优化 (0.8.x.x)
+### 阶段六：底层控制与优化 (8.x.x)
 
 **目标**：提供底层硬件控制能力和极致性能优化。
 
@@ -1069,7 +1074,7 @@ debug = true
 
 ---
 
-## G1 代：自举与现代化（1.x.x.x）
+## G1 代：自举与现代化（1x.x.x）
 
 **目标**：用 Cavvy 重写自身编译器，引入现代语言特性，提升表达力。
 
@@ -1161,7 +1166,7 @@ debug = true
 
 ---
 
-## G2 代：内存安全纪元（2.x.x.x）
+## G2 代：内存安全纪元（2x.x.x）
 
 **目标**：引入所有权与借用检查系统，实现编译期内存安全，消除 use-after-free 和数据竞争。
 

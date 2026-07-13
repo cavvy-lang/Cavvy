@@ -414,3 +414,103 @@ public class FileTest {
         }
     }
 }
+
+/// 测试内存映射文件 Mmap 完整功能
+///
+/// 覆盖只读映射、读写映射、切片视图、越界访问、错误处理、
+/// 空文件映射、读写持久化以及 64KB 压力测试等分支。
+#[test]
+fn test_mmap_full() {
+    let result = compile_and_run_eol("examples/test_mmap.cay");
+
+    // 清理示例程序可能遗留的测试文件
+    let _ = std::fs::remove_file("test_mmap_data.txt");
+    let _ = std::fs::remove_file("test_mmap_rw.txt");
+    let _ = std::fs::remove_file("test_mmap_invalid.txt");
+    let _ = std::fs::remove_file("test_mmap_empty.txt");
+    let _ = std::fs::remove_file("test_mmap_persist.txt");
+    let _ = std::fs::remove_file("test_mmap_stress.txt");
+    let _ = std::fs::remove_file("examples/test_mmap.exe");
+    let _ = std::fs::remove_file("examples/test_mmap.ll");
+
+    match result {
+        Ok(output) => {
+            assert!(
+                output.contains("All Mmap tests passed!"),
+                "Mmap test should pass, got: {}",
+                output
+            );
+        }
+        Err(e) => {
+            panic!("Mmap test failed with error: {}", e);
+        }
+    }
+}
+
+/// 测试 Mmap 对空文件的支持
+#[test]
+fn test_mmap_empty_file() {
+    let code = r#"
+#include <std/ffi.cay>
+#include <File.cay>
+#include <Mmap.cay>
+
+using std::File;
+using std::Mmap;
+using std::MmapResult;
+using std::MmapSlice;
+
+public class MmapEmptyTest {
+    public static int main() {
+        String path = "test_mmap_empty.txt";
+        File.writeAllText(path, "");
+
+        MmapResult<Mmap> result = Mmap.mapReadOnly(path);
+        if (result.isErr()) {
+            println("mapReadOnly on empty file failed");
+            File.delete(path);
+            return 1;
+        }
+
+        Mmap mmap = result.unwrap();
+        if (mmap.size() != 0L) {
+            println("Empty file mmap size should be 0");
+            File.delete(path);
+            return 1;
+        }
+
+        // 切片长度为 0 时不应越界
+        MmapSlice emptySlice = mmap.slice(0L, 0L);
+        if (emptySlice.size() != 0L) {
+            println("Empty slice size mismatch");
+            File.delete(path);
+            return 1;
+        }
+
+        File.delete(path);
+        println("Empty file mmap test passed!");
+        return 0;
+    }
+}
+"#;
+
+    let temp_path = format!("tests/temp_mmap_empty_{}.cay", std::process::id());
+    std::fs::write(&temp_path, code).expect("Failed to write temp file");
+
+    let result = compile_and_run_eol(&temp_path);
+    let _ = std::fs::remove_file(&temp_path);
+    let _ = std::fs::remove_file("test_mmap_empty.txt");
+
+    match result {
+        Ok(output) => {
+            assert!(
+                output.contains("Empty file mmap test passed!"),
+                "Test should pass, got: {}",
+                output
+            );
+        }
+        Err(e) => {
+            panic!("Test failed with error: {}", e);
+        }
+    }
+}
