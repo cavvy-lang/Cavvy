@@ -42,14 +42,48 @@ impl IRGenerator {
             return Ok(format!("{} {}", to_type, result));
         }
 
-        // 整数到字符串的转换（int -> String）- 必须在整数到指针之前处理
-        // 因为 i8* 也是指针类型
-        // 排除 i1（布尔）和 i8（字符），它们已单独处理
+        // 整数到指针的转换（inttoptr）- 必须优先于整数到字符串处理
+        // 因为 c_void* / c_char* 等指针类型的 LLVM 表示也是 i8*，
+        // 仅依据 LLVM 类型会误走字符串转换路径。
+        // 使用语义目标类型判断：Pointer(_) 表示真正的指针转换。
+        if from_type.starts_with("i")
+            && !from_type.ends_with("*")
+            && matches!(cast.target_type, crate::types::Type::Pointer(_))
+        {
+            // LLVM 不支持 void*，使用 i8* 代替
+            let llvm_to_type = if to_type == "void*" {
+                "i8*".to_string()
+            } else {
+                to_type.clone()
+            };
+            if from_type != "i64" {
+                let i64_temp = self.new_temp();
+                self.emit_line(&format!(
+                    "  {} = sext {} {} to i64",
+                    i64_temp, from_type, val
+                ));
+                self.emit_line(&format!(
+                    "  {} = inttoptr i64 {} to {}",
+                    temp, i64_temp, llvm_to_type
+                ));
+            } else {
+                self.emit_line(&format!(
+                    "  {} = inttoptr {} {} to {}",
+                    temp, from_type, val, llvm_to_type
+                ));
+            }
+            return Ok(format!("{} {}", to_type, temp));
+        }
+
+        // 整数到字符串的转换（int -> String）
+        // 排除 i1（布尔）和 i8（字符），它们已单独处理；
+        // 排除语义目标为指针类型的情况，避免与 inttoptr 冲突。
         if from_type.starts_with("i")
             && !from_type.ends_with("*")
             && to_type == "i8*"
             && from_type != "i1"
             && from_type != "i8"
+            && !matches!(cast.target_type, crate::types::Type::Pointer(_))
         {
             // 先将整数转换到 i32（如果还不是的话），然后调用运行时函数
             let result = self.new_temp();
@@ -90,38 +124,6 @@ impl IRGenerator {
                 "  {} = ptrtoint {} {} to {}",
                 temp, from_type, val, to_type
             ));
-            return Ok(format!("{} {}", to_type, temp));
-        }
-
-        // 整数到指针的转换（inttoptr）- 优先检查（排除 i8* 因为已处理）
-        // 使用 i64 作为中间类型（指针大小）
-        if from_type.starts_with("i")
-            && !from_type.ends_with("*")
-            && to_type.ends_with("*")
-            && to_type != "i8*"
-        {
-            // LLVM 不支持 void*，使用 i8* 代替
-            let llvm_to_type = if to_type == "void*" {
-                "i8*".to_string()
-            } else {
-                to_type.clone()
-            };
-            if from_type != "i64" {
-                let i64_temp = self.new_temp();
-                self.emit_line(&format!(
-                    "  {} = sext {} {} to i64",
-                    i64_temp, from_type, val
-                ));
-                self.emit_line(&format!(
-                    "  {} = inttoptr i64 {} to {}",
-                    temp, i64_temp, llvm_to_type
-                ));
-            } else {
-                self.emit_line(&format!(
-                    "  {} = inttoptr {} {} to {}",
-                    temp, from_type, val, llvm_to_type
-                ));
-            }
             return Ok(format!("{} {}", to_type, temp));
         }
 
