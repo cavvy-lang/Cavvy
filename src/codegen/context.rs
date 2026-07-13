@@ -1896,7 +1896,7 @@ impl IRGenerator {
                 }
 
                 // 多个候选：通过类型匹配评分选择最佳重载
-                // 评分规则：完全匹配 +10，整数族 +3，对象族 +5，String 不匹配 -100
+                // 评分规则：完全匹配 +10，整数族 +3，对象族 +5，泛型参数通配 +2，String 不匹配 -100
                 let best = candidates
                     .iter()
                     .max_by_key(|ctor| {
@@ -1918,6 +1918,10 @@ impl IRGenerator {
                                 score += 3; // float family
                             } else if c_sig.starts_with('o') && f_sig.starts_with('o') {
                                 score += if c_sig == f_sig { 5 } else { 1 };
+                            } else if c_sig.starts_with('g') {
+                                // 泛型参数 T 作为通配匹配，分值低于精确匹配但高于不匹配，
+                                // 避免与完全不相关的重载出现平分时被错误地选到最后一个。
+                                score += 2;
                             } else if (c_sig == "s") != (f_sig == "s") {
                                 score -= 100; // String vs non-String is a bad match
                             }
@@ -1985,6 +1989,9 @@ impl IRGenerator {
                                 score += 3;
                             } else if c_sig.starts_with('o') && f_sig.starts_with('o') {
                                 score += if c_sig == f_sig { 5 } else { 1 };
+                            } else if c_sig.starts_with('g') {
+                                // 泛型参数 T 作为通配匹配，分值低于精确匹配但高于不匹配
+                                score += 2;
                             } else if (c_sig == "s") != (f_sig == "s") {
                                 score -= 100;
                             }
