@@ -49,6 +49,8 @@
 | **IR 验证器** | ✅ 实现 | `src/ir/verification.rs` |
 | **内联 IR（__ir { } 块）** | ✅ 实现 | `src/ir/inline_ir.rs` |
 | **源代码映射（debug info）** | ✅ 实现 | `src/codegen/source_map.rs` |
+| **Result 错误处理** | ✅ 可用 | `caylibs/Result.cay`、`caylibs/Error.cay`、`src/codegen/expressions/try_op.rs` |
+| **panic / abort 内建函数** | ✅ 可用 | `src/codegen/expressions/builtin.rs`、`src/codegen/expressions/call/main.rs` |
 
 ---
 

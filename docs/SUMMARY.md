@@ -4,6 +4,8 @@
 
 # 发布说明
 
+- [5.2.0～6.1.0 版本演进总览](release/version-history-5.2-to-6.1.md)
+
 - [6.1.0 发布说明](release/6.1.0/index.md)
   - [新特性详解](release/6.1.0/features.md)
   - [Bug 修复清单](release/6.1.0/bugfixes.md)

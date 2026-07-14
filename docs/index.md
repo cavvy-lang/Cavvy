@@ -6,7 +6,7 @@
 
 Cavvy（曾用名 EOL — Ethernos Object Language）是一门静态类型、面向对象的编程语言编译器。它使用 Rust 编写，将 `.cay` 源码编译为 LLVM IR，再通过捆绑的 LLVM/MinGW 工具链生成原生可执行文件。
 
-- **当前版本**：5.1.0-Beta.2（来自 `.verinfo`）
+- **当前版本**：6.1.0（来自 `.verinfo`）
 - **源文件扩展名**：`.cay`
 - **旧名称**：EOL（`.eol` 扩展名和 CI 中的 `eol-*` 为历史遗留）
 - **许可证**：GPL3
@@ -59,7 +59,8 @@ cargo build --release
 | **Cavly 包管理器** | 依赖管理、构建、测试                     |
 | **RCPL**           | 交互式编程环境                           |
 | **LSP**            | 语言服务器协议支持                       |
-| **11 个 CLI 工具** | 编译、检查、格式化、分析等               |
+| **16 个 CLI 入口** | 编译、检查、运行、分析、设置和包管理等    |
+| **Result 错误处理** | `Result<T, E>`、`?`、`panic` 和 `abort` |
 
 ---
 

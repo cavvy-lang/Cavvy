@@ -2,6 +2,8 @@
 
 本文档是 Cavvy（Cay）编程语言的完整语法和语义参考。
 
+版本说明：本文档按 6.1.0 语义维护；5.2.0～5.4.0 的迁移背景见[版本演进总览](release/version-history-5.2-to-6.1.md)。
+
 ---
 
 ## 词法结构
@@ -109,6 +111,60 @@ class Main {
     }
 }
 ```
+
+### Result 与错误传播（6.1.0）
+
+`Result<T, E>` 表示成功值或错误值，两个类型参数都必须显式给出：
+
+```cay
+Result<int, String> ok = Result<int, String>.ok(42);
+Result<int, String> failed = Result<int, String>.err("invalid input");
+
+if (ok.isOk()) {
+    println(String.valueOf(ok.unwrap()));
+}
+int fallback = failed.unwrapOr(0);
+```
+
+可用操作包括 `ok`、`err`、`isOk`、`isErr`、`unwrap`、`unwrapOr`、`unwrapErr` 和 `expect`。`expect`、`unwrap` 和 `unwrapErr` 不应替代可恢复错误分支。
+
+函数返回兼容的 `Result` 时，可以使用 `?` 传播错误：
+
+```cay
+public Result<int, String> readValue() {
+    Result<int, String> value = Result<int, String>.ok(7);
+    int number = value?;
+    return Result<int, String>.ok(number + 1);
+}
+```
+
+### 智能指针与 RAII（5.3.0）
+
+标准库提供四种所有权模型：`UniquePtr<T>`（独占且可转移）、`ScopedPtr<T>`（作用域独占）、`Rc<T>`（共享引用计数）和 `WeakPtr<T>`（弱引用）。作用域退出时，编译器会为受支持对象注入析构调用。
+
+```cay
+UniquePtr<Node> node = UniquePtr<Node>.fromRaw(new Node());
+Node borrowed = node.get();
+Node owned = node.release();
+```
+
+`release()` 会放弃托管权，调用方随后负责对象生命周期；不要在智能指针仍持有对象时手动释放同一对象。
+
+### 内存映射文件（5.4.0）
+
+`Mmap` 支持 Windows 和 Linux 的只读/读写映射，`MmapSlice` 是零拷贝视图：
+
+```cay
+MmapResult<Mmap> result = Mmap.mapReadOnly("data.bin");
+if (result.isOk()) {
+    Mmap mapped = result.unwrap();
+    MmapSlice bytes = mapped.slice(0, mapped.size());
+    // 使用 bytes 后再 unmap mapped
+    mapped.unmap();
+}
+```
+
+写映射完成后调用 `sync()`。映射失败、偏移越界以及 `unmap()` 后继续使用切片都是错误情况，应由调用方处理。
 
 ---
 

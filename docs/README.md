@@ -5,7 +5,7 @@
 
 **Cavvy**（也称作 **Cay**）是一门静态类型、面向对象的编程语言，以 Rust 编写，通过 LLVM IR → clang 编译为原生机器码。采用 GPL3 许可证。
 
-- **当前版本**：5.1.0-Beta.2
+- **当前版本**：6.1.0
 - **源文件扩展名**：`.cay`（规范扩展名，曾用 `.eol`）
 - **项目全称**：Cavvy（曾用名 EOL — Ethernos Object Language）
 

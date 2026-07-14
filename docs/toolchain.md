@@ -94,7 +94,7 @@ cargo test --release --test inheritance_tests -- --nocapture
 版本号存储在项目根目录的 `.verinfo` 文件中（类 INI 格式）：
 
 ```ini
-version=5.1.0-Beta.2
+version=6.1.0
 ```
 
 `build.rs` 解析此文件，将版本号与当前 git 提交哈希组合，通过环境变量注入编译二进制。修改 `.verinfo` 后执行 `cargo build` 会自动重新编译。

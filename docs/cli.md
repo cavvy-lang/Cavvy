@@ -1,6 +1,6 @@
 # CLI 工具参考手册
 
-Cavvy 提供 11 个 CLI 工具，全部位于 `target/release/` 目录。
+Cavvy 6.1.0 提供 16 个 CLI 入口，全部位于 `target/release/` 目录；其中 `cay-ast`、`cay-pl`、`cay-sir` 是 5.2.0 引入的分析工具，`cay-setup` 用于工具链设置。
 
 ---
 
@@ -17,9 +17,13 @@ Cavvy 提供 11 个 CLI 工具，全部位于 `target/release/` 目录。
 | `cay-bcgen` | CayBC 字节码生成 | `src/bin/cay-bcgen.rs` |
 | `cay-lsp` | LSP 语言服务器 | `src/bin/cay-lsp.rs` |
 | `cavly` | 包管理器 | `src/bin/cavly.rs` |
-| `cay-dt` | 文档工具 | `src/bin/cay-dt.rs` |
-| `cay-dp` | 依赖分析工具 | `src/bin/cay-dp.rs` |
+| `cay-dt` | Token显示工具 | `src/bin/cay-dt.rs` |
+| `cay-dp` | Parser显示工具 | `src/bin/cay-dp.rs` |
 | `cay-pre` | 独立预处理器 | `src/bin/cay-pre.rs` |
+| `cay-ast` | AST 查看与 JSON 导出 | `src/bin/cay-ast.rs` |
+| `cay-pl` | 预处理结果查看 | `src/bin/cay-pl.rs` |
+| `cay-sir` | 语义 IR 查看 | `src/bin/cay-sir.rs` |
+| `cay-setup` | 工具链设置与环境检查 | `src/bin/cay-setup.rs` |
 
 ---
 
@@ -195,7 +199,7 @@ cay-rcpl [选项]
 
 ```
 > cay-rcpl
-Cavvy RCPL v5.1.0-Beta.2
+Cavvy RCPL v6.1.0
 > int x = 42
 > x * 2
 84
