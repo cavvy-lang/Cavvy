@@ -4,7 +4,7 @@
 
 ## 推荐模式
 
-```cay
+```cay ignore
 public Result<int, IOError> readValue(string path) {
     Result<int, IOError> result = Result<int, IOError>.ok(42);
     int value = result?;

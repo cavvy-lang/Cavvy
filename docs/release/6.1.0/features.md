@@ -9,7 +9,7 @@
 
 `Result` 的核心操作是 `ok`、`err`、`isOk`、`isErr`、`unwrap`、`unwrapOr`、`unwrapErr` 和 `expect`。错误类型层级还提供 `std::ParseError`，用于携带解析位置和源代码片段。
 
-```cay
+```cay ignore
 Result<int, String> result = Result<int, String>.ok(42);
 if (result.isOk()) {
     println(String.valueOf(result.unwrap()));

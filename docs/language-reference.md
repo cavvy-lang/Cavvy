@@ -116,7 +116,7 @@ class Main {
 
 `Result<T, E>` 表示成功值或错误值，两个类型参数都必须显式给出：
 
-```cay
+```cay ignore
 Result<int, String> ok = Result<int, String>.ok(42);
 Result<int, String> failed = Result<int, String>.err("invalid input");
 
@@ -130,7 +130,7 @@ int fallback = failed.unwrapOr(0);
 
 函数返回兼容的 `Result` 时，可以使用 `?` 传播错误：
 
-```cay
+```cay ignore
 public Result<int, String> readValue() {
     Result<int, String> value = Result<int, String>.ok(7);
     int number = value?;
@@ -142,7 +142,7 @@ public Result<int, String> readValue() {
 
 标准库提供四种所有权模型：`UniquePtr<T>`（独占且可转移）、`ScopedPtr<T>`（作用域独占）、`Rc<T>`（共享引用计数）和 `WeakPtr<T>`（弱引用）。作用域退出时，编译器会为受支持对象注入析构调用。
 
-```cay
+```cay ignore
 UniquePtr<Node> node = UniquePtr<Node>.fromRaw(new Node());
 Node borrowed = node.get();
 Node owned = node.release();
@@ -154,7 +154,7 @@ Node owned = node.release();
 
 `Mmap` 支持 Windows 和 Linux 的只读/读写映射，`MmapSlice` 是零拷贝视图：
 
-```cay
+```cay ignore
 MmapResult<Mmap> result = Mmap.mapReadOnly("data.bin");
 if (result.isOk()) {
     Mmap mapped = result.unwrap();

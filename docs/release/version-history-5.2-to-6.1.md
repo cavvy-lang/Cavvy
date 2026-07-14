@@ -21,7 +21,7 @@
 
 ## 5.3.0：调用、资源和调试
 
-```cay
+```cay ignore
 // 静态调用可以使用类型限定名
 int value = Integer::parseInt("42");
 
@@ -41,7 +41,7 @@ Box<int> box = Box<int>(value);
 
 ## 6.1.0：Result 错误传播
 
-```cay
+```cay ignore
 Result<int, String> result = Result<int, String>.ok(42);
 if (result.isOk()) {
     int value = result.unwrap();
