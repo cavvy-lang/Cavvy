@@ -139,6 +139,59 @@ impl IRGenerator {
         }
     }
 
+    pub fn install_class_generic_args(&mut self, class_name: &str) {
+        use crate::types::Type;
+
+        if !class_name.contains('<') || !class_name.ends_with('>') {
+            return;
+        }
+
+        let Some(pos) = class_name.find('<') else {
+            return;
+        };
+        let gt_pos = class_name.rfind('>').unwrap_or(class_name.len());
+        let base = &class_name[..pos];
+        let args_str = &class_name[pos + 1..gt_pos];
+        let args: Vec<Type> = crate::codegen::specialization::split_top_level_type_args(args_str)
+            .iter()
+            .map(|s| parse_type_arg_str(s.trim()))
+            .collect();
+        if args.is_empty() {
+            return;
+        }
+
+        let base_name = base.split('<').next().unwrap_or(base);
+        let bare_name = base_name.rsplit("::").next().unwrap_or(base_name);
+        let type_params = self.type_registry.as_ref().and_then(|registry| {
+            registry
+                .get_class(base_name)
+                .map(|c| c.type_params.clone())
+                .or_else(|| registry.get_class(bare_name).map(|c| c.type_params.clone()))
+                .or_else(|| {
+                    registry
+                        .get_interface(base_name)
+                        .map(|i| i.type_params.clone())
+                })
+                .or_else(|| {
+                    registry
+                        .get_interface(bare_name)
+                        .map(|i| i.type_params.clone())
+                })
+        });
+
+        if let Some(params) = type_params {
+            for (idx, param) in params.iter().enumerate() {
+                let resolved_arg = args
+                    .get(idx)
+                    .cloned()
+                    .or_else(|| param.default_type.clone())
+                    .unwrap_or_else(|| Type::GenericParam(param.name.clone()));
+                self.generic_type_args
+                    .insert(param.name.clone(), resolved_arg);
+            }
+        }
+    }
+
     /// 获取方法的返回类型
     /// 支持继承查找：如果在当前类中找不到方法，会递归查找父类
     pub fn get_method_return_type(

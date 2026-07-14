@@ -56,6 +56,8 @@ impl IRGenerator {
                     )
                 }
                 "exit" => return self.generate_exit_call(&call.args, &call.loc),
+                // 6.1.0: panic/abort 内置函数
+                "panic" | "abort" => return self.generate_panic_call(&call.args, &call.loc),
                 "readInt" => return self.generate_read_int_call(&call.args, &call.loc),
                 "readLong" => return self.generate_read_long_call(&call.args, &call.loc),
                 "readFloat" => return self.generate_read_float_call(&call.args, &call.loc),
@@ -570,6 +572,7 @@ impl IRGenerator {
         // 安装接收者的具体泛型类型参数映射，使方法签名中的泛型参数（如参数/返回
         // 类型 T）能在参数类型解析与转换之前就解析为具体类型。静态泛型工厂调用的
         // 映射已在上文按期望类型安装。调用结束后恢复到进入本函数时的快照。
+        self.install_class_generic_args(&class_name);
         self.install_receiver_generic_args(&obj_expr);
 
         // 检查是否有命名参数需要重排

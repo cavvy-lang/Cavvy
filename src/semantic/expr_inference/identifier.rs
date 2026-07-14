@@ -163,6 +163,7 @@ impl SemanticAnalyzer {
             Expr::MethodRef(method_ref) => self.infer_method_ref_type(method_ref),
             Expr::Lambda(lambda) => self.infer_lambda_type(lambda),
             Expr::Ternary(ternary) => self.infer_ternary_type(ternary),
+            Expr::Try(try_expr) => self.infer_try_type(try_expr),
             Expr::InstanceOf(instanceof) => self.infer_instanceof_type(instanceof),
             Expr::Alloc(_) => Ok(Type::Int64), // 0.5.0.0: alloc 返回 long (指针)
             Expr::Dealloc(_) => Ok(Type::Void), // 0.5.0.0: dealloc 返回 void

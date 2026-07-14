@@ -313,6 +313,125 @@ impl SemanticAnalyzer {
         }
     }
 
+    /// 6.1.0: 推断 ? 运算符表达式类型
+    ///
+    /// `expr?` 要求 expr 的类型为 Result<T, E>，且当前函数返回类型也必须为
+    /// Result<T, E]（相同 T, E）。推断结果类型为 T。
+    pub(crate) fn infer_try_type(
+        &mut self,
+        try_expr: &crate::ast::TryExpr,
+    ) -> crate::miette_diagnostic::CayResult<Type> {
+        use crate::types::Type;
+
+        let expr_type = self.infer_expr_type_internal(&try_expr.expr)?;
+
+        // 解析 Result<T, E>：支持 Type::Generic 与 Type::Object 两种表示，
+        // 同时支持裸名 "Result" 和限定名 "std::Result"。
+        let (base_name, type_args) = match &expr_type {
+            Type::Generic(name, args) => (name.clone(), args.clone()),
+            Type::Object(name) => {
+                // 尝试从 Object("std::Result<int, String>") 中解析基础名和参数
+                if let Some(pos) = name.find('<') {
+                    let base = name[..pos].to_string();
+                    let end = name.len().saturating_sub(1);
+                    let args_str = if end > pos + 1 {
+                        &name[pos + 1..end]
+                    } else {
+                        ""
+                    };
+                    let args: Vec<Type> = self
+                        .split_type_arguments(args_str)
+                        .iter()
+                        .map(|s| Type::Object(s.clone()))
+                        .collect();
+                    (base, args)
+                } else {
+                    (name.clone(), Vec::new())
+                }
+            }
+            _ => (String::new(), Vec::new()),
+        };
+
+        let is_result = base_name == "Result" || base_name == "std::Result";
+        if !is_result || type_args.len() != 2 {
+            return Err(semantic_error_at_loc(
+                &try_expr.loc,
+                format!(
+                    "The '?' operator can only be used on Result<T, E>, got {}",
+                    expr_type
+                ),
+            ));
+        }
+
+        let value_type = type_args[0].clone();
+        let error_type = type_args[1].clone();
+
+        // 检查当前函数返回类型是否兼容
+        let return_type = self.current_return_type.clone().ok_or_else(|| {
+            semantic_error_at_loc(
+                &try_expr.loc,
+                "The '?' operator can only be used inside a function with a return type".to_string(),
+            )
+        })?;
+
+        let (ret_base, ret_args) = match &return_type {
+            Type::Generic(name, args) => (name.clone(), args.clone()),
+            Type::Object(name) => {
+                if let Some(pos) = name.find('<') {
+                    let base = name[..pos].to_string();
+                    let end = name.len().saturating_sub(1);
+                    let args_str = if end > pos + 1 {
+                        &name[pos + 1..end]
+                    } else {
+                        ""
+                    };
+                    let args: Vec<Type> = self
+                        .split_type_arguments(args_str)
+                        .iter()
+                        .map(|s| Type::Object(s.clone()))
+                        .collect();
+                    (base, args)
+                } else {
+                    (name.clone(), Vec::new())
+                }
+            }
+            _ => (String::new(), Vec::new()),
+        };
+
+        let ret_is_result = ret_base == "Result" || ret_base == "std::Result";
+        if !ret_is_result || ret_args.len() != 2 {
+            return Err(semantic_error_at_loc(
+                &try_expr.loc,
+                format!(
+                    "The '?' operator requires the enclosing function to return Result<T, E>, got {}",
+                    return_type
+                ),
+            ));
+        }
+
+        if ret_args[0] != value_type {
+            return Err(semantic_error_at_loc(
+                &try_expr.loc,
+                format!(
+                    "The '?' operator value type {} does not match function return value type {}",
+                    value_type, ret_args[0]
+                ),
+            ));
+        }
+
+        if ret_args[1] != error_type {
+            return Err(semantic_error_at_loc(
+                &try_expr.loc,
+                format!(
+                    "The '?' operator error type {} does not match function return error type {}",
+                    error_type, ret_args[1]
+                ),
+            ));
+        }
+
+        Ok(value_type)
+    }
+
     /// 推断 instanceof 表达式类型
     pub(crate) fn infer_instanceof_type(
         &mut self,
@@ -442,7 +561,7 @@ impl SemanticAnalyzer {
             "double" => Type::Float64,
             "boolean" | "bool" => Type::Bool,
             "char" => Type::Char,
-            "String" => Type::String,
+            "String" | "string" => Type::String,
             "void" => Type::Void,
             // 检查是否是已注册的类或结构体
             name => {

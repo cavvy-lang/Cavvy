@@ -34,6 +34,8 @@ pub struct SemanticAnalyzer {
     pub(super) current_class_type_params: Vec<TypeParam>,
     /// 当前正在推断的返回类型（用于 fn 自动推断）
     pub(super) current_inferring_return: Option<Type>,
+    /// 6.1.0: 当前函数/方法的声明返回类型，用于 ? 运算符检查
+    pub(super) current_return_type: Option<Type>,
 }
 
 impl SemanticAnalyzer {
@@ -56,6 +58,7 @@ impl SemanticAnalyzer {
             features,
             current_class_type_params: Vec::new(),
             current_inferring_return: None,
+            current_return_type: None,
         };
 
         // 注册内置函数
@@ -380,6 +383,7 @@ impl SemanticAnalyzer {
             Expr::Dealloc(e) => (e.loc.line, e.loc.column),
             Expr::AllocArray(e) => (e.loc.line, e.loc.column),
             Expr::NamedArg(e) => (e.loc.line, e.loc.column),
+            Expr::Try(e) => (e.loc.line, e.loc.column),
         }
     }
 
@@ -409,6 +413,7 @@ impl SemanticAnalyzer {
             Expr::Dealloc(e) => e.loc.clone(),
             Expr::AllocArray(e) => e.loc.clone(),
             Expr::NamedArg(e) => e.loc.clone(),
+            Expr::Try(e) => e.loc.clone(),
         }
     }
 

@@ -3,7 +3,7 @@
 //! 测试 struct、enum、@FreeFunction、泛型语法等功能
 
 mod common;
-use common::{assert_output_contains, compile_and_run_eol, compile_eol_expect_error};
+use common::{assert_output_contains, compile_and_run_eol, compile_eol_expect_error, compile_and_run_expect_error};
 
 // ============================================================
 // struct 测试
@@ -252,6 +252,39 @@ fn test_static_method_colon_access() {
             "=== 命名空间式 :: 静态方法测试通过 ===",
         ],
         "test_static_method_colon",
+    );
+}
+
+// ============================================================
+// 6.1.0: Result<T, E> 与 ? 运算符
+// ============================================================
+
+#[test]
+fn test_result_question_operator() {
+    let output = compile_and_run_eol("examples/test_result_question.cay")
+        .expect("test_result_question.cay should compile and run");
+    assert_output_contains(
+        &output,
+        &[
+            "ok=84",
+            "err=failed",
+        ],
+        "test_result_question",
+    );
+}
+
+// ============================================================
+// 6.1.0: panic 内置函数
+// ============================================================
+
+#[test]
+fn test_panic_builtin() {
+    let error = compile_and_run_expect_error("examples/test_panic.cay")
+        .expect("test_panic.cay should fail at runtime");
+    assert!(
+        error.contains("panic: critical failure"),
+        "Expected panic message in output, got: {}",
+        error
     );
 }
 

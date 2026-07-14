@@ -38,6 +38,20 @@ impl SemanticAnalyzer {
                     self.infer_expr_type_collect_errors(&call.args[0]);
                     return Ok(Type::Void);
                 }
+                // 6.1.0: panic/abort 内置函数
+                "panic" | "abort" => {
+                    if call.args.len() != 1 {
+                        return Err(semantic_error_at_loc(
+                            &call.loc,
+                            format!(
+                                "Function '{}' requires 1 argument, but got {}",
+                                name, call.args.len()
+                            ),
+                        ));
+                    }
+                    self.infer_expr_type_collect_errors(&call.args[0]);
+                    return Ok(Type::Void);
+                }
                 "readInt" => return Ok(Type::Int32),
                 "readLong" => return Ok(Type::Int64),
                 "readFloat" => return Ok(Type::Float32),

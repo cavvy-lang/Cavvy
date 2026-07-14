@@ -63,6 +63,9 @@ impl IRGenerator {
             // 三元运算符
             Expr::Ternary(ternary) => self.generate_ternary_expression(ternary),
 
+            // 6.1.0: ? 运算符
+            Expr::Try(try_expr) => self.generate_try_expression(try_expr),
+
             // instanceof
             Expr::InstanceOf(instanceof) => self.generate_instanceof_expression(instanceof),
 

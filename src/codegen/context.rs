@@ -2350,6 +2350,49 @@ impl IRGenerator {
         None
     }
 
+    fn qualify_generic_layout_key(&self, class_name: &str) -> Option<String> {
+        let (base_name, generic_suffix) = if let Some(pos) = class_name.find('<') {
+            (&class_name[..pos], &class_name[pos..])
+        } else {
+            (class_name, "")
+        };
+
+        if base_name.contains("::") {
+            return None;
+        }
+
+        if let Some(ref registry) = self.type_registry {
+            if let Some(qualified_base) = registry.find_qualified_class(base_name) {
+                return Some(format!("{}{}", qualified_base, generic_suffix));
+            }
+        }
+
+        for owner in [
+            self.current_class_specialized.as_deref(),
+            Some(self.current_class.as_str()),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            let owner_base = owner.find('<').map(|pos| &owner[..pos]).unwrap_or(owner);
+            if let Some(ns_end) = owner_base.rfind("::") {
+                let qualified_base = format!("{}::{}", &owner_base[..ns_end], base_name);
+                let qualified_key = format!("{}{}", qualified_base, generic_suffix);
+                if self.class_layouts.contains_key(&qualified_key)
+                    || self.class_layouts.contains_key(&qualified_base)
+                    || self
+                        .type_registry
+                        .as_ref()
+                        .map_or(false, |registry| registry.class_exists(&qualified_base))
+                {
+                    return Some(qualified_key);
+                }
+            }
+        }
+
+        None
+    }
+
     /// 生成所有 struct 的 LLVM 类型定义
     pub fn emit_struct_type_definitions(&self) -> String {
         let mut result = String::new();
@@ -2367,6 +2410,11 @@ impl IRGenerator {
         // 直接用传入的类名查找
         if let Some(layout) = self.class_layouts.get(class_name) {
             return Some(layout);
+        }
+        if let Some(qualified_key) = self.qualify_generic_layout_key(class_name) {
+            if let Some(layout) = self.class_layouts.get(&qualified_key) {
+                return Some(layout);
+            }
         }
         // 简单名找不到，尝试用限定名（class_layouts 键为 "ns::ClassName"）
         if let Some(ref registry) = self.type_registry {
@@ -2416,6 +2464,13 @@ impl IRGenerator {
         if let Some(layout) = self.struct_layouts.get(class_name) {
             if let Some(result) = layout.fields.get(field_name) {
                 return Some(result);
+            }
+        }
+        if let Some(qualified_key) = self.qualify_generic_layout_key(class_name) {
+            if let Some(layout) = self.class_layouts.get(&qualified_key) {
+                if let Some(result) = layout.fields.get(field_name) {
+                    return Some(result);
+                }
             }
         }
         // 简单名找不到，尝试用限定名（class_layouts 键为 "ns::ClassName"）

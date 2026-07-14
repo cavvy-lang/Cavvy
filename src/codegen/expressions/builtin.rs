@@ -189,6 +189,80 @@ impl IRGenerator {
         Ok("void".to_string())
     }
 
+    /// 6.1.0: 生成 panic/abort 调用代码
+    ///
+    /// 接受一个字符串参数作为错误消息，打印到 stderr 后调用 abort() 终止程序。
+    pub fn generate_panic_call(
+        &mut self,
+        args: &[Expr],
+        loc: &crate::miette_diagnostic::SourceLocation,
+    ) -> CayResult<String> {
+        if args.len() != 1 {
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
+                loc.clone(),
+                format!("panic() takes exactly 1 argument, but got {}", args.len()),
+            ));
+        }
+
+        let arg_result = self.generate_expression(&args[0])?;
+        let (arg_type, arg_val) = self.parse_typed_value(&arg_result);
+
+        // panic 参数必须是字符串（i8*）
+        if arg_type != "i8*" {
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
+                loc.clone(),
+                format!("panic() requires a String argument, got {}", arg_type),
+            ));
+        }
+
+        // 确保 abort 已声明
+        if !self.is_extern_emitted("abort@void") {
+            self.emit_raw("declare void @abort()");
+            self.mark_extern_emitted("abort@void".to_string());
+        }
+
+        // 打印 "panic: message\n" 到 stderr
+        let prefix = "panic: ";
+        let prefix_global = self.get_or_create_string_constant(prefix);
+        let prefix_len = prefix.len() + 1;
+        let newline = "\n";
+        let newline_global = self.get_or_create_string_constant(newline);
+        let newline_len = newline.len() + 1;
+
+        let prefix_ptr = self.new_temp();
+        let newline_ptr = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = getelementptr [{} x i8], [{} x i8]* {}, i64 0, i64 0",
+            prefix_ptr, prefix_len, prefix_len, prefix_global
+        ));
+        self.emit_line(&format!(
+            "  {} = getelementptr [{} x i8], [{} x i8]* {}, i64 0, i64 0",
+            newline_ptr, newline_len, newline_len, newline_global
+        ));
+
+        let stderr_ptr = self.emit_stderr_ptr();
+        let panic_fmt = "%s%s%s";
+        let panic_fmt_global = self.get_or_create_string_constant(panic_fmt);
+        let panic_fmt_len = panic_fmt.len() + 1;
+        let fmt_ptr = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = getelementptr [{} x i8], [{} x i8]* {}, i64 0, i64 0",
+            fmt_ptr, panic_fmt_len, panic_fmt_len, panic_fmt_global
+        ));
+
+        self.emit_line(&format!(
+            "  call i32 (i8*, i8*, ...) @fprintf(i8* {}, i8* {}, i8* {}, i8* {}, i8* {})",
+            stderr_ptr, fmt_ptr, prefix_ptr, arg_val, newline_ptr
+        ));
+
+        // 调用 abort 终止程序
+        self.emit_line("  call void @abort()");
+
+        Ok("void".to_string())
+    }
+
     /// 生成简单的单参数打印（保持向后兼容）
     fn generate_simple_print(
         &mut self,

@@ -1,7 +1,7 @@
 (*
  * Cavvy 编程语言语法规范 - EBNF 表示
- * 版本: 5.3.3
- * 构建号: 38
+ * 版本: 6.1.0
+ * 构建号: 39
  *
  * 本文件使用扩展巴科斯-瑙尔范式 (EBNF) 描述 Cavvy 编程语言的语法结构。
  * 符号约定:
@@ -495,7 +495,8 @@ postfix_operator = "(", [ argument_list ], ")"
                  | ".", identifier, [ "(", [ argument_list ], ")" ]
                  | "[", expression, "]"
                  | "++"
-                 | "--";
+                 | "--"
+                 | "?";
 
 argument_list = expression, { ",", expression };
 
@@ -769,6 +770,14 @@ varargs = "," , "...";
 (* readDouble() - 读取双精度浮点数，返回 double *)
 (* readLine()   - 读取一行字符串，返回 string *)
 (* readChar()   - 读取单个字符，返回 char *)
+
+(* 错误处理函数 *)
+(* panic(String msg) - 打印 panic 消息到 stderr 并调用 abort() 终止程序 *)
+(* abort(String msg) - panic 的别名，行为相同 *)
+
+(* 错误处理类型 *)
+(* Result<T, E> - 显式错误传播类型，包含 ok(T) / err(E) 两种状态 *)
+(* ? 运算符      - 用于 Result<T, E> 表达式后，自动展开错误传播 *)
 
 (* 类型转换函数 *)
 (* parseInt(String s)     - 字符串转整数，返回 int *)

@@ -157,8 +157,9 @@ pub fn parse_primary(parser: &mut Parser) -> CayResult<Expr> {
                     // 成功消费了 :: 段
                     if parser.check(&crate::lexer::Token::Dot)
                         || parser.check(&crate::lexer::Token::LParen)
+                        || parser.check(&crate::lexer::Token::Lt)
                     {
-                        // 命名空间限定名：用于后续 .member 或 (args) 的链式调用
+                        // 命名空间限定名：用于后续 .member 或 (args) 或 <T> 泛型参数的链式调用
                         return Ok(Expr::Identifier(IdentifierExpr {
                             name: qualified,
                             loc,

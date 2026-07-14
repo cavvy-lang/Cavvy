@@ -1,0 +1,8 @@
+/**
+ * 6.1.0: panic 内置函数集成测试
+ */
+
+public int main() {
+    panic("critical failure");
+    return 0;
+}

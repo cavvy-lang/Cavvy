@@ -1,0 +1,42 @@
+/**
+ * 6.1.0: Result<T, E> 与 ? 运算符集成测试
+ */
+
+#include <Result.cay>
+
+public class TestResultQuestion {
+    public static std::Result<int, String> getResult(boolean ok) {
+        if (ok) {
+            return std::Result<int, String>.ok(42);
+        } else {
+            return std::Result<int, String>.err("failed");
+        }
+    }
+
+    public static std::Result<int, String> doWork(boolean ok) {
+        int value = getResult(ok)?;
+        return std::Result<int, String>.ok(value * 2);
+    }
+}
+
+public int main() {
+    std::Result<int, String> r1 = TestResultQuestion::doWork(true);
+    if (r1.isOk()) {
+        print("ok=");
+        println(r1.unwrap());
+    } else {
+        print("err=");
+        println(r1.unwrapErr());
+    }
+
+    std::Result<int, String> r2 = TestResultQuestion::doWork(false);
+    if (r2.isOk()) {
+        print("ok=");
+        println(r2.unwrap());
+    } else {
+        print("err=");
+        println(r2.unwrapErr());
+    }
+
+    return 0;
+}

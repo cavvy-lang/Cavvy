@@ -1,0 +1,109 @@
+/**
+ * Error 类型层级 - ROADMAP 6.1.x
+ *
+ * 提供系统级错误传播基类与内置错误类型。
+ * 所有可恢复错误均应实现 Error 接口。
+ *
+ * 版本: 6.1.0
+ */
+
+#ifndef CAY_ERROR_H
+#define CAY_ERROR_H
+
+#include "Optional.cay"
+
+namespace std {
+
+/**
+ * Error 接口 - 所有错误类型的基接口
+ */
+public interface Error {
+    String message();
+    Optional<Error> cause();
+}
+
+/**
+ * IOError - 文件/IO 操作错误
+ */
+public class IOError implements Error {
+    public enum Kind {
+        NotFound,
+        PermissionDenied,
+        UnexpectedEof,
+        InvalidInput,
+        Other
+    }
+
+    private Kind kind;
+    private int rawOsError;
+    private String msg;
+
+    public IOError(Kind kind, int rawOsError, String msg) {
+        this.kind = kind;
+        this.rawOsError = rawOsError;
+        this.msg = msg;
+    }
+
+    public IOError(Kind kind, String msg) {
+        this.kind = kind;
+        this.rawOsError = 0;
+        this.msg = msg;
+    }
+
+    public Kind kind() {
+        return this.kind;
+    }
+
+    public int rawOsError() {
+        return this.rawOsError;
+    }
+
+    public String message() {
+        return this.msg;
+    }
+
+    public Optional<Error> cause() {
+        return Optional<Error>.empty();
+    }
+}
+
+/**
+ * ParseError - 解析错误
+ */
+public class ParseError implements Error {
+    private int line;
+    private int column;
+    private String sourceSnippet;
+    private String msg;
+
+    public ParseError(int line, int column, String sourceSnippet, String msg) {
+        this.line = line;
+        this.column = column;
+        this.sourceSnippet = sourceSnippet;
+        this.msg = msg;
+    }
+
+    public int line() {
+        return this.line;
+    }
+
+    public int column() {
+        return this.column;
+    }
+
+    public String sourceSnippet() {
+        return this.sourceSnippet;
+    }
+
+    public String message() {
+        return this.msg;
+    }
+
+    public Optional<Error> cause() {
+        return Optional<Error>.empty();
+    }
+}
+
+} // namespace std
+
+#endif // CAY_ERROR_H

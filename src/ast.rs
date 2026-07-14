@@ -433,6 +433,7 @@ pub enum Expr {
     MethodRef(MethodRefExpr),   // 方法引用: ClassName::methodName
     Lambda(LambdaExpr),         // Lambda 表达式: (params) -> { body }
     Ternary(TernaryExpr),       // 三元运算符: condition ? true_expr : false_expr
+    Try(TryExpr),               // 6.1.0: ? 运算符: expr?
     InstanceOf(InstanceOfExpr), // instanceof 运算符: obj instanceof Type
     Alloc(AllocExpr),           // 0.5.0.0: 内存分配表达式: __cay_alloc(size)
     Dealloc(DeallocExpr),       // 0.5.0.0: 内存释放表达式: __cay_free(ptr)
@@ -458,6 +459,7 @@ impl HasLocation for Expr {
             Expr::MethodRef(method) => &method.loc,
             Expr::Lambda(lambda) => &lambda.loc,
             Expr::Ternary(ternary) => &ternary.loc,
+            Expr::Try(try_expr) => &try_expr.loc,
             Expr::InstanceOf(instance) => &instance.loc,
             Expr::Alloc(alloc) => &alloc.loc,
             Expr::Dealloc(dealloc) => &dealloc.loc,
@@ -714,6 +716,15 @@ pub struct TernaryExpr {
     pub condition: Box<Expr>,
     pub true_branch: Box<Expr>,
     pub false_branch: Box<Expr>,
+    pub loc: SourceLocation,
+}
+
+/// 6.1.0: ? 运算符表达式: expr?
+/// 自动展开错误传播：如果 expr 是 Result::err，则直接返回当前函数；
+/// 否则提取 Result::ok 中的值。
+#[derive(Debug, Clone, Serialize)]
+pub struct TryExpr {
+    pub expr: Box<Expr>,
     pub loc: SourceLocation,
 }
 

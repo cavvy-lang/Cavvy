@@ -35,6 +35,7 @@ impl SemanticAnalyzer {
             if is_auto {
                 self.current_inferring_return = Some(Type::Void);
             }
+            self.current_return_type = Some(func.return_type.clone());
 
             // 类型检查函数体
             self.type_check_statement(&Stmt::Block(func.body.clone()), Some(&func.return_type))?;
@@ -48,6 +49,7 @@ impl SemanticAnalyzer {
             self.symbol_table.exit_scope();
             self.current_method = None;
             self.current_method_is_static = false;
+            self.current_return_type = None;
         }
 
         // 更新 self.program 以反映顶层函数的最新返回类型
@@ -114,6 +116,7 @@ impl SemanticAnalyzer {
                             if is_auto {
                                 self.current_inferring_return = Some(Type::Void);
                             }
+                            self.current_return_type = Some(return_type.clone());
 
                             self.type_check_statement(
                                 &Stmt::Block(body.clone()),
@@ -138,6 +141,7 @@ impl SemanticAnalyzer {
                         self.symbol_table.exit_scope();
                         self.current_method = None;
                         self.current_method_is_static = false;
+                        self.current_return_type = None;
                     }
                     ClassMember::Field(_) => {
                         // 字段类型检查暂不实现

@@ -652,7 +652,7 @@ public static Result<UniquePtr<File>, IOError> openFile(String path) {
 
 #### 6.1.x 错误处理机制（非异常体系）
 
-- [ ] **Result<T, E> 泛型** - 显式错误传播 `Result<File, IOError>`
+- [X] **Result<T, E> 泛型** - 显式错误传播 `Result<File, IOError>`
 
   - 底层实现：tagged union `{ tag: u8, value: union { T ok; E err; } }`
   - 零开销：无堆分配，无 RTTI，无栈回退
@@ -689,7 +689,7 @@ public static Result<UniquePtr<File>, IOError> openFile(String path) {
       public Result<T,E> inspectErr(fn(E) -> void action);
   }
   ```
-- [ ] **问号运算符** - `file.read()?` 自动展开错误传播（类似 Rust 的 `?` 或 Zig 的 `try`）
+- [X] **问号运算符** - `file.read()?` 自动展开错误传播（类似 Rust 的 `?` 或 Zig 的 `try`）
 
   ```java
   // 编译器展开规则：
@@ -705,7 +705,7 @@ public static Result<UniquePtr<File>, IOError> openFile(String path) {
       return Result.ok(content);
   }
   ```
-- [ ] **错误类型层级** - `interface Error { string message(); }`，支持错误链（error chaining）
+- [X] **错误类型层级** - `interface Error { string message(); }`，支持错误链（error chaining）
 
   ```java
   public interface Error {
@@ -726,7 +726,7 @@ public static Result<UniquePtr<File>, IOError> openFile(String path) {
       public String sourceSnippet();
   }
   ```
-- [ ] **panic/abort** - 不可恢复错误，调用栈回退或立即终止（可选 unwind 实现）
+- [X] **panic/abort** - 不可恢复错误，调用栈回退或立即终止（可选 unwind 实现）
 
   - `panic(String message)`：打印消息和调用栈，调用 `abort()`
   - Debug 模式展开栈帧以收集 backtrace；Release 模式直接 abort
