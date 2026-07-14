@@ -7,6 +7,36 @@
 
 ## [Unreleased]
 
+## [5.4.0] - 2026-07-13
+
+### Added
+
+- **标准库**
+
+  - 新增 `std::Mmap` 内存映射文件支持，提供跨平台只读/读写映射、
+    同步回盘与 RAII 资源释放。
+    - Windows: `CreateFileMappingA` / `MapViewOfFile`
+    - Linux: `mmap` / `munmap` / `msync`
+  - 新增 `std::MmapSlice` 零拷贝切片视图，支持 `get`/`set`/`size`。
+  - 新增 `examples/test_mmap.cay`，覆盖只读/读写映射、切片、越界、
+    空文件、读写持久化与 64KB 压力测试。
+  - 在 `tests/file_lib_tests.rs` 中新增 `test_mmap_full` 与
+    `test_mmap_empty_file` 集成测试。
+
+### Fixed
+
+- **代码生成**
+
+  - 修复泛型类重载构造器解析：为泛型参数签名（`g*`）增加通配得分，
+    避免泛型构造器被无关重载覆盖。
+  - 修复整数到指针的显式类型转换 IR 生成：依据语义目标类型
+    `Pointer(_)` 生成 `inttoptr`，确保 `(c_void*)longValue` 不再被错误编译为
+    字符串转换，从而修复 `Mmap.unmap` 与 `INVALID_HANDLE` 比较。
+
+### Changed
+
+- 项目版本号升级至 `5.4.0`。
+
 ## [5.3.0] - 2026-07-11
 
 ### Added
