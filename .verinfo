@@ -10,7 +10,7 @@ build = 50
 version = "6.1.0"
 build = 50
 
-[CAY-CHECK]6.1
+[CAY-CHECK]
 version = "6.1.0"
 build = 42
 
