@@ -46,7 +46,7 @@ build = 15
 version = "6.1.0"
 build = 15
 
-[CAY-SETUP]6.1
+[CAY-SETUP]
 version = "6.1.0"
 build = 5
 
