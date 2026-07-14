@@ -60,6 +60,25 @@
   border-right: 1px solid var(--cavvy-line);
 }
 
+/* mdBook 的导航容器默认覆盖半个视口，容易拦截正文点击。 */
+.nav-chapters {
+  pointer-events: none;
+}
+
+.nav-chapters a {
+  display: flex;
+  width: 3rem;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  pointer-events: auto;
+}
+
+.nav-chapters.next a {
+  margin-left: auto;
+}
+
 .chapter li.part-title {
   color: var(--cavvy-accent-strong);
   font-weight: 700;
