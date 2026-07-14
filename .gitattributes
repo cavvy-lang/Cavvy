@@ -49,5 +49,5 @@ llvm-minimal/** linguist-vendored=true
 lib/** linguist-vendored=true
 
 *.rs linguist-language=Rust
-*.cay linguist-language=Java
+*.cay linguist-language=CSharp
 Cargo.toml linguist-language=Rust
