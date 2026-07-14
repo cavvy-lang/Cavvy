@@ -30,7 +30,7 @@ build = 16
 version = "6.1.0"
 build = 15
 
-[CAY-BCGEN]6.1
+[CAY-BCGEN]
 version = "6.1.0"
 build = 15
 
