@@ -23,8 +23,7 @@ public int main() {
 ```
 
 ```powershell
-cargo build --release
-.\target\release\cayc.exe hello.cay
+cayc hello.cay
 .\hello.exe
 ```
 

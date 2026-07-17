@@ -1,6 +1,6 @@
 # CLI 工具参考手册
 
-Cavvy 6.1.0 提供 16 个 CLI 入口，全部位于 `target/release/` 目录；其中 `cay-ast`、`cay-pl`、`cay-sir` 是 5.2.0 引入的分析工具，`cay-setup` 用于工具链设置。
+Cavvy 6.1.0 提供 16 个 CLI 入口；其中 `cay-setup` 是可独立构建和发布的工具链安装器，不依赖主编译器的 LLVM 构建环境。
 
 ---
 
@@ -23,7 +23,33 @@ Cavvy 6.1.0 提供 16 个 CLI 入口，全部位于 `target/release/` 目录；�
 | `cay-ast` | AST 查看与 JSON 导出 | `src/bin/cay-ast.rs` |
 | `cay-pl` | 预处理结果查看 | `src/bin/cay-pl.rs` |
 | `cay-sir` | 语义 IR 查看 | `src/bin/cay-sir.rs` |
-| `cay-setup` | 工具链设置与环境检查 | `src/bin/cay-setup.rs` |
+| `cay-setup` | 安装、更新、检查和卸载工具链 | `cay-setup/src/main.rs` |
+
+---
+
+## cay-setup — 工具链安装器
+
+直接运行且不传参数时，安装最新稳定版：
+
+```powershell
+cay-setup
+```
+
+常用管理命令：
+
+```powershell
+cay-setup install --version 6.1.0
+cay-setup update
+cay-setup show
+cay-setup doctor
+cay-setup uninstall
+```
+
+自动化环境使用 `--yes` 跳过确认，使用 `--no-modify-path` 禁止修改用户 PATH。可以通过
+`CAVVY_HOME` 或 `--root` 更改默认的 `~/.cavvy` 安装根目录；`show`、`doctor` 和
+`uninstall` 同样接受 `--root`。`doctor` 会实际编译一个最小程序，以验证 LLVM 后端和
+链接库，而不只是打印版本号。每个版本安装到 `~/.cavvy/toolchains/<版本>`，完成校验后
+才切换 PATH；管理器来自 Release 的独立 `cay-setup-<平台>-<架构>` 资产。
 
 ---
 

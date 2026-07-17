@@ -2,14 +2,36 @@
 
 ## 安装
 
-### 系统要求
+### 推荐安装
 
-- **操作系统**：Windows（主要目标平台）、Linux（musl 交叉编译支持）
-- **Rust 工具链**：stable 版本
-- **LLVM/clang**：捆绑在 `llvm-minimal/` 中，无需单独安装
-- **MinGW**：捆绑在 `mingw-minimal/` 中
-- **额外链接库**：`lib/` 目录下捆绑了运行时链接库
-- **磁盘空间**：构建需要约 2GB 空间
+Windows 用户只需从 [Cavvy Releases](https://github.com/cavvy-lang/Cavvy/releases/latest)
+下载 `cay-setup-windows-x86_64.exe` 并运行：
+
+```powershell
+.\cay-setup-windows-x86_64.exe
+```
+
+安装器默认将版本化工具链安装到 `~/.cavvy/toolchains/<版本>`，自动组合 Cavvy 主体、
+匹配版本的 LLVM minimal 和链接库，完整校验后原子切换用户 PATH。旧版本目录会保留，
+避免更新中途留下混合工具链。不要求 Rust、Python、Git、系统 LLVM、MinGW 或 7-Zip。
+重新打开终端后运行：
+
+```powershell
+cayc --version
+cay-setup doctor
+```
+
+常用管理命令：
+
+```powershell
+cay-setup update
+cay-setup show
+cay-setup uninstall
+```
+
+当前 Release 未提供 Linux 安装器。Linux 用户需直接解压 Release 中的
+`cavvy-<版本>-linux-x86_64.tar.xz`，再将对应 LLVM 版本的 `bin-linux.tar.xz`
+解压到 `llvm-minimal/bin-linux`，最后把 Cavvy 解压目录加入 PATH。
 
 ### 从源码构建
 
@@ -26,13 +48,16 @@ cargo build --release
 
 # 4. 验证安装
 .\target\release\cayc.exe --version
+
+# 独立构建安装器（不需要 LLVM）
+cargo build --release -p cay-setup
 ```
 
 > **注意**：`release` 是正常构建模式，仅在 release 模式下才会复制捆绑工具链。debug 构建用于开发，不包含捆绑工具。
 > `build.rs` 在构建时将 `llvm-minimal/`、`mingw-minimal/`、`lib/` 复制到 `target/<profile>/`。
 > `.cargo/config.toml` 仅包含 linux-musl 交叉编译配置，Windows 上可忽略。
 
-构建产物位于 `target/release/` 目录，共 11 个可执行文件（详见 [CLI 文档](cli.md)）。
+构建产物位于 `target/release/` 目录（详见 [CLI 文档](cli.md)）。
 
 ---
 

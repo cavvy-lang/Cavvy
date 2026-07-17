@@ -18,9 +18,6 @@ pub mod ir2exe_lib;
 // 嵌入式 LLVM LLC 编译器模块（实验性）
 pub mod embedded_llc;
 
-// Cavvy 环境安装与设置模块
-pub mod setup;
-
 // 统一诊断系统 v2 — CayError 直接实现 miette::Diagnostic
 pub use miette_diagnostic::CayError;
 pub use miette_diagnostic::CayResult;

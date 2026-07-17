@@ -4,6 +4,10 @@ name = "cavvy"
 version = "6.1.0"
 edition = "2024"
 
+[workspace]
+members = ["cay-setup"]
+default-members = ["."]
+
 [dependencies]
 thiserror = "2.0"
 anyhow = "1.0"
@@ -77,11 +81,6 @@ path = "src/bin/cay-dt.rs"
 [[bin]]
 name = "cay-dp"
 path = "src/bin/cay-dp.rs"
-
-[[bin]]
-name = "cay-setup"
-path = "src/bin/cay-setup.rs"
-test = false
 
 [[bin]]
 name = "cay-ast"

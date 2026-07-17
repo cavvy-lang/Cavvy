@@ -43,18 +43,43 @@ Cavvy v6.1.0发布
 
 ## 快速开始
 
-### 环境准备
+### 安装（推荐）
+
+Windows 用户从 [Cavvy Releases](https://github.com/cavvy-lang/Cavvy/releases/latest) 下载
+`cay-setup-windows-x86_64.exe`，双击运行或在终端执行：
+
+```powershell
+.\cay-setup-windows-x86_64.exe
+```
+
+安装器会自动下载 Cavvy 主体、匹配版本的 LLVM minimal 和链接库，完成校验后配置用户
+PATH。普通用户不需要安装 Rust、Python、Git、系统 LLVM、MinGW 或 7-Zip。重新打开
+终端后即可验证：
+
+```powershell
+cayc --version
+cay-setup doctor
+```
+
+当前 Release 未提供 Linux 安装器。Linux 用户需直接解压
+`cavvy-<版本>-linux-x86_64.tar.xz`，并将对应版本的 `bin-linux.tar.xz` 解压到其
+`llvm-minimal/bin-linux` 目录。
+
+### 从源码构建
 
 ```powershell
 # 克隆仓库
-git clone <repository-url>
-cd cavvy
+git clone https://github.com/cavvy-lang/Cavvy.git
+cd Cavvy
 
 # 设置工具链（首次运行）
 python setup-llvm.py
 
 # 构建 Release 版本
 cargo build --release
+
+# 安装器是独立 workspace 包，不依赖 LLVM
+cargo build --release -p cay-setup
 ```
 
 ### 第一段程序
@@ -71,7 +96,7 @@ public int main() {
 编译并运行:
 
 ```powershell
-.\target\release\cayc.exe hello.cay
+cayc hello.cay
 .\hello.exe
 # 输出: Hello, Cavvy!
 ```
@@ -95,25 +120,25 @@ public int main() {
 
 ```powershell
 # 编译程序
-.\target\release\cayc.exe program.cay program.exe
+cayc program.cay program.exe
 
 # 启用优化
-.\target\release\cayc.exe -O3 --lto=full program.cay program.exe
+cayc -O3 --lto=full program.cay program.exe
 
 # 只检查代码
-.\target\release\cay-check.exe program.cay
+cay-check program.cay
 
 # 生成 LLVM IR
-.\target\release\cay-ir.exe program.cay program.ll
+cay-ir program.cay program.ll
 
 # 编译并运行
-.\target\release\cay-run.exe program.cay
+cay-run program.cay
 
 # Cavly 包管理
-.\target\release\cavly.exe init myproject
-.\target\release\cavly.exe build
-.\target\release\cavly.exe run
-.\target\release\cavly.exe test
+cavly init myproject
+cavly build
+cavly run
+cavly test
 ```
 
 ## 语法概览

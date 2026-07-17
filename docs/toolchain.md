@@ -4,6 +4,15 @@
 
 ## 构建编译器
 
+本章面向从源码构建编译器的贡献者。普通用户应直接运行 Release 中的
+`cay-setup-windows-x86_64.exe`；预编译安装不要求 Rust、Python 或系统 LLVM。
+
+安装器本身是独立 workspace 包，可以在没有 LLVM 的环境中构建：
+
+```powershell
+cargo build --release -p cay-setup
+```
+
 ### Release 是正常模式
 
 测试、示例运行和日常使用都依赖 `target/release` 下的编译器二进制文件，因此日常构建使用 release：

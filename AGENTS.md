@@ -53,7 +53,8 @@ cargo test --release --verbose
 | `cay-dp`    | 依赖工具                                       |
 | `cay-pre`   | 独立预处理器                                   |
 
-所有入口点位于 `src/bin/*.rs`。它们都依赖库 crate（`src/lib.rs`，crate 名 `cavvy`）。
+主编译器工具入口点位于 `src/bin/*.rs`，并依赖库 crate（`src/lib.rs`，crate 名 `cavvy`）。
+`cay-setup` 是例外：它位于独立 workspace 包 `cay-setup/`，不依赖 `cavvy` 或 LLVM，确保能在全新环境中单独构建和运行。
 
 ## 架构
 
