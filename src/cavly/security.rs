@@ -397,8 +397,8 @@ pub fn verify_certificate_chain(
     package_data: &[u8],
     root_public_key: Option<&Ed25519PublicKey>,
 ) -> Result<()> {
-    // 1. 验证包指纹格式 (UUID v4)
-    verify_uuid_v4(&cert.fingerprint).context("包指纹格式无效")?;
+    // 1. 验证包指纹格式 (UUID v5)
+    verify_uuid(&cert.fingerprint, 5).context("包指纹格式无效")?;
 
     // 2. 验证元信息一致性
     if cert.name != meta.current_name {
@@ -433,7 +433,7 @@ pub fn verify_certificate_chain(
 }
 
 /// 验证 UUID v4 格式
-fn verify_uuid_v4(s: &str) -> Result<()> {
+fn verify_uuid(s: &str, expected_version: u8) -> Result<()> {
     // 使用简单字符检查而非正则，避免引入 regex 开销到核心路径
     if s.len() != 36 {
         bail!("UUID 长度必须为 36 字符");
@@ -449,8 +449,9 @@ fn verify_uuid_v4(s: &str) -> Result<()> {
         }
     }
     let version_char = s.as_bytes()[14];
-    if version_char != b'4' {
-        bail!("UUID 版本位必须为 '4', 实际是 '{}'", version_char as char);
+    let expected = b'0' + expected_version;
+    if version_char != expected {
+        bail!("UUID 版本位必须为 '{}', 实际是 '{}'", expected_version, version_char as char);
     }
     let variant_char = s.as_bytes()[19];
     if !matches!(variant_char, b'8' | b'9' | b'a' | b'b') {
@@ -615,19 +616,19 @@ mod tests {
     }
 
     #[test]
-    fn test_verify_uuid_v4_valid() {
-        assert!(verify_uuid_v4("a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d").is_ok());
-        assert!(verify_uuid_v4("00000000-0000-4000-8000-000000000000").is_ok());
-        assert!(verify_uuid_v4("ffffffff-ffff-4fff-9fff-ffffffffffff").is_ok());
+    fn test_verify_uuid_valid() {
+        assert!(verify_uuid("a1b2c3d4-e5f6-5a7b-8c9d-0e1f2a3b4c5d", 5).is_ok());
+        assert!(verify_uuid("00000000-0000-5000-8000-000000000000", 5).is_ok());
+        assert!(verify_uuid("ffffffff-ffff-5fff-9fff-ffffffffffff", 5).is_ok());
     }
 
     #[test]
-    fn test_verify_uuid_v4_invalid() {
-        assert!(verify_uuid_v4("not-a-uuid").is_err());
-        assert!(verify_uuid_v4("a1b2c3d4-e5f6-1a7b-8c9d-0e1f2a3b4c5d").is_err());
-        assert!(verify_uuid_v4("a1b2c3d4-e5f6-4a7b-1c9d-0e1f2a3b4c5d").is_err());
-        assert!(verify_uuid_v4("a1b2c3d4e5f6-4a7b-8c9d-0e1f2a3b4c5d").is_err());
-        assert!(verify_uuid_v4("a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5g").is_err());
+    fn test_verify_uuid_invalid() {
+        assert!(verify_uuid("not-a-uuid", 5).is_err());
+        assert!(verify_uuid("a1b2c3d4-e5f6-1a7b-8c9d-0e1f2a3b4c5d", 5).is_err());
+        assert!(verify_uuid("a1b2c3d4-e5f6-4a7b-1c9d-0e1f2a3b4c5d", 5).is_err());
+        assert!(verify_uuid("a1b2c3d4e5f6-4a7b-8c9d-0e1f2a3b4c5d", 5).is_err());
+        assert!(verify_uuid("a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5g", 5).is_err());
     }
 
     #[test]

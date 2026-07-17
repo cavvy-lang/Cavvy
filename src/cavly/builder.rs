@@ -537,10 +537,14 @@ impl Builder {
         }
 
         for dep in &self.dependencies {
-            // 跳过 only_include 依赖：它们只做接口检查，不产出 .lib
+            // 即使是 only_include 依赖，也要执行构建脚本（如果配置了）
             if dep.config.lib.only_include {
+                let mut dep_builder =
+                    Builder::new(dep.path.clone(), dep.config.clone()).verbose(self.verbose);
+                // 执行构建脚本
+                dep_builder.execute_build_script()?;
                 if self.verbose {
-                    println!("Cavly: 跳过 only_include 依赖: {}", dep.name);
+                    println!("Cavly: 跳过 only_include 依赖的编译: {}", dep.name);
                 }
                 continue;
             }
@@ -549,10 +553,8 @@ impl Builder {
                 println!("Cavly: 构建依赖: {} @ {}", dep.name, dep.path.display());
             }
 
-            // 为每个依赖创建构建器
             let mut dep_builder =
                 Builder::new(dep.path.clone(), dep.config.clone()).verbose(self.verbose);
-
             dep_builder.build()?;
         }
 
@@ -841,9 +843,14 @@ extern "C" {{
                 }
             }
 
-            // 库搜索路径（包括依赖的）
+            // 库搜索路径（包括依赖的）—— 全部转为绝对路径
             for path in self.config.all_lib_paths() {
-                args.push(format!("-L{}", path));
+                let abs_path = if Path::new(&path).is_relative() {
+                    self.project_root.join(&path)
+                } else {
+                    PathBuf::from(&path)
+                };
+                args.push(format!("-L{}", abs_path.display()));
             }
 
             // 链接依赖库（跳过 only_include 的依赖，它们没有 .lib 产物）
@@ -858,6 +865,28 @@ extern "C" {{
             // 链接的库（包括 FFI 库）
             for lib in self.config.all_libs() {
                 args.push(format!("-l{}", lib));
+            }
+
+            // 追加每个依赖声明的库搜索路径（相对于依赖根目录）
+            for dep in &self.dependencies {
+                for lib_path in &dep.config.build.lib_paths {
+                    let abs_path = if Path::new(lib_path).is_relative() {
+                        dep.path.join(lib_path)
+                    } else {
+                        PathBuf::from(lib_path)
+                    };
+                    if abs_path.exists() {
+                        args.push(format!("-L{}", abs_path.display()));
+                    }
+                }
+            }
+
+            // 追加每个依赖声明的 FFI 库
+            for dep in &self.dependencies {
+                for lib in &dep.config.build.libs {
+                    // 避免重复添加同名库（简单处理，直接加入不会造成问题）
+                    args.push(format!("-l{}", lib));
+                }
             }
         }
 
