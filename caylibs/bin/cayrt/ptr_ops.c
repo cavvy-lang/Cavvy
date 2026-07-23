@@ -3,6 +3,10 @@
  *
  * 提供对原始内存的读写操作，用于 FFI 交互。
  * 所有指针参数以 int64_t 形式传入，内部转换为 void*。
+ * 
+ * SPDX-License-Identifier: GPL-3.0 WITH Cavvy-RLE
+ * This file is part of Cavvy Runtime Library.
+ * See LICENSE-EXCEPTION.md for the exact exception terms.
  */
 
 #include "cayrt.h"

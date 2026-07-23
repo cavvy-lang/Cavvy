@@ -4,6 +4,10 @@
  * 提供按字节设置和复制内存的运行时支持。
  * 指针参数以 int64_t 形式传入，内部转换为 char* 操作。
  * 包含空指针安全检查。
+ * 
+ * SPDX-License-Identifier: GPL-3.0 WITH Cavvy-RLE
+ * This file is part of Cavvy Runtime Library.
+ * See LICENSE-EXCEPTION.md for the exact exception terms.
  */
 
 #include "cayrt.h"

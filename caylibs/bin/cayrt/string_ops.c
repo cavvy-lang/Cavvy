@@ -4,6 +4,10 @@
  * 实现 Cavvy String 类的运行时支持函数。
  * Cavvy 字符串在内部表示为以 null 结尾的 C 字符串 (char*)。
  * 所有函数在空指针输入时均进行安全检查，返回空字符串或 false/-1。
+ * 
+ * SPDX-License-Identifier: GPL-3.0 WITH Cavvy-RLE
+ * This file is part of Cavvy Runtime Library.
+ * See LICENSE-EXCEPTION.md for the exact exception terms.
  */
 
 #include "cayrt.h"

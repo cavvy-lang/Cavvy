@@ -67,3 +67,5 @@ fix_*.py
 .claude/settings.local.json
 module_test/*
 *.log
+
+node_modules/

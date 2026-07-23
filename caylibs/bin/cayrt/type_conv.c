@@ -3,6 +3,10 @@
  *
  * 将 Cavvy 基础类型转换为字符串表示。
  * 所有函数在 calloc 失败时返回空字符串，避免崩溃。
+ * 
+ * SPDX-License-Identifier: GPL-3.0 WITH Cavvy-RLE
+ * This file is part of Cavvy Runtime Library.
+ * See LICENSE-EXCEPTION.md for the exact exception terms.
  */
 
 #include "cayrt.h"

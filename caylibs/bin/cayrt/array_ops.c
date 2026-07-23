@@ -6,6 +6,10 @@
  *   返回指针指向元素0，长度字段在 -8 偏移处。
  *
  * 字符串数组元素为 char* 指针 (8B each)。
+ * 
+ * SPDX-License-Identifier: GPL-3.0 WITH Cavvy-RLE
+ * This file is part of Cavvy Runtime Library.
+ * See LICENSE-EXCEPTION.md for the exact exception terms.
  */
 
 #include "cayrt.h"

@@ -7,6 +7,10 @@
  *   GlobalAlloc   = { i8 }           → struct { char dummy; }
  *   ArenaAllocator = { i8*, i8*, i8*, ArenaAllocator* }
  *                 → struct { char* buffer; char* current; char* end; ArenaAllocator* prev; }
+ * 
+ * SPDX-License-Identifier: GPL-3.0 WITH Cavvy-RLE
+ * This file is part of Cavvy Runtime Library.
+ * See LICENSE-EXCEPTION.md for the exact exception terms.
  */
 
 #include "cayrt.h"

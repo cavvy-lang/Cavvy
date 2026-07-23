@@ -19,6 +19,10 @@
  *   - 所有函数使用默认 cdecl 调用约定
  *   - 64位系统上 i64 和 void* 大小相同（8字节），可安全互转
  *   - 结构体布局必须与 LLVM IR 中的定义精确匹配
+ * 
+ * SPDX-License-Identifier: GPL-3.0 WITH Cavvy-RLE
+ * This file is part of Cavvy Runtime Library.
+ * See LICENSE-EXCEPTION.md for the exact exception terms.
  */
 
 #ifndef CAYRT_H

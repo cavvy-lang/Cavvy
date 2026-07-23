@@ -16,6 +16,10 @@
  *   - 当某次 drop 后强引用计数仍大于 0，说明仍有其它强引用持有该对象；
  *     若同一个控制块多次进入此状态且始终未归零，则极有可能存在循环引用。
  *   该实现为保守、最佳努力（best-effort）检测，不依赖对象内存布局扫描。
+ * 
+ * SPDX-License-Identifier: GPL-3.0 WITH Cavvy-RLE
+ * This file is part of Cavvy Runtime Library.
+ * See LICENSE-EXCEPTION.md for the exact exception terms.
  */
 
 #include "cayrt.h"

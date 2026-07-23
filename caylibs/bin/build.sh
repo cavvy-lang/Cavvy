@@ -7,6 +7,9 @@
 #   bash build.sh linux        # 交叉编译 Linux x64
 #
 # 依赖: clang 或 gcc, ar
+# SPDX-License-Identifier: GPL-3.0 WITH Cavvy-RLE
+# This file is part of Cavvy Runtime Library.
+# See LICENSE-EXCEPTION.md for the exact exception terms.
 
 set -e
 
