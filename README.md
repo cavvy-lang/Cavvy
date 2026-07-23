@@ -358,7 +358,22 @@ cavvy/
 
 ## 许可证
 
-GNU GPLv3
+Cavvy 项目采用 **分层许可证** 策略，以便在保护编译器自由的同时，降低运行时和标准库对用户程序的传染：
+
+| 层级 | 内容 | 许可证 | 传染边界 |
+| --- | --- | --- | --- |
+| **编译器本体** | `cayc`、`cay-ir`、`ir2exe`、`cay-check`、`cay-run` 等 Rust 代码及 `cavvy` 库 | **GPL-3.0-only** | 修改编译器本体 → 必须开源 |
+| **运行时** | C 写的 `libcavvy` / `cayrt`、GC、FFI 胶水代码，以及编译器自动链接到用户程序中的最小运行时 | **GPL-3.0-only + Cavvy Runtime Library Exception** | 修改 Runtime → 必须开源；**仅链接/调用 Runtime → 不传染** |
+| **标准库** | `caylibs/` 下由 Cavvy 语言编写的 `string_ops`、`vector`、`hashmap` 等 | **MIT** | 可自由复制、修改、闭源商用 |
+
+> **说明**
+> - 编译器本体受 GPL-3.0 完整 copyleft 约束，任何对编译器本身的修改都必须开源。
+> - 运行时在本仓库中以 GPL-3.0 发布，但附加了 **[Cavvy Runtime Library Exception](LICENSE-EXCEPTION.md)**：你使用 Cavvy 编译器生成的可执行文件会自动静态/动态链接 Cavvy Runtime，**这不会导致你的程序被 GPL 传染**。只有当你直接修改运行时源码时，才需要开源你的运行时修改。
+> - 标准库（`caylibs/`）采用 MIT 许可证，你可以随意将其源码复制到自己的项目中，无论闭源或商用。
+>
+> 完整法律文本见：
+> - [LICENSE](LICENSE) —— GNU General Public License v3.0
+> - [LICENSE-EXCEPTION.md](LICENSE-EXCEPTION.md) —— Cavvy Runtime Library Exception
 
 ---
 
