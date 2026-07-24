@@ -16,6 +16,8 @@
 #ifndef CAY_STD_ALGORITHM_H
 #define CAY_STD_ALGORITHM_H
 
+#include <std/iterator.cay>
+
 namespace std {
 
 /* ============================================================================
@@ -110,6 +112,25 @@ public class algorithm {
         return i + 1;
     }
 
+    /** 使用自定义严格顺序比较函数进行分区。compare(a, b) 为 true 表示 a 应排在 b 前。 */
+    private static int quickSortPartition(int[] arr, int low, int high,
+                                          fn(int, int) -> boolean compare) {
+        int pivot = arr[high];
+        int i = low - 1;
+        for (int j = low; j < high; j++) {
+            if (compare(arr[j], pivot)) {
+                i = i + 1;
+                int t = arr[i];
+                arr[i] = arr[j];
+                arr[j] = t;
+            }
+        }
+        int pivotTemp = arr[i + 1];
+        arr[i + 1] = arr[high];
+        arr[high] = pivotTemp;
+        return i + 1;
+    }
+
     /**
      * 快速排序递归实现 - 不稳定排序
      * 时间复杂度: O(n log n) 平均, O(n^2) 最坏
@@ -123,6 +144,15 @@ public class algorithm {
         }
     }
 
+    private static void quickSortRec(int[] arr, int low, int high,
+                                     fn(int, int) -> boolean compare) {
+        if (low < high) {
+            int pi = quickSortPartition(arr, low, high, compare);
+            quickSortRec(arr, low, pi - 1, compare);
+            quickSortRec(arr, pi + 1, high, compare);
+        }
+    }
+
     /**
      * 快速排序入口
      * 时间复杂度: O(n log n) 平均
@@ -132,6 +162,114 @@ public class algorithm {
         if (arr == null || n <= 1) return;
         if (n > arr.length) n = arr.length;
         quickSortRec(arr, 0, n - 1);
+    }
+
+    /**
+     * 使用自定义严格顺序比较函数排序数组。
+     * compare(a, b) 返回 true 表示 a 应排在 b 前。
+     */
+    public static void sort(int[] arr, int n, fn(int, int) -> boolean compare) {
+        if (arr == null || n <= 1) return;
+        if (n > arr.length) n = arr.length;
+        quickSortRec(arr, 0, n - 1, compare);
+    }
+
+    /**
+     * 通过可变随机访问迭代器进行原地快速排序。
+     * 时间复杂度: O(n log n) 平均, O(n^2) 最坏
+     * 空间复杂度: O(log n)
+     */
+    public static void sort(MutableRandomAccessIterator<int> iter) {
+        if (iter.length() <= 1) return;
+        int n = iter.length();
+        int[] lows = new int[n];
+        int[] highs = new int[n];
+        int top = 0;
+        lows[0] = 0;
+        highs[0] = n - 1;
+
+        while (top >= 0) {
+            int low = lows[top];
+            int high = highs[top];
+            top = top - 1;
+
+            if (low < high) {
+                int pivotValue = iter.get(high);
+                int i = low - 1;
+                for (int j = low; j < high; j++) {
+                    if (iter.get(j) <= pivotValue) {
+                        i = i + 1;
+                        int swapTemp = iter.get(i);
+                        iter.set(i, iter.get(j));
+                        iter.set(j, swapTemp);
+                    }
+                }
+                int pivot = i + 1;
+                int pivotTemp = iter.get(pivot);
+                iter.set(pivot, iter.get(high));
+                iter.set(high, pivotTemp);
+
+                if (pivot - 1 > low) {
+                    top = top + 1;
+                    lows[top] = low;
+                    highs[top] = pivot - 1;
+                }
+                if (pivot + 1 < high) {
+                    top = top + 1;
+                    lows[top] = pivot + 1;
+                    highs[top] = high;
+                }
+            }
+        }
+    }
+
+    /**
+     * 使用自定义严格顺序比较函数通过可变随机访问迭代器排序。
+     * compare(a, b) 返回 true 表示 a 应排在 b 前。
+     */
+    public static void sort<T>(MutableRandomAccessIterator<T> iter,
+                               fn(T, T) -> boolean compare) {
+        if (iter.length() <= 1) return;
+        int n = iter.length();
+        int[] lows = new int[n];
+        int[] highs = new int[n];
+        int top = 0;
+        lows[0] = 0;
+        highs[0] = n - 1;
+
+        while (top >= 0) {
+            int low = lows[top];
+            int high = highs[top];
+            top = top - 1;
+
+            if (low < high) {
+                T pivotValue = iter.get(high);
+                int i = low - 1;
+                for (int j = low; j < high; j++) {
+                    if (compare(iter.get(j), pivotValue)) {
+                        i = i + 1;
+                        T swapTemp = iter.get(i);
+                        iter.set(i, iter.get(j));
+                        iter.set(j, swapTemp);
+                    }
+                }
+                int pivot = i + 1;
+                T pivotTemp = iter.get(pivot);
+                iter.set(pivot, iter.get(high));
+                iter.set(high, pivotTemp);
+
+                if (pivot - 1 > low) {
+                    top = top + 1;
+                    lows[top] = low;
+                    highs[top] = pivot - 1;
+                }
+                if (pivot + 1 < high) {
+                    top = top + 1;
+                    lows[top] = pivot + 1;
+                    highs[top] = high;
+                }
+            }
+        }
     }
 
     /* ============================================================================

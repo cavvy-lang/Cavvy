@@ -7,9 +7,9 @@ import argparse
 import os
 import re
 import shlex
-import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -90,8 +90,15 @@ def discover_markdown(root: Path) -> list[Path]:
     if readme.exists():
         paths.append(readme)
     docs_dir = root / "docs"
+    excluded_dir = docs_dir / "ESSO"
     if docs_dir.exists():
-        paths.extend(sorted(docs_dir.rglob("*.md")))
+        paths.extend(
+            sorted(
+                path
+                for path in docs_dir.rglob("*.md")
+                if not path.is_relative_to(excluded_dir)
+            )
+        )
     return paths
 
 
@@ -104,7 +111,7 @@ def extract_blocks(path: Path) -> list[Block]:
 
     for index, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         if not in_block:
-            match = re.match(r"^```([^\n`]*)$", line)
+            match = re.match(r"^```([^\n`]*)", line)
             if match:
                 info = match.group(1).strip()
                 in_block = True
@@ -238,21 +245,19 @@ def main() -> int:
 
     tested = [block for block in blocks if not block.ignored]
     skipped = len(blocks) - len(tested)
-    temp_dir = root / "target" / "doc-tests"
-    temp_dir.mkdir(parents=True, exist_ok=True)
 
-    start = time.time()
-    for index, block in enumerate(tested, start=1):
-        rel = block.path.relative_to(root)
-        feature_text = f" features={','.join(block.features)}" if block.features else ""
-        print(f"[{index}/{len(tested)}] {rel}:{block.line} {block.mode}{feature_text}")
-        test_block(root, temp_dir, block, index, args.keep_temp)
+    with tempfile.TemporaryDirectory(prefix="cavvy_doc_tests_", delete=not args.keep_temp) as temp_dir_name:
+        temp_dir = Path(temp_dir_name)
+        start = time.time()
+        for index, block in enumerate(tested, start=1):
+            rel = block.path.relative_to(root)
+            feature_text = f" features={','.join(block.features)}" if block.features else ""
+            print(f"[{index}/{len(tested)}] {rel}:{block.line} {block.mode}{feature_text}")
+            test_block(root, temp_dir, block, index, args.keep_temp)
 
-    elapsed = time.time() - start
-    print(f"doc tests passed: {len(tested)} tested, {skipped} skipped, {elapsed:.1f}s")
+        elapsed = time.time() - start
+        print(f"doc tests passed: {len(tested)} tested, {skipped} skipped, {elapsed:.1f}s")
 
-    if not args.keep_temp and temp_dir.exists() and not any(temp_dir.iterdir()):
-        shutil.rmtree(temp_dir)
     return 0
 
 

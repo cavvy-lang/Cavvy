@@ -94,6 +94,7 @@ extern {
     /* POSIX 文件与内存映射 */
     c_int   open(c_string pathname, c_int flags, ...);
     c_int   close(c_int fd);
+    c_int   fchmod(c_int fd, c_uint mode);
     c_long  lseek(c_int fd, c_long offset, c_int whence);
     c_long  write(c_int fd, c_void* buf, size_t count);
     c_void* mmap(c_void* addr, size_t length, c_int prot, c_int flags, c_int fd, c_long offset);
@@ -348,10 +349,14 @@ public class Mmap {
         mmap.size = size;
         mmap.mapped = true;
 #else
-        c_int fd = open(path.c_str(), MMAP_O_RDWR | MMAP_O_CREAT | MMAP_O_TRUNC, 0666);
+        /* 权限 0644（十进制 420）：拥有者可读写，其他用户只读 */
+        c_int fd = open(path.c_str(), MMAP_O_RDWR | MMAP_O_CREAT | MMAP_O_TRUNC, 420);
         if (fd < 0) {
             return MmapResult<Mmap>.err(MmapError.NotFound);
         }
+
+        /* 显式设置文件权限，确保后续 fopen/只读映射可以打开 */
+        fchmod(fd, (c_uint)420);
 
         /* 扩展文件到指定大小：lseek 到 size-1（从开头计算）并写入一个字节 */
         c_long seekResult = lseek(fd, size - 1L, MMAP_SEEK_SET);

@@ -90,7 +90,6 @@ pub fn parse_interface(parser: &mut Parser) -> CayResult<InterfaceDecl> {
     let name = parser.consume_identifier(
         "期望接口名\n提示: 在 'interface' 后应跟接口名，例如: interface MyInterface { ... }",
     )?;
-
     // 解析泛型类型参数
     let type_params = parse_generic_type_params(parser)?;
 
@@ -132,6 +131,7 @@ fn parse_interface_method(parser: &mut Parser) -> CayResult<MethodDecl> {
     let name = parser.consume_identifier(
         "期望方法名\n提示: 在返回类型后应跟方法名，例如: int calculate() { ... }",
     )?;
+    let type_params = parse_generic_type_params(parser)?;
 
     parser.consume(
         &Token::LParen,
@@ -148,6 +148,7 @@ fn parse_interface_method(parser: &mut Parser) -> CayResult<MethodDecl> {
 
     Ok(MethodDecl {
         name,
+        type_params,
         modifiers,
         return_type,
         params,
@@ -428,6 +429,7 @@ pub fn parse_method(parser: &mut Parser) -> CayResult<MethodDecl> {
     let name = parser.consume_identifier(
         "期望方法名\n提示: 返回类型后应跟方法名，例如: int calculate() { ... }",
     )?;
+    let type_params = parse_generic_type_params(parser)?;
 
     parser.consume(
         &Token::LParen,
@@ -452,6 +454,7 @@ pub fn parse_method(parser: &mut Parser) -> CayResult<MethodDecl> {
 
     Ok(MethodDecl {
         name,
+        type_params,
         modifiers,
         return_type,
         params,
@@ -475,6 +478,7 @@ pub fn parse_fn_method(parser: &mut Parser) -> CayResult<MethodDecl> {
     let name = parser.consume_identifier(
         "期望方法名\n提示: fn 后应跟方法名，例如: fn calculate(int a, int b) { ... }",
     )?;
+    let type_params = parse_generic_type_params(parser)?;
 
     parser.consume(
         &Token::LParen,
@@ -507,6 +511,7 @@ pub fn parse_fn_method(parser: &mut Parser) -> CayResult<MethodDecl> {
 
     Ok(MethodDecl {
         name,
+        type_params,
         modifiers,
         return_type,
         params,
@@ -861,7 +866,6 @@ pub fn parse_struct(parser: &mut Parser) -> CayResult<StructDecl> {
     let name = parser.consume_identifier(
         "期望 struct 名\n提示: 在 'struct' 后应跟 struct 名，例如: struct Point { ... }",
     )?;
-
     // 不支持泛型类型参数的说明：struct 暂不支持泛型，需要时可以添加
     // 跳过可能的 <T>，报错提示
     if parser.check(&Token::Lt) {
@@ -989,6 +993,7 @@ fn parse_method_after_modifiers(
     let name = parser.consume_identifier(
         "期望方法名\n提示: 在返回类型后应跟方法名，例如: int calculate() { ... }",
     )?;
+    let type_params = parse_generic_type_params(parser)?;
 
     parser.consume(
         &Token::LParen,
@@ -1010,6 +1015,7 @@ fn parse_method_after_modifiers(
 
     Ok(MethodDecl {
         name,
+        type_params,
         modifiers: modifiers.to_vec(),
         return_type,
         params,

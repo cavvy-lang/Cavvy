@@ -15,7 +15,7 @@ namespace std {
 /**
  * vector 迭代器实现。
  */
-public class VectorIterator<T> implements Iterator<T> {
+public class VectorIterator<T> implements Iterator<T>, MutableRandomAccessIterator<T> {
     private T[] data;
     private int size;
     private int index;
@@ -35,6 +35,11 @@ public class VectorIterator<T> implements Iterator<T> {
         this.index = this.index + 1;
         return value;
     }
+
+    public int length() { return this.size; }
+    public T get(int index) { return this.data[index]; }
+    public void set(int index, T value) { this.data[index] = value; }
+
 }
 
 public class vector<T> implements Iterable<T> {
@@ -255,6 +260,12 @@ public class vector<T> implements Iterable<T> {
     public Iterator<T> iterator() {
         return new VectorIterator<T>(this.data, this.size);
     }
+
+
+    public MutableRandomAccessIterator<T> mutableIterator() {
+        return new VectorIterator<T>(this.data, this.size);
+    }
+
 }
 
 } // namespace std

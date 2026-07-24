@@ -25,9 +25,11 @@ pub fn parse_postfix(parser: &mut Parser) -> CayResult<Expr> {
             let type_args = crate::parser::classes::parse_generic_type_args(parser);
 
             if let Ok(type_args) = type_args {
-                // 成功解析泛型参数，检查后面是否有 '.' 或 '('
-                if parser.check(&crate::lexer::Token::Dot) {
-                    // 这是泛型静态方法调用: Type<T>.method()
+                // 成功解析泛型参数，检查后面是否有 '.'、'::' 或 '('
+                if parser.check(&crate::lexer::Token::Dot)
+                    || parser.check(&crate::lexer::Token::DoubleColon)
+                {
+                    // 这是泛型静态方法调用: Type<T>.method() 或 Type<T>::method()
                     // 将标识符和泛型参数组合成新的标识符
                     if let Expr::Identifier(ident) = &expr {
                         let generic_name = format!(
@@ -43,7 +45,7 @@ pub fn parse_postfix(parser: &mut Parser) -> CayResult<Expr> {
                             name: generic_name,
                             loc: loc.clone(),
                         });
-                        continue; // 继续循环，处理 '.'
+                        continue; // 继续循环，处理成员访问运算符
                     }
                 } else if parser.check(&crate::lexer::Token::LParen) {
                     // 这是省略 new 的泛型对象创建: Type<T>(args)
@@ -90,10 +92,12 @@ pub fn parse_postfix(parser: &mut Parser) -> CayResult<Expr> {
                 args,
                 loc,
             });
-        } else if parser.match_token(&crate::lexer::Token::Dot) {
+        } else if parser.match_token(&crate::lexer::Token::Dot)
+            || parser.match_token(&crate::lexer::Token::DoubleColon)
+        {
             // 成员访问
             let member = parser.consume_identifier(
-                "期望成员名\n提示: '.' 后应跟成员名，例如: obj.field 或 obj.method()",
+                "期望成员名\n提示: 成员访问运算符后应跟成员名，例如: obj.field 或 Type::method()",
             )?;
             expr = Expr::MemberAccess(MemberAccessExpr {
                 object: Box::new(expr),

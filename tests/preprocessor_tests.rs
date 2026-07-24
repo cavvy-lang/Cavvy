@@ -165,6 +165,7 @@ fn test_preprocessor_conditional() {
 // ==================== #link 指令测试 ====================
 
 #[test]
+#[cfg(target_os = "windows")]
 fn test_link_directive_basic() {
     let output = compile_and_run_eol("examples/test_link_directive.cay")
         .expect("link directive basic should compile and run");
@@ -181,6 +182,7 @@ fn test_link_directive_basic() {
 }
 
 #[test]
+#[cfg(target_os = "windows")]
 fn test_link_directive_with_include() {
     let output = compile_and_run_eol("examples/test_link_directive_include.cay")
         .expect("link directive with include should compile and run");

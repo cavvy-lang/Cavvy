@@ -73,7 +73,6 @@ fn get_exe_extension() -> &'static str {
 #[test]
 fn test_bcgen_generate_bytecode() {
     let source_path = "examples/bytecode/hello_simple.cay";
-    let bc_path = "examples/bytecode/hello_simple.caybc";
 
     // 确保源文件存在
     if !std::path::Path::new(source_path).exists() {
@@ -91,27 +90,39 @@ fn test_bcgen_generate_bytecode() {
         .unwrap();
     }
 
+    // 输出到临时目录，避免与 workspace 中的文件锁/沙箱监控冲突
+    let temp_dir = std::env::temp_dir();
+    let bc_path = temp_dir
+        .join(format!("hello_simple_{}.caybc", std::process::id()))
+        .to_string_lossy()
+        .to_string();
+
     // 使用 cay-bcgen 生成字节码
     let output = Command::new(get_cay_bcgen_path())
-        .args(&[source_path, "-o", bc_path])
+        .args(&[source_path, "-o", &bc_path])
         .output()
         .expect("Failed to execute cay-bcgen");
 
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(output.status.success(), "cay-bcgen failed: {}", stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "cay-bcgen failed: stderr={}, stdout={}",
+        stderr, stdout
+    );
 
     // 检查字节码文件是否生成
     assert!(
-        std::path::Path::new(bc_path).exists(),
+        std::path::Path::new(&bc_path).exists(),
         "Bytecode file not generated"
     );
 
     // 检查文件大小（应该大于0）
-    let metadata = fs::metadata(bc_path).unwrap();
+    let metadata = fs::metadata(&bc_path).unwrap();
     assert!(metadata.len() > 0, "Bytecode file is empty");
 
     // 清理
-    let _ = fs::remove_file(bc_path);
+    let _ = fs::remove_file(&bc_path);
 }
 
 /// 测试 cay-bcgen 生成混淆的字节码

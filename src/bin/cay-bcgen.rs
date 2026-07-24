@@ -51,11 +51,9 @@ fn print_usage() {
 fn parse_args(args: &[String]) -> Result<(BcgenOptions, String), String> {
     let mut options = BcgenOptions::default();
     let mut source_file: Option<String> = None;
-    let mut i = 1;
+    let mut iter = args.iter().skip(1).peekable();
 
-    while i < args.len() {
-        let arg = &args[i];
-
+    while let Some(arg) = iter.next() {
         match arg.as_str() {
             "--version" | "-V" => {
                 println!("Cavvy Bytecode Generator v{}", VERSION);
@@ -72,23 +70,17 @@ fn parse_args(args: &[String]) -> Result<(BcgenOptions, String), String> {
                 options.obfuscate = true;
             }
             "--obfuscate-level" => {
-                if i + 1 < args.len() {
-                    options.obfuscate_level = args[i + 1].clone();
-                    if !["light", "normal", "deep"].contains(&options.obfuscate_level.as_str()) {
-                        return Err(format!("无效的混淆级别: {}", options.obfuscate_level));
-                    }
-                    i += 1;
-                } else {
-                    return Err("--obfuscate-level 需要一个参数".to_string());
+                let level = iter
+                    .next()
+                    .ok_or("--obfuscate-level 需要一个参数")?;
+                if !["light", "normal", "deep"].contains(&level.as_str()) {
+                    return Err(format!("无效的混淆级别: {}", level));
                 }
+                options.obfuscate_level = level.clone();
             }
             "-o" => {
-                if i + 1 < args.len() {
-                    options.output_file = Some(args[i + 1].clone());
-                    i += 1;
-                } else {
-                    return Err("-o 需要一个参数".to_string());
-                }
+                let out = iter.next().ok_or("-o 需要一个参数")?;
+                options.output_file = Some(out.clone());
             }
             _ => {
                 if arg.starts_with('-') {
@@ -101,7 +93,6 @@ fn parse_args(args: &[String]) -> Result<(BcgenOptions, String), String> {
                 }
             }
         }
-        i += 1;
     }
 
     let source_file = source_file.ok_or("需要指定源文件")?;

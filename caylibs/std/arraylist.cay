@@ -22,7 +22,7 @@ namespace std {
  * 创建时快照当前 data 数组与有效长度，因此遍历期间对列表的结构性修改
  * 不会反映到迭代器上（与 std::vector 迭代器行为一致）。
  */
-public class ArrayListIterator<T> implements Iterator<T> {
+public class ArrayListIterator<T> implements Iterator<T>, MutableRandomAccessIterator<T> {
     private T[] data;
     private int size;
     private int index;
@@ -42,6 +42,11 @@ public class ArrayListIterator<T> implements Iterator<T> {
         this.index = this.index + 1;
         return value;
     }
+
+    public int length() { return this.size; }
+    public T get(int index) { return this.data[index]; }
+    public void set(int index, T value) { this.data[index] = value; }
+
 }
 
 /**
@@ -358,6 +363,12 @@ public class ArrayList<T, A: Allocator = GlobalAlloc> implements Iterable<T> {
     public Iterator<T> iterator() {
         return new ArrayListIterator<T>(this.data, this.size);
     }
+
+
+    public MutableRandomAccessIterator<T> mutableIterator() {
+        return new ArrayListIterator<T>(this.data, this.size);
+    }
+
 
     /**
      * 重新分配内部数组。newCapacity 至少为 1。

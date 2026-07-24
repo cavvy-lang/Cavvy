@@ -177,14 +177,31 @@ impl IRGenerator {
         arg_types: &[String],
         has_varargs_array: bool,
     ) -> bool {
-        let sigs: Vec<String> = params
+        if params.len() != arg_types.len() {
+            return false;
+        }
+        params
             .iter()
-            .map(|p| {
+            .zip(arg_types.iter())
+            .all(|(p, arg_sig)| {
                 let is_param_varargs = has_varargs_array && p.is_varargs;
-                self.param_type_to_signature(&self.resolve_type(&p.param_type), is_param_varargs)
+                let resolved = self.resolve_type(&p.param_type);
+                let param_sig = self.param_type_to_signature(&resolved, is_param_varargs);
+                if param_sig == *arg_sig {
+                    return true;
+                }
+
+                // 接口对象、普通对象和函数值在当前 LLVM ABI 中均擦除为 i8*，
+                // parse_typed_value 因而只能得到字符串指针签名 "s"。允许它与这些
+                // 指针语义形参匹配，避免重载解析退化为仅按参数数量选择。
+                arg_sig == "s"
+                    && matches!(
+                        resolved,
+                        crate::types::Type::Object(_)
+                            | crate::types::Type::Generic(_, _)
+                            | crate::types::Type::Function(_)
+                    )
             })
-            .collect();
-        sigs == arg_types
     }
 
     /// 为特化泛型类的方法调用生成与定义完全一致的函数名。

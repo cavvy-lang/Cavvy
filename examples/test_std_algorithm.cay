@@ -1,5 +1,6 @@
 // std::algorithm 标准算法库测试
 #include <std/algorithm.cay>
+#include <std/vector.cay>
 
 public class TestStdAlgorithm {
 
@@ -31,6 +32,48 @@ public class TestStdAlgorithm {
             totalCount = totalCount + 1;
             if (arraysEqual(arr, expected, 7)) passCount = passCount + 1;
             printResult("sort", arraysEqual(arr, expected, 7));
+        }
+
+        // --- iterator sort overload ---
+        {
+            std::vector<int> values = new std::vector<int>();
+            values.push_back(8);
+            values.push_back(3);
+            values.push_back(7);
+            values.push_back(1);
+            values.push_back(3);
+            std::algorithm.sort(values.mutableIterator());
+            totalCount = totalCount + 1;
+            boolean pass = values.get(0) == 1 && values.get(1) == 3 && values.get(2) == 3;
+            pass = pass && values.get(3) == 7 && values.get(4) == 8;
+            if (pass) passCount = passCount + 1;
+            printResult("sort(iterator)", pass);
+        }
+
+        // --- custom comparator sort tests ---
+        {
+            int[] values = {8, 3, 7, 1, 3};
+            std::algorithm.sort(values, 5, (int a, int b) -> a > b);
+            totalCount = totalCount + 1;
+            boolean pass = values[0] == 8 && values[1] == 7 && values[2] == 3;
+            pass = pass && values[3] == 3 && values[4] == 1;
+            if (pass) passCount = passCount + 1;
+            printResult("sort(array, compare)", pass);
+        }
+
+        {
+            std::vector<int> values = new std::vector<int>();
+            values.push_back(8);
+            values.push_back(3);
+            values.push_back(7);
+            values.push_back(1);
+            values.push_back(3);
+            std::algorithm.sort(values.mutableIterator(), (int a, int b) -> a > b);
+            totalCount = totalCount + 1;
+            boolean pass = values.get(0) == 8 && values.get(1) == 7 && values.get(2) == 3;
+            pass = pass && values.get(3) == 3 && values.get(4) == 1;
+            if (pass) passCount = passCount + 1;
+            printResult("sort(iterator, compare)", pass);
         }
 
         // --- bubbleSort tests ---

@@ -63,6 +63,8 @@ impl SemanticAnalyzer {
             for member in &mut class.members {
                 match member {
                     ClassMember::Method(method) => {
+                        let class_type_params = self.current_class_type_params.clone();
+                        self.current_class_type_params.extend(method.type_params.clone());
                         self.current_method = Some(method.name.clone());
                         self.current_method_is_static =
                             method.modifiers.contains(&Modifier::Static);
@@ -142,6 +144,7 @@ impl SemanticAnalyzer {
                         self.current_method = None;
                         self.current_method_is_static = false;
                         self.current_return_type = None;
+                        self.current_class_type_params = class_type_params;
                     }
                     ClassMember::Field(_) => {
                         // 字段类型检查暂不实现

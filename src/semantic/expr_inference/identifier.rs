@@ -638,23 +638,25 @@ impl SemanticAnalyzer {
                     .get_class(&owner_class)
                     .map(|ci| ci.type_params.clone())
                     .unwrap_or_default();
+                let mut all_type_params = owner_type_params.clone();
+                all_type_params.extend(method_info.type_params.clone());
                 // 没有显式类型实参且类有泛型参数时，尝试从调用实参推断。
                 let inferred_type_args: Option<Vec<Type>> = if type_args.is_some()
-                    || owner_type_params.is_empty()
+                    && method_info.type_params.is_empty()
                 {
                     type_args.clone()
                 } else {
                     self.infer_type_args_from_arguments(
                         &method_info.params,
                         &call.args,
-                        &owner_type_params,
+                        &all_type_params,
                     )
                 };
                 (
                     owner_class,
                     self.specialize_method_info(
                         &method_info,
-                        &owner_type_params,
+                        &all_type_params,
                         inferred_type_args.as_deref(),
                     ),
                 )

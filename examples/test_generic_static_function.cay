@@ -1,0 +1,10 @@
+pub class Helper<T> {
+    pub static T add(T a, T b) {
+        return a + b;
+    }
+}
+
+pub fn main() {
+    println(Helper<int>::add(1, 2));
+    println(Helper<double>::add(1.5, 2.25));
+}

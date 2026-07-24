@@ -19,8 +19,13 @@ impl SemanticAnalyzer {
                 let right_is_literal = matches!(bin.right.as_ref(), Expr::Literal(_));
                 let left_is_literal = matches!(bin.left.as_ref(), Expr::Literal(_));
 
+                // 泛型模板体中的同类型运算延迟到单态化后确定具体指令。
+                // 例如 Helper<T>::add(T, T) 在 Helper<int> 特化中生成整数加法。
+                if left_type == right_type && matches!(left_type, Type::GenericParam(_)) {
+                    Ok(left_type)
+                }
                 // 字符串连接：支持 String + String 和 String + char
-                if left_type == Type::String && right_type == Type::String {
+                else if left_type == Type::String && right_type == Type::String {
                     Ok(Type::String)
                 } else if left_type == Type::String && right_type == Type::Char {
                     // String + char = String
@@ -54,7 +59,9 @@ impl SemanticAnalyzer {
                 }
             }
             BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div | BinaryOp::Mod => {
-                if left_type.is_primitive() && right_type.is_primitive() {
+                if left_type == right_type && matches!(left_type, Type::GenericParam(_)) {
+                    Ok(left_type)
+                } else if left_type.is_primitive() && right_type.is_primitive() {
                     // 检查除零和模零（仅当右操作数是字面量0时）
                     if matches!(bin.op, BinaryOp::Div | BinaryOp::Mod) {
                         if let Expr::Literal(lit_expr) = bin.right.as_ref() {

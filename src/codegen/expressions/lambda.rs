@@ -203,7 +203,12 @@ impl IRGenerator {
                 .map(|t| self.type_to_llvm(t))
                 .unwrap_or_else(|| "i64".to_string());
             param_types.push(format!("{} %param{}", param_type, i));
-            param_names.push((param.name.clone(), param_type, format!("%param{}", i)));
+            param_names.push((
+                param.name.clone(),
+                param_type,
+                format!("%param{}", i),
+                param.param_type.clone(),
+            ));
         }
 
         // 添加环境指针参数（如果有捕获变量）
@@ -232,8 +237,28 @@ impl IRGenerator {
         self.scope_manager.enter_scope();
 
         // 添加显式参数到作用域
-        for (name, ty, llvm_name) in &param_names {
+        for (name, ty, llvm_name, cay_type) in &param_names {
             let declared_llvm_name = self.scope_manager.declare_var(name, ty);
+            if let Some(cay_type) = cay_type {
+                self.var_cay_types.insert(name.clone(), cay_type.clone());
+                match cay_type {
+                    Type::Object(class_name) | Type::Struct(class_name) => {
+                        self.var_class_map.insert(name.clone(), class_name.clone());
+                    }
+                    Type::Generic(class_name, args) => {
+                        let rendered = format!(
+                            "{}<{}>",
+                            class_name,
+                            args.iter()
+                                .map(|arg| arg.to_string())
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        );
+                        self.var_class_map.insert(name.clone(), rendered);
+                    }
+                    _ => {}
+                }
+            }
             self.emit_line(&format!(
                 "  %{} = alloca {}, align {}",
                 declared_llvm_name,

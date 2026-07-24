@@ -670,6 +670,7 @@ impl ClassInfo {
 pub struct MethodInfo {
     pub name: String,
     pub class_name: String,
+    pub type_params: Vec<TypeParamInfo>, // 方法级泛型参数
     pub params: Vec<ParameterInfo>,
     pub return_type: Type,
     pub is_public: bool,
@@ -943,6 +944,7 @@ impl TypeRegistry {
         object_class.add_method(MethodInfo {
             name: "hashCode".to_string(),
             class_name: "Object".to_string(),
+            type_params: Vec::new(),
             params: Vec::new(),
             return_type: Type::Int32,
             is_static: false,
@@ -961,6 +963,7 @@ impl TypeRegistry {
         object_class.add_method(MethodInfo {
             name: "equals".to_string(),
             class_name: "Object".to_string(),
+            type_params: Vec::new(),
             params: vec![ParameterInfo {
                 name: "other".to_string(),
                 param_type: Type::Object("Object".to_string()),
@@ -1013,6 +1016,7 @@ impl TypeRegistry {
         string_class.add_method(MethodInfo {
             name: "hashCode".to_string(),
             class_name: "String".to_string(),
+            type_params: Vec::new(),
             params: Vec::new(),
             return_type: Type::Int32,
             is_static: false,
@@ -1031,6 +1035,7 @@ impl TypeRegistry {
         string_class.add_method(MethodInfo {
             name: "equals".to_string(),
             class_name: "String".to_string(),
+            type_params: Vec::new(),
             params: vec![ParameterInfo {
                 name: "other".to_string(),
                 param_type: Type::Object("Object".to_string()),
@@ -1054,6 +1059,7 @@ impl TypeRegistry {
         string_class.add_method(MethodInfo {
             name: "valueOf".to_string(),
             class_name: "String".to_string(),
+            type_params: Vec::new(),
             params: vec![ParameterInfo {
                 name: "value".to_string(),
                 param_type: Type::Int32,
@@ -1076,6 +1082,7 @@ impl TypeRegistry {
         string_class.add_method(MethodInfo {
             name: "valueOf".to_string(),
             class_name: "String".to_string(),
+            type_params: Vec::new(),
             params: vec![ParameterInfo {
                 name: "value".to_string(),
                 param_type: Type::Int64,
@@ -1098,6 +1105,7 @@ impl TypeRegistry {
         string_class.add_method(MethodInfo {
             name: "valueOf".to_string(),
             class_name: "String".to_string(),
+            type_params: Vec::new(),
             params: vec![ParameterInfo {
                 name: "value".to_string(),
                 param_type: Type::Float32,
@@ -1120,6 +1128,7 @@ impl TypeRegistry {
         string_class.add_method(MethodInfo {
             name: "valueOf".to_string(),
             class_name: "String".to_string(),
+            type_params: Vec::new(),
             params: vec![ParameterInfo {
                 name: "value".to_string(),
                 param_type: Type::Float64,
@@ -1142,6 +1151,7 @@ impl TypeRegistry {
         string_class.add_method(MethodInfo {
             name: "valueOf".to_string(),
             class_name: "String".to_string(),
+            type_params: Vec::new(),
             params: vec![ParameterInfo {
                 name: "value".to_string(),
                 param_type: Type::Bool,
@@ -1164,6 +1174,7 @@ impl TypeRegistry {
         string_class.add_method(MethodInfo {
             name: "valueOf".to_string(),
             class_name: "String".to_string(),
+            type_params: Vec::new(),
             params: vec![ParameterInfo {
                 name: "value".to_string(),
                 param_type: Type::Char,
@@ -1186,6 +1197,7 @@ impl TypeRegistry {
         string_class.add_method(MethodInfo {
             name: "valueOf".to_string(),
             class_name: "String".to_string(),
+            type_params: Vec::new(),
             params: vec![ParameterInfo {
                 name: "value".to_string(),
                 param_type: Type::String,
@@ -1231,6 +1243,7 @@ impl TypeRegistry {
         integer_class.add_method(MethodInfo {
             name: "parseInt".to_string(),
             class_name: "Integer".to_string(),
+            type_params: Vec::new(),
             params: vec![ParameterInfo {
                 name: "s".to_string(),
                 param_type: Type::String,

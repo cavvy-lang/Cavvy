@@ -97,6 +97,45 @@ impl CayType {
     }
 }
 
+/// 收集系统/环境 include 路径（CPATH/C_INCLUDE_PATH/CPLUS_INCLUDE_PATH + 常见位置）
+fn system_include_paths() -> Vec<PathBuf> {
+    let mut paths: Vec<PathBuf> = Vec::new();
+    if let Ok(cpath) = std::env::var("CPATH") {
+        for p in cpath.split(':') {
+            if !p.is_empty() {
+                paths.push(PathBuf::from(p));
+            }
+        }
+    }
+    if let Ok(p) = std::env::var("C_INCLUDE_PATH") {
+        for s in p.split(':') {
+            if !s.is_empty() {
+                paths.push(PathBuf::from(s));
+            }
+        }
+    }
+    if let Ok(p) = std::env::var("CPLUS_INCLUDE_PATH") {
+        for s in p.split(':') {
+            if !s.is_empty() {
+                paths.push(PathBuf::from(s));
+            }
+        }
+    }
+    // 常见系统位置
+    let common = vec![
+        "/usr/include",
+        "/usr/local/include",
+        "/usr/include/x86_64-linux-gnu",
+    ];
+    for c in common {
+        let pb = PathBuf::from(c);
+        if pb.exists() {
+            paths.push(pb);
+        }
+    }
+    paths
+}
+
 #[derive(Debug, Clone)]
 enum Param {
     Typed(CayType),
@@ -112,6 +151,26 @@ struct ProtoFn {
     /// 声明所在头文件行号；保留以供后续按行号精确告警。
     #[allow(dead_code)]
     line: usize,
+}
+
+fn make_mangled_name(base: &str, params: &[Param]) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    for p in params {
+        match p {
+            Param::Varargs => parts.push("varargs".to_string()),
+            Param::Typed(ty) => {
+                let mut s = ty.render();
+                s = s.replace('*', "p");
+                s = s.replace(' ', "_");
+                s = s.replace("c_string", "c_string");
+                parts.push(s);
+            }
+        }
+    }
+    if parts.is_empty() {
+        return format!("{}__v", base);
+    }
+    format!("{}__{}", base, parts.join("__"))
 }
 
 /// C 宏表：对象宏 + 函数宏名集合
@@ -180,11 +239,21 @@ pub(crate) fn extract_c_header_text(
 ) -> CayResult<CHeaderExtract> {
     // Stage A: 注释剥离 + 行续接
     let stripped = strip_comments_and_join(text);
-    // Stage B: C 预处理子集（不递归 include）
-    let (pp_code, macros, mut warnings, skipped_includes) = c_preprocess(&stripped, platform_defines);
+    // Stage B: C 预处理子集（尝试递归 include，基于当前头文件目录）
+    let mut macros = seed_c_macros(platform_defines);
+    let mut included: HashSet<PathBuf> = HashSet::new();
+    let base_dir = Path::new(name).parent().map(|p| p.to_path_buf());
+    let include_paths = system_include_paths();
+    let (pp_code, mut warnings, skipped_includes) = c_preprocess(
+        &stripped,
+        &mut macros,
+        base_dir.as_deref(),
+        Some(include_paths.as_slice()),
+        &mut included,
+    );
     if !skipped_includes.is_empty() {
         warnings.push(format!(
-            "已跳过嵌套 #include（未递归）: {}",
+            "已跳过嵌套 #include（未找到文件）: {}",
             skipped_includes.join(", ")
         ));
     }
@@ -308,8 +377,13 @@ fn strip_comments_and_join(input: &str) -> String {
 // Stage B: C 预处理子集（不递归 include）
 // ============================================================================
 
-fn c_preprocess(stripped: &str, platform_defines: &HashMap<String, String>) -> (String, CMacros, Vec<String>, Vec<String>) {
-    let mut macros = seed_c_macros(platform_defines);
+fn c_preprocess(
+    stripped: &str,
+    macros: &mut CMacros,
+    base_dir: Option<&Path>,
+    include_paths: Option<&[PathBuf]>,
+    included: &mut HashSet<PathBuf>,
+) -> (String, Vec<String>, Vec<String>) {
     let mut out_lines: Vec<String> = Vec::new();
     let mut warnings = Vec::new();
     let mut skipped_includes = Vec::new();
@@ -390,8 +464,66 @@ fn c_preprocess(stripped: &str, platform_defines: &HashMap<String, String>) -> (
                     out_lines.push(String::new());
                 }
                 "include" => {
-                    skipped_includes.push(args);
-                    out_lines.push(String::new());
+                    // 解析 include 名称（<...> 或 "...")
+                    let inc = args.trim();
+                    let inc_inner = if inc.starts_with('<') && inc.ends_with('>') {
+                        inc[1..inc.len() - 1].to_string()
+                    } else if inc.starts_with('"') && inc.ends_with('"') {
+                        inc[1..inc.len() - 1].to_string()
+                    } else {
+                        inc.to_string()
+                    };
+
+                    // 尝试解析为本地文件（基于 base_dir），否则记录为跳过
+                    let mut found = false;
+                    let mut candidates: Vec<PathBuf> = Vec::new();
+                    if let Some(d) = base_dir {
+                        candidates.push(d.join(&inc_inner));
+                    }
+                    candidates.push(PathBuf::from(&inc_inner));
+                    if let Some(paths) = include_paths {
+                        for inc_dir in paths {
+                            candidates.push(inc_dir.join(&inc_inner));
+                        }
+                    }
+                    for cand in candidates {
+                        if cand.exists() && cand.is_file() {
+                            // 规范路径用于循环检测
+                            if let Ok(canon) = cand.canonicalize() {
+                                if included.contains(&canon) {
+                                    // 已包含，避免递归
+                                    warnings.push(format!("跳过已包含的文件: {}", inc_inner));
+                                    found = true;
+                                    break;
+                                }
+                                // 读取并递归处理
+                                match std::fs::read_to_string(&canon) {
+                                    Ok(txt) => {
+                                        included.insert(canon.clone());
+                                        let sub = strip_comments_and_join(&txt);
+                                        let sub_base = canon.parent().map(|p| p.to_path_buf());
+                                        let (sub_out, sub_warns, sub_skipped) = c_preprocess(&sub, macros, sub_base.as_deref(), include_paths, included);
+                                        warnings.extend(sub_warns);
+                                        skipped_includes.extend(sub_skipped);
+                                        // 把子文件的行加入当前输出
+                                        for l in sub_out.lines() {
+                                            out_lines.push(l.to_string());
+                                        }
+                                        found = true;
+                                        break;
+                                    }
+                                    Err(_) => {
+                                        // 不能读取，尝试下一个候选
+                                        continue;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if !found {
+                        skipped_includes.push(args);
+                        out_lines.push(String::new());
+                    }
                 }
                 "error" => {
                     if !skipping {
@@ -421,12 +553,7 @@ fn c_preprocess(stripped: &str, platform_defines: &HashMap<String, String>) -> (
         warnings.push("未闭合的 #if/#ifdef".to_string());
     }
 
-    (
-        out_lines.join("\n"),
-        macros,
-        warnings,
-        skipped_includes,
-    )
+    (out_lines.join("\n"), warnings, skipped_includes)
 }
 
 /// 解析 #define 目标，返回 ((name, value), is_func)；函数宏 is_func=true（仅记录名）。
@@ -726,6 +853,7 @@ fn is_qualifier_or_storage(s: &str) -> bool {
         "const" | "volatile" | "restrict" | "__restrict" | "__restrict__" | "__const"
             | "__volatile" | "register" | "auto" | "extern" | "static" | "inline"
             | "__inline" | "__inline__" | "__forceinline" | "_CRTIMP" | "__MINGW_IMPORT"
+            | "friend"
     )
 }
 
@@ -791,10 +919,33 @@ fn extract_declarations(
     let mut protos: Vec<ProtoFn> = Vec::new();
     let mut warnings: Vec<String> = Vec::new();
     let mut typedefs: HashMap<String, CayType> = HashMap::new();
+    let mut ns_stack: Vec<String> = Vec::new();
     let mut i = 0;
     let n = toks.len();
 
     while i < n {
+        // 顶层命名空间支持：namespace NAME { ... }
+        if let CTok::Ident(s) = &toks[i].tok {
+            if s == "namespace" && i + 2 < n {
+                if let CTok::Ident(ns) = &toks[i + 1].tok {
+                    if toks[i + 2].tok == CTok::Punct("{") {
+                        let close = find_matching_brace(toks, i + 2).unwrap_or(n - 1);
+                        let mut ns_stack: Vec<String> = Vec::new();
+                        ns_stack.push(ns.clone());
+                        process_range(
+                            &toks[i + 3..close.min(n)],
+                            macros,
+                            &mut protos,
+                            &mut warnings,
+                            &mut typedefs,
+                            &mut ns_stack,
+                        );
+                        i = close + 1;
+                        continue;
+                    }
+                }
+            }
+        }
         // extern "C" { ... } / extern "C++" { ... }
         if let CTok::Ident(s) = &toks[i].tok {
             if s == "extern" && i + 2 < n {
@@ -802,20 +953,22 @@ fn extract_declarations(
                     if toks[i + 2].tok == CTok::Punct("{") {
                         let cpp = lang.contains("C++");
                         let close = find_matching_brace(toks, i + 2);
-                        if cpp {
-                            // 删除整个 C++ 块
-                            i = close.map(|c| c + 1).unwrap_or(n);
-                            continue;
-                        }
-                        // C 块：处理内部为顶层
+                        // C / C++ 块均尝试解析内部声明；C++ 解析为 best-effort
                         let inner_start = i + 3;
                         let inner_end = close.unwrap_or(n - 1);
+                        if cpp {
+                            warnings.push(format!(
+                                "解析 extern \"C++\" 块（受限） at line {}",
+                                toks[i].line
+                            ));
+                        }
                         process_range(
                             &toks[inner_start..inner_end.min(n)],
                             macros,
                             &mut protos,
                             &mut warnings,
                             &mut typedefs,
+                            &mut ns_stack,
                         );
                         i = close.map(|c| c + 1).unwrap_or(n);
                         continue;
@@ -848,12 +1001,48 @@ fn extract_declarations(
             continue;
         }
         if terminated_by_brace {
+            // 可能是 class/struct/union 的定义：我们希望从类体中提取 `friend` 声明
+            if let Some(CTok::Ident(first)) = slice.first().map(|t| &t.tok) {
+                if first == "class" || first == "struct" || first == "union" {
+                    // next_i 指向 '{'
+                    let brace_idx = next_i;
+                    if let Some(close) = find_matching_brace(toks, brace_idx) {
+                        // 遍历类体内的顶层语句，仅当包含 `friend` 时提取
+                        let sub = &toks[brace_idx + 1..close];
+                        let mut j = 0;
+                        while j < sub.len() {
+                            let (inner, inner_next, inner_term) = collect_statement(sub, j);
+                            if inner.is_empty() {
+                                j = inner_next;
+                                continue;
+                            }
+                            if inner_term {
+                                warnings.push(format!("跳过定义（含函数体） at line {}", inner[0].line));
+                                j = inner_next;
+                                continue;
+                            }
+                            let has_friend = inner.iter().any(|t| match &t.tok {
+                                CTok::Ident(s) if s == "friend" => true,
+                                _ => false,
+                            });
+                            if has_friend {
+                                process_statement(&inner, macros, &mut protos, &mut warnings, &mut typedefs, &ns_stack);
+                            } else {
+                                warnings.push(format!("跳过类成员 at line {}", inner[0].line));
+                            }
+                            j = inner_next;
+                        }
+                        i = close + 1;
+                        continue;
+                    }
+                }
+            }
             warnings.push(format!("跳过定义（含函数体） at line {}", slice[0].line));
             i = next_i;
             continue;
         }
         // 处理片段
-        process_statement(&slice, macros, &mut protos, &mut warnings, &mut typedefs);
+        process_statement(&slice, macros, &mut protos, &mut warnings, &mut typedefs, &ns_stack);
         i = next_i;
     }
 
@@ -867,10 +1056,34 @@ fn process_range(
     protos: &mut Vec<ProtoFn>,
     warnings: &mut Vec<String>,
     typedefs: &mut HashMap<String, CayType>,
+    ns_stack: &mut Vec<String>,
 ) {
     let mut i = 0;
     let n = toks.len();
     while i < n {
+        // 命名空间处理: namespace NAME { ... }
+        if let CTok::Ident(s) = &toks[i].tok {
+            if s == "namespace" && i + 2 < n {
+                if let CTok::Ident(ns) = &toks[i + 1].tok {
+                    if toks[i + 2].tok == CTok::Punct("{") {
+                        let close = find_matching_brace(toks, i + 2).unwrap_or(n - 1);
+                        ns_stack.push(ns.clone());
+                        process_range(
+                            &toks[i + 3..close.min(n)],
+                            macros,
+                            protos,
+                            warnings,
+                            typedefs,
+                            ns_stack,
+                        );
+                        ns_stack.pop();
+                        i = close + 1;
+                        continue;
+                    }
+                }
+            }
+        }
+
         if toks[i].tok == CTok::Punct("{") {
             let close = find_matching_brace(toks, i);
             warnings.push(format!("跳过定义/结构体定义 at line {}", toks[i].line));
@@ -887,7 +1100,7 @@ fn process_range(
             i = next_i;
             continue;
         }
-        process_statement(&slice, macros, protos, warnings, typedefs);
+        process_statement(&slice, macros, protos, warnings, typedefs, ns_stack);
         i = next_i;
     }
 }
@@ -972,6 +1185,7 @@ fn process_statement(
     protos: &mut Vec<ProtoFn>,
     warnings: &mut Vec<String>,
     typedefs: &mut HashMap<String, CayType>,
+    ns_stack: &Vec<String>,
 ) {
     if slice.is_empty() {
         return;
@@ -1002,7 +1216,7 @@ fn process_statement(
     }
 
     // 函数原型或变量声明
-    process_prototype(&expanded, call_conv, protos, warnings, typedefs);
+    process_prototype(&expanded, call_conv, protos, warnings, typedefs, ns_stack);
 }
 
 /// 剥离属性/限定/存储类，记录调用约定与 static/inline 标记
@@ -1175,6 +1389,7 @@ fn process_prototype(
     protos: &mut Vec<ProtoFn>,
     warnings: &mut Vec<String>,
     typedefs: &HashMap<String, CayType>,
+    ns_stack: &Vec<String>,
 ) {
     // 找第一个顶层 ( ；其前一个标识符为函数名，之前为返回类型
     let mut paren_open: Option<usize> = None;
@@ -1204,13 +1419,20 @@ fn process_prototype(
     }
     // 函数名 = ( 前的标识符
     let name_idx = open - 1;
-    let name = match &slice[name_idx].tok {
+    let base_name = match &slice[name_idx].tok {
         CTok::Ident(s) if !is_type_keyword(s) => s.clone(),
         _ => {
             // (*  函数指针变量 → 跳过
             warnings.push("跳过函数指针变量声明".to_string());
             return;
         }
+    };
+    let name = if ns_stack.is_empty() {
+        base_name.clone()
+    } else {
+        let mut parts = ns_stack.clone();
+        parts.push(base_name.clone());
+        parts.join("__")
     };
     // ( 内首个 token 为 * → 函数指针变量
     if slice.get(open + 1).map_or(false, |t| t.tok == CTok::Punct("*")) {
@@ -1246,8 +1468,35 @@ fn process_prototype(
         warnings.push(format!("跳过 '{}': 参数列表后有残留 token", name));
         return;
     }
+    // 检查是否存在同名（同 fully-qualified 名）函数，若有则启用 mangle
+    let full_base = name.clone();
+    let mut existing_same_base = Vec::new();
+    for (idx, p) in protos.iter().enumerate() {
+        if p.name == full_base || p.name.starts_with(&(full_base.clone() + "__")) {
+            existing_same_base.push(idx);
+        }
+    }
+    let final_name = if !existing_same_base.is_empty() {
+        // 需要 mangle：先把已存在未 mangle 的条目改名
+        for &idx in &existing_same_base {
+            let existing = &protos[idx];
+            // 若已有条目名恰好等于 base，则重命名为 mangled
+            if existing.name == full_base {
+                let new_name = make_mangled_name(&full_base, &existing.params);
+                // 修改原型名
+                // NOTE: we mutate in place
+                // we need mutable access: create mutable borrow
+                // but protos is &mut Vec<ProtoFn>, so we can modify
+                protos[idx].name = new_name;
+            }
+        }
+        make_mangled_name(&full_base, &params)
+    } else {
+        full_base.clone()
+    };
+
     protos.push(ProtoFn {
-        name,
+        name: final_name,
         call_conv,
         ret,
         params,
@@ -1731,8 +1980,32 @@ mod tests {
     #[test]
     fn test_extern_cpp_dropped() {
         let r = extract("extern \"C++\" {\nint cpponly(void);\n}\nint cfn(void);");
-        assert!(!r.extern_code.contains("cpponly"), "got: {}", r.extern_code);
+        assert!(r.extern_code.contains("cpponly"), "got: {}", r.extern_code);
         assert!(r.extern_code.contains("c_int cfn();"), "got: {}", r.extern_code);
+    }
+
+    #[test]
+    fn test_namespace_extraction() {
+        let r = extract("namespace ns { int f(void); } int g(void);");
+        assert!(r.extern_code.contains("ns__f"), "got: {}", r.extern_code);
+        assert!(r.extern_code.contains("c_int g();"), "got: {}", r.extern_code);
+    }
+
+    #[test]
+    fn test_class_friend_extraction() {
+        let r = extract("class C { friend int foo(void); int mem(void); }; int bar(void);");
+        assert!(r.extern_code.contains("foo"), "got: {}", r.extern_code);
+        assert!(!r.extern_code.contains("mem("), "member should be skipped: {}", r.extern_code);
+        assert!(r.extern_code.contains("c_int bar();"), "got: {}", r.extern_code);
+    }
+
+    #[test]
+    fn test_overload_mangling() {
+        let r = extract("int f(int); double f(double); int g(void);");
+        // both overloads should be present and have mangled names
+        assert!(r.extern_code.contains("f__c_int"), "got: {}", r.extern_code);
+        assert!(r.extern_code.contains("f__c_double"), "got: {}", r.extern_code);
+        assert!(r.extern_code.contains("c_int g();"), "got: {}", r.extern_code);
     }
 
     #[test]

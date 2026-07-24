@@ -179,6 +179,7 @@ impl SemanticAnalyzer {
             let method = MethodInfo {
                 name: "__cay_buffer_to_string".to_string(),
                 class_name: "NetworkUtils".to_string(),
+                type_params: Vec::new(),
                 params: vec![
                     ParameterInfo::new("buffer".to_string(), Type::Int64),
                     ParameterInfo::new("length".to_string(), Type::Int32),

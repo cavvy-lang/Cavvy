@@ -173,6 +173,14 @@ impl SpecializationCollector {
     }
 
     fn collect_from_class_decl(&mut self, class: &ClassDecl) {
+        // 预处理后的类既可能保留在 NamespaceDecl 中，也可能已经扁平化到
+        // Program.classes。后者仍通过 ClassDecl::namespace_path 保存限定名；若只
+        // 使用遍历器当前的命名空间，泛型类体内的依赖特化会被登记成裸类名。
+        let old_namespace = self.current_namespace.clone();
+        if !class.namespace_path.is_empty() {
+            self.current_namespace = class.namespace_path.clone();
+        }
+
         // 记录泛型类，用于后续依赖特化收集。
         if !class.type_params.is_empty() {
             self.generic_classes
@@ -210,6 +218,7 @@ impl SpecializationCollector {
         }
 
         self.type_param_scope = old_scope;
+        self.current_namespace = old_namespace;
     }
 
     /// 判断类型是否引用了当前作用域内尚未替换的类型参数。

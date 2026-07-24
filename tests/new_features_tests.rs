@@ -205,6 +205,17 @@ fn test_generic_static_factory() {
     );
 }
 
+#[test]
+fn test_generic_static_function_scope_syntax() {
+    let output = compile_and_run_eol("examples/test_generic_static_function.cay")
+        .expect("generic static function with Type<T>::method syntax should compile and run");
+    assert_output_contains(
+        &output,
+        &["3", "3.75"],
+        "test_generic_static_function",
+    );
+}
+
 // ============================================================
 // 5.3.0: 省略 new 的实例化语法
 // ============================================================

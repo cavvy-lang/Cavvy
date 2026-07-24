@@ -110,13 +110,22 @@ impl SemanticAnalyzer {
             // 收集接口方法，并将接口类型参数名替换为 GenericParam 类型，
             // 以便与实现类的方法签名进行统一比较。
             for method in &interface.methods {
-                let params =
-                    self.replace_params_type_params(&method.params, &interface.type_params);
-                let return_type =
-                    self.replace_type_params(&method.return_type, &interface.type_params);
+                let mut all_type_params = interface.type_params.clone();
+                all_type_params.extend(method.type_params.clone());
+                let params = self.replace_params_type_params(&method.params, &all_type_params);
+                let return_type = self.replace_type_params(&method.return_type, &all_type_params);
                 let method_info = MethodInfo {
                     name: method.name.clone(),
                     class_name: interface.name.clone(),
+                    type_params: method
+                        .type_params
+                        .iter()
+                        .map(|p| crate::types::TypeParamInfo {
+                            name: p.name.clone(),
+                            bound: p.bound.clone(),
+                            default_type: p.default_type.clone(),
+                        })
+                        .collect(),
                     params,
                     return_type,
                     is_public: true, // 接口方法默认是public
@@ -316,6 +325,22 @@ impl SemanticAnalyzer {
                     .collect();
                 Type::Generic(name.clone(), new_args)
             }
+            Type::Function(func) => Type::Function(Box::new(crate::types::FunctionType {
+                return_type: Box::new(self.replace_type_params(
+                    &func.return_type,
+                    type_params,
+                )),
+                params: func
+                    .params
+                    .iter()
+                    .map(|p| self.replace_type_params(p, type_params))
+                    .collect(),
+                is_static: func.is_static,
+                is_closure: func.is_closure,
+            })),
+            Type::Pointer(inner) => {
+                Type::Pointer(Box::new(self.replace_type_params(inner, type_params)))
+            }
             _ => ty.clone(),
         }
     }
@@ -347,14 +372,25 @@ impl SemanticAnalyzer {
                     let is_test = method.modifiers.contains(&Modifier::Test);
 
                     // 将泛型参数替换为 GenericParam 类型
+                    let mut all_type_params = class.type_params.clone();
+                    all_type_params.extend(method.type_params.clone());
                     let params =
-                        self.replace_params_type_params(&method.params, &class.type_params);
+                        self.replace_params_type_params(&method.params, &all_type_params);
                     let return_type =
-                        self.replace_type_params(&method.return_type, &class.type_params);
+                        self.replace_type_params(&method.return_type, &all_type_params);
 
                     let method_info = MethodInfo {
                         name: method.name.clone(),
                         class_name: class.name.clone(),
+                        type_params: method
+                            .type_params
+                            .iter()
+                            .map(|p| crate::types::TypeParamInfo {
+                                name: p.name.clone(),
+                                bound: p.bound.clone(),
+                                default_type: p.default_type.clone(),
+                            })
+                            .collect(),
                         params,
                         return_type,
                         is_public: method.modifiers.contains(&Modifier::Public),
@@ -918,6 +954,7 @@ impl SemanticAnalyzer {
                 let method_info = MethodInfo {
                     name: method.name.clone(),
                     class_name: struct_decl.name.clone(),
+                    type_params: Vec::new(),
                     params: method.params.clone(),
                     return_type: method.return_type.clone(),
                     is_public: method
@@ -1014,6 +1051,7 @@ impl SemanticAnalyzer {
                         let method_info = MethodInfo {
                             name: method.name.clone(),
                             class_name: class_decl.name.clone(),
+                            type_params: Vec::new(),
                             params: method.params.clone(),
                             return_type: method.return_type.clone(),
                             is_public: method.modifiers.contains(&Modifier::Public),

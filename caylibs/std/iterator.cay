@@ -20,6 +20,20 @@ public interface Iterator<T> {
 }
 
 /**
+ * 可变随机访问迭代器。
+ *
+ * 与只读的 Iterator 不同，该接口允许算法按下标读取和写回元素。
+ * 下标相对于迭代器所表示的序列起点，length() 返回序列长度。
+ */
+public interface MutableRandomAccessIterator<T> {
+    bool hasNext();
+    T next();
+    int length();
+    T get(int index);
+    void set(int index, T value);
+}
+
+/**
  * 可迭代接口。
  *
  * 实现该接口的对象可通过 iterator() 获取迭代器。

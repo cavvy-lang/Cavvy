@@ -191,6 +191,7 @@ pub enum ClassMember {
 #[derive(Debug, Clone, Serialize)]
 pub struct MethodDecl {
     pub name: String,
+    pub type_params: Vec<TypeParam>, // 方法级泛型参数: method<T>(...)
     pub modifiers: Vec<Modifier>,
     pub return_type: Type,
     pub params: Vec<ParameterInfo>,
