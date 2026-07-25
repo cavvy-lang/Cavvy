@@ -1,0 +1,117 @@
+// Mutex/RwLock 库测试 (ROADMAP 6.2.x 轻量级并发)
+// 覆盖：Mutex 的 lock/tryLock/RAII 自动解锁、多线程竞争计数、
+// RwLock 的读写锁与 try 系列、Mutex 保护类类型值
+#include <Thread.cay>
+#include <Mutex.cay>
+
+fn main() {
+    // 1. 基本 lock / get / set / RAII 自动解锁
+    Mutex<int> m = Mutex<int>.create(0);
+    {
+        MutexGuard<int> g = m.lock();
+        g.set(g.get() + 10);
+        println(g.get());                       // 10
+    }
+    // 若 RAII 失效这里会死锁
+    {
+        MutexGuard<int> g2 = m.lock();
+        println(g2.get());                      // 10
+        g2.set(100);
+    }
+    {
+        MutexGuard<int> g3 = m.lock();
+        println(g3.get());                      // 100
+    }
+
+    // 2. tryLock：持锁时失败，释放后成功
+    MutexGuard<int> g4 = m.lock();
+    std::Optional<MutexGuard<int>> busy = m.tryLock();
+    println(busy.isPresent());                  // false
+    g4.release();
+    std::Optional<MutexGuard<int>> got = m.tryLock();
+    println(got.isPresent());                   // true
+    if (got.isPresent()) {
+        MutexGuard<int> g5 = got.get();
+        g5.release();
+    }
+
+    // 3. 多线程竞争：4 线程 × 25000 次递增，结果必须恰好 100000
+    Mutex<int> counter = Mutex<int>.create(0);
+    Thread t1 = Thread.spawn(() -> {
+        for (int i = 0; i < 25000; i = i + 1) {
+            MutexGuard<int> g = counter.lock();
+            g.set(g.get() + 1);
+        }
+    }).unwrap();
+    Thread t2 = Thread.spawn(() -> {
+        for (int i = 0; i < 25000; i = i + 1) {
+            MutexGuard<int> g = counter.lock();
+            g.set(g.get() + 1);
+        }
+    }).unwrap();
+    Thread t3 = Thread.spawn(() -> {
+        for (int i = 0; i < 25000; i = i + 1) {
+            MutexGuard<int> g = counter.lock();
+            g.set(g.get() + 1);
+        }
+    }).unwrap();
+    Thread t4 = Thread.spawn(() -> {
+        for (int i = 0; i < 25000; i = i + 1) {
+            MutexGuard<int> g = counter.lock();
+            g.set(g.get() + 1);
+        }
+    }).unwrap();
+    t1.join();
+    t2.join();
+    t3.join();
+    t4.join();
+    {
+        MutexGuard<int> g = counter.lock();
+        println(g.get());                       // 100000
+    }
+
+    // 4. RwLock 基本读写与 try 系列
+    RwLock<int> rw = RwLock<int>.create(7);
+    {
+        ReadGuard<int> r = rw.readLock();
+        println(r.get());                       // 7
+    }
+    {
+        WriteGuard<int> w = rw.writeLock();
+        w.set(42);
+        println(w.get());                       // 42
+    }
+    {
+        ReadGuard<int> r2 = rw.readLock();
+        println(r2.get());                      // 42
+        // 持读锁时 tryWriteLock 应失败
+        std::Optional<WriteGuard<int>> wbusy = rw.tryWriteLock();
+        println(wbusy.isPresent());             // false
+    }
+    // 释放后 tryWriteLock 应成功
+    std::Optional<WriteGuard<int>> wgot = rw.tryWriteLock();
+    println(wgot.isPresent());                  // true
+    if (wgot.isPresent()) {
+        WriteGuard<int> w2 = wgot.get();
+        w2.set(99);
+        w2.release();
+    }
+    {
+        ReadGuard<int> r3 = rw.readLock();
+        println(r3.get());                      // 99
+    }
+
+    // 5. Mutex 保护 String（类类型泛型）
+    Mutex<String> ms = Mutex<String>.create("hello");
+    {
+        MutexGuard<String> gs = ms.lock();
+        println(gs.get());                      // hello
+        gs.set("world");
+    }
+    {
+        MutexGuard<String> gs2 = ms.lock();
+        println(gs2.get());                     // world
+    }
+
+    println("done");
+}

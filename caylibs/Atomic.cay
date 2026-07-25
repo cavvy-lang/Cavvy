@@ -1,0 +1,725 @@
+/**
+ * Atomic - 原子操作类型 (ROADMAP 6.2.x 轻量级并发)
+ *
+ * 封装 C++11 风格内存序的原子操作，基于 __ir 内联 LLVM 原子指令
+ * (load atomic / store atomic / atomicrmw / cmpxchg)，零开销无锁实现。
+ *
+ * 用法示例:
+ *   #include <Atomic.cay>
+ *   AtomicI64 counter = new AtomicI64(0);
+ *   counter.fetchAdd(1, MemoryOrder.SeqCst);
+ *   long v = counter.load(MemoryOrder.Acquire);
+ *
+ * 实现要点：值存放在 malloc 的 8 字节单元中（对齐安全），
+ * 通过 __ir 对其地址执行原子指令。每个操作按 MemoryOrder 分支到
+ * 对应的 LLVM 排序字面量（monotonic/acquire/release/acq_rel/seq_cst）。
+ *
+ * 版本: 6.2.0
+ */
+
+#ifndef CAY_ATOMIC_H
+#define CAY_ATOMIC_H
+
+extern {
+    c_void* malloc(size_t size);
+    void free(c_void* ptr);
+}
+
+/** 内存序（C++11 风格） */
+public enum MemoryOrder {
+    Relaxed,
+    Acquire,
+    Release,
+    AcqRel,
+    SeqCst
+}
+
+// ============================================================
+// __AtomicOps - 内部：i32/i64 原子指令帮助函数
+// ============================================================
+
+class __AtomicOps {
+
+    // ---------- i32 ----------
+
+    public static int loadI32(c_void* cell, MemoryOrder order) {
+        int result = 0;
+        if (order == MemoryOrder.Acquire || order == MemoryOrder.AcqRel) {
+            __ir {
+                %p32_1 = bitcast i8* %cell to i32*
+                %v_1 = load atomic i32, i32* %p32_1 acquire, align 4
+                store i32 %v_1, i32* %result
+            }
+        } else if (order == MemoryOrder.SeqCst) {
+            __ir {
+                %p32_2 = bitcast i8* %cell to i32*
+                %v_2 = load atomic i32, i32* %p32_2 seq_cst, align 4
+                store i32 %v_2, i32* %result
+            }
+        } else {
+            // Relaxed / Release（load 无 release 语义，降级为 monotonic）
+            __ir {
+                %p32_3 = bitcast i8* %cell to i32*
+                %v_3 = load atomic i32, i32* %p32_3 monotonic, align 4
+                store i32 %v_3, i32* %result
+            }
+        }
+        return result;
+    }
+
+    public static void storeI32(c_void* cell, int value, MemoryOrder order) {
+        if (order == MemoryOrder.Release || order == MemoryOrder.AcqRel) {
+            __ir {
+                %p32_4 = bitcast i8* %cell to i32*
+                store atomic i32 %value, i32* %p32_4 release, align 4
+            }
+        } else if (order == MemoryOrder.SeqCst) {
+            __ir {
+                %p32_5 = bitcast i8* %cell to i32*
+                store atomic i32 %value, i32* %p32_5 seq_cst, align 4
+            }
+        } else {
+            __ir {
+                %p32_6 = bitcast i8* %cell to i32*
+                store atomic i32 %value, i32* %p32_6 monotonic, align 4
+            }
+        }
+    }
+
+    public static int addI32(c_void* cell, int delta, MemoryOrder order) {
+        int old = 0;
+        if (order == MemoryOrder.Relaxed) {
+            __ir {
+                %p32_7 = bitcast i8* %cell to i32*
+                %o_7 = atomicrmw add i32* %p32_7, i32 %delta monotonic
+                store i32 %o_7, i32* %old
+            }
+        } else if (order == MemoryOrder.Acquire) {
+            __ir {
+                %p32_8 = bitcast i8* %cell to i32*
+                %o_8 = atomicrmw add i32* %p32_8, i32 %delta acquire
+                store i32 %o_8, i32* %old
+            }
+        } else if (order == MemoryOrder.Release) {
+            __ir {
+                %p32_9 = bitcast i8* %cell to i32*
+                %o_9 = atomicrmw add i32* %p32_9, i32 %delta release
+                store i32 %o_9, i32* %old
+            }
+        } else if (order == MemoryOrder.AcqRel) {
+            __ir {
+                %p32_10 = bitcast i8* %cell to i32*
+                %o_10 = atomicrmw add i32* %p32_10, i32 %delta acq_rel
+                store i32 %o_10, i32* %old
+            }
+        } else {
+            __ir {
+                %p32_11 = bitcast i8* %cell to i32*
+                %o_11 = atomicrmw add i32* %p32_11, i32 %delta seq_cst
+                store i32 %o_11, i32* %old
+            }
+        }
+        return old;
+    }
+
+    public static int subI32(c_void* cell, int delta, MemoryOrder order) {
+        int old = 0;
+        if (order == MemoryOrder.Relaxed) {
+            __ir {
+                %p32_12 = bitcast i8* %cell to i32*
+                %o_12 = atomicrmw sub i32* %p32_12, i32 %delta monotonic
+                store i32 %o_12, i32* %old
+            }
+        } else if (order == MemoryOrder.Acquire) {
+            __ir {
+                %p32_13 = bitcast i8* %cell to i32*
+                %o_13 = atomicrmw sub i32* %p32_13, i32 %delta acquire
+                store i32 %o_13, i32* %old
+            }
+        } else if (order == MemoryOrder.Release) {
+            __ir {
+                %p32_14 = bitcast i8* %cell to i32*
+                %o_14 = atomicrmw sub i32* %p32_14, i32 %delta release
+                store i32 %o_14, i32* %old
+            }
+        } else if (order == MemoryOrder.AcqRel) {
+            __ir {
+                %p32_15 = bitcast i8* %cell to i32*
+                %o_15 = atomicrmw sub i32* %p32_15, i32 %delta acq_rel
+                store i32 %o_15, i32* %old
+            }
+        } else {
+            __ir {
+                %p32_16 = bitcast i8* %cell to i32*
+                %o_16 = atomicrmw sub i32* %p32_16, i32 %delta seq_cst
+                store i32 %o_16, i32* %old
+            }
+        }
+        return old;
+    }
+
+    public static int xchgI32(c_void* cell, int value, MemoryOrder order) {
+        int old = 0;
+        if (order == MemoryOrder.Relaxed) {
+            __ir {
+                %p32_17 = bitcast i8* %cell to i32*
+                %o_17 = atomicrmw xchg i32* %p32_17, i32 %value monotonic
+                store i32 %o_17, i32* %old
+            }
+        } else if (order == MemoryOrder.Acquire) {
+            __ir {
+                %p32_18 = bitcast i8* %cell to i32*
+                %o_18 = atomicrmw xchg i32* %p32_18, i32 %value acquire
+                store i32 %o_18, i32* %old
+            }
+        } else if (order == MemoryOrder.Release) {
+            __ir {
+                %p32_19 = bitcast i8* %cell to i32*
+                %o_19 = atomicrmw xchg i32* %p32_19, i32 %value release
+                store i32 %o_19, i32* %old
+            }
+        } else if (order == MemoryOrder.AcqRel) {
+            __ir {
+                %p32_20 = bitcast i8* %cell to i32*
+                %o_20 = atomicrmw xchg i32* %p32_20, i32 %value acq_rel
+                store i32 %o_20, i32* %old
+            }
+        } else {
+            __ir {
+                %p32_21 = bitcast i8* %cell to i32*
+                %o_21 = atomicrmw xchg i32* %p32_21, i32 %value seq_cst
+                store i32 %o_21, i32* %old
+            }
+        }
+        return old;
+    }
+
+    /**
+     * i32 CAS。失败序按 LLVM 约束自动选择（不得强于成功序、不得为
+     * release/acq_rel）：Relaxed/Release → monotonic，其余 → acquire。
+     */
+    public static boolean casI32(c_void* cell, int expected, int desired, MemoryOrder success, MemoryOrder failure) {
+        int ok = 0;
+        if (success == MemoryOrder.Relaxed) {
+            __ir {
+                %p32_22 = bitcast i8* %cell to i32*
+                %pair_u22 = cmpxchg i32* %p32_22, i32 %expected, i32 %desired monotonic monotonic
+                %slot_u22 = alloca { i32, i1 }
+                store { i32, i1 } %pair_u22, { i32, i1 }* %slot_u22
+                %sp_u22 = getelementptr { i32, i1 }, { i32, i1 }* %slot_u22, i32 0, i32 1
+                %s_u22 = load i1, i1* %sp_u22
+                %s32_u22 = zext i1 %s_u22 to i32
+                store i32 %s32_u22, i32* %ok
+            }
+        } else if (success == MemoryOrder.Acquire) {
+            __ir {
+                %p32_23 = bitcast i8* %cell to i32*
+                %pair_u23 = cmpxchg i32* %p32_23, i32 %expected, i32 %desired acquire acquire
+                %slot_u23 = alloca { i32, i1 }
+                store { i32, i1 } %pair_u23, { i32, i1 }* %slot_u23
+                %sp_u23 = getelementptr { i32, i1 }, { i32, i1 }* %slot_u23, i32 0, i32 1
+                %s_u23 = load i1, i1* %sp_u23
+                %s32_u23 = zext i1 %s_u23 to i32
+                store i32 %s32_u23, i32* %ok
+            }
+        } else if (success == MemoryOrder.Release) {
+            __ir {
+                %p32_24 = bitcast i8* %cell to i32*
+                %pair_u24 = cmpxchg i32* %p32_24, i32 %expected, i32 %desired release monotonic
+                %slot_u24 = alloca { i32, i1 }
+                store { i32, i1 } %pair_u24, { i32, i1 }* %slot_u24
+                %sp_u24 = getelementptr { i32, i1 }, { i32, i1 }* %slot_u24, i32 0, i32 1
+                %s_u24 = load i1, i1* %sp_u24
+                %s32_u24 = zext i1 %s_u24 to i32
+                store i32 %s32_u24, i32* %ok
+            }
+        } else if (success == MemoryOrder.AcqRel) {
+            __ir {
+                %p32_25 = bitcast i8* %cell to i32*
+                %pair_u25 = cmpxchg i32* %p32_25, i32 %expected, i32 %desired acq_rel acquire
+                %slot_u25 = alloca { i32, i1 }
+                store { i32, i1 } %pair_u25, { i32, i1 }* %slot_u25
+                %sp_u25 = getelementptr { i32, i1 }, { i32, i1 }* %slot_u25, i32 0, i32 1
+                %s_u25 = load i1, i1* %sp_u25
+                %s32_u25 = zext i1 %s_u25 to i32
+                store i32 %s32_u25, i32* %ok
+            }
+        } else {
+            __ir {
+                %p32_26 = bitcast i8* %cell to i32*
+                %pair_u26 = cmpxchg i32* %p32_26, i32 %expected, i32 %desired seq_cst acquire
+                %slot_u26 = alloca { i32, i1 }
+                store { i32, i1 } %pair_u26, { i32, i1 }* %slot_u26
+                %sp_u26 = getelementptr { i32, i1 }, { i32, i1 }* %slot_u26, i32 0, i32 1
+                %s_u26 = load i1, i1* %sp_u26
+                %s32_u26 = zext i1 %s_u26 to i32
+                store i32 %s32_u26, i32* %ok
+            }
+        }
+        return ok != 0;
+    }
+
+    // ---------- i64 ----------
+
+    public static long loadI64(c_void* cell, MemoryOrder order) {
+        long result = 0;
+        if (order == MemoryOrder.Acquire || order == MemoryOrder.AcqRel) {
+            __ir {
+                %p64_27 = bitcast i8* %cell to i64*
+                %v_27 = load atomic i64, i64* %p64_27 acquire, align 8
+                store i64 %v_27, i64* %result
+            }
+        } else if (order == MemoryOrder.SeqCst) {
+            __ir {
+                %p64_28 = bitcast i8* %cell to i64*
+                %v_28 = load atomic i64, i64* %p64_28 seq_cst, align 8
+                store i64 %v_28, i64* %result
+            }
+        } else {
+            __ir {
+                %p64_29 = bitcast i8* %cell to i64*
+                %v_29 = load atomic i64, i64* %p64_29 monotonic, align 8
+                store i64 %v_29, i64* %result
+            }
+        }
+        return result;
+    }
+
+    public static void storeI64(c_void* cell, long value, MemoryOrder order) {
+        if (order == MemoryOrder.Release || order == MemoryOrder.AcqRel) {
+            __ir {
+                %p64_30 = bitcast i8* %cell to i64*
+                store atomic i64 %value, i64* %p64_30 release, align 8
+            }
+        } else if (order == MemoryOrder.SeqCst) {
+            __ir {
+                %p64_31 = bitcast i8* %cell to i64*
+                store atomic i64 %value, i64* %p64_31 seq_cst, align 8
+            }
+        } else {
+            __ir {
+                %p64_32 = bitcast i8* %cell to i64*
+                store atomic i64 %value, i64* %p64_32 monotonic, align 8
+            }
+        }
+    }
+
+    public static long addI64(c_void* cell, long delta, MemoryOrder order) {
+        long old = 0;
+        if (order == MemoryOrder.Relaxed) {
+            __ir {
+                %p64_33 = bitcast i8* %cell to i64*
+                %o_33 = atomicrmw add i64* %p64_33, i64 %delta monotonic
+                store i64 %o_33, i64* %old
+            }
+        } else if (order == MemoryOrder.Acquire) {
+            __ir {
+                %p64_34 = bitcast i8* %cell to i64*
+                %o_34 = atomicrmw add i64* %p64_34, i64 %delta acquire
+                store i64 %o_34, i64* %old
+            }
+        } else if (order == MemoryOrder.Release) {
+            __ir {
+                %p64_35 = bitcast i8* %cell to i64*
+                %o_35 = atomicrmw add i64* %p64_35, i64 %delta release
+                store i64 %o_35, i64* %old
+            }
+        } else if (order == MemoryOrder.AcqRel) {
+            __ir {
+                %p64_36 = bitcast i8* %cell to i64*
+                %o_36 = atomicrmw add i64* %p64_36, i64 %delta acq_rel
+                store i64 %o_36, i64* %old
+            }
+        } else {
+            __ir {
+                %p64_37 = bitcast i8* %cell to i64*
+                %o_37 = atomicrmw add i64* %p64_37, i64 %delta seq_cst
+                store i64 %o_37, i64* %old
+            }
+        }
+        return old;
+    }
+
+    public static long subI64(c_void* cell, long delta, MemoryOrder order) {
+        long old = 0;
+        if (order == MemoryOrder.Relaxed) {
+            __ir {
+                %p64_38 = bitcast i8* %cell to i64*
+                %o_38 = atomicrmw sub i64* %p64_38, i64 %delta monotonic
+                store i64 %o_38, i64* %old
+            }
+        } else if (order == MemoryOrder.Acquire) {
+            __ir {
+                %p64_39 = bitcast i8* %cell to i64*
+                %o_39 = atomicrmw sub i64* %p64_39, i64 %delta acquire
+                store i64 %o_39, i64* %old
+            }
+        } else if (order == MemoryOrder.Release) {
+            __ir {
+                %p64_40 = bitcast i8* %cell to i64*
+                %o_40 = atomicrmw sub i64* %p64_40, i64 %delta release
+                store i64 %o_40, i64* %old
+            }
+        } else if (order == MemoryOrder.AcqRel) {
+            __ir {
+                %p64_41 = bitcast i8* %cell to i64*
+                %o_41 = atomicrmw sub i64* %p64_41, i64 %delta acq_rel
+                store i64 %o_41, i64* %old
+            }
+        } else {
+            __ir {
+                %p64_42 = bitcast i8* %cell to i64*
+                %o_42 = atomicrmw sub i64* %p64_42, i64 %delta seq_cst
+                store i64 %o_42, i64* %old
+            }
+        }
+        return old;
+    }
+
+    public static long xchgI64(c_void* cell, long value, MemoryOrder order) {
+        long old = 0;
+        if (order == MemoryOrder.Relaxed) {
+            __ir {
+                %p64_43 = bitcast i8* %cell to i64*
+                %o_43 = atomicrmw xchg i64* %p64_43, i64 %value monotonic
+                store i64 %o_43, i64* %old
+            }
+        } else if (order == MemoryOrder.Acquire) {
+            __ir {
+                %p64_44 = bitcast i8* %cell to i64*
+                %o_44 = atomicrmw xchg i64* %p64_44, i64 %value acquire
+                store i64 %o_44, i64* %old
+            }
+        } else if (order == MemoryOrder.Release) {
+            __ir {
+                %p64_45 = bitcast i8* %cell to i64*
+                %o_45 = atomicrmw xchg i64* %p64_45, i64 %value release
+                store i64 %o_45, i64* %old
+            }
+        } else if (order == MemoryOrder.AcqRel) {
+            __ir {
+                %p64_46 = bitcast i8* %cell to i64*
+                %o_46 = atomicrmw xchg i64* %p64_46, i64 %value acq_rel
+                store i64 %o_46, i64* %old
+            }
+        } else {
+            __ir {
+                %p64_47 = bitcast i8* %cell to i64*
+                %o_47 = atomicrmw xchg i64* %p64_47, i64 %value seq_cst
+                store i64 %o_47, i64* %old
+            }
+        }
+        return old;
+    }
+
+    /** i64 CAS（失败序规则同 casI32） */
+    public static boolean casI64(c_void* cell, long expected, long desired, MemoryOrder success, MemoryOrder failure) {
+        long ok = 0;
+        if (success == MemoryOrder.Relaxed) {
+            __ir {
+                %p64_48 = bitcast i8* %cell to i64*
+                %pair_u48 = cmpxchg i64* %p64_48, i64 %expected, i64 %desired monotonic monotonic
+                %slot_u48 = alloca { i64, i1 }
+                store { i64, i1 } %pair_u48, { i64, i1 }* %slot_u48
+                %sp_u48 = getelementptr { i64, i1 }, { i64, i1 }* %slot_u48, i32 0, i32 1
+                %s_u48 = load i1, i1* %sp_u48
+                %s64_u48 = zext i1 %s_u48 to i64
+                store i64 %s64_u48, i64* %ok
+            }
+        } else if (success == MemoryOrder.Acquire) {
+            __ir {
+                %p64_49 = bitcast i8* %cell to i64*
+                %pair_u49 = cmpxchg i64* %p64_49, i64 %expected, i64 %desired acquire acquire
+                %slot_u49 = alloca { i64, i1 }
+                store { i64, i1 } %pair_u49, { i64, i1 }* %slot_u49
+                %sp_u49 = getelementptr { i64, i1 }, { i64, i1 }* %slot_u49, i32 0, i32 1
+                %s_u49 = load i1, i1* %sp_u49
+                %s64_u49 = zext i1 %s_u49 to i64
+                store i64 %s64_u49, i64* %ok
+            }
+        } else if (success == MemoryOrder.Release) {
+            __ir {
+                %p64_50 = bitcast i8* %cell to i64*
+                %pair_u50 = cmpxchg i64* %p64_50, i64 %expected, i64 %desired release monotonic
+                %slot_u50 = alloca { i64, i1 }
+                store { i64, i1 } %pair_u50, { i64, i1 }* %slot_u50
+                %sp_u50 = getelementptr { i64, i1 }, { i64, i1 }* %slot_u50, i32 0, i32 1
+                %s_u50 = load i1, i1* %sp_u50
+                %s64_u50 = zext i1 %s_u50 to i64
+                store i64 %s64_u50, i64* %ok
+            }
+        } else if (success == MemoryOrder.AcqRel) {
+            __ir {
+                %p64_51 = bitcast i8* %cell to i64*
+                %pair_u51 = cmpxchg i64* %p64_51, i64 %expected, i64 %desired acq_rel acquire
+                %slot_u51 = alloca { i64, i1 }
+                store { i64, i1 } %pair_u51, { i64, i1 }* %slot_u51
+                %sp_u51 = getelementptr { i64, i1 }, { i64, i1 }* %slot_u51, i32 0, i32 1
+                %s_u51 = load i1, i1* %sp_u51
+                %s64_u51 = zext i1 %s_u51 to i64
+                store i64 %s64_u51, i64* %ok
+            }
+        } else {
+            __ir {
+                %p64_52 = bitcast i8* %cell to i64*
+                %pair_u52 = cmpxchg i64* %p64_52, i64 %expected, i64 %desired seq_cst acquire
+                %slot_u52 = alloca { i64, i1 }
+                store { i64, i1 } %pair_u52, { i64, i1 }* %slot_u52
+                %sp_u52 = getelementptr { i64, i1 }, { i64, i1 }* %slot_u52, i32 0, i32 1
+                %s_u52 = load i1, i1* %sp_u52
+                %s64_u52 = zext i1 %s_u52 to i64
+                store i64 %s64_u52, i64* %ok
+            }
+        }
+        return ok != 0;
+    }
+}
+
+// ============================================================
+// AtomicI32 - 32 位原子整数
+// ============================================================
+
+public class AtomicI32 {
+    private c_void* cell;
+
+    public AtomicI32(int value) {
+        this.cell = malloc(8);
+        c_void* c = this.cell;
+        int initv = value;
+        __ir {
+            %p_53 = load i8*, i8** %c
+            %p32_53 = bitcast i8* %p_53 to i32*
+            %iv = load i32, i32* %initv
+            store i32 %iv, i32* %p32_53
+        }
+    }
+
+    public int load(MemoryOrder order) {
+        return __AtomicOps.loadI32(this.cell, order);
+    }
+
+    public void store(int value, MemoryOrder order) {
+        __AtomicOps.storeI32(this.cell, value, order);
+    }
+
+    /** 原子加，返回旧值 */
+    public int fetchAdd(int delta, MemoryOrder order) {
+        return __AtomicOps.addI32(this.cell, delta, order);
+    }
+
+    /** 原子减，返回旧值 */
+    public int fetchSub(int delta, MemoryOrder order) {
+        return __AtomicOps.subI32(this.cell, delta, order);
+    }
+
+    /** CAS：当前值等于 expected 时写入 desired，返回是否成功 */
+    public boolean compareExchange(int expected, int desired, MemoryOrder success, MemoryOrder failure) {
+        return __AtomicOps.casI32(this.cell, expected, desired, success, failure);
+    }
+
+    /** 原子交换，返回旧值 */
+    public int swap(int value, MemoryOrder order) {
+        return __AtomicOps.xchgI32(this.cell, value, order);
+    }
+
+    /** SeqCst 便捷读取 */
+    public int get() {
+        return __AtomicOps.loadI32(this.cell, MemoryOrder.SeqCst);
+    }
+
+    /** SeqCst 便捷写入 */
+    public void set(int value) {
+        __AtomicOps.storeI32(this.cell, value, MemoryOrder.SeqCst);
+    }
+
+    ~AtomicI32() {
+        if (this.cell != null) {
+            free(this.cell);
+            this.cell = null;
+        }
+    }
+}
+
+// ============================================================
+// AtomicI64 - 64 位原子整数
+// ============================================================
+
+public class AtomicI64 {
+    private c_void* cell;
+
+    public AtomicI64(long value) {
+        this.cell = malloc(8);
+        c_void* c = this.cell;
+        long initv = value;
+        __ir {
+            %p_54 = load i8*, i8** %c
+            %p64_54 = bitcast i8* %p_54 to i64*
+            %iv = load i64, i64* %initv
+            store i64 %iv, i64* %p64_54
+        }
+    }
+
+    public long load(MemoryOrder order) {
+        return __AtomicOps.loadI64(this.cell, order);
+    }
+
+    public void store(long value, MemoryOrder order) {
+        __AtomicOps.storeI64(this.cell, value, order);
+    }
+
+    /** 原子加，返回旧值 */
+    public long fetchAdd(long delta, MemoryOrder order) {
+        return __AtomicOps.addI64(this.cell, delta, order);
+    }
+
+    /** 原子减，返回旧值 */
+    public long fetchSub(long delta, MemoryOrder order) {
+        return __AtomicOps.subI64(this.cell, delta, order);
+    }
+
+    /** CAS：当前值等于 expected 时写入 desired，返回是否成功 */
+    public boolean compareExchange(long expected, long desired, MemoryOrder success, MemoryOrder failure) {
+        return __AtomicOps.casI64(this.cell, expected, desired, success, failure);
+    }
+
+    /** 原子交换，返回旧值 */
+    public long swap(long value, MemoryOrder order) {
+        return __AtomicOps.xchgI64(this.cell, value, order);
+    }
+
+    /** SeqCst 便捷读取 */
+    public long get() {
+        return __AtomicOps.loadI64(this.cell, MemoryOrder.SeqCst);
+    }
+
+    /** SeqCst 便捷写入 */
+    public void set(long value) {
+        __AtomicOps.storeI64(this.cell, value, MemoryOrder.SeqCst);
+    }
+
+    ~AtomicI64() {
+        if (this.cell != null) {
+            free(this.cell);
+            this.cell = null;
+        }
+    }
+}
+
+// ============================================================
+// AtomicBool - 原子布尔（内部以 i32 存储）
+// ============================================================
+
+public class AtomicBool {
+    private c_void* cell;
+
+    public AtomicBool(boolean value) {
+        this.cell = malloc(8);
+        if (value) {
+            __AtomicOps.storeI32(this.cell, 1, MemoryOrder.Relaxed);
+        } else {
+            __AtomicOps.storeI32(this.cell, 0, MemoryOrder.Relaxed);
+        }
+    }
+
+    public boolean load(MemoryOrder order) {
+        return __AtomicOps.loadI32(this.cell, order) != 0;
+    }
+
+    public void store(boolean value, MemoryOrder order) {
+        if (value) {
+            __AtomicOps.storeI32(this.cell, 1, order);
+        } else {
+            __AtomicOps.storeI32(this.cell, 0, order);
+        }
+    }
+
+    /** CAS：当前值等于 expected 时写入 desired，返回是否成功 */
+    public boolean compareExchange(boolean expected, boolean desired, MemoryOrder success, MemoryOrder failure) {
+        int e = 0;
+        if (expected) { e = 1; }
+        int d = 0;
+        if (desired) { d = 1; }
+        return __AtomicOps.casI32(this.cell, e, d, success, failure);
+    }
+
+    /** 原子交换，返回旧值 */
+    public boolean swap(boolean value, MemoryOrder order) {
+        int d = 0;
+        if (value) { d = 1; }
+        return __AtomicOps.xchgI32(this.cell, d, order) != 0;
+    }
+
+    /** SeqCst 便捷读取 */
+    public boolean get() {
+        return __AtomicOps.loadI32(this.cell, MemoryOrder.SeqCst) != 0;
+    }
+
+    /** SeqCst 便捷写入 */
+    public void set(boolean value) {
+        if (value) {
+            __AtomicOps.storeI32(this.cell, 1, MemoryOrder.SeqCst);
+        } else {
+            __AtomicOps.storeI32(this.cell, 0, MemoryOrder.SeqCst);
+        }
+    }
+
+    ~AtomicBool() {
+        if (this.cell != null) {
+            free(this.cell);
+            this.cell = null;
+        }
+    }
+}
+
+// ============================================================
+// AtomicPtr - 原子指针（内部以 i64 存地址）
+//
+// 注：非泛型实现。指针以 long 地址形式存取，
+// 泛型 AtomicPtr<T> 待指针类型与泛型结合的支持完善后提供。
+// ============================================================
+
+public class AtomicPtr {
+    private c_void* cell;
+
+    public AtomicPtr(long address) {
+        this.cell = malloc(8);
+        __AtomicOps.storeI64(this.cell, address, MemoryOrder.Relaxed);
+    }
+
+    public long load(MemoryOrder order) {
+        return __AtomicOps.loadI64(this.cell, order);
+    }
+
+    public void store(long address, MemoryOrder order) {
+        __AtomicOps.storeI64(this.cell, address, order);
+    }
+
+    /** CAS：当前地址等于 expected 时写入 desired，返回是否成功 */
+    public boolean compareExchange(long expected, long desired, MemoryOrder success, MemoryOrder failure) {
+        return __AtomicOps.casI64(this.cell, expected, desired, success, failure);
+    }
+
+    /** 原子交换，返回旧地址 */
+    public long swap(long address, MemoryOrder order) {
+        return __AtomicOps.xchgI64(this.cell, address, order);
+    }
+
+    /** SeqCst 便捷读取 */
+    public long get() {
+        return __AtomicOps.loadI64(this.cell, MemoryOrder.SeqCst);
+    }
+
+    /** SeqCst 便捷写入 */
+    public void set(long address) {
+        __AtomicOps.storeI64(this.cell, address, MemoryOrder.SeqCst);
+    }
+
+    ~AtomicPtr() {
+        if (this.cell != null) {
+            free(this.cell);
+            this.cell = null;
+        }
+    }
+}
+
+#endif // CAY_ATOMIC_H

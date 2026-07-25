@@ -3331,6 +3331,9 @@ impl IRGenerator {
     /// 判断某个 Cavvy 类型是否是声明了析构函数的类，返回其可用于调用 __dtor 的类名。
     /// 对 Object 类型返回原类名；对 Generic 类型返回完整的 `Base<Args>` 字符串，
     /// 以便定位到正确的特化类析构函数。
+    /// 注意：必须使用 display_name()（与 SpecializationInstance::specialized_name 一致），
+    /// 不能用 Display/to_string()——后者把 String 渲染为 "string"，
+    /// 会生成如 MutexGuard<string> 的错误析构函数名。
     fn type_has_destructor(
         &self,
         ty: &Type,
@@ -3345,7 +3348,7 @@ impl IRGenerator {
             .as_ref()
             .and_then(|r| r.get_class(base_name))
             .filter(|c| c.has_destructor)
-            .map(|_| ty.to_string())
+            .map(|_| ty.display_name())
     }
 
     fn generate_static_initializer(

@@ -785,24 +785,39 @@ impl IRGenerator {
         if let Some(ref class_name) = method_ref.class_name {
             // 静态方法引用: ClassName::methodName
             // 尝试从类型注册表获取方法签名
-            let fn_name = format!("{}.{}", class_name, method_ref.method_name);
+            let method_info = self
+                .type_registry
+                .as_ref()
+                .and_then(|registry| registry.get_method(class_name, &method_ref.method_name))
+                .cloned();
 
-            // 尝试推断返回类型和参数类型
-            let (return_type, param_types) = if let Some(ref registry) = self.type_registry {
-                if let Some(method_info) = registry.get_method(class_name, &method_ref.method_name)
-                {
-                    let ret = self.type_to_llvm(&method_info.return_type);
-                    let params: Vec<String> = method_info
-                        .params
-                        .iter()
-                        .map(|p| self.type_to_llvm(&p.param_type))
-                        .collect();
-                    (ret, params)
-                } else {
-                    ("i32".to_string(), vec![])
-                }
+            // 函数名必须使用与定义处一致的 Itanium 改编名，
+            // 否则会产生 use of undefined value（定义是 @_ZN... 形式）
+            let (fn_name, return_type, param_types) = if let Some(method_info) = method_info {
+                let ret = self.type_to_llvm(&method_info.return_type);
+                let cay_params: Vec<crate::types::Type> = method_info
+                    .params
+                    .iter()
+                    .map(|p| p.param_type.clone())
+                    .collect();
+                let params: Vec<String> = cay_params
+                    .iter()
+                    .map(|t| self.type_to_llvm(t))
+                    .collect();
+                let mangled = self.mangle_itanium_method(
+                    class_name,
+                    &method_ref.method_name,
+                    &cay_params,
+                    false,
+                    false,
+                );
+                (mangled, ret, params)
             } else {
-                ("i32".to_string(), vec![])
+                (
+                    format!("{}.{}", class_name, method_ref.method_name),
+                    "i32".to_string(),
+                    vec![],
+                )
             };
 
             // 生成函数指针类型

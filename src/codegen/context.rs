@@ -650,14 +650,21 @@ impl IRGenerator {
     /// 确保 `declare void @free(i8*)` 在 IR 中出现一次。
     /// ROADMAP 5.3.x 智能指针注入需要调用 free，但用户代码未必引用它。
     pub fn ensure_free_declared(&mut self) {
-        if !self.code.contains("declare void @free(i8*)") {
-            // 在第一个 define 之前插入声明；如果还没有 define，直接追加。
-            let decl = "declare void @free(i8*)\n";
-            if let Some(pos) = self.code.find("define ") {
-                self.code.insert_str(pos, decl);
-            } else {
-                self.code.push_str(decl);
-            }
+        if self.code.contains("declare void @free(i8*)") {
+            return;
+        }
+        // 用户已通过 extern 块声明 free（由 extern 发射路径统一输出，
+        // 带调用约定属性，可能尚未写入 self.code），不能再补隐式声明，
+        // 否则 LLVM 报 "invalid redefinition of function 'free'"。
+        if self.is_extern_function("free") {
+            return;
+        }
+        // 在第一个 define 之前插入声明；如果还没有 define，直接追加。
+        let decl = "declare void @free(i8*)\n";
+        if let Some(pos) = self.code.find("define ") {
+            self.code.insert_str(pos, decl);
+        } else {
+            self.code.push_str(decl);
         }
     }
 

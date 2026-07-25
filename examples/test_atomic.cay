@@ -1,0 +1,46 @@
+// Atomic 库测试 (ROADMAP 6.2.x 轻量级并发)
+// 覆盖：AtomicI32/I64/Bool/Ptr 的 load/store/fetchAdd/fetchSub/swap/CAS、
+// 五种内存序，以及 8 线程 × 10000 次 fetchAdd 的原子性验证
+#include <Thread.cay>
+#include <Atomic.cay>
+
+fn main() {
+    // 单线程基本操作
+    AtomicI32 a = new AtomicI32(10);
+    println(a.get());                                               // 10
+    println(a.fetchAdd(5, MemoryOrder.SeqCst));                     // 10 (返回旧值)
+    println(a.get());                                               // 15
+    println(a.fetchSub(3, MemoryOrder.Acquire));                    // 15 (返回旧值)
+    println(a.swap(99, MemoryOrder.Relaxed));                       // 12 (返回旧值)
+    println(a.get());                                               // 99
+    println(a.compareExchange(99, 100, MemoryOrder.SeqCst, MemoryOrder.Relaxed));   // true
+    println(a.compareExchange(99, 100, MemoryOrder.SeqCst, MemoryOrder.Relaxed));   // false
+    println(a.load(MemoryOrder.SeqCst));                            // 100
+    a.set(7);
+    println(a.get());                                               // 7
+
+    AtomicBool b = new AtomicBool(false);
+    println(b.get());                                               // false
+    println(b.swap(true, MemoryOrder.SeqCst));                      // false (旧值)
+    println(b.get());                                               // true
+
+    AtomicPtr p = new AtomicPtr(1234);
+    println(p.get());                                               // 1234
+    println(p.compareExchange(1234, 5678, MemoryOrder.SeqCst, MemoryOrder.Relaxed)); // true
+    println(p.get());                                               // 5678
+
+    // 多线程原子性验证：8 线程 × 10000 次 fetchAdd，结果必须恰好 80000
+    AtomicI64 counter = new AtomicI64(0);
+    Thread t1 = Thread.spawn(() -> { for (int i = 0; i < 10000; i++) { counter.fetchAdd(1, MemoryOrder.Relaxed); } }).unwrap();
+    Thread t2 = Thread.spawn(() -> { for (int i = 0; i < 10000; i++) { counter.fetchAdd(1, MemoryOrder.Relaxed); } }).unwrap();
+    Thread t3 = Thread.spawn(() -> { for (int i = 0; i < 10000; i++) { counter.fetchAdd(1, MemoryOrder.Relaxed); } }).unwrap();
+    Thread t4 = Thread.spawn(() -> { for (int i = 0; i < 10000; i++) { counter.fetchAdd(1, MemoryOrder.Relaxed); } }).unwrap();
+    Thread t5 = Thread.spawn(() -> { for (int i = 0; i < 10000; i++) { counter.fetchAdd(1, MemoryOrder.Relaxed); } }).unwrap();
+    Thread t6 = Thread.spawn(() -> { for (int i = 0; i < 10000; i++) { counter.fetchAdd(1, MemoryOrder.Relaxed); } }).unwrap();
+    Thread t7 = Thread.spawn(() -> { for (int i = 0; i < 10000; i++) { counter.fetchAdd(1, MemoryOrder.Relaxed); } }).unwrap();
+    Thread t8 = Thread.spawn(() -> { for (int i = 0; i < 10000; i++) { counter.fetchAdd(1, MemoryOrder.Relaxed); } }).unwrap();
+    t1.join(); t2.join(); t3.join(); t4.join();
+    t5.join(); t6.join(); t7.join(); t8.join();
+    println(counter.get());
+    println("done");
+}

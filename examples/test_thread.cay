@@ -1,0 +1,54 @@
+// Thread 库测试 (ROADMAP 6.2.x 轻量级并发)
+// 覆盖：spawn/join、捕获变量（捕获即复制）、多线程、
+// ThreadBuilder(name/stackSize)、id/currentId、sleep/yield
+#include <Thread.cay>
+
+fn main() {
+    // 1. 基本 spawn/join
+    Thread t0 = Thread.spawn(() -> {
+        println("t0-run");
+    }).unwrap();
+    t0.join();
+    println("t0-joined");
+
+    // 2. 捕获变量：捕获在 lambda 创建时复制到独立堆环境
+    int a = 11;
+    int b = 22;
+    Thread t1 = Thread.spawn(() -> {
+        println(a + b);
+    }).unwrap();
+    t1.join();
+
+    // 3. 多线程并行：4 个线程各自打印标记（输出顺序不定，join 保证都完成）
+    Thread w1 = Thread.spawn(() -> { println("w1"); }).unwrap();
+    Thread w2 = Thread.spawn(() -> { println("w2"); }).unwrap();
+    Thread w3 = Thread.spawn(() -> { println("w3"); }).unwrap();
+    Thread w4 = Thread.spawn(() -> { println("w4"); }).unwrap();
+    w1.join();
+    w2.join();
+    w3.join();
+    w4.join();
+    println("workers-joined");
+
+    // 4. ThreadBuilder：名称 + 栈大小
+    Thread t2 = Thread.builder()
+        .name("worker-x")
+        .stackSize(262144)
+        .spawn(() -> {
+            println("builder-run");
+        })
+        .unwrap();
+    t2.join();
+
+    // 5. id / currentId / sleep / yield
+    Thread t3 = Thread.spawn(() -> {
+        Thread.sleep(5);
+        Thread.yield();
+        println("t3-done");
+    }).unwrap();
+    println(t3.id() != 0);
+    println(Thread.currentId() != 0);
+    t3.join();
+
+    println("done");
+}

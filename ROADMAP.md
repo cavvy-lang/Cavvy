@@ -736,7 +736,7 @@ public static Result<UniquePtr<File>, IOError> openFile(String path) {
 
 #### 6.2.x 轻量级并发（1:1 线程模型）
 
-- [ ] **OS 线程封装** - `Thread` 类，直接映射 pthread/Windows Thread
+- [X] **OS 线程封装** - `Thread` 类，直接映射 pthread/Windows Thread（已实现：`caylibs/Thread.cay`，6.2.0）
 
   ```java
   public class Thread {
@@ -769,11 +769,12 @@ public static Result<UniquePtr<File>, IOError> openFile(String path) {
       public Result<Thread, ThreadError> spawn(fn() -> void entry);
   }
   ```
-- [ ] **线程参数传递** - 必须显式指定数据所有权转移（为 G2 所有权系统做铺垫）
+- [X] **线程参数传递** - 必须显式指定数据所有权转移（为 G2 所有权系统做铺垫）
 
   - 线程入口函数的捕获变量需显式 `move` 标记
   - 共享数据使用 `Arc<T>`（见 0.5.3.x）或 `Mutex<T>`
-- [ ] **原子操作** - `AtomicI32`, `AtomicI64`, `AtomicPtr<T>`，封装 C++11 风格内存序
+  - 实现现状（6.2.0）：捕获变量在 lambda 创建时复制到独立堆环境（"捕获即复制"），线程间不共享该内存；显式 `move` 标记延期至 G2 所有权系统
+- [X] **原子操作** - `AtomicI32`, `AtomicI64`, `AtomicPtr<T>`，封装 C++11 风格内存序（已实现：`caylibs/Atomic.cay`，6.2.0；基于 __ir 内联 LLVM 原子指令零开销实现。偏差：`AtomicPtr` 为非泛型类，以 long 存储地址）
 
   ```java
   public enum MemoryOrder { Relaxed, Acquire, Release, AcqRel, SeqCst }
@@ -790,7 +791,7 @@ public static Result<UniquePtr<File>, IOError> openFile(String path) {
 
   // 同样提供 AtomicI64, AtomicPtr<T>, AtomicBool
   ```
-- [ ] **互斥锁** - `Mutex<T>`，封装 OS 层 mutex（futex 或 CriticalSection），非语言级 synchronized
+- [X] **互斥锁** - `Mutex<T>`，封装 OS 层 mutex（futex 或 CriticalSection），非语言级 synchronized（已实现：`caylibs/Mutex.cay`，6.2.0。偏差：语言暂无 operator 重载，以 `guard.get()`/`guard.set(v)` 代替 `operator*`/`operator->`；读写锁 Guard 命名为 `ReadGuard<T>`/`WriteGuard<T>`）
 
   ```java
   public class Mutex<T> {

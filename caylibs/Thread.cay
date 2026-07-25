@@ -1,0 +1,350 @@
+/**
+ * Thread - OS 线程封装 (ROADMAP 6.2.x 轻量级并发，1:1 线程模型)
+ *
+ * 直接映射 pthread (Linux/macOS) 与 Windows Thread (kernel32)。
+ *
+ * 用法示例:
+ *   #include <Thread.cay>
+ *   std::Result<Thread, ThreadError> r =
+ *       Thread.spawn(() -> { println("hello from thread"); });
+ *   Thread t = r.unwrap();
+ *   t.join();
+ *
+ * 线程参数传递：通过 lambda 捕获。捕获变量在 lambda 创建时被复制到
+ * 独立的堆环境（env），线程间不共享该内存，即"捕获即复制"语义。
+ * 显式 move 标记待 G2 所有权系统。
+ *
+ * 实现要点：
+ * - fn 值在 Cavvy 中是闭包结构体指针 { i8* func_ptr @0, i8* env_ptr @8 }，
+ *   不能直接作为 C 回调。pthread_create/CreateThread 的入口固定为
+ *   __cay_thread_trampoline（静态方法引用产生裸函数指针），
+ *   闭包结构体指针作为 arg 传入，trampoline 解包后调用。
+ * - pthread_t/HANDLE 存放在 malloc 的 8 字节单元中，对库代码不透明。
+ *
+ * 版本: 6.2.0
+ */
+
+#ifndef CAY_THREAD_H
+#define CAY_THREAD_H
+
+#include "Result.cay"
+
+extern {
+    c_void* malloc(size_t size);
+    void free(c_void* ptr);
+}
+
+#ifdef _WIN32
+extern {
+    c_void* CreateThread(c_void* attrs, size_t stack, fn(c_void*) -> c_void* start, c_void* arg, c_ulong flags, c_ulong* tid);
+    c_ulong WaitForSingleObject(c_void* handle, c_ulong millis);
+    c_int CloseHandle(c_void* handle);
+    void Sleep(c_ulong millis);
+    c_ulong GetCurrentThreadId();
+    c_int SwitchToThread();
+}
+#else
+extern {
+    c_int pthread_create(c_void* thread, c_void* attr, fn(c_void*) -> c_void* start, c_void* arg);
+    c_int pthread_join(c_void* thread, c_void* retval);
+    c_int pthread_detach(c_void* thread);
+    c_void* pthread_self();
+    c_int sched_yield();
+    c_int nanosleep(c_void* req, c_void* rem);
+    c_int pthread_attr_init(c_void* attr);
+    c_int pthread_attr_setstacksize(c_void* attr, size_t stacksize);
+    c_int pthread_attr_destroy(c_void* attr);
+#ifndef __APPLE__
+    c_int pthread_setname_np(c_void* thread, c_char* name);
+#endif
+}
+#endif
+
+/**
+ * ThreadError - 线程操作错误
+ *
+ * 注：未实现 std::Error 接口——Error.cay 当前无法编译（嵌套 enum 不支持），
+ * 待其修复后可改为 implements Error。
+ */
+public class ThreadError {
+    private String msg;
+    private int code;
+
+    public ThreadError(String msg, int code) {
+        this.msg = msg;
+        this.code = code;
+    }
+
+    public String message() {
+        return this.msg;
+    }
+
+    /** 原始 OS 错误码（pthread_create 返回值 / GetLastError，未实现时为 0） */
+    public int rawCode() {
+        return this.code;
+    }
+}
+
+/**
+ * Thread - OS 线程句柄
+ */
+public class Thread {
+    /** pthread_t/HANDLE 的 8 字节存储单元；join/detach 后置 null */
+    private c_void* handle;
+    private boolean joined;
+
+    private Thread() {
+        this.handle = null;
+        this.joined = false;
+    }
+
+    /**
+     * C 回调入口（内部）。arg 是闭包结构体指针，直接 store 到 fn 变量后调用。
+     * __ir 中参数名绑定到原始值（而非 alloca），局部变量绑定到 alloca。
+     */
+    public static c_void* __cay_thread_trampoline(c_void* arg) {
+        auto entry = () -> {};
+        __ir {
+            store i8* %arg, i8** %entry
+        }
+        entry();
+        return null;
+    }
+
+    /**
+     * 创建并启动线程
+     * entry: 线程入口，fn() -> void，捕获变量随闭包环境复制传入
+     */
+    public static std::Result<Thread, ThreadError> spawn(fn() -> void entry) {
+        return Thread::spawnInternal(entry, 0, null);
+    }
+
+    /**
+     * 内部实现：带栈大小与线程名的 spawn（ThreadBuilder 使用）
+     * stackSize <= 0 表示使用系统默认栈大小；name 传 null 表示不命名。
+     */
+    public static std::Result<Thread, ThreadError> spawnInternal(fn() -> void entry, long stackSize, String name) {
+        // fn 参数在 __ir 中是原始 i8* 值（闭包结构体指针），直接作为 C 回调的 arg
+        c_void* argp = null;
+        __ir {
+            store i8* %entry, i8** %argp
+        }
+
+        c_void* cell = malloc(8);
+
+#ifdef _WIN32
+        c_void* tidCell = malloc(8);
+        long stack = stackSize;
+        c_void* h = null;
+        if (stack > 0) {
+            h = CreateThread(null, stack, Thread::__cay_thread_trampoline, argp, 0, tidCell);
+        } else {
+            h = CreateThread(null, 0, Thread::__cay_thread_trampoline, argp, 0, tidCell);
+        }
+        if (h == null) {
+            free(cell);
+            free(tidCell);
+            return std::Result<Thread, ThreadError>.err(new ThreadError("CreateThread failed", 0));
+        }
+        // cell 存储 HANDLE 值本身
+        __ir {
+            %hv = load i8*, i8** %h
+            %c = load i8*, i8** %cell
+            store i8* %hv, i8** %c
+        }
+        free(tidCell);
+        // Windows 上线程命名需要 SetThreadDescription（Win10+），暂不实现
+#else
+        c_void* attr = null;
+        if (stackSize > 0) {
+            attr = malloc(64);
+            pthread_attr_init(attr);
+            pthread_attr_setstacksize(attr, stackSize);
+        }
+        c_int rc = pthread_create(cell, attr, Thread::__cay_thread_trampoline, argp);
+        if (attr != null) {
+            pthread_attr_destroy(attr);
+            free(attr);
+        }
+        if (rc != 0) {
+            free(cell);
+            return std::Result<Thread, ThreadError>.err(new ThreadError("pthread_create failed", rc));
+        }
+#ifndef __APPLE__
+        if (name != null) {
+            String trimmed = name;
+            if (trimmed.length() > 15) {
+                // Linux 线程名上限 16 字节（含 NUL）
+                trimmed = trimmed.substring(0, 15);
+            }
+            c_void* tv = null;
+            __ir {
+                %c = load i8*, i8** %cell
+                %t = load i8*, i8** %c
+                store i8* %t, i8** %tv
+            }
+            pthread_setname_np(tv, trimmed.c_str());
+        }
+#endif
+#endif
+
+        Thread t = new Thread();
+        t.handle = cell;
+        return std::Result<Thread, ThreadError>.ok(t);
+    }
+
+    /** 等待线程结束。重复调用是安全的（幂等）。 */
+    public void join() {
+        if (this.joined) {
+            return;
+        }
+        c_void* cell = this.handle;
+        if (cell == null) {
+            return;
+        }
+        c_void* tv = null;
+        __ir {
+            %c = load i8*, i8** %cell
+            %t = load i8*, i8** %c
+            store i8* %t, i8** %tv
+        }
+#ifdef _WIN32
+        WaitForSingleObject(tv, 0xFFFFFFFF);
+        CloseHandle(tv);
+#else
+        pthread_join(tv, null);
+#endif
+        free(cell);
+        this.handle = null;
+        this.joined = true;
+    }
+
+    /** 分离线程（不再 joinable，资源随线程结束自动回收） */
+    public void detach() {
+        if (this.joined) {
+            return;
+        }
+        c_void* cell = this.handle;
+        if (cell == null) {
+            return;
+        }
+        c_void* tv = null;
+        __ir {
+            %c = load i8*, i8** %cell
+            %t = load i8*, i8** %c
+            store i8* %t, i8** %tv
+        }
+#ifdef _WIN32
+        CloseHandle(tv);
+#else
+        pthread_detach(tv);
+#endif
+        free(cell);
+        this.handle = null;
+        this.joined = true;
+    }
+
+    /** 线程 ID（pthread_t / HANDLE 的整数值；join 后返回 0） */
+    public long id() {
+        c_void* cell = this.handle;
+        if (cell == null) {
+            return 0;
+        }
+        long v = 0;
+        __ir {
+            %c = load i8*, i8** %cell
+            %t = load i8*, i8** %c
+            %i = ptrtoint i8* %t to i64
+            store i64 %i, i64* %v
+        }
+        return v;
+    }
+
+    /** 当前线程 ID */
+    public static long currentId() {
+#ifdef _WIN32
+        c_ulong id = GetCurrentThreadId();
+        long v = id;
+        return v;
+#else
+        c_void* s = pthread_self();
+        long v = 0;
+        __ir {
+            %sv = load i8*, i8** %s
+            %i = ptrtoint i8* %sv to i64
+            store i64 %i, i64* %v
+        }
+        return v;
+#endif
+    }
+
+    /** 线程休眠（毫秒） */
+    public static void sleep(long millis) {
+#ifdef _WIN32
+        Sleep(millis);
+#else
+        // nanosleep 需要 timespec { sec, nsec }，用 16 字节堆缓冲区构造
+        c_void* ts = malloc(16);
+        long sec = millis / 1000;
+        long nsec = (millis % 1000) * 1000000;
+        __ir {
+            %p = load i8*, i8** %ts
+            %p64 = bitcast i8* %p to i64*
+            %s = load i64, i64* %sec
+            store i64 %s, i64* %p64
+            %p8 = getelementptr i64, i64* %p64, i64 1
+            %n = load i64, i64* %nsec
+            store i64 %n, i64* %p8
+        }
+        nanosleep(ts, null);
+        free(ts);
+#endif
+    }
+
+    /** 主动让出 CPU */
+    public static void yield() {
+#ifdef _WIN32
+        SwitchToThread();
+#else
+        sched_yield();
+#endif
+    }
+
+    /** 创建 ThreadBuilder */
+    public static ThreadBuilder builder() {
+        return new ThreadBuilder();
+    }
+}
+
+/**
+ * ThreadBuilder - 带名称/栈大小配置的线程构建器
+ */
+public class ThreadBuilder {
+    private String threadName;
+    private long stackBytes;
+
+    public ThreadBuilder() {
+        this.threadName = null;
+        this.stackBytes = 0;
+    }
+
+    /** 设置线程名（Linux 上限 15 字符，自动截断；Windows 暂忽略） */
+    public ThreadBuilder name(String name) {
+        this.threadName = name;
+        return this;
+    }
+
+    /** 设置栈大小（字节）；<= 0 使用系统默认 */
+    public ThreadBuilder stackSize(long bytes) {
+        this.stackBytes = bytes;
+        return this;
+    }
+
+    /** 创建并启动线程 */
+    public std::Result<Thread, ThreadError> spawn(fn() -> void entry) {
+        return Thread::spawnInternal(entry, this.stackBytes, this.threadName);
+    }
+}
+
+
+#endif // CAY_THREAD_H

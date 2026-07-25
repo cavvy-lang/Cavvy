@@ -1,0 +1,427 @@
+/**
+ * Mutex - 互斥锁与读写锁 (ROADMAP 6.2.x 轻量级并发)
+ *
+ * 封装 OS 层锁原语：pthread_mutex/pthread_rwlock (Linux/macOS) 与
+ * CRITICAL_SECTION/SRWLOCK (Windows)。RAII Guard 模式，作用域退出自动解锁。
+ *
+ * 用法示例:
+ *   #include <Mutex.cay>
+ *   Mutex<int> m = Mutex<int>.create(0);
+ *   {
+ *       MutexGuard<int> g = m.lock();
+ *       g.set(g.get() + 1);
+ *   } // 作用域退出自动解锁
+ *
+ *   std::Optional<MutexGuard<int>> opt = m.tryLock();
+ *   if (opt.isPresent()) {
+ *       MutexGuard<int> g = opt.get();
+ *       // ...
+ *   }
+ *
+ * 与 ROADMAP 的偏差说明：
+ * - 语言暂无 operator 重载，以 guard.get()/guard.set(v) 代替 operator* / operator->。
+ * - 类均位于顶层（不在 namespace std 内）：泛型实参若为带命名空间的类
+ *   会触发编译器改编名 bug（与 Thread.cay 相同原因）。
+ *
+ * 实现要点：
+ * - 锁结构体存放在 malloc 的 64 字节不透明单元中（pthread_mutex_t 40B /
+ *   pthread_rwlock_t 56B / CRITICAL_SECTION 40B / SRWLOCK 8B，64B 全覆盖）。
+ * - Guard 持有 Mutex 引用，析构时解锁；released 标志保证重复析构
+ * （如 Optional<T> 持有同一 Guard 对象时）不会重复解锁。
+ * - 锁失败路径：lock 系列忽略罕见错误（与 std::mutex 一致）；
+ *   tryLock 系列任何非零返回均视为未获取。
+ *
+ * 版本: 6.2.0
+ */
+
+#ifndef CAY_MUTEX_H
+#define CAY_MUTEX_H
+
+extern {
+    c_void* malloc(size_t size);
+    void free(c_void* ptr);
+}
+
+#include "Optional.cay"
+
+#ifdef _WIN32
+extern {
+    void InitializeCriticalSection(c_void* cs);
+    void EnterCriticalSection(c_void* cs);
+    c_int TryEnterCriticalSection(c_void* cs);
+    void LeaveCriticalSection(c_void* cs);
+    void DeleteCriticalSection(c_void* cs);
+    void InitializeSRWLock(c_void* lock);
+    void AcquireSRWLockShared(c_void* lock);
+    c_int TryAcquireSRWLockShared(c_void* lock);
+    void ReleaseSRWLockShared(c_void* lock);
+    void AcquireSRWLockExclusive(c_void* lock);
+    c_int TryAcquireSRWLockExclusive(c_void* lock);
+    void ReleaseSRWLockExclusive(c_void* lock);
+}
+#else
+extern {
+    c_int pthread_mutex_init(c_void* m, c_void* attr);
+    c_int pthread_mutex_lock(c_void* m);
+    c_int pthread_mutex_trylock(c_void* m);
+    c_int pthread_mutex_unlock(c_void* m);
+    c_int pthread_mutex_destroy(c_void* m);
+    c_int pthread_rwlock_init(c_void* l, c_void* attr);
+    c_int pthread_rwlock_rdlock(c_void* l);
+    c_int pthread_rwlock_tryrdlock(c_void* l);
+    c_int pthread_rwlock_wrlock(c_void* l);
+    c_int pthread_rwlock_trywrlock(c_void* l);
+    c_int pthread_rwlock_unlock(c_void* l);
+    c_int pthread_rwlock_destroy(c_void* l);
+}
+#endif
+
+// ============================================================
+// Mutex<T> - 互斥锁
+// ============================================================
+
+/**
+ * Mutex<T> - 保护一个 T 类型值的互斥锁
+ *
+ * 值只能通过 lock()/tryLock() 获得的 Guard 访问，
+ * 从语法上保证"持锁才能访问数据"。
+ */
+public class Mutex<T> {
+    private T value;
+    /** OS 锁结构体的 64 字节不透明存储单元 */
+    private c_void* lockCell;
+
+    private Mutex() {
+        this.lockCell = null;
+    }
+
+    /** 创建保护 value 的 Mutex */
+    public static Mutex<T> create(T value) {
+        Mutex<T> m = new Mutex<T>();
+        m.value = value;
+        m.lockCell = malloc(64);
+#ifdef _WIN32
+        InitializeCriticalSection(m.lockCell);
+#else
+        pthread_mutex_init(m.lockCell, null);
+#endif
+        return m;
+    }
+
+    /** 阻塞直到获取锁，返回 RAII Guard */
+    public MutexGuard<T> lock() {
+        this.__lockRaw();
+        return new MutexGuard<T>(this);
+    }
+
+    /** 非阻塞尝试获取锁；成功返回 Guard，失败返回空 Optional */
+    public std::Optional<MutexGuard<T>> tryLock() {
+        if (this.__tryLockRaw()) {
+            // 先构造再传入：直接在 of(...) 参数里 new 会触发编译器
+            // 泛型上下文覆盖 bug（T 被 Optional 的同名形参遮蔽）
+            MutexGuard<T> g = new MutexGuard<T>(this);
+            return std::Optional<MutexGuard<T>>.of(g);
+        }
+        return std::Optional<MutexGuard<T>>.empty();
+    }
+
+    // ---- 内部接口（Guard 使用；语言无 friend 机制，勿直接调用） ----
+
+    /** 内部：直接加锁 */
+    public void __lockRaw() {
+#ifdef _WIN32
+        EnterCriticalSection(this.lockCell);
+#else
+        pthread_mutex_lock(this.lockCell);
+#endif
+    }
+
+    /** 内部：尝试加锁，成功返回 true */
+    public boolean __tryLockRaw() {
+        c_int rc = 0;
+#ifdef _WIN32
+        rc = TryEnterCriticalSection(this.lockCell);
+#else
+        rc = pthread_mutex_trylock(this.lockCell);
+#endif
+        return rc == 0;
+    }
+
+    /** 内部：解锁 */
+    public void __unlockRaw() {
+#ifdef _WIN32
+        LeaveCriticalSection(this.lockCell);
+#else
+        pthread_mutex_unlock(this.lockCell);
+#endif
+    }
+
+    /** 内部：读取被保护的值（须持锁） */
+    public T __getValue() {
+        return this.value;
+    }
+
+    /** 内部：写入被保护的值（须持锁） */
+    public void __setValue(T v) {
+        this.value = v;
+    }
+
+    ~Mutex() {
+        if (this.lockCell != null) {
+#ifdef _WIN32
+            DeleteCriticalSection(this.lockCell);
+#else
+            pthread_mutex_destroy(this.lockCell);
+#endif
+            free(this.lockCell);
+            this.lockCell = null;
+        }
+    }
+}
+
+/**
+ * MutexGuard<T> - Mutex 的 RAII 守卫
+ *
+ * 作用域退出时自动解锁。get()/set() 代替 operator 解引用。
+ */
+public class MutexGuard<T> {
+    private Mutex<T> owner;
+    private boolean released;
+
+    public MutexGuard(Mutex<T> owner) {
+        this.owner = owner;
+        this.released = false;
+    }
+
+    /** 读取被保护的值 */
+    public T get() {
+        return this.owner.__getValue();
+    }
+
+    /** 写入被保护的值 */
+    public void set(T v) {
+        this.owner.__setValue(v);
+    }
+
+    /** 提前释放锁（之后此 Guard 不再有效） */
+    public void release() {
+        if (!this.released) {
+            this.released = true;
+            this.owner.__unlockRaw();
+        }
+    }
+
+    ~MutexGuard() {
+        this.release();
+    }
+}
+
+// ============================================================
+// RwLock<T> - 读写锁
+// ============================================================
+
+/**
+ * RwLock<T> - 读写锁：多读单写
+ *
+ * readLock()/writeLock() 阻塞获取，tryReadLock()/tryWriteLock() 非阻塞。
+ */
+public class RwLock<T> {
+    private T value;
+    /** OS 读写锁结构体的 64 字节不透明存储单元 */
+    private c_void* lockCell;
+
+    private RwLock() {
+        this.lockCell = null;
+    }
+
+    /** 创建保护 value 的 RwLock */
+    public static RwLock<T> create(T value) {
+        RwLock<T> l = new RwLock<T>();
+        l.value = value;
+        l.lockCell = malloc(64);
+#ifdef _WIN32
+        InitializeSRWLock(l.lockCell);
+#else
+        pthread_rwlock_init(l.lockCell, null);
+#endif
+        return l;
+    }
+
+    /** 阻塞获取读锁 */
+    public ReadGuard<T> readLock() {
+        this.__readLockRaw();
+        return new ReadGuard<T>(this);
+    }
+
+    /** 阻塞获取写锁 */
+    public WriteGuard<T> writeLock() {
+        this.__writeLockRaw();
+        return new WriteGuard<T>(this);
+    }
+
+    /** 非阻塞尝试获取读锁 */
+    public std::Optional<ReadGuard<T>> tryReadLock() {
+        if (this.__tryReadLockRaw()) {
+            ReadGuard<T> g = new ReadGuard<T>(this);
+            return std::Optional<ReadGuard<T>>.of(g);
+        }
+        return std::Optional<ReadGuard<T>>.empty();
+    }
+
+    /** 非阻塞尝试获取写锁 */
+    public std::Optional<WriteGuard<T>> tryWriteLock() {
+        if (this.__tryWriteLockRaw()) {
+            WriteGuard<T> g = new WriteGuard<T>(this);
+            return std::Optional<WriteGuard<T>>.of(g);
+        }
+        return std::Optional<WriteGuard<T>>.empty();
+    }
+
+    // ---- 内部接口（Guard 使用；勿直接调用） ----
+
+    /** 内部：读加锁 */
+    public void __readLockRaw() {
+#ifdef _WIN32
+        AcquireSRWLockShared(this.lockCell);
+#else
+        pthread_rwlock_rdlock(this.lockCell);
+#endif
+    }
+
+    /** 内部：写加锁 */
+    public void __writeLockRaw() {
+#ifdef _WIN32
+        AcquireSRWLockExclusive(this.lockCell);
+#else
+        pthread_rwlock_wrlock(this.lockCell);
+#endif
+    }
+
+    /** 内部：尝试读加锁 */
+    public boolean __tryReadLockRaw() {
+        c_int rc = 0;
+#ifdef _WIN32
+        rc = TryAcquireSRWLockShared(this.lockCell);
+#else
+        rc = pthread_rwlock_tryrdlock(this.lockCell);
+#endif
+        return rc == 0;
+    }
+
+    /** 内部：尝试写加锁 */
+    public boolean __tryWriteLockRaw() {
+        c_int rc = 0;
+#ifdef _WIN32
+        rc = TryAcquireSRWLockExclusive(this.lockCell);
+#else
+        rc = pthread_rwlock_trywrlock(this.lockCell);
+#endif
+        return rc == 0;
+    }
+
+    /** 内部：读解锁 */
+    public void __readUnlockRaw() {
+#ifdef _WIN32
+        ReleaseSRWLockShared(this.lockCell);
+#else
+        pthread_rwlock_unlock(this.lockCell);
+#endif
+    }
+
+    /** 内部：写解锁 */
+    public void __writeUnlockRaw() {
+#ifdef _WIN32
+        ReleaseSRWLockExclusive(this.lockCell);
+#else
+        pthread_rwlock_unlock(this.lockCell);
+#endif
+    }
+
+    /** 内部：读取被保护的值（须持锁） */
+    public T __getValue() {
+        return this.value;
+    }
+
+    /** 内部：写入被保护的值（须持写锁） */
+    public void __setValue(T v) {
+        this.value = v;
+    }
+
+    ~RwLock() {
+        if (this.lockCell != null) {
+#ifndef _WIN32
+            // SRWLOCK 无需销毁；pthread_rwlock 需要
+            pthread_rwlock_destroy(this.lockCell);
+#endif
+            free(this.lockCell);
+            this.lockCell = null;
+        }
+    }
+}
+
+/**
+ * ReadGuard<T> - RwLock 读锁的 RAII 守卫（只读）
+ */
+public class ReadGuard<T> {
+    private RwLock<T> owner;
+    private boolean released;
+
+    public ReadGuard(RwLock<T> owner) {
+        this.owner = owner;
+        this.released = false;
+    }
+
+    /** 读取被保护的值 */
+    public T get() {
+        return this.owner.__getValue();
+    }
+
+    /** 提前释放读锁 */
+    public void release() {
+        if (!this.released) {
+            this.released = true;
+            this.owner.__readUnlockRaw();
+        }
+    }
+
+    ~ReadGuard() {
+        this.release();
+    }
+}
+
+/**
+ * WriteGuard<T> - RwLock 写锁的 RAII 守卫（可读写）
+ */
+public class WriteGuard<T> {
+    private RwLock<T> owner;
+    private boolean released;
+
+    public WriteGuard(RwLock<T> owner) {
+        this.owner = owner;
+        this.released = false;
+    }
+
+    /** 读取被保护的值 */
+    public T get() {
+        return this.owner.__getValue();
+    }
+
+    /** 写入被保护的值 */
+    public void set(T v) {
+        this.owner.__setValue(v);
+    }
+
+    /** 提前释放写锁 */
+    public void release() {
+        if (!this.released) {
+            this.released = true;
+            this.owner.__writeUnlockRaw();
+        }
+    }
+
+    ~WriteGuard() {
+        this.release();
+    }
+}
+
+#endif // CAY_MUTEX_H
