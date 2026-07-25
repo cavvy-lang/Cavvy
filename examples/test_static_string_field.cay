@@ -1,16 +1,27 @@
 // 静态 string 字段初始化回归测试
 // 修复前：静态 string 字段的初始化器被丢弃，全局变量退化为
 // zeroinitializer，读取时得到 null（打印 "(null)"）。
+class Helper {
+    public static string make() { return "made"; }
+}
+
 class Config {
     public static string NAME = "cavvy";
     public static string GREETING = "hello world";
     public static int MAX = 100;
+    // 非字面量初始化器：拼接、静态方法调用、引用其他静态字段
+    public static string CONCAT = "hello" + " " + "expr";
+    public static string FROM_METHOD = Helper.make();
+    public static string REF_OTHER = Config.NAME + "-ref";
 }
 
 fn main() {
     println(Config.NAME);
     println(Config.GREETING);
     println(Config.MAX);
+    println(Config.CONCAT);
+    println(Config.FROM_METHOD);
+    println(Config.REF_OTHER);
 
     // 重新赋值后应读到新值
     Config.NAME = "changed";

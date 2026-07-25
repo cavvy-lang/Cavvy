@@ -101,6 +101,21 @@ fn test_static_string_field() {
         output
     );
     assert!(
+        output.contains("hello expr"),
+        "concat-initialized static string field should work, got: {}",
+        output
+    );
+    assert!(
+        output.contains("made"),
+        "method-call-initialized static string field should work, got: {}",
+        output
+    );
+    assert!(
+        output.contains("cavvy-ref"),
+        "static string field referencing another static field should work, got: {}",
+        output
+    );
+    assert!(
         output.contains("changed"),
         "static string field reassignment should work, got: {}",
         output
