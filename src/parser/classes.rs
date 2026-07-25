@@ -2,7 +2,7 @@
 
 use super::Parser;
 use super::expressions::parse_expression;
-use super::statements::{parse_block, parse_statement};
+use super::statements::{parse_block, parse_statement, promote_tail_to_return};
 use super::types::{is_type_token, parse_type};
 use crate::ast::*;
 use crate::lexer::Token;
@@ -228,6 +228,7 @@ pub fn parse_class_member(parser: &mut Parser) -> CayResult<ClassMember> {
                 )?;
                 Block {
                     statements: Vec::new(),
+                    tail_expr: None,
                     loc: parser.current_loc(),
                 }
             } else if ctor_call_result.consumed_lbrace {
@@ -239,6 +240,7 @@ pub fn parse_class_member(parser: &mut Parser) -> CayResult<ClassMember> {
                 parser.consume(&Token::RBrace, "期望 '}'\n提示: 构造函数体应以 '}' 结束")?;
                 Block {
                     statements,
+                    tail_expr: None,
                     loc: parser.current_loc(),
                 }
             } else {
@@ -449,7 +451,10 @@ pub fn parse_method(parser: &mut Parser) -> CayResult<MethodDecl> {
         )?;
         None
     } else {
-        Some(parse_block(parser)?)
+        let mut body = parse_block(parser)?;
+        // 6.2.x: 函数体尾表达式提升为隐式 return
+        promote_tail_to_return(&mut body);
+        Some(body)
     };
 
     Ok(MethodDecl {
@@ -506,7 +511,10 @@ pub fn parse_fn_method(parser: &mut Parser) -> CayResult<MethodDecl> {
         )?;
         None
     } else {
-        Some(parse_block(parser)?)
+        let mut body = parse_block(parser)?;
+        // 6.2.x: 函数体尾表达式提升为隐式 return
+        promote_tail_to_return(&mut body);
+        Some(body)
     };
 
     Ok(MethodDecl {
@@ -555,6 +563,7 @@ pub fn parse_constructor(parser: &mut Parser) -> CayResult<ConstructorDecl> {
         parser.consume(&Token::RBrace, "Expected '}' after constructor body")?;
         Block {
             statements,
+            tail_expr: None,
             loc: parser.current_loc(),
         }
     } else {
@@ -818,6 +827,28 @@ pub fn parse_parameters(parser: &mut Parser) -> CayResult<Vec<ParameterInfo>> {
                     ));
                 }
                 break;
+            }
+
+            // 6.2.x: 参数后置类型 name: Type（预读：标识符后跟冒号）
+            // 与传统 Type name 形式并存，可混用: fn add(a: i32, b: i32) -> i32
+            if let Token::Identifier(param_name) = parser.current_token().clone() {
+                let saved_pos = parser.pos;
+                parser.advance(); // 消费标识符
+                if parser.check(&Token::Colon) {
+                    parser.advance(); // 消费冒号
+                    let param_type = parser.parse_type_or_fn_ptr()?;
+                    if parser.match_token(&Token::DotDotDot) {
+                        params.push(ParameterInfo::new_varargs(param_name, param_type));
+                    } else {
+                        params.push(ParameterInfo::new(param_name, param_type));
+                    }
+                    if !parser.match_token(&Token::Comma) {
+                        break;
+                    }
+                    continue;
+                }
+                // 不是后置类型格式，回退到类型前置解析
+                parser.pos = saved_pos;
             }
 
             // 检查是否是可变参数类型（type...）

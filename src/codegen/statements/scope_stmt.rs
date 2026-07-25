@@ -102,6 +102,7 @@ mod tests {
         let scope_stmt = ScopeStmt {
             body: Block {
                 statements: vec![],
+                tail_expr: None,
                 loc: SourceLocation {
                     file: None,
                     line: 1,
@@ -125,6 +126,7 @@ mod tests {
         let inner_scope = Stmt::Scope(ScopeStmt {
             body: Block {
                 statements: vec![],
+                tail_expr: None,
                 loc: SourceLocation {
                     file: None,
                     line: 2,
@@ -141,6 +143,7 @@ mod tests {
         let outer_scope = ScopeStmt {
             body: Block {
                 statements: vec![inner_scope],
+                tail_expr: None,
                 loc: SourceLocation {
                     file: None,
                     line: 1,

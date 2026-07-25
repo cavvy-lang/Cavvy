@@ -409,6 +409,66 @@ impl SemanticAnalyzer {
         }
     }
 
+    /// 6.2.x: 推断 if 表达式类型
+    ///
+    /// `if (cond) { stmts; tail } else { stmts; tail }`。
+    /// 分支语句在新作用域中检查（局部变量对 tail 可见），
+    /// 两分支 tail 类型相同则取之，皆为数值则类型提升，否则报错。
+    pub(crate) fn infer_if_type(
+        &mut self,
+        if_expr: &crate::ast::IfExpr,
+    ) -> crate::miette_diagnostic::CayResult<Type> {
+        // 推断条件表达式类型
+        let cond_type = self.infer_expr_type_internal(&if_expr.condition)?;
+        if cond_type != Type::Bool {
+            return Err(semantic_error_at_loc(
+                &if_expr.loc,
+                format!(
+                    "if expression condition must be boolean, got {}",
+                    cond_type
+                ),
+            ));
+        }
+
+        let expected_return = self.current_return_type.clone();
+        let infer_branch = |analyzer: &mut Self,
+                            branch: &crate::ast::Block|
+         -> crate::miette_diagnostic::CayResult<Type> {
+            analyzer.symbol_table.enter_scope();
+            let result = (|| {
+                for stmt in &branch.statements {
+                    analyzer.type_check_statement(stmt, expected_return.as_ref())?;
+                }
+                let tail = branch.tail_expr.as_ref().ok_or_else(|| {
+                    semantic_error_at_loc(&branch.loc, "if expression branch must end with an expression (without semicolon)".to_string())
+                })?;
+                analyzer.infer_expr_type_internal(tail)
+            })();
+            analyzer.symbol_table.exit_scope();
+            result
+        };
+
+        let then_type = infer_branch(self, &if_expr.then_branch)?;
+        let else_type = infer_branch(self, &if_expr.else_branch)?;
+
+        // 两个分支类型必须兼容（与三元运算符一致的合并规则）
+        if then_type == else_type {
+            Ok(then_type)
+        } else if Self::is_numeric_type_helper(&then_type)
+            && Self::is_numeric_type_helper(&else_type)
+        {
+            Ok(self.promote_types(&then_type, &else_type))
+        } else {
+            Err(semantic_error_at_loc(
+                &if_expr.loc,
+                format!(
+                    "if expression branches must have compatible types, got {} and {}",
+                    then_type, else_type
+                ),
+            ))
+        }
+    }
+
     /// 6.1.0: 推断 ? 运算符表达式类型
     ///
     /// `expr?` 要求 expr 的类型为 Result<T, E>，且当前函数返回类型也必须为

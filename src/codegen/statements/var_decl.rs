@@ -35,6 +35,20 @@ impl IRGenerator {
             Expr::Ternary(ternary) => self
                 .infer_type_from_expr(&ternary.true_branch)
                 .or_else(|| self.infer_type_from_expr(&ternary.false_branch)),
+            // 6.2.x: if 表达式：取两分支尾表达式类型的提升结果
+            Expr::If(if_expr) => {
+                let then_t = if_expr
+                    .then_branch
+                    .tail_expr
+                    .as_ref()
+                    .and_then(|t| self.infer_type_from_expr(t));
+                let else_t = if_expr
+                    .else_branch
+                    .tail_expr
+                    .as_ref()
+                    .and_then(|t| self.infer_type_from_expr(t));
+                Self::promote_inferred_types(then_t, else_t)
+            }
             Expr::ArrayCreation(arr) => {
                 // new Type[size] / 多维数组：按维度数包裹 Array 层数
                 let mut ty = arr.element_type.clone();

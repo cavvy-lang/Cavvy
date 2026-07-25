@@ -1,0 +1,40 @@
+// 函数体尾表达式与参数后置类型测试 (6.2.x 新语法)
+// 覆盖：尾表达式省略 return、fn Auto 返回推断、name: Type 参数、
+// 混用参数风格、类方法、void 函数尾调用、lambda 块体尾表达式
+class Math {
+    // 后置类型 + -> 返回类型 + 尾表达式
+    public static fn triple(v: i32) -> i32 { v * 3 }
+
+    // 混用传统参数与后置类型参数，无 ->（Auto 推断）
+    public static fn mix(int a, b: i32) { a + b }
+}
+
+// 顶层函数：后置类型 + 尾表达式
+pub fn add(a: i32, b: i32) -> i32 { a + b }
+
+// 传统参数 + 尾表达式（无 ->，Auto 推断）
+pub fn add2(int a, int b) { a + b }
+
+// void 函数的尾调用
+fn hello() { println("hi") }
+
+fn main() {
+    println(add(3, 4));                         // 7
+    println(add2(3, 4));                        // 7
+    println(Math::triple(7));                   // 21
+    println(Math::mix(1, 2));                   // 3
+    hello();                                    // hi
+
+    // lambda 块体尾表达式（省略 return）
+    auto f = (int v) -> { v * 3 };
+    println(f(5));                              // 15
+
+    // 语句位置块的宽容：末尾无分号（合法，只求值）
+    int i = 0;
+    while (i < 2) {
+        i = i + 1
+    }
+    println(i);                                 // 2
+
+    println("done");
+}

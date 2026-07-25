@@ -1,0 +1,4 @@
+// 错误用例：if 表达式分支缺少尾表达式
+fn main() {
+    int x = if (1 > 0) { println("a"); } else { 2 };
+}

@@ -51,6 +51,7 @@ mod member;
 mod new;
 
 // 高级特性
+mod if_expr;
 mod instanceof;
 mod lambda;
 mod ternary;

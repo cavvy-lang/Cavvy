@@ -54,7 +54,9 @@ pub fn try_parse_lambda(
     let body = if parser.check(&crate::lexer::Token::LBrace) {
         // 语句块: { ... }
         parser.advance(); // 跳过 '{'
-        let block = parse_lambda_block(parser)?;
+        let mut block = parse_lambda_block(parser)?;
+        // 6.2.x: 块尾表达式提升为隐式 return
+        super::super::statements::promote_tail_to_return(&mut block);
         LambdaBody::Block(block)
     } else {
         // 单表达式
@@ -121,8 +123,14 @@ fn parse_lambda_param(parser: &mut Parser) -> CayResult<LambdaParam> {
 /// 解析 Lambda 语句块
 fn parse_lambda_block(parser: &mut Parser) -> CayResult<Block> {
     let mut statements = Vec::new();
+    let mut tail_expr = None;
 
     while !parser.check(&crate::lexer::Token::RBrace) {
+        // 6.2.x 块尾表达式：(x) -> { x * 2 } 省略 return
+        if let Some(expr) = super::super::statements::try_parse_block_tail(parser)? {
+            tail_expr = Some(Box::new(expr));
+            break;
+        }
         let stmt = parse_statement(parser)?;
         statements.push(stmt);
     }
@@ -134,6 +142,7 @@ fn parse_lambda_block(parser: &mut Parser) -> CayResult<Block> {
 
     Ok(Block {
         statements,
+        tail_expr,
         loc: crate::miette_diagnostic::SourceLocation {
             file: None,
             line: 0,

@@ -337,6 +337,9 @@ impl SpecializationCollector {
         for stmt in &block.statements {
             self.collect_from_statement(stmt);
         }
+        if let Some(tail) = &block.tail_expr {
+            self.collect_from_expr(tail);
+        }
     }
 
     fn collect_from_statement(&mut self, stmt: &Stmt) {
@@ -460,6 +463,11 @@ impl SpecializationCollector {
                 self.collect_from_expr(&ternary.condition);
                 self.collect_from_expr(&ternary.true_branch);
                 self.collect_from_expr(&ternary.false_branch);
+            }
+            Expr::If(if_expr) => {
+                self.collect_from_expr(&if_expr.condition);
+                self.collect_from_block(&if_expr.then_branch);
+                self.collect_from_block(&if_expr.else_branch);
             }
             Expr::Lambda(lambda) => match &lambda.body {
                 LambdaBody::Expr(expr) => self.collect_from_expr(expr),
@@ -719,6 +727,9 @@ impl SpecializationCollector {
         for stmt in &block.statements {
             self.collect_dependency_from_statement(stmt, mapping, ns);
         }
+        if let Some(tail) = &block.tail_expr {
+            self.collect_dependency_from_expr(tail, mapping, ns);
+        }
     }
 
     fn collect_dependency_from_statement(
@@ -838,6 +849,11 @@ impl SpecializationCollector {
                 self.collect_dependency_from_expr(&ternary.condition, mapping, ns);
                 self.collect_dependency_from_expr(&ternary.true_branch, mapping, ns);
                 self.collect_dependency_from_expr(&ternary.false_branch, mapping, ns);
+            }
+            Expr::If(if_expr) => {
+                self.collect_dependency_from_expr(&if_expr.condition, mapping, ns);
+                self.collect_dependency_from_block(&if_expr.then_branch, mapping, ns);
+                self.collect_dependency_from_block(&if_expr.else_branch, mapping, ns);
             }
             Expr::Lambda(lambda) => match &lambda.body {
                 LambdaBody::Expr(expr) => self.collect_dependency_from_expr(expr, mapping, ns),

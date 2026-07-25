@@ -31,11 +31,13 @@ impl IRGenerator {
             }
             Stmt::Block(block) => {
                 self.set_source_from_loc(&block.loc, &source_file);
-                // 检查是否是多变量声明生成的块（只包含 VarDecl）
-                let is_multi_var_decl = block
-                    .statements
-                    .iter()
-                    .all(|s| matches!(s, Stmt::VarDecl(_)));
+                // 检查是否是多变量声明生成的块（只包含 VarDecl 且无尾表达式）
+                let is_multi_var_decl = block.tail_expr.is_none()
+                    && !block.statements.is_empty()
+                    && block
+                        .statements
+                        .iter()
+                        .all(|s| matches!(s, Stmt::VarDecl(_)));
                 if is_multi_var_decl {
                     // 多变量声明不创建新作用域，在当前作用域内声明所有变量
                     for stmt in &block.statements {

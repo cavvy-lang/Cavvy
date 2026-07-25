@@ -1186,6 +1186,7 @@ impl IrBuilder {
 
         let body_block = Stmt::Block(Block {
             statements: vec![var_decl, (*for_each.body).clone()],
+            tail_expr: None,
             loc: loc.clone(),
         });
 
@@ -1198,6 +1199,7 @@ impl IrBuilder {
 
         let desugared = Stmt::Block(Block {
             statements: vec![iter_decl, while_stmt],
+            tail_expr: None,
             loc: loc.clone(),
         });
 

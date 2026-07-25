@@ -276,6 +276,7 @@ impl IRGenerator {
         // 构造循环体：先声明变量，再执行原 body
         let body_block = Stmt::Block(Block {
             statements: vec![var_decl, (*for_each.body).clone()],
+            tail_expr: None,
             loc: loc.clone(),
         });
 
@@ -290,6 +291,7 @@ impl IRGenerator {
         // 包装成 block 以避免迭代器变量泄漏到外部作用域
         let desugared = Stmt::Block(Block {
             statements: vec![iter_decl, while_stmt],
+            tail_expr: None,
             loc: loc.clone(),
         });
 

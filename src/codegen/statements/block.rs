@@ -19,6 +19,14 @@ impl IRGenerator {
             self.generate_statement(stmt)?;
         }
 
+        // 6.2.x: 语句位置的块尾表达式只求值后丢弃；
+        // 块已被 return/break 终止时跳过，避免在终止指令后追加代码
+        if let Some(tail) = &block.tail_expr {
+            if !self.current_block_terminated() {
+                self.generate_expression(tail)?;
+            }
+        }
+
         // ROADMAP 5.3.x 自动 RAII：作用域正常退出前，逆序调用本层带析构函数
         // 的局部变量的 `@ClassName.__dtor`。
         //
@@ -36,6 +44,13 @@ impl IRGenerator {
     pub fn generate_block_without_scope(&mut self, block: &Block) -> CayResult<()> {
         for stmt in &block.statements {
             self.generate_statement(stmt)?;
+        }
+        // 6.2.x: 语句位置的块尾表达式只求值后丢弃；
+        // 块已被 return/break 终止时跳过
+        if let Some(tail) = &block.tail_expr {
+            if !self.current_block_terminated() {
+                self.generate_expression(tail)?;
+            }
         }
         Ok(())
     }

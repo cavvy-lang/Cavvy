@@ -257,6 +257,9 @@ pub enum Modifier {
 #[derive(Debug, Clone, Serialize)]
 pub struct Block {
     pub statements: Vec<Stmt>,
+    /// 6.2.x: 块尾表达式（无分号、紧邻 `}` 的最后一个表达式）。
+    /// if 表达式的分支值、函数体省略 return 的尾表达式都基于此。
+    pub tail_expr: Option<Box<Expr>>,
     pub loc: SourceLocation,
 }
 
@@ -436,6 +439,7 @@ pub enum Expr {
     MethodRef(MethodRefExpr),   // 方法引用: ClassName::methodName
     Lambda(LambdaExpr),         // Lambda 表达式: (params) -> { body }
     Ternary(TernaryExpr),       // 三元运算符: condition ? true_expr : false_expr
+    If(IfExpr),                 // 6.2.x: if 表达式: if (cond) { a } else { b }
     Try(TryExpr),               // 6.1.0: ? 运算符: expr?
     InstanceOf(InstanceOfExpr), // instanceof 运算符: obj instanceof Type
     Alloc(AllocExpr),           // 0.5.0.0: 内存分配表达式: __cay_alloc(size)
@@ -462,6 +466,7 @@ impl HasLocation for Expr {
             Expr::MethodRef(method) => &method.loc,
             Expr::Lambda(lambda) => &lambda.loc,
             Expr::Ternary(ternary) => &ternary.loc,
+            Expr::If(if_expr) => &if_expr.loc,
             Expr::Try(try_expr) => &try_expr.loc,
             Expr::InstanceOf(instance) => &instance.loc,
             Expr::Alloc(alloc) => &alloc.loc,
@@ -719,6 +724,16 @@ pub struct TernaryExpr {
     pub condition: Box<Expr>,
     pub true_branch: Box<Expr>,
     pub false_branch: Box<Expr>,
+    pub loc: SourceLocation,
+}
+
+/// 6.2.x: if 表达式: if (cond) { a } else { b }
+/// 两个分支均为带 tail_expr 的 Block，分支值即其 tail_expr。
+#[derive(Debug, Clone, Serialize)]
+pub struct IfExpr {
+    pub condition: Box<Expr>,
+    pub then_branch: Block,
+    pub else_branch: Block,
     pub loc: SourceLocation,
 }
 

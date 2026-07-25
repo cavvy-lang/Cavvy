@@ -35,6 +35,7 @@ pub fn parse_block(parser: &mut Parser) -> CayResult<Block> {
     )?;
 
     let mut statements = Vec::new();
+    let mut tail_expr = None;
     while !parser.check(&crate::lexer::Token::RBrace) && !parser.is_at_end() {
         // 跳过换行符（支持一行内多个语句）
         while parser.check(&crate::lexer::Token::Newline) {
@@ -46,6 +47,12 @@ pub fn parse_block(parser: &mut Parser) -> CayResult<Block> {
             break;
         }
 
+        // 6.2.x 块尾表达式：若最后一个表达式无分号且紧邻 `}`，作为 tail_expr
+        if let Some(expr) = try_parse_block_tail(parser)? {
+            tail_expr = Some(Box::new(expr));
+            break;
+        }
+
         statements.push(parse_statement(parser)?);
     }
 
@@ -54,7 +61,77 @@ pub fn parse_block(parser: &mut Parser) -> CayResult<Block> {
         "期望 '}'\n提示: 代码块以 '}' 结束",
     )?;
 
-    Ok(Block { statements, loc })
+    Ok(Block { statements, tail_expr, loc })
+}
+
+/// 6.2.x: 尝试把当前位置解析为"块尾表达式"（表达式 + 紧邻 `}`，无分号）。
+///
+/// 仅在表达式成功解析且其后紧跟 `}` 时返回 Some(expr)（不消费 `}`）。
+/// 语句关键字开头、表达式解析失败、或表达式后不是 `}` 时都返回 None，
+/// 调用方回退到 parse_statement，行为与旧版完全一致。
+pub fn try_parse_block_tail(parser: &mut Parser) -> CayResult<Option<Expr>> {
+    // if 开头：可能是嵌套的 if 表达式尾（要求带 else 且分支有尾值、整体紧邻 }），
+    // 不满足时按语句 if 处理（回退，行为与旧版一致）
+    if parser.check(&crate::lexer::Token::If) {
+        let checkpoint = parser.pos;
+        let loc = parser.current_loc();
+        if let Ok(expr) = super::expressions::parse_if_expression(parser, loc) {
+            while parser.check(&crate::lexer::Token::Newline) {
+                parser.advance();
+            }
+            if parser.check(&crate::lexer::Token::RBrace) {
+                return Ok(Some(expr));
+            }
+        }
+        parser.pos = checkpoint;
+        return Ok(None);
+    }
+
+    // 语句/声明关键字开头的不可能是尾表达式，直接放过
+    match parser.current_token() {
+        crate::lexer::Token::LBrace
+        | crate::lexer::Token::While
+        | crate::lexer::Token::For
+        | crate::lexer::Token::Do
+        | crate::lexer::Token::Switch
+        | crate::lexer::Token::Scope
+        | crate::lexer::Token::Return
+        | crate::lexer::Token::Break
+        | crate::lexer::Token::Continue
+        | crate::lexer::Token::InlineIr
+        | crate::lexer::Token::Final
+        | crate::lexer::Token::Var
+        | crate::lexer::Token::Let
+        | crate::lexer::Token::Auto => return Ok(None),
+        _ => {}
+    }
+
+    let checkpoint = parser.pos;
+    let expr = match parse_expression(parser) {
+        Ok(e) => e,
+        Err(_) => {
+            parser.pos = checkpoint;
+            return Ok(None);
+        }
+    };
+    // 表达式与 `}` 之间允许换行
+    while parser.check(&crate::lexer::Token::Newline) {
+        parser.advance();
+    }
+    if parser.check(&crate::lexer::Token::RBrace) {
+        Ok(Some(expr))
+    } else {
+        parser.pos = checkpoint;
+        Ok(None)
+    }
+}
+
+/// 6.2.x: 把函数体块的尾表达式提升为隐式 return（若存在）。
+/// 提升后语义阶段的 fn Auto 返回推断与 codegen 的 return 路径全部复用。
+pub fn promote_tail_to_return(body: &mut Block) {
+    if let Some(tail) = body.tail_expr.take() {
+        body.statements.push(Stmt::Return(Some(*tail)));
+    }
 }
 
 /// 解析语句
@@ -279,7 +356,7 @@ pub fn parse_var_decl(parser: &mut Parser) -> CayResult<Stmt> {
 
     // 多个变量，返回一个 Block 包含所有声明
     let statements: Vec<Stmt> = var_decls.into_iter().map(Stmt::VarDecl).collect();
-    Ok(Stmt::Block(Block { statements, loc }))
+    Ok(Stmt::Block(Block { statements, tail_expr: None, loc }))
 }
 
 /// 解析 if 语句

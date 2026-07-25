@@ -594,7 +594,9 @@ impl Parser {
         )?;
 
         // 解析函数体
-        let body = self.parse_block()?;
+        let mut body = self.parse_block()?;
+        // 6.2.x: 函数体尾表达式提升为隐式 return
+        statements::promote_tail_to_return(&mut body);
 
         Ok(crate::ast::TopLevelFunction {
             name,
@@ -725,7 +727,9 @@ impl Parser {
             crate::types::Type::Auto
         };
 
-        let body = self.parse_block()?;
+        let mut body = self.parse_block()?;
+        // 6.2.x: 函数体尾表达式提升为隐式 return
+        statements::promote_tail_to_return(&mut body);
 
         Ok(crate::ast::TopLevelFunction {
             name,

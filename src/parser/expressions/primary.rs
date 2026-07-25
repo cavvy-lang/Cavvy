@@ -10,9 +10,47 @@ use crate::ast::*;
 use crate::miette_diagnostic::CayResult;
 use crate::types::Type;
 
+/// 6.2.x: 解析 if 表达式: if (cond) { a } else { b }
+///
+/// 分支是带 tail_expr 的 Block，两个分支都必须以无分号尾表达式给出值，
+/// 且必须带 else 分支。
+pub fn parse_if_expression(
+    parser: &mut Parser,
+    loc: crate::miette_diagnostic::SourceLocation,
+) -> CayResult<Expr> {
+    parser.advance(); // 消费 if
+    parser.consume(
+        &crate::lexer::Token::LParen,
+        "期望 '('\n提示: if 表达式的条件应以括号包裹，例如: if (cond) { a } else { b }",
+    )?;
+    let condition = parse_expression(parser)?;
+    parser.consume(
+        &crate::lexer::Token::RParen,
+        "期望 ')'\n提示: if 表达式的条件应以 ')' 结束",
+    )?;
+    let then_branch = super::super::statements::parse_block(parser)?;
+    if !parser.check(&crate::lexer::Token::Else) {
+        return Err(parser.error(
+            "if 表达式必须带 else 分支\n提示: 表达式位置的 if 必须能求出值，例如: if (cond) { a } else { b }",
+        ));
+    }
+    parser.advance(); // 消费 else
+    let else_branch = super::super::statements::parse_block(parser)?;
+    if then_branch.tail_expr.is_none() || else_branch.tail_expr.is_none() {
+        return Err(parser.error(
+            "if 表达式的分支必须以表达式结尾（无分号）\n提示: 例如: if (cond) { a } else { b }",
+        ));
+    }
+    Ok(Expr::If(IfExpr {
+        condition: Box::new(condition),
+        then_branch,
+        else_branch,
+        loc,
+    }))
+}
+
 /// 解析基本表达式
-pub fn parse_primary(parser: &mut Parser) -> CayResult<Expr> {
-    let loc = parser.current_loc();
+pub fn parse_primary(parser: &mut Parser) -> CayResult<Expr> {    let loc = parser.current_loc();
 
     let token = parser.current_token().clone();
     match token {
@@ -76,6 +114,8 @@ pub fn parse_primary(parser: &mut Parser) -> CayResult<Expr> {
                 loc,
             }))
         }
+        // 6.2.x: if 表达式: if (cond) { a } else { b }
+        crate::lexer::Token::If => parse_if_expression(parser, loc),
         crate::lexer::Token::This => {
             parser.advance();
             Ok(Expr::Identifier(IdentifierExpr {
