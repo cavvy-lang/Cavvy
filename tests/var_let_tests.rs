@@ -135,6 +135,47 @@ fn test_0_4_3_basic() {
 }
 
 #[test]
+fn test_let_string_method_inference() {
+    let output = compile_and_run_eol("examples/test_let_string_method_inference.cay")
+        .expect("let string method inference should compile and run");
+    assert!(
+        output.contains("String"),
+        "let x = \" String \".trim() should infer String, got: {}",
+        output
+    );
+    assert!(
+        output.contains("HI"),
+        "chained trim().toUpperCase() should infer String, got: {}",
+        output
+    );
+    assert!(
+        output.contains("el"),
+        "substring on string variable should infer String, got: {}",
+        output
+    );
+    assert!(
+        output.contains("true"),
+        "comparison should infer bool, got: {}",
+        output
+    );
+    assert!(
+        output.contains("yes"),
+        "ternary should infer String, got: {}",
+        output
+    );
+    assert!(
+        output.contains("abcd"),
+        "string concatenation should infer String, got: {}",
+        output
+    );
+    assert!(
+        output.contains("done"),
+        "test should run to completion, got: {}",
+        output
+    );
+}
+
+#[test]
 fn test_0_4_3_simple() {
     let output = compile_and_run_eol("examples/test_0_4_3_simple.cay")
         .expect("0.4.3 simple should compile and run");

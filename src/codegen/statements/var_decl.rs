@@ -11,45 +11,53 @@ impl IRGenerator {
     /// 从表达式推断类型
     fn infer_type_from_expr(&self, expr: &Expr) -> Option<Type> {
         match expr {
-            Expr::Literal(lit_expr) => match &lit_expr.value {
-                LiteralValue::Int32(_) => Some(Type::Int32),
-                LiteralValue::Int64(_) => Some(Type::Int64),
-                LiteralValue::Float32(_) => Some(Type::Float32),
-                LiteralValue::Float64(_) => Some(Type::Float64),
-                LiteralValue::String(_) => Some(Type::String),
-                LiteralValue::Bool(_) => Some(Type::Bool),
-                LiteralValue::Char(_) => Some(Type::Char),
-                LiteralValue::Null => Some(Type::Object("Object".to_string())),
+            // 字面量、标识符、调用、成员访问、数组访问、new 表达式
+            // 统一由 get_expression_type 处理（能利用类型注册表解析字段与方法返回类型）
+            Expr::Literal(_)
+            | Expr::Identifier(_)
+            | Expr::Call(_)
+            | Expr::MemberAccess(_)
+            | Expr::ArrayAccess(_)
+            | Expr::New(_) => self.get_expression_type(expr),
+            Expr::Binary(bin) => self.infer_binary_expr_type(bin),
+            Expr::Unary(unary) => match unary.op {
+                UnaryOp::Not => Some(Type::Bool),
+                UnaryOp::AddressOf => self
+                    .infer_type_from_expr(&unary.operand)
+                    .map(|t| Type::Pointer(Box::new(t))),
+                UnaryOp::Deref => match self.infer_type_from_expr(&unary.operand) {
+                    Some(Type::Pointer(inner)) => Some(*inner),
+                    other => other,
+                },
+                _ => self.infer_type_from_expr(&unary.operand),
             },
-            Expr::Identifier(name) => {
-                // 从变量类型映射中查找
-                self.var_types
-                    .get(name.as_ref())
-                    .and_then(|llvm_type| self.llvm_type_to_cay_type(llvm_type))
-            }
-            Expr::Binary(bin) => {
-                // 对于二元表达式，尝试推断结果类型
-                self.infer_type_from_expr(&bin.left)
-            }
-            Expr::Unary(unary) => self.infer_type_from_expr(&unary.operand),
-            Expr::Call(call) => {
-                // 对于函数调用，尝试从类型注册表获取返回类型
-                self.infer_call_return_type(call)
-            }
-            Expr::MemberAccess(member) => {
-                // 对于方法调用如 obj.method()，尝试推断返回类型
-                if let Expr::Identifier(obj_name) = &*member.object {
-                    // 获取对象类型
-                    if let Some(class_name) = self.var_class_map.get(obj_name.as_ref()) {
-                        return self.infer_method_return_type(class_name, &member.member);
-                    }
+            Expr::Cast(cast) => Some(cast.target_type.clone()),
+            Expr::Ternary(ternary) => self
+                .infer_type_from_expr(&ternary.true_branch)
+                .or_else(|| self.infer_type_from_expr(&ternary.false_branch)),
+            Expr::ArrayCreation(arr) => {
+                // new Type[size] / 多维数组：按维度数包裹 Array 层数
+                let mut ty = arr.element_type.clone();
+                for _ in 0..arr.sizes.len().max(1) {
+                    ty = Type::Array(Box::new(ty));
                 }
-                None
+                Some(ty)
             }
-            Expr::New(new_expr) => {
-                // new 表达式返回对象类型
-                Some(Type::Object(new_expr.class_name.clone()))
+            Expr::ArrayInit(arr) => arr
+                .elements
+                .first()
+                .and_then(|e| self.infer_type_from_expr(e))
+                .map(|t| Type::Array(Box::new(t))),
+            Expr::InstanceOf(_) => Some(Type::Bool),
+            Expr::Try(try_expr) => {
+                // expr? 展开 Result<T, E>/Optional<T> 得到 T
+                match self.infer_type_from_expr(&try_expr.expr) {
+                    Some(Type::Generic(_, args)) if !args.is_empty() => Some(args[0].clone()),
+                    other => other,
+                }
             }
+            Expr::Assignment(assign) => self.infer_type_from_expr(&assign.value),
+            Expr::NamedArg(named) => self.infer_type_from_expr(&named.value),
             Expr::Lambda(lambda) => {
                 // Lambda 表达式推断为函数指针类型
                 let param_types: Vec<Type> = lambda
@@ -83,6 +91,54 @@ impl IRGenerator {
                 })))
             }
             _ => None, // 无法推断，返回 None
+        }
+    }
+
+    /// 推断二元表达式类型（与语义分析 infer_binary_type 的规则保持一致）
+    fn infer_binary_expr_type(&self, bin: &BinaryExpr) -> Option<Type> {
+        match bin.op {
+            // 比较与逻辑运算结果为 bool
+            BinaryOp::Eq
+            | BinaryOp::Ne
+            | BinaryOp::Lt
+            | BinaryOp::Le
+            | BinaryOp::Gt
+            | BinaryOp::Ge
+            | BinaryOp::And
+            | BinaryOp::Or => Some(Type::Bool),
+            BinaryOp::Add => {
+                let left = self.infer_type_from_expr(&bin.left);
+                let right = self.infer_type_from_expr(&bin.right);
+                // 字符串拼接：任一操作数为 String 时结果为 String
+                if left == Some(Type::String) || right == Some(Type::String) {
+                    return Some(Type::String);
+                }
+                Self::promote_inferred_types(left, right)
+            }
+            _ => {
+                // 算术与位运算：按数值提升规则取较宽类型
+                let left = self.infer_type_from_expr(&bin.left);
+                let right = self.infer_type_from_expr(&bin.right);
+                Self::promote_inferred_types(left, right)
+            }
+        }
+    }
+
+    /// 数值类型提升（与语义分析 promote_types 的规则保持一致）
+    fn promote_inferred_types(left: Option<Type>, right: Option<Type>) -> Option<Type> {
+        match (left, right) {
+            (Some(l), Some(r)) => Some(match (&l, &r) {
+                (Type::Float64, _) | (_, Type::Float64) => Type::Float64,
+                (Type::Float32, _) | (_, Type::Float32) => Type::Float32,
+                (Type::Int64, _) | (_, Type::Int64) => Type::Int64,
+                // char 在算术运算中提升为 int
+                (Type::Char, Type::Char) => Type::Int32,
+                (Type::Char, Type::Int32) | (Type::Int32, Type::Char) => Type::Int32,
+                (Type::Int32, Type::Int32) => Type::Int32,
+                _ => l.clone(),
+            }),
+            (Some(t), None) | (None, Some(t)) => Some(t),
+            (None, None) => None,
         }
     }
 
@@ -218,6 +274,11 @@ impl IRGenerator {
                         match cay_type {
                             crate::types::Type::Object(name) => (name.clone(), Vec::new()),
                             crate::types::Type::Generic(name, args) => (name.clone(), args.clone()),
+                            // String 等基本类型变量不在 var_class_map 中，
+                            // 直接查 String 方法返回类型表
+                            crate::types::Type::String => {
+                                return string_method_return_type(&member.member);
+                            }
                             _ => {
                                 // 回退到 var_class_map
                                 if let Some(name) = self.var_class_map.get(obj_name_str) {
@@ -248,36 +309,6 @@ impl IRGenerator {
                             &type_args,
                         );
                     }
-                    // 检查是否是 String 类型变量
-                    if let Some(var_cay_type) = self.var_cay_types.get(obj_name_str) {
-                        if let crate::types::Type::String = var_cay_type {
-                            // String 类型特殊处理
-                            if member.member == "length"
-                                || member.member == "indexOf"
-                                || member.member == "lastIndexOf"
-                                || member.member == "compareTo"
-                            {
-                                return Some(crate::types::Type::Int32);
-                            } else if member.member == "substring"
-                                || member.member == "toString"
-                                || member.member == "replace"
-                                || member.member == "toLowerCase"
-                                || member.member == "toUpperCase"
-                            {
-                                return Some(crate::types::Type::String);
-                            } else if member.member == "equals"
-                                || member.member == "isEmpty"
-                                || member.member == "startsWith"
-                                || member.member == "endsWith"
-                                || member.member == "contains"
-                                || member.member == "equalsIgnoreCase"
-                            {
-                                return Some(crate::types::Type::Bool);
-                            } else if member.member == "charAt" {
-                                return Some(crate::types::Type::Char);
-                            }
-                        }
-                    }
                 } else {
                     // 处理链式调用：obj 不是 Identifier，递归推断其类型
                     if let Some(obj_type) = self.get_expression_type(&member.object) {
@@ -285,32 +316,9 @@ impl IRGenerator {
                             crate::types::Type::Object(name) => (name.clone(), Vec::new()),
                             crate::types::Type::Generic(name, args) => (name.clone(), args.clone()),
                             crate::types::Type::String => {
-                                // String 类型特殊处理
-                                if member.member == "length"
-                                    || member.member == "indexOf"
-                                    || member.member == "lastIndexOf"
-                                    || member.member == "compareTo"
-                                {
-                                    return Some(crate::types::Type::Int32);
-                                } else if member.member == "substring"
-                                    || member.member == "toString"
-                                    || member.member == "replace"
-                                    || member.member == "toLowerCase"
-                                    || member.member == "toUpperCase"
-                                {
-                                    return Some(crate::types::Type::String);
-                                } else if member.member == "equals"
-                                    || member.member == "isEmpty"
-                                    || member.member == "startsWith"
-                                    || member.member == "endsWith"
-                                    || member.member == "contains"
-                                    || member.member == "equalsIgnoreCase"
-                                {
-                                    return Some(crate::types::Type::Bool);
-                                } else if member.member == "charAt" {
-                                    return Some(crate::types::Type::Char);
-                                }
-                                return None;
+                                // String 类型特殊处理（支持字符串字面量上的链式调用，
+                                // 如 " text ".trim()）
+                                return string_method_return_type(&member.member);
                             }
                             _ => return None,
                         };
@@ -517,7 +525,24 @@ impl IRGenerator {
         let actual_type = if var.var_type == Type::Auto {
             // 从初始化器推断类型
             if let Some(init) = &var.initializer {
-                self.infer_type_from_expr(init).unwrap_or(Type::Int32)
+                match self.infer_type_from_expr(init) {
+                    Some(inferred) => inferred,
+                    None => {
+                        // 不做静默的 i32 回退：类型无法确定时直接报错，
+                        // 要求用户显式标注类型
+                        return Err(semantic_error_with_file(
+                            ErrorCodes::SEMANTIC_TYPE_MISMATCH,
+                            var.loc.file.clone(),
+                            var.loc.line,
+                            var.loc.column,
+                            format!(
+                                "Cannot infer the type of variable '{}' from its initializer; \
+                                 please specify the type explicitly, e.g. `let {}: <type> = ...`",
+                                var.name, var.name
+                            ),
+                        ));
+                    }
+                }
             } else {
                 return Err(semantic_error_with_file(
                     ErrorCodes::SEMANTIC_INVALID_OPERATION,
@@ -897,5 +922,21 @@ impl IRGenerator {
         }
 
         Ok(())
+    }
+}
+
+/// String 方法的返回类型（与语义分析 infer_string_method_call 保持一致）
+pub(crate) fn string_method_return_type(method: &str) -> Option<Type> {
+    match method {
+        "length" | "indexOf" | "lastIndexOf" | "compareTo" => Some(Type::Int32),
+        "substring" | "toString" | "replace" | "toLowerCase" | "toUpperCase" | "trim" => {
+            Some(Type::String)
+        }
+        "equals" | "equalsIgnoreCase" | "isEmpty" | "startsWith" | "endsWith" | "contains" => {
+            Some(Type::Bool)
+        }
+        "charAt" => Some(Type::Char),
+        "c_str" => Some(Type::Pointer(Box::new(Type::CChar))),
+        _ => None,
     }
 }

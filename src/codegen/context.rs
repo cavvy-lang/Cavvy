@@ -1276,6 +1276,33 @@ impl IRGenerator {
                                     }
                                 }
                             }
+                            // 枚举变体访问: EnumName.VARIANT
+                            if let Some(ref registry) = self.type_registry {
+                                if let Some(enum_info) = registry.get_enum_by_name(obj_name_str) {
+                                    if enum_info
+                                        .variants
+                                        .iter()
+                                        .any(|v| v.name == member.member)
+                                    {
+                                        return Some(Type::Object(enum_info.name.clone()));
+                                    }
+                                }
+                                // 静态字段访问: ClassName.FIELD
+                                let resolved = registry
+                                    .find_qualified_class(obj_name_str)
+                                    .unwrap_or_else(|| obj_name_str.to_string());
+                                if let Some(class_info) = registry.get_class(&resolved) {
+                                    if let Some(field_info) =
+                                        class_info.fields.get(&member.member)
+                                    {
+                                        if field_info.is_static {
+                                            return Some(self.resolve_type_arg_concrete(
+                                                &field_info.field_type,
+                                            ));
+                                        }
+                                    }
+                                }
+                            }
                         }
                         None
                     })
