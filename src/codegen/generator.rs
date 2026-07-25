@@ -520,6 +520,7 @@ impl IRGenerator {
             }
 
             self.generate_static_array_initialization();
+            self.generate_static_string_initialization();
             let main_fn_name = self.generate_top_level_function_name(&func.name);
 
             if has_args {
@@ -609,6 +610,7 @@ impl IRGenerator {
                 ));
             }
             self.generate_static_array_initialization();
+            self.generate_static_string_initialization();
             let main_fn_name = self.generate_method_name(&class_name, &main_method);
 
             if has_args {
@@ -955,6 +957,40 @@ impl IRGenerator {
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+
+    /// 生成静态 string 字段的运行时初始化代码。
+    ///
+    /// 字符串是 i8* 指针，无法像 int 那样作为 LLVM global 的常量初始化器
+    /// （emit_static_field_declarations 中会退化为 zeroinitializer），
+    /// 因此与静态数组一样，在 main 入口处生成字符串常量地址并 store 到全局变量。
+    fn generate_static_string_initialization(&mut self) {
+        let fields: Vec<_> = self.static_fields.clone();
+        for field in fields {
+            if field.field_type != Type::String {
+                continue;
+            }
+            let Some(init) = &field.initializer else {
+                continue;
+            };
+            // 仅支持字符串字面量初始化器（此处直接写入 self.output，
+            // 不能走 generate_expression——它会写入已刷出的 self.code 缓冲区）
+            if let Expr::Literal(lit) = init {
+                if let crate::ast::LiteralValue::String(s) = &lit.value {
+                    let global_name = self.get_or_create_string_constant(s);
+                    let len = s.len() + 1;
+                    let temp = self.new_temp();
+                    self.output.push_str(&format!(
+                        "  {} = getelementptr [{} x i8], [{} x i8]* {}, i64 0, i64 0\n",
+                        temp, len, len, global_name
+                    ));
+                    self.output.push_str(&format!(
+                        "  store i8* {}, i8** {}, align 8\n",
+                        temp, field.name
+                    ));
                 }
             }
         }

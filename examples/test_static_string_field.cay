@@ -1,0 +1,24 @@
+// 静态 string 字段初始化回归测试
+// 修复前：静态 string 字段的初始化器被丢弃，全局变量退化为
+// zeroinitializer，读取时得到 null（打印 "(null)"）。
+class Config {
+    public static string NAME = "cavvy";
+    public static string GREETING = "hello world";
+    public static int MAX = 100;
+}
+
+fn main() {
+    println(Config.NAME);
+    println(Config.GREETING);
+    println(Config.MAX);
+
+    // 重新赋值后应读到新值
+    Config.NAME = "changed";
+    println(Config.NAME);
+
+    // let 推导也应得到 String
+    let n = Config.NAME;
+    println(n);
+
+    println("done");
+}

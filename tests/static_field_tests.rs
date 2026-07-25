@@ -82,6 +82,42 @@ fn test_static_array() {
 }
 
 #[test]
+fn test_static_string_field() {
+    let output = compile_and_run_eol("examples/test_static_string_field.cay")
+        .expect("static string field example should compile and run");
+    assert!(
+        output.contains("cavvy"),
+        "static string field should be initialized to \"cavvy\", got: {}",
+        output
+    );
+    assert!(
+        output.contains("hello world"),
+        "second static string field should be initialized, got: {}",
+        output
+    );
+    assert!(
+        output.contains("100"),
+        "static int field should still be initialized, got: {}",
+        output
+    );
+    assert!(
+        output.contains("changed"),
+        "static string field reassignment should work, got: {}",
+        output
+    );
+    assert!(
+        !output.contains("(null)"),
+        "static string field must not read as null, got: {}",
+        output
+    );
+    assert!(
+        output.contains("done"),
+        "test should run to completion, got: {}",
+        output
+    );
+}
+
+#[test]
 fn test_calloc_integration() {
     let output = compile_and_run_eol("examples/test_calloc_integration.cay")
         .expect("calloc integration example should compile and run");
