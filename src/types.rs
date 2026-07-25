@@ -128,9 +128,11 @@ pub struct InterfaceInfo {
 #[derive(Debug, Clone, Serialize)]
 pub struct StructInfo {
     pub name: String,
+    pub type_params: Vec<TypeParamInfo>, // 泛型类型参数: <T, U, ...>
     pub fields: HashMap<String, FieldInfo>,
     pub field_order: Vec<String>, // 字段定义顺序，用于 LLVM GEP 索引
     pub methods: HashMap<String, Vec<MethodInfo>>, // 支持方法重载
+    pub constructors: Vec<ConstructorInfo>, // 构造函数列表
     pub is_public: bool,
 }
 
@@ -811,6 +813,61 @@ impl Type {
     /// 检查是否是泛型相关类型
     pub fn is_generic(&self) -> bool {
         matches!(self, Type::GenericParam(_) | Type::Generic(_, _))
+    }
+
+    /// 返回源码风格的类型显示名（用于泛型特化名，如 `Point<int>`、`Pair<int, String>`）。
+    ///
+    /// 与 `Display` 的区别：`String` 显示为 `String` 而非 `string`，
+    /// 以与泛型实例化语法中使用的类名保持一致。
+    pub fn display_name(&self) -> String {
+        match self {
+            Type::Void => "void".to_string(),
+            Type::Int32 => "int".to_string(),
+            Type::Int64 => "long".to_string(),
+            Type::Float32 => "float".to_string(),
+            Type::Float64 => "double".to_string(),
+            Type::Bool => "bool".to_string(),
+            Type::String => "String".to_string(),
+            Type::Char => "char".to_string(),
+            Type::Object(name) => name.clone(),
+            Type::Array(inner) => format!("{}[]", inner.display_name()),
+            Type::Function(func_type) => {
+                let params: Vec<String> = func_type
+                    .params
+                    .iter()
+                    .map(|p| p.display_name())
+                    .collect();
+                format!(
+                    "fn({}) -> {}",
+                    params.join(", "),
+                    func_type.return_type.display_name()
+                )
+            }
+            Type::Auto => "auto".to_string(),
+            Type::GenericParam(name) => name.clone(),
+            Type::Generic(name, args) => {
+                let args_str: Vec<String> = args.iter().map(|a| a.display_name()).collect();
+                format!("{}<{}>", name, args_str.join(", "))
+            }
+            Type::CInt => "c_int".to_string(),
+            Type::CUInt => "c_uint".to_string(),
+            Type::CLong => "c_long".to_string(),
+            Type::CULong => "c_ulong".to_string(),
+            Type::CShort => "c_short".to_string(),
+            Type::CUShort => "c_ushort".to_string(),
+            Type::CChar => "c_char".to_string(),
+            Type::CUChar => "c_uchar".to_string(),
+            Type::CFloat => "c_float".to_string(),
+            Type::CDouble => "c_double".to_string(),
+            Type::SizeT => "size_t".to_string(),
+            Type::SSizeT => "ssize_t".to_string(),
+            Type::UIntPtr => "uintptr_t".to_string(),
+            Type::IntPtr => "intptr_t".to_string(),
+            Type::CVoid => "c_void".to_string(),
+            Type::CBool => "c_bool".to_string(),
+            Type::Pointer(inner) => format!("{}*", inner.display_name()),
+            Type::Struct(name) => format!("struct {}", name),
+        }
     }
 }
 

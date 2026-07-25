@@ -202,7 +202,29 @@ impl SemanticAnalyzer {
                 if let Some(enum_info) = self.type_registry.get_enum_by_name(&class_name_str) {
                     let variant_exists = enum_info.variants.iter().any(|v| v.name == member.member);
                     if variant_exists {
-                        return Ok(Type::Object(enum_info.name.clone()));
+                        // 泛型 enum 必须显式提供类型实参；非泛型 enum 保持原有行为。
+                        if enum_info.type_params.is_empty() {
+                            return Ok(Type::Object(enum_info.name.clone()));
+                        }
+                        if let Some(ref args) = type_args {
+                            return Ok(Type::Generic(enum_info.name.clone(), args.clone()));
+                        }
+                        let param_names: Vec<String> = enum_info
+                            .type_params
+                            .iter()
+                            .map(|p| p.name.clone())
+                            .collect();
+                        return Err(semantic_error_at_loc(
+                            &member.loc,
+                            format!(
+                                "Generic enum '{}<{}>' requires explicit type arguments, e.g. {}<{}>.{}",
+                                enum_info.name,
+                                param_names.join(", "),
+                                enum_info.name,
+                                param_names.join(", "),
+                                member.member
+                            ),
+                        ));
                     }
                     return Err(semantic_error_at_loc(
                         &member.loc,
@@ -260,12 +282,12 @@ impl SemanticAnalyzer {
                     if let Some(pos) = class_name.find('<') {
                         let base = class_name[..pos].to_string();
                         let args_str = &class_name[pos + 1..class_name.len() - 1];
-                        // 解析多个类型参数，用逗号分隔
-                        let type_args: Vec<Type> = args_str
-                            .split(',')
-                            .map(|s| s.trim())
-                            .filter(|s| !s.is_empty())
-                            .map(|s| self.parse_type_string(s))
+                        // 解析多个类型参数，使用 split_type_arguments 以正确处理嵌套泛型。
+                        let type_args: Vec<Type> = self
+                            .split_type_arguments(args_str)
+                            .into_iter()
+                            .filter(|s| !s.trim().is_empty())
+                            .map(|s| self.parse_type_string(&s))
                             .collect();
                         if type_args.is_empty() {
                             (Some(base), None)
@@ -297,6 +319,17 @@ impl SemanticAnalyzer {
             // 先查 struct
             if let Some(struct_info) = self.type_registry.get_struct(&base_class_name) {
                 if let Some(field_info) = struct_info.fields.get(&member.member) {
+                    // 对泛型 struct 实例（如 Point<int>）替换字段类型中的类型参数。
+                    if !struct_info.type_params.is_empty() {
+                        if let Some(ref type_args) = type_args_opt {
+                            let substituted_type = self.substitute_type_params(
+                                &field_info.field_type,
+                                &struct_info.type_params,
+                                type_args,
+                            );
+                            return Ok(substituted_type);
+                        }
+                    }
                     return Ok(field_info.field_type.clone());
                 }
             }

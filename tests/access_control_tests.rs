@@ -129,6 +129,7 @@ public class Child extends Parent {
 
 #[test]
 fn test_protected_field_non_subclass() {
+    eprintln!("DEBUG: entering test_protected_field_non_subclass");
     let code = r#"
 public class Parent {
     protected int value = 10;
@@ -139,9 +140,10 @@ public class Test {
         Parent p = new Parent();
         println(String.valueOf(p.value));
     }
-}
-"#;
+}"#;
+    eprintln!("DEBUG: about to write file");
     std::fs::write("examples/test_access_protected_non.cay", code).unwrap();
+    eprintln!("DEBUG: file written, calling compile_eol_expect_error");
     let error =
         compile_eol_expect_error("examples/test_access_protected_non.cay").expect("应该编译失败");
     assert!(

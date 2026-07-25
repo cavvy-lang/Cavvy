@@ -37,8 +37,8 @@ Cavvy（Cay）是一门静态类型、面向对象的编程语言，语法风格
 | 数组 | `int[]`、`string[]` | 动态数组，`new` 分配 |
 | 类 | `class Foo` | 引用类型，堆分配 |
 | 接口 | `interface Bar` | 纯抽象类型 |
-| 结构体 | `struct Point` | 值类型，栈分配 |
-| 枚举 | `enum Color` | 命名常量集合 |
+| 结构体 | `struct Point` | 值类型，栈分配，支持泛型 |
+| 枚举 | `enum Color` | tagged union / ADT，值类型，支持泛型与 payload |
 | 函数指针 | `fn(int) -> int` | 函数签名类型 |
 
 ---
@@ -297,6 +297,8 @@ class Main {
 
 ## 泛型
 
+类、struct 与 enum 均支持泛型，编译期**完整单态化**（无类型擦除、无运行期装箱）：
+
 ```cay
 public class Box<T> {
     private T value;
@@ -319,44 +321,79 @@ public class Main {
 }
 ```
 
-> **注意**：泛型语法已解析，但代码生成尚未实现单态化。
+每个具体实例化（如 `Box<int>`、`Box<String>`）在编译期生成独立的类型与方法集合，支持任意嵌套（如 `Boxed<Wrapper<Pair<int, String>>>`）。
 
 ---
 
-## Struct 与 Enum
+## Struct 与 Enum（ADT）
+
+`struct` 和 `enum` 是**值类型**：赋值、传参、返回均按值拷贝，修改副本不会影响原值。与之相对，`class` 是引用类型。
+
+### struct —— 值类型记录
 
 ```cay
-struct Point {
-    int x;
-    int y;
+public struct Point<T> {
+    T x;
+    T y;
 
-    int sum() {
-        return x + y;
+    public Point(T x, T y) {
+        this.x = x;
+        this.y = y;
+    }
+
+    public T getX() { return this.x; }
+}
+
+public class Main {
+    public static void main() {
+        Point<int> a = new Point<int>(1, 2);
+        Point<int> b = a;      // 值拷贝：b 拥有独立存储
+        b.x = 99;              // a.x 仍为 1
+        println(String.valueOf(a.getX()));  // 输出 1
     }
 }
+```
 
-enum Status {
-    Ready,
-    Running,
-    Done
+### enum —— tagged union（可携带 payload）
+
+```cay
+public enum Option<T> {
+    Some(T),
+    None
 }
 
-class Main {
-    static void main() {
-        Point p = new Point();
-        p.x = 2;
-        p.y = 5;
+public enum Result<T, E> {
+    Ok(T),
+    Err(E)
+}
 
-        Status status = Status.Done;
-        switch (status) {
-            case Status.Done: println("完成"); break;
-            default: println("等待"); break;
+public class Main {
+    public static void main() {
+        Option<int> o = Option<int>.Some(42);
+        Result<int, String> r = Result<int, String>.Ok(7);
+
+        switch (o) {
+            case Option.Some(int v): {
+                println("值: " + String.valueOf(v));
+                break;
+            }
+            case Option.None: {
+                println("无值");
+                break;
+            }
+            default: break;
         }
     }
 }
 ```
 
----
+要点：
+
+- 泛型 enum 构造 variant 时可显式提供类型实参（`Option<int>.Some(42)`）；携带 payload 时也可从实参类型推断。
+- `switch` 通过 `case EnumName.Variant(Type binding):` 解构 payload 并绑定局部变量。
+- 非泛型 enum（如 `enum Status { Ready, Running, Done }`）同样受支持，用法不变。
+
+> 完整的语法定义见 [cavvy.ebnf](../cavvy.ebnf) 附录 F（ADT 与值类型语义）。
 
 ## 预处理器
 

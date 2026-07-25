@@ -118,6 +118,8 @@ library_name = { any_character_except_angle_quote };
 program = { preprocessor_directive | declaration };
 
 declaration = class_declaration
+            | struct_declaration
+            | enum_declaration
             | interface_declaration
             | top_level_function
             | extern_declaration
@@ -164,9 +166,47 @@ inheritance_clause = "extends", qualified_name
 implementation_clause = "implements", qualified_name, { ",", qualified_name };
 
 (* 接口声明 *)
-interface_declaration = [ modifiers ], "interface", identifier, 
+interface_declaration = [ modifiers ], "interface", identifier,
                         [ generic_type_params ], [ interface_extends_clause ],
                         "{", { interface_member_declaration }, "}";
+
+(* struct 声明 - 值类型 ADT（无继承、无 vtable），支持泛型与完整单态化。
+ * struct 是值类型：赋值、传参、返回均按值拷贝，修改副本不影响原值。*)
+struct_declaration = [ modifiers ], "struct", identifier,
+                     [ generic_type_params ],
+                     "{", { struct_member }, "}";
+
+struct_member = field_declaration
+              | method_declaration
+              | constructor_declaration;
+
+(* struct 示例：
+ *   public struct Point<T> {
+ *       T x;
+ *       T y;
+ *       public Point(T x, T y) { this.x = x; this.y = y; }
+ *       public T getX() { return this.x; }
+ *   }
+ *
+ *   Point<int> p = new Point<int>(10, 20);   (* 泛型特化，编译期单态化 *)
+ *   Point<int> q = p;                        (* 值拷贝：q 与 p 互不共享存储 *)
+ *)
+
+(* enum 声明 - tagged union / ADT，支持泛型与完整单态化。
+ * 每个 variant 可携带至多一个 payload 值。*)
+enum_declaration = [ modifiers ], "enum", identifier,
+                   [ generic_type_params ],
+                   "{", enum_variant, { ",", enum_variant }, "}";
+
+enum_variant = identifier, [ "(", type, ")" ];
+
+(* enum 示例：
+ *   public enum Option<T> { Some(T), None }
+ *   public enum Result<T, E> { Ok(T), Err(E) }
+ *
+ *   Option<int> o = Option<int>.Some(42);    (* 显式类型实参的 variant 构造 *)
+ *   Option<int> n = Option<int>.None;
+ *)
 
 interface_extends_clause = "extends", qualified_name, { ",", qualified_name };
 
@@ -343,8 +383,8 @@ function_type = "fn", "(", [ parameter_type_list ], ")", [ "->", type ];
 parameter_type_list = type, { ",", type };
 
 (* 引用类型 *)
-(* 支持数组类型 (Type[]) 和指针类型 (Type*) *)
-reference_type = qualified_name, { "[", "]" } 
+(* 支持数组类型 (Type[])、指针类型 (Type*) 和泛型实例化 (Name<T1, T2>) *)
+reference_type = qualified_name, [ "<", type_argument_list, ">" ], { "[", "]" }
                | primitive_type, { "[", "]" }
                | pointer_type
                | "String"
@@ -421,7 +461,21 @@ do_while_statement = "do", statement, "while", "(", expression, ")", ";";
 switch_statement = "switch", "(", expression, ")", "{", { switch_label }, "}";
 
 switch_label = "case", constant_expression, ":", { statement }
+             | "case", enum_variant_pattern, ":", { statement }
              | "default", ":", { statement };
+
+(* enum variant 模式 - 用于 switch 匹配 enum 值，可解构 payload。
+ * 类型实参可省略（从 switch 表达式类型推断）。*)
+enum_variant_pattern = qualified_name, [ "<", type_argument_list, ">" ],
+                       ".", identifier, [ "(", type, identifier, ")" ];
+
+(* enum 模式匹配示例：
+ *   switch (o) {
+ *       case Option.Some(int v): { println(v); break; }
+ *       case Option.None: { println("none"); break; }
+ *       default: break;
+ *   }
+ *)
 
 return_statement = "return", [ expression ], ";";
 
@@ -566,17 +620,26 @@ array_creation_expression = "new", type, "[", expression, "]", { "[", expression
                           | "new", type, "[", expression, "]", "(", ")";  (* 零初始化 *)
 
 object_creation_expression = "new", qualified_name, "(", [ argument_list ], ")"
+                           | "new", qualified_name, "<", type_argument_list, ">", "(", [ argument_list ], ")"
                            | qualified_name, ".", "new", identifier, "(", [ argument_list ], ")"
                            | qualified_name, "(", [ argument_list ], ")"
-                           | qualified_name, "<", type_argument_list, ">", "(", [ argument_list ], ")";
+                           | qualified_name, "<", type_argument_list, ">", "(", [ argument_list ], ")"
+                           | enum_variant_construction;
+
+(* enum variant 构造表达式 - 显式类型实参或省略（无 payload 时可省略并由上下文推断）*)
+enum_variant_construction = qualified_name, "<", type_argument_list, ">", ".", identifier, [ "(", [ argument_list ], ")" ]
+                          | qualified_name, ".", identifier, "(", [ argument_list ], ")";
 
 (* 对象创建示例：
  *   new MyClass()
  *   new MyClass(1, 2)
+ *   new Point<int>(10, 20)                 (* 泛型 struct 显式特化 *)
  *   MyClass()              (* 5.3.0: 允许省略 new *)
  *   MyClass(1, 2)          (* 5.3.0: 允许省略 new *)
  *   Box<int>(42)           (* 5.3.0: 允许省略 new *)
  *   Optional<String>.empty()
+ *   Option<int>.Some(42)                   (* 泛型 enum variant 构造 *)
+ *   Result<int, String>.Ok(7)
  *)
 
 type_argument_list = type, { ",", type };
@@ -900,7 +963,13 @@ any_unicode_character = ? 任何 Unicode 字符 ?;
  * ============================================================================ *)
 
 (*
- * 5.1.0-a.2 (Build 33) - 当前版本
+ * 6.1.0 (Build 39+) - 当前版本
+ *   - struct / enum 泛型支持与完整单态化（无类型擦除）
+ *   - struct / enum 值类型语义：赋值、传参、返回均按值拷贝
+ *   - 泛型 enum variant 构造与 switch payload 解构
+ *   - 泛型静态方法与实例方法链式调用
+ *
+ * 5.1.0-a.2 (Build 33)
  *   - 网络编程标准库 (Network.cay)
  *   - TCP/UDP Socket支持
  *   - 字节序转换函数
@@ -1053,10 +1122,10 @@ any_unicode_character = ? 任何 Unicode 字符 ?;
 (*
  * 严格关键字（不能用作标识符）：
  *   abstract, alias, as, auto, bool, boolean, break, byte, case, char,
- *   class, continue, cdecl, default, do, double, else, extern, extends,
+ *   class, continue, cdecl, default, do, double, else, enum, extern, extends,
  *   false, final, float, fn, for, if, implements, instanceof, int,
  *   interface, let, long, native, new, null, private, protected, public,
- *   return, scope, static, stdcall, super, switch, sysv64, this, true,
+ *   return, scope, static, stdcall, struct, super, switch, sysv64, this, true,
  *   var, void, while, win64
  *
  * 上下文关键字（在特定上下文中是关键字）：
@@ -1127,9 +1196,42 @@ any_unicode_character = ? 任何 Unicode 字符 ?;
  *   class Animal {
  *       public void speak() { }
  *   }
- *   
+ *
  *   class Dog : Animal {
  *       @Override
  *       public void speak() { println("Woof!"); }
  *   }
+ *)
+
+(* ============================================================================
+ * 附录 F: ADT（struct / enum）与值类型语义
+ * ============================================================================ *)
+
+(*
+ * 1. 值类型 vs 引用类型
+ *    - class           : 引用类型，堆分配，赋值/传参共享同一对象
+ *    - struct / enum   : 值类型（ADT），赋值、传参、返回均按值拷贝
+ *
+ *    struct 值语义示例：
+ *      Point<int> a = new Point<int>(1, 2);
+ *      Point<int> b = a;      // 深拷贝：b 拥有独立存储
+ *      b.x = 99;              // a.x 仍为 1，不受影响的
+ *
+ * 2. 泛型与完整单态化
+ *    - struct 与 enum 均可声明类型参数 <T, U, ...>
+ *    - 每个具体实例化（如 Pair<int, String>、Option<int>）在编译期
+ *      单态化为独立的 LLVM struct 类型与方法集合，无类型擦除、
+ *      无运行期装箱开销
+ *    - 支持嵌套实例化：Boxed<Wrapper<Pair<int, String>>>
+ *    - 泛型 enum variant 构造可显式提供类型实参（Option<int>.Some(42)），
+ *      携带 payload 时亦可从实参类型推断
+ *
+ * 3. enum 表示
+ *    - enum 是 tagged union：{ i32 判别值, i64 payload }
+ *    - 基本类型 payload 内联存储；超出 64 位的 payload（如 struct 值、
+ *      字符串、对象）以指针形式存储在 payload 槽中
+ *
+ * 4. switch 模式匹配
+ *    - case EnumName.Variant(Type binding): 解构 payload 并绑定局部变量
+ *    - 无 payload 的 variant 直接匹配：case Option.None:
  *)

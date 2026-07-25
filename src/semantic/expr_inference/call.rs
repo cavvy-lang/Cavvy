@@ -501,11 +501,12 @@ impl SemanticAnalyzer {
                                 if let Some(pos) = class_name.find('<') {
                                     let args_str =
                                         &class_name[pos + 1..class_name.len() - 1];
-                                    let type_args: Vec<Type> = args_str
-                                        .split(',')
-                                        .map(|s| s.trim())
-                                        .filter(|s| !s.is_empty())
-                                        .map(|s| self.parse_type_string(s))
+                                    // 使用 split_type_arguments 以正确处理嵌套泛型实参。
+                                    let type_args: Vec<Type> = self
+                                        .split_type_arguments(args_str)
+                                        .into_iter()
+                                        .filter(|s| !s.trim().is_empty())
+                                        .map(|s| self.parse_type_string(&s))
                                         .collect();
                                     if type_args.is_empty() {
                                         None
@@ -526,6 +527,15 @@ impl SemanticAnalyzer {
                             self.substitute_type_params(
                                 &scoped_return_type,
                                 &class_info.type_params,
+                                &type_args,
+                            )
+                        } else if let Some(struct_info) =
+                            self.type_registry.get_struct(&owner_class)
+                        {
+                            // 对泛型 struct 实例（如 Point<int>）替换返回类型中的类型参数。
+                            self.substitute_type_params(
+                                &scoped_return_type,
+                                &struct_info.type_params,
                                 &type_args,
                             )
                         } else {

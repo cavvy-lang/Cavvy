@@ -1,0 +1,21 @@
+public struct Pair<T, U> {
+    T first;
+    U second;
+
+    public Pair(T f, U s) {
+        this.first = f;
+        this.second = s;
+    }
+
+    public T getFirst() { return this.first; }
+    public U getSecond() { return this.second; }
+}
+
+public class DebugChainTest {
+    public static void main() {
+        Pair<int, String> ps = new Pair<int, String>(1, "one");
+        if (ps.getSecond().equals("one")) {
+            println("OK");
+        }
+    }
+}

@@ -133,9 +133,13 @@ impl IRGenerator {
                         self.var_class_map
                             .insert(binding.var_name.clone(), class_name.clone());
                     }
-                    crate::types::Type::Generic(class_name, _) => {
-                        self.var_class_map
-                            .insert(binding.var_name.clone(), class_name.clone());
+                    crate::types::Type::Generic(_, _) => {
+                        // 泛型特化类型使用完整特化名（如 Pair<int, String>），
+                        // 确保方法调用能链接到正确的单态化版本。
+                        self.var_class_map.insert(
+                            binding.var_name.clone(),
+                            binding.var_type.display_name(),
+                        );
                     }
                     _ => {}
                 }

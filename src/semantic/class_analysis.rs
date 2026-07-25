@@ -924,9 +924,38 @@ impl SemanticAnalyzer {
         for struct_decl in &program.structs {
             let mut struct_info = crate::types::StructInfo {
                 name: struct_decl.name.clone(),
+                type_params: struct_decl
+                    .type_params
+                    .iter()
+                    .map(|tp| crate::types::TypeParamInfo {
+                        name: tp.name.clone(),
+                        bound: tp.bound.clone(),
+                        default_type: tp.default_type.clone(),
+                    })
+                    .collect(),
                 fields: std::collections::HashMap::new(),
                 field_order: Vec::new(),
                 methods: std::collections::HashMap::new(),
+                constructors: struct_decl
+                    .constructors
+                    .iter()
+                    .map(|ctor| crate::types::ConstructorInfo {
+                        params: self
+                            .replace_params_type_params(&ctor.params, &struct_decl.type_params),
+                        is_public: ctor
+                            .modifiers
+                            .iter()
+                            .any(|m| matches!(m, Modifier::Public)),
+                        is_private: ctor
+                            .modifiers
+                            .iter()
+                            .any(|m| matches!(m, Modifier::Private)),
+                        is_protected: ctor
+                            .modifiers
+                            .iter()
+                            .any(|m| matches!(m, Modifier::Protected)),
+                    })
+                    .collect(),
                 is_public: struct_decl
                     .modifiers
                     .iter()
@@ -937,7 +966,8 @@ impl SemanticAnalyzer {
             for field in &struct_decl.fields {
                 let field_info = crate::types::FieldInfo {
                     name: field.name.clone(),
-                    field_type: field.field_type.clone(),
+                    // 将泛型参数替换为 GenericParam 类型
+                    field_type: self.replace_type_params(&field.field_type, &struct_decl.type_params),
                     is_public: true, // struct 字段默认公开
                     is_private: false,
                     is_protected: false,
@@ -955,8 +985,10 @@ impl SemanticAnalyzer {
                     name: method.name.clone(),
                     class_name: struct_decl.name.clone(),
                     type_params: Vec::new(),
-                    params: method.params.clone(),
-                    return_type: method.return_type.clone(),
+                    params: self
+                        .replace_params_type_params(&method.params, &struct_decl.type_params),
+                    return_type: self
+                        .replace_type_params(&method.return_type, &struct_decl.type_params),
                     is_public: method
                         .modifiers
                         .iter()
@@ -1008,7 +1040,12 @@ impl SemanticAnalyzer {
                 .iter()
                 .map(|v| crate::types::EnumVariantInfo {
                     name: v.name.clone(),
-                    payload_type: v.payload_type.clone(),
+                    // 将泛型参数替换为 GenericParam 类型（如 Object("T") -> GenericParam("T")），
+                    // 以便在 variant 构造时按类型实参替换 payload 类型。
+                    payload_type: v
+                        .payload_type
+                        .as_ref()
+                        .map(|pt| self.replace_type_params(pt, &enum_decl.type_params)),
                 })
                 .collect();
 

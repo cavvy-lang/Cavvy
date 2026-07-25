@@ -449,7 +449,7 @@ impl IRGenerator {
             class_name
         };
 
-        // 获取定义该方法的类或接口的类型参数名
+        // 获取定义该方法的类、接口或结构体的类型参数名
         let type_params = registry
             .get_class(base_class_name)
             .map(|c| c.type_params.clone())
@@ -457,6 +457,11 @@ impl IRGenerator {
                 registry
                     .get_interface(base_class_name)
                     .map(|i| i.type_params.clone())
+            })
+            .or_else(|| {
+                registry
+                    .get_struct(base_class_name)
+                    .map(|s| s.type_params.clone())
             })
             .unwrap_or_default();
 
@@ -567,10 +572,10 @@ impl IRGenerator {
                 let all_concrete =
                     !resolved.is_empty() && resolved.iter().all(|t| self.type_arg_is_concrete(t));
                 if all_concrete {
-                    let args_str: Vec<String> = resolved.iter().map(|t| format!("{}", t)).collect();
+                    let args_str: Vec<String> = resolved.iter().map(|t| t.display_name()).collect();
                     self.var_class_map.insert(
                         var.name.clone(),
-                        format!("{}<{}>", class_name, args_str.join(", ")),
+                        format!("{}<{ }>", class_name, args_str.join(", ")),
                     );
                 } else {
                     self.var_class_map

@@ -371,7 +371,9 @@ impl IRGenerator {
         {
             let name_str = name.as_ref();
             if name_str == "this" {
-                Some(self.current_class.clone())
+                // 在泛型特化方法体内，current_class 被裁剪为裸类名，
+                // 应使用完整特化名以定位单态化字段布局。
+                Some(self.this_field_class_name())
             } else {
                 // 首先检查是否是变量对应的类
                 let var_class = self.var_class_map.get(name_str).cloned();
@@ -402,6 +404,50 @@ impl IRGenerator {
                 .get_instance_field(&class_name, &member.member)
                 .cloned()
             {
+                // struct 值类型使用 GEP 按字段索引寻址，class 使用字节偏移。
+                let is_struct = self.is_struct_type(&class_name);
+                if is_struct {
+                    let llvm_struct_type_name = self.struct_llvm_type_name(&class_name);
+                    let llvm_struct_type = format!("%struct.{}", llvm_struct_type_name);
+                    let obj_ptr = if let Expr::Identifier(name) = member.object.as_ref() {
+                        let name_str = name.as_ref();
+                        if name_str == "this" {
+                            // this 在 struct 方法中已声明为 %struct.Name* 类型
+                            let this_llvm_name = self
+                                .scope_manager
+                                .get_llvm_name("this")
+                                .unwrap_or_else(|| "this_s1".to_string());
+                            let temp = self.new_temp();
+                            self.emit_line(&format!(
+                                "  {} = load {}*, {}** %{}, align 8",
+                                temp, llvm_struct_type, llvm_struct_type, this_llvm_name
+                            ));
+                            temp
+                        } else {
+                            let obj = self.generate_expression(member.object.as_ref())?;
+                            let (_, obj_val) = self.parse_typed_value(&obj);
+                            obj_val
+                        }
+                    } else {
+                        let obj = self.generate_expression(member.object.as_ref())?;
+                        let (_, obj_val) = self.parse_typed_value(&obj);
+                        obj_val
+                    };
+
+                    let field_idx = self.get_struct_field_index(&class_name, &member.member);
+                    let ptr_type = if field_info.llvm_type.ends_with('*') {
+                        field_info.llvm_type.clone()
+                    } else {
+                        format!("{}*", field_info.llvm_type)
+                    };
+                    let field_ptr = self.new_temp();
+                    self.emit_line(&format!(
+                        "  {} = getelementptr inbounds {}, {}* {}, i32 0, i32 {}",
+                        field_ptr, llvm_struct_type, llvm_struct_type, obj_ptr, field_idx
+                    ));
+                    return Ok((field_info.llvm_type, field_ptr));
+                }
+
                 // 获取对象指针
                 let obj_ptr = if let Expr::Identifier(name) = member.object.as_ref() {
                     let name_str = name.as_ref();
@@ -506,8 +552,27 @@ impl IRGenerator {
             Expr::Identifier(name) => {
                 let name_str = name.as_ref();
                 if name_str == "this" {
-                    // this 指针直接使用
-                    let ptr = if is_root {
+                    // 在泛型特化方法体内使用完整特化名定位单态化字段布局
+                    let qualified = self.this_field_class_name();
+                    let is_struct = self.is_struct_type(&qualified);
+                    let ptr = if is_struct {
+                        let llvm_struct_type_name = self.struct_llvm_type_name(&qualified);
+                        let llvm_struct_type = format!("%struct.{}", llvm_struct_type_name);
+                        if is_root {
+                            let this_llvm_name = self
+                                .scope_manager
+                                .get_llvm_name("this")
+                                .unwrap_or_else(|| "this_s1".to_string());
+                            let temp = self.new_temp();
+                            self.emit_line(&format!(
+                                "  {} = load {}*, {}** %{}, align 8",
+                                temp, llvm_struct_type, llvm_struct_type, this_llvm_name
+                            ));
+                            temp
+                        } else {
+                            "%this".to_string()
+                        }
+                    } else if is_root {
                         // 需要加载 this 指针
                         let this_llvm_name = self
                             .scope_manager
@@ -523,7 +588,6 @@ impl IRGenerator {
                         // 嵌套情况下直接使用 %this
                         "%this".to_string()
                     };
-                    let qualified = self.resolve_current_qualified_class();
                     (ptr, Some(qualified))
                 } else {
                     // 普通变量 - 总是需要加载变量值作为对象指针
@@ -574,6 +638,20 @@ impl IRGenerator {
         // 获取字段信息
         if let Some(ref class_name) = obj_class_name {
             if let Some(field_info) = self.get_instance_field(class_name, &member.member).cloned() {
+                // struct 值类型使用 GEP 按字段索引寻址
+                let is_struct = self.is_struct_type(class_name);
+                if is_struct {
+                    let llvm_struct_type_name = self.struct_llvm_type_name(class_name);
+                    let llvm_struct_type = format!("%struct.{}", llvm_struct_type_name);
+                    let field_idx = self.get_struct_field_index(class_name, &member.member);
+                    let field_ptr = self.new_temp();
+                    self.emit_line(&format!(
+                        "  {} = getelementptr inbounds {}, {}* {}, i32 0, i32 {}",
+                        field_ptr, llvm_struct_type, llvm_struct_type, obj_ptr, field_idx
+                    ));
+                    return Ok((field_info.llvm_type, field_ptr));
+                }
+
                 // 计算字段地址
                 let field_ptr_i8 = self.new_temp();
                 self.emit_line(&format!(

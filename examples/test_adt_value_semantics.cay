@@ -1,0 +1,89 @@
+/**
+ * 值类型语义验证：赋值/传参必须是拷贝，修改副本不影响原值。
+ */
+public struct Pair<T, U> {
+    T first;
+    U second;
+
+    public Pair(T f, U s) {
+        this.first = f;
+        this.second = s;
+    }
+
+    public T getFirst() { return this.first; }
+    public U getSecond() { return this.second; }
+    public void setFirst(T v) { this.first = v; }
+    public void setSecond(U v) { this.second = v; }
+}
+
+public enum Boxed<T> {
+    Value(T),
+    Empty
+}
+
+public class ValueSemanticsProbe {
+    // 传参也应是按值传递
+    public static void mutate(Pair<int, int> p) {
+        p.setFirst(-1);
+    }
+
+    // 工厂函数：返回局部 struct 值，调用者应得到独立副本
+    public static Pair<int, int> makePair(int x, int y) {
+        Pair<int, int> p = new Pair<int, int>(x, y);
+        return p;
+    }
+
+    public static void main() {
+        // 1. struct 赋值拷贝：修改 b 不影响 a
+        Pair<int, int> a = new Pair<int, int>(1, 2);
+        Pair<int, int> b = a;
+        b.setFirst(99);
+        b.setSecond(88);
+        if (a.getFirst() == 1 && a.getSecond() == 2 && b.getFirst() == 99) {
+            println("struct assignment copy OK");
+        } else {
+            println("struct assignment copy FAIL: a=(" + String.valueOf(a.getFirst()) + "," + String.valueOf(a.getSecond()) + ")");
+        }
+
+        // 2. struct 传参拷贝：函数内修改不影响调用方
+        Pair<int, int> c = new Pair<int, int>(7, 7);
+        mutate(c);
+        if (c.getFirst() == 7) {
+            println("struct pass-by-value OK");
+        } else {
+            println("struct pass-by-value FAIL: c.first=" + String.valueOf(c.getFirst()));
+        }
+
+        // 3. enum 赋值拷贝：赋值后两者独立可匹配
+        Boxed<int> x = Boxed<int>.Value(42);
+        Boxed<int> y = x;
+        int sum = 0;
+        switch (x) {
+            case Boxed.Value(int v): { sum = sum + v; break; }
+            case Boxed.Empty: { break; }
+            default: break;
+        }
+        switch (y) {
+            case Boxed.Value(int v): { sum = sum + v; break; }
+            case Boxed.Empty: { break; }
+            default: break;
+        }
+        if (sum == 84) {
+            println("enum assignment copy OK");
+        } else {
+            println("enum assignment copy FAIL: sum=" + String.valueOf(sum));
+        }
+
+        // 4. 工厂函数返回 struct 值：调用者获得独立副本，可安全修改
+        Pair<int, int> q = makePair(3, 4);
+        q.setFirst(30);
+        Pair<int, int> q2 = makePair(5, 6);
+        if (q.getFirst() == 30 && q.getSecond() == 4 && q2.getFirst() == 5 && q2.getSecond() == 6) {
+            println("struct return-by-value OK");
+        } else {
+            println("struct return-by-value FAIL: q=(" + String.valueOf(q.getFirst()) + "," + String.valueOf(q.getSecond()) + ") q2=(" + String.valueOf(q2.getFirst()) + "," + String.valueOf(q2.getSecond()) + ")");
+        }
+
+        println("value semantics probe DONE");
+    }
+}

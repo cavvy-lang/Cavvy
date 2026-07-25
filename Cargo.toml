@@ -3,6 +3,8 @@ name = "cavvy"
 # 请注意，自5.1.0-a.1开始，版本号已经改了
 version = "6.1.0"
 edition = "2024"
+autobins = false
+default-run = "cayc"
 
 [workspace]
 members = ["cay-setup"]

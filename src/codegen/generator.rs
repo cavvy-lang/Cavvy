@@ -310,8 +310,9 @@ impl IRGenerator {
         }
 
         // 计算 struct 的布局（值类型，无继承，无对象头）
+        // 对泛型 struct 还需为每个特化实例计算单态化布局。
         for struct_decl in &program.structs {
-            let qname = if struct_decl.namespace_path.is_empty() {
+            let base_qname = if struct_decl.namespace_path.is_empty() {
                 struct_decl.name.clone()
             } else {
                 format!(
@@ -320,8 +321,66 @@ impl IRGenerator {
                     struct_decl.name
                 )
             };
+            let full_struct_name = if struct_decl.type_params.is_empty() {
+                base_qname.clone()
+            } else {
+                let type_param_names: Vec<String> =
+                    struct_decl.type_params.iter().map(|p| p.name.clone()).collect();
+                if struct_decl.namespace_path.is_empty() {
+                    format!("{}<{}>", struct_decl.name, type_param_names.join(", "))
+                } else {
+                    format!(
+                        "{}::{}<{}>",
+                        struct_decl.namespace_path.join("::"),
+                        struct_decl.name,
+                        type_param_names.join(", ")
+                    )
+                }
+            };
+
             let instance_fields: Vec<_> = struct_decl.fields.iter().cloned().collect();
-            self.compute_struct_layout(&qname, &instance_fields);
+            self.compute_struct_layout(&full_struct_name, &instance_fields);
+
+            // 泛型 struct：为每个特化版本计算布局
+            if !struct_decl.type_params.is_empty() {
+                let mut instances = self
+                    .specializations
+                    .get(&base_qname)
+                    .cloned()
+                    .unwrap_or_default();
+                // 兼容特化收集器以裸 struct 名为键的情况
+                if base_qname != struct_decl.name {
+                    if let Some(extra) = self.specializations.get(&struct_decl.name) {
+                        instances.extend(extra.iter().cloned());
+                    }
+                }
+                let type_param_infos: Vec<crate::types::TypeParamInfo> = struct_decl
+                    .type_params
+                    .iter()
+                    .map(|p| crate::types::TypeParamInfo {
+                        name: p.name.clone(),
+                        bound: p.bound.clone(),
+                        default_type: p.default_type.clone(),
+                    })
+                    .collect();
+                for instance in instances {
+                    let specialized_name = instance.specialized_name();
+                    let resolved_type_args = instance.resolve_type_args(&type_param_infos);
+                    let specialized_fields: Vec<_> = instance_fields
+                        .iter()
+                        .map(|f| {
+                            let mut field = f.clone();
+                            field.field_type = substitute_type_params(
+                                &field.field_type,
+                                &resolved_type_args,
+                                &type_param_infos,
+                            );
+                            field
+                        })
+                        .collect();
+                    self.compute_struct_layout(&specialized_name, &specialized_fields);
+                }
+            }
         }
 
         for class in &program.classes {
@@ -1203,9 +1262,9 @@ impl IRGenerator {
         // 构建特化类名，如 Box<int>
         let type_args_str: Vec<String> = resolved_type_args
             .iter()
-            .map(|t| format!("{}", t))
+            .map(|t| t.display_name())
             .collect();
-        let specialized_name = format!("{}<{}>", spec.base_name, type_args_str.join(", "));
+        let specialized_name = format!("{}<{ }>", spec.base_name, type_args_str.join(", "));
 
         // 构建类型参数映射
         let mut mapping = std::collections::HashMap::new();
@@ -1323,13 +1382,16 @@ impl IRGenerator {
     }
 
     /// 生成 struct 的所有方法（struct 是值类型，无构造/析构/静态初始化）
+    ///
+    /// 对泛型 struct 进行完整单态化：不为类型参数未解析的基础模板生成代码，
+    /// 只为 SpecializationCollector 收集到的每个具体特化实例生成构造函数和方法。
     fn generate_struct_methods(&mut self, struct_decl: &StructDecl) -> CayResult<()> {
         // 设置当前命名空间上下文
         if let Some(ref mut registry) = self.type_registry {
             registry.current_namespace = struct_decl.namespace_path.clone();
         }
 
-        let qname = if struct_decl.namespace_path.is_empty() {
+        let base_qname = if struct_decl.namespace_path.is_empty() {
             struct_decl.name.clone()
         } else {
             format!(
@@ -1338,12 +1400,133 @@ impl IRGenerator {
                 struct_decl.name
             )
         };
+        let full_struct_name = if struct_decl.type_params.is_empty() {
+            base_qname.clone()
+        } else {
+            let type_param_names: Vec<String> =
+                struct_decl.type_params.iter().map(|p| p.name.clone()).collect();
+            if struct_decl.namespace_path.is_empty() {
+                format!("{}<{}>", struct_decl.name, type_param_names.join(", "))
+            } else {
+                format!(
+                    "{}::{}<{}>",
+                    struct_decl.namespace_path.join("::"),
+                    struct_decl.name,
+                    type_param_names.join(", ")
+                )
+            }
+        };
 
-        for method in &struct_decl.methods {
-            if !method.modifiers.contains(&Modifier::Native)
-                && !method.modifiers.contains(&Modifier::Abstract)
-            {
-                self.generate_method(&qname, method)?;
+        let is_generic = !struct_decl.type_params.is_empty();
+        let has_explicit_ctor = struct_decl
+            .constructors
+            .iter()
+            .any(|c| !c.modifiers.contains(&Modifier::Native) && !c.modifiers.contains(&Modifier::Abstract));
+
+        let type_param_infos: Vec<crate::types::TypeParamInfo> = struct_decl
+            .type_params
+            .iter()
+            .map(|p| crate::types::TypeParamInfo {
+                name: p.name.clone(),
+                bound: p.bound.clone(),
+                default_type: p.default_type.clone(),
+            })
+            .collect();
+
+        if !is_generic {
+            // 非泛型 struct：直接生成原始定义的方法
+            for ctor in &struct_decl.constructors {
+                if !ctor.modifiers.contains(&Modifier::Native)
+                    && !ctor.modifiers.contains(&Modifier::Abstract)
+                {
+                    self.generate_struct_constructor(&full_struct_name, ctor)?;
+                }
+            }
+            if !has_explicit_ctor {
+                self.generate_struct_default_constructor(&full_struct_name)?;
+            }
+
+            for method in &struct_decl.methods {
+                if !method.modifiers.contains(&Modifier::Native)
+                    && !method.modifiers.contains(&Modifier::Abstract)
+                {
+                    self.generate_method(&full_struct_name, method)?;
+                }
+            }
+        } else {
+            // 泛型 struct：为每个收集到的特化实例生成单态化代码
+            let mut instances = self
+                .specializations
+                .get(&base_qname)
+                .cloned()
+                .unwrap_or_default();
+            if base_qname != struct_decl.name {
+                if let Some(extra) = self.specializations.get(&struct_decl.name) {
+                    instances.extend(extra.iter().cloned());
+                }
+            }
+
+            for instance in instances {
+                let specialized_name = instance.specialized_name();
+                let resolved_type_args = instance.resolve_type_args(&type_param_infos);
+
+                // 设置类型参数映射，供方法体中的泛型解析使用
+                let mapping = instance.type_param_mapping(&type_param_infos);
+                let old_mapping = std::mem::replace(&mut self.generic_type_args, mapping);
+
+                for ctor in &struct_decl.constructors {
+                    if !ctor.modifiers.contains(&Modifier::Native)
+                        && !ctor.modifiers.contains(&Modifier::Abstract)
+                    {
+                        let mut specialized_ctor = ctor.clone();
+                        specialized_ctor.params = ctor
+                            .params
+                            .iter()
+                            .map(|p| crate::types::ParameterInfo {
+                                name: p.name.clone(),
+                                param_type: substitute_type_params(
+                                    &p.param_type,
+                                    &resolved_type_args,
+                                    &type_param_infos,
+                                ),
+                                is_varargs: p.is_varargs,
+                            })
+                            .collect();
+                        self.generate_struct_constructor(&specialized_name, &specialized_ctor)?;
+                    }
+                }
+                if !has_explicit_ctor {
+                    self.generate_struct_default_constructor(&specialized_name)?;
+                }
+
+                for method in &struct_decl.methods {
+                    if !method.modifiers.contains(&Modifier::Native)
+                        && !method.modifiers.contains(&Modifier::Abstract)
+                    {
+                        let mut specialized_method = method.clone();
+                        specialized_method.return_type = substitute_type_params(
+                            &method.return_type,
+                            &resolved_type_args,
+                            &type_param_infos,
+                        );
+                        specialized_method.params = method
+                            .params
+                            .iter()
+                            .map(|p| crate::types::ParameterInfo {
+                                name: p.name.clone(),
+                                param_type: substitute_type_params(
+                                    &p.param_type,
+                                    &resolved_type_args,
+                                    &type_param_infos,
+                                ),
+                                is_varargs: p.is_varargs,
+                            })
+                            .collect();
+                        self.generate_method(&specialized_name, &specialized_method)?;
+                    }
+                }
+
+                self.generic_type_args = old_mapping;
             }
         }
 
@@ -1351,6 +1534,225 @@ impl IRGenerator {
         if let Some(ref mut registry) = self.type_registry {
             registry.current_namespace.clear();
         }
+
+        Ok(())
+    }
+
+    /// 生成 struct 构造函数
+    fn generate_struct_constructor(
+        &mut self,
+        struct_name: &str,
+        ctor: &crate::ast::ConstructorDecl,
+    ) -> CayResult<()> {
+        let fn_name = self.generate_constructor_name(struct_name, ctor);
+
+        if ctor.modifiers.contains(&crate::ast::Modifier::Native)
+            || ctor.modifiers.contains(&crate::ast::Modifier::Abstract)
+        {
+            if self.generated_methods.contains(&fn_name) {
+                return Ok(());
+            }
+            self.generated_methods.insert(fn_name.clone());
+
+            let llvm_struct_type = format!("%struct.{}", struct_name);
+            let mut params = vec![format!("{}*", llvm_struct_type)];
+            for p in &ctor.params {
+                params.push(self.type_to_llvm(&p.param_type));
+            }
+            let cc_attr = self.calling_convention_to_llvm_attr(crate::ast::CallingConvention::Cdecl);
+            let decl = if cc_attr.is_empty() {
+                format!("declare void @{}({})\n", fn_name, params.join(", "))
+            } else {
+                format!(
+                    "declare void @{}({}) {}\n",
+                    fn_name, params.join(", "), cc_attr
+                )
+            };
+            let sig = format!("{}@void@{}", fn_name, params.join("@"));
+            if !self.is_extern_emitted(&sig) {
+                self.emit_raw(&decl);
+                self.mark_extern_emitted(sig);
+            }
+            return Ok(());
+        }
+
+        if self.generated_methods.contains(&fn_name) {
+            return Ok(());
+        }
+        self.generated_methods.insert(fn_name.clone());
+
+        self.current_function = fn_name.clone();
+        let raw_struct_name = if struct_name.contains("::") {
+            struct_name
+                .split("::")
+                .last()
+                .expect("split 应始终产生至少一个元素")
+                .to_string()
+        } else {
+            struct_name.to_string()
+        };
+        self.current_class = if let Some(pos) = raw_struct_name.find('<') {
+            raw_struct_name[..pos].to_string()
+        } else {
+            raw_struct_name
+        };
+        self.current_class_specialized = if struct_name.contains('<') {
+            Some(struct_name.to_string())
+        } else {
+            None
+        };
+        self.current_return_type = "void".to_string();
+
+        self.temp_counter = 0;
+        self.var_types.clear();
+        self.scope_manager.reset();
+        self.loop_stack.clear();
+
+        // struct 的 LLVM 类型名必须将泛型参数与命名空间字符转换为合法标识符
+        let llvm_struct_type_name = self.struct_llvm_type_name(struct_name);
+        let llvm_struct_type = format!("%struct.{}", llvm_struct_type_name);
+        let llvm_struct_ptr = format!("{}*", llvm_struct_type);
+
+        let params: Vec<String> = ctor
+            .params
+            .iter()
+            .map(|p| {
+                format!(
+                    "{} %{}.{}",
+                    self.type_to_llvm(&p.param_type),
+                    self.current_class,
+                    p.name
+                )
+            })
+            .collect();
+
+        let mut all_params = vec![format!("{} %this", llvm_struct_ptr)];
+        all_params.extend(params);
+
+        self.emit_line(&format!(
+            "define void @{}({}) {{",
+            fn_name,
+            all_params.join(", ")
+        ));
+        self.indent += 1;
+
+        self.emit_line("entry:");
+        self.scope_manager.enter_scope();
+
+        let this_llvm_name = self.scope_manager.declare_var("this", &llvm_struct_ptr);
+        self.emit_line(&format!(
+            "  %{} = alloca {}",
+            this_llvm_name, llvm_struct_ptr
+        ));
+        self.emit_line(&format!(
+            "  store {} %this, {}* %{}",
+            llvm_struct_ptr, llvm_struct_ptr, this_llvm_name
+        ));
+        self.var_types.insert("this".to_string(), llvm_struct_ptr.clone());
+
+        for param in &ctor.params {
+            let param_type = self.type_to_llvm(&param.param_type);
+            let llvm_name =
+                self.scope_manager
+                    .declare_var_with_flag(&param.name, &param_type, true);
+            self.emit_line(&format!("  %{} = alloca {}", llvm_name, param_type));
+            // 值类型语义：struct 参数按值传递，入口拷贝到本地独立存储
+            if let Some(struct_name) = self.extract_struct_name_from_ptr_type(&param_type) {
+                let llvm_struct_type = format!("%struct.{}", struct_name);
+                let local_copy = self.new_temp();
+                self.emit_line(&format!("  {} = alloca {}", local_copy, llvm_struct_type));
+                let src_param = format!("%{}.{}", self.current_class, param.name);
+                self.emit_struct_memcpy(&local_copy, &src_param, &struct_name);
+                self.emit_line(&format!(
+                    "  store {} {}, {}* %{}",
+                    param_type, local_copy, param_type, llvm_name
+                ));
+            } else {
+                self.emit_line(&format!(
+                    "  store {0} %{1}.{2}, {0}* %{3}",
+                    param_type, self.current_class, param.name, llvm_name
+                ));
+            }
+            self.var_types.insert(param.name.clone(), param_type.clone());
+            self.var_cay_types
+                .insert(param.name.clone(), param.param_type.clone());
+        }
+
+        self.generate_block(&ctor.body)?;
+
+        self.emit_all_scope_dtors();
+        self.emit_line("  ret void");
+
+        self.scope_manager.exit_scope();
+        self.indent -= 1;
+        self.emit_line("}");
+        self.emit_line("");
+
+        Ok(())
+    }
+
+    /// 生成 struct 默认构造函数（无参）
+    fn generate_struct_default_constructor(&mut self, struct_name: &str) -> CayResult<()> {
+        let fn_name = self.mangle_itanium_method(struct_name, "C1", &[], true, false);
+
+        if self.generated_methods.contains(&fn_name) {
+            return Ok(());
+        }
+        self.generated_methods.insert(fn_name.clone());
+
+        self.current_function = fn_name.clone();
+        let raw_struct_name = if struct_name.contains("::") {
+            struct_name
+                .split("::")
+                .last()
+                .expect("split 应始终产生至少一个元素")
+                .to_string()
+        } else {
+            struct_name.to_string()
+        };
+        self.current_class = if let Some(pos) = raw_struct_name.find('<') {
+            raw_struct_name[..pos].to_string()
+        } else {
+            raw_struct_name
+        };
+        self.current_return_type = "void".to_string();
+
+        self.temp_counter = 0;
+        self.var_types.clear();
+        self.scope_manager.reset();
+        self.loop_stack.clear();
+
+        // struct 的 LLVM 类型名必须将泛型参数与命名空间字符转换为合法标识符
+        let llvm_struct_type_name = self.struct_llvm_type_name(struct_name);
+        let llvm_struct_type = format!("%struct.{}", llvm_struct_type_name);
+        let llvm_struct_ptr = format!("{}*", llvm_struct_type);
+
+        self.emit_line(&format!(
+            "define void @{}({} %this) {{",
+            fn_name, llvm_struct_ptr
+        ));
+        self.indent += 1;
+        self.emit_line("entry:");
+        self.scope_manager.enter_scope();
+
+        let this_llvm_name = self.scope_manager.declare_var("this", &llvm_struct_ptr);
+        self.emit_line(&format!(
+            "  %{} = alloca {}",
+            this_llvm_name, llvm_struct_ptr
+        ));
+        self.emit_line(&format!(
+            "  store {} %this, {}* %{}",
+            llvm_struct_ptr, llvm_struct_ptr, this_llvm_name
+        ));
+        self.var_types.insert("this".to_string(), llvm_struct_ptr);
+
+        self.emit_all_scope_dtors();
+        self.emit_line("  ret void");
+
+        self.scope_manager.exit_scope();
+        self.indent -= 1;
+        self.emit_line("}");
+        self.emit_line("");
 
         Ok(())
     }
@@ -1507,6 +1909,29 @@ impl IRGenerator {
                     .get_class(&current)
                     .or_else(|| registry.get_class(base_current));
                 if let Some(class_info) = class_info_opt {
+                    // 如果当前类名是泛型特化（如 Pair<int, String>），构建类型参数映射，
+                    // 用于将方法签名中的泛型参数替换为具体类型。
+                    let type_arg_mapping: std::collections::HashMap<String, crate::types::Type> =
+                        if let Some(lt_pos) = current.find('<') {
+                            let gt_pos = current.rfind('>').unwrap_or(current.len());
+                            let args_str = &current[lt_pos + 1..gt_pos];
+                            let type_args: Vec<crate::types::Type> =
+                                crate::codegen::specialization::split_top_level_type_args(args_str)
+                                    .iter()
+                                    .map(|s| {
+                                        crate::codegen::specialization::parse_type_str(s.trim())
+                                    })
+                                    .collect();
+                            class_info
+                                .type_params
+                                .iter()
+                                .zip(type_args.iter())
+                                .map(|(p, t)| (p.name.clone(), t.clone()))
+                                .collect()
+                        } else {
+                            std::collections::HashMap::new()
+                        };
+
                     if let Some(methods) = class_info.methods.get(method_name) {
                         // 找到方法定义，需要匹配参数类型
                         for method in methods {
@@ -1515,11 +1940,17 @@ impl IRGenerator {
                                 continue;
                             }
 
-                            // 构建方法签名进行匹配
-                            let method_param_types: Vec<String> = method
+                            // vtable 布局在语义分析阶段基于基础类（如 std::vector<T>）构建，
+                            // 方法签名中的类型参数保持为 GenericParam("T") 形式。
+                            // 因此匹配时应使用原始参数类型，而非特化后的具体类型。
+                            let original_param_types: Vec<crate::types::Type> = method
                                 .params
                                 .iter()
-                                .map(|p| format!("{:?}", p.param_type))
+                                .map(|p| p.param_type.clone())
+                                .collect();
+                            let method_param_types: Vec<String> = original_param_types
+                                .iter()
+                                .map(|t| format!("{:?}", t))
                                 .collect();
 
                             let matches = if param_types_str.is_empty() {
@@ -1529,16 +1960,31 @@ impl IRGenerator {
                             };
 
                             if matches {
-                                let param_types: Vec<crate::types::Type> =
-                                    method.params.iter().map(|p| p.param_type.clone()).collect();
+                                // 匹配成功后，将方法参数类型替换为当前特化类的具体类型，
+                                // 用于生成正确的函数名和返回类型。
+                                let substituted_param_types: Vec<crate::types::Type> =
+                                    original_param_types
+                                        .iter()
+                                        .map(|t| {
+                                            crate::types::substitute_type_params(
+                                                t,
+                                                &type_arg_mapping,
+                                            )
+                                        })
+                                        .collect();
                                 let fn_name = self.mangle_itanium_method(
                                     &current,
                                     method_name,
-                                    &param_types,
+                                    &substituted_param_types,
                                     false,
                                     false,
                                 );
-                                return Some((fn_name, method.return_type.clone(), param_types));
+                                let substituted_return_type =
+                                    crate::types::substitute_type_params(
+                                        &method.return_type,
+                                        &type_arg_mapping,
+                                    );
+                                return Some((fn_name, substituted_return_type, substituted_param_types));
                             }
                         }
                     }
@@ -1641,8 +2087,10 @@ impl IRGenerator {
         let is_struct_method = self.is_struct_type(class_name);
         // this 元素类型：class 为 i8*（对象地址），struct 为 %struct.Name（结构体值类型）。
         // this 指针类型：class 为 i8*，struct 为 %struct.Name*。
+        // 对于泛型 struct，必须使用 struct_llvm_type_name 生成合法 LLVM 标识符。
         let (this_elem_type, this_ptr_type) = if is_struct_method {
-            let elem = format!("%struct.{}", self.current_class);
+            let llvm_struct_type_name = self.struct_llvm_type_name(class_name);
+            let elem = format!("%struct.{}", llvm_struct_type_name);
             let ptr = format!("{}*", elem);
             (elem, ptr)
         } else {
@@ -1745,9 +2193,27 @@ impl IRGenerator {
                         self.var_class_map
                             .insert(param.name.clone(), class_name.clone());
                     }
-                    crate::types::Type::Generic(class_name, _) => {
-                        self.var_class_map
-                            .insert(param.name.clone(), class_name.clone());
+                    crate::types::Type::Generic(class_name, type_args) => {
+                        // 与局部变量声明一致：类型实参全部具体时记录完整特化名
+                        // （如 "Pair<int, int>"），使泛型 struct/类的参数上的方法调用
+                        // 能解析到单态化版本；否则退回基础类名。
+                        let resolved: Vec<crate::types::Type> = type_args
+                            .iter()
+                            .map(|t| self.resolve_type_arg_concrete(t))
+                            .collect();
+                        let all_concrete = !resolved.is_empty()
+                            && resolved.iter().all(|t| self.type_arg_is_concrete(t));
+                        if all_concrete {
+                            let args_str: Vec<String> =
+                                resolved.iter().map(|t| t.display_name()).collect();
+                            self.var_class_map.insert(
+                                param.name.clone(),
+                                format!("{}<{ }>", class_name, args_str.join(", ")),
+                            );
+                        } else {
+                            self.var_class_map
+                                .insert(param.name.clone(), class_name.clone());
+                        }
                     }
                     _ => {}
                 }
@@ -1757,10 +2223,25 @@ impl IRGenerator {
                     self.scope_manager
                         .declare_var_with_flag(&param.name, &param_type, true);
                 self.emit_line(&format!("  %{} = alloca {}", llvm_name, param_type));
-                self.emit_line(&format!(
-                    "  store {} %{}.{}, {}* %{}",
-                    param_type, self.current_class, param.name, param_type, llvm_name
-                ));
+                // 值类型语义：struct 参数按值传递。调用方传入的是指向其存储的指针，
+                // 函数入口必须将值拷贝到本地独立存储，否则函数内对参数的修改会
+                // 影响调用方的对象（引用语义）。
+                if let Some(struct_name) = self.extract_struct_name_from_ptr_type(&param_type) {
+                    let llvm_struct_type = format!("%struct.{}", struct_name);
+                    let local_copy = self.new_temp();
+                    self.emit_line(&format!("  {} = alloca {}", local_copy, llvm_struct_type));
+                    let src_param = format!("%{}.{}", self.current_class, param.name);
+                    self.emit_struct_memcpy(&local_copy, &src_param, &struct_name);
+                    self.emit_line(&format!(
+                        "  store {} {}, {}* %{}",
+                        param_type, local_copy, param_type, llvm_name
+                    ));
+                } else {
+                    self.emit_line(&format!(
+                        "  store {} %{}.{}, {}* %{}",
+                        param_type, self.current_class, param.name, param_type, llvm_name
+                    ));
+                }
                 // DWARF 调试信息: 声明参数变量
                 self.emit_dbg_declare(
                     &param.name,
@@ -1780,9 +2261,27 @@ impl IRGenerator {
                         self.var_class_map
                             .insert(param.name.clone(), class_name.clone());
                     }
-                    crate::types::Type::Generic(class_name, _) => {
-                        self.var_class_map
-                            .insert(param.name.clone(), class_name.clone());
+                    crate::types::Type::Generic(class_name, type_args) => {
+                        // 与局部变量声明一致：类型实参全部具体时记录完整特化名
+                        // （如 "Pair<int, int>"），使泛型 struct/类的参数上的方法调用
+                        // 能解析到单态化版本；否则退回基础类名。
+                        let resolved: Vec<crate::types::Type> = type_args
+                            .iter()
+                            .map(|t| self.resolve_type_arg_concrete(t))
+                            .collect();
+                        let all_concrete = !resolved.is_empty()
+                            && resolved.iter().all(|t| self.type_arg_is_concrete(t));
+                        if all_concrete {
+                            let args_str: Vec<String> =
+                                resolved.iter().map(|t| t.display_name()).collect();
+                            self.var_class_map.insert(
+                                param.name.clone(),
+                                format!("{}<{ }>", class_name, args_str.join(", ")),
+                            );
+                        } else {
+                            self.var_class_map
+                                .insert(param.name.clone(), class_name.clone());
+                        }
                     }
                     _ => {}
                 }
@@ -1925,10 +2424,23 @@ impl IRGenerator {
                 self.scope_manager
                     .declare_var_with_flag(&param.name, &param_type, true);
             self.emit_line(&format!("  %{} = alloca {}", llvm_name, param_type));
-            self.emit_line(&format!(
-                "  store {} %{}.{}_param, {}* %{}",
-                param_type, self.current_class, param.name, param_type, llvm_name
-            ));
+            // 值类型语义：struct 参数按值传递，入口拷贝到本地独立存储
+            if let Some(struct_name) = self.extract_struct_name_from_ptr_type(&param_type) {
+                let llvm_struct_type = format!("%struct.{}", struct_name);
+                let local_copy = self.new_temp();
+                self.emit_line(&format!("  {} = alloca {}", local_copy, llvm_struct_type));
+                let src_param = format!("%{}.{}_param", self.current_class, param.name);
+                self.emit_struct_memcpy(&local_copy, &src_param, &struct_name);
+                self.emit_line(&format!(
+                    "  store {} {}, {}* %{}",
+                    param_type, local_copy, param_type, llvm_name
+                ));
+            } else {
+                self.emit_line(&format!(
+                    "  store {} %{}.{}_param, {}* %{}",
+                    param_type, self.current_class, param.name, param_type, llvm_name
+                ));
+            }
             self.var_types
                 .insert(param.name.clone(), param_type.clone());
             self.var_cay_types
@@ -2892,7 +3404,7 @@ impl IRGenerator {
                             if ctor_sigs == info_sigs {
                                 return self.mangle_itanium_method(
                                     class_name, "C1",
-                                    &ctor_info.params.iter().map(|p| p.param_type.clone()).collect::<Vec<_>>(),
+                                    &ctor.params.iter().map(|p| p.param_type.clone()).collect::<Vec<_>>(),
                                     true, false,
                                 );
                             }
@@ -2913,7 +3425,7 @@ impl IRGenerator {
                             if all_match {
                                 return self.mangle_itanium_method(
                                     class_name, "C1",
-                                    &ctor_info.params.iter().map(|p| p.param_type.clone()).collect::<Vec<_>>(),
+                                    &ctor.params.iter().map(|p| p.param_type.clone()).collect::<Vec<_>>(),
                                     true, false,
                                 );
                             }
@@ -3091,10 +3603,23 @@ impl IRGenerator {
                 self.scope_manager
                     .declare_var_with_flag(&param.name, &param_type, true);
             self.emit_line(&format!("  %{} = alloca {}", llvm_name, param_type));
-            self.emit_line(&format!(
-                "  store {} %{}.param, {}* %{}",
-                param_type, param.name, param_type, llvm_name
-            ));
+            // 值类型语义：struct 参数按值传递，入口拷贝到本地独立存储
+            if let Some(struct_name) = self.extract_struct_name_from_ptr_type(&param_type) {
+                let llvm_struct_type = format!("%struct.{}", struct_name);
+                let local_copy = self.new_temp();
+                self.emit_line(&format!("  {} = alloca {}", local_copy, llvm_struct_type));
+                let src_param = format!("%{}.param", param.name);
+                self.emit_struct_memcpy(&local_copy, &src_param, &struct_name);
+                self.emit_line(&format!(
+                    "  store {} {}, {}* %{}",
+                    param_type, local_copy, param_type, llvm_name
+                ));
+            } else {
+                self.emit_line(&format!(
+                    "  store {} %{}.param, {}* %{}",
+                    param_type, param.name, param_type, llvm_name
+                ));
+            }
             self.var_types.insert(param.name.clone(), param_type);
             // 同时保存Cavvy类型用于函数指针识别
             self.var_cay_types

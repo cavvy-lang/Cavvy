@@ -197,8 +197,8 @@ impl IRGenerator {
             base_name.clone()
         };
 
-        let args_str: Vec<String> = type_args.iter().map(|t| format!("{}", t)).collect();
-        let layout_key = format!("{}<{}>", qualified_base, args_str.join(", "));
+        let args_str: Vec<String> = type_args.iter().map(|t| t.display_name()).collect();
+        let layout_key = format!("{}<{ }>", qualified_base, args_str.join(", "));
 
         Ok((qualified_base, type_args, layout_key))
     }

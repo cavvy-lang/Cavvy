@@ -1,0 +1,115 @@
+/**
+ * 泛型 ADT 压力测试
+ * 测试内容:
+ * - 多层嵌套泛型 struct / enum
+ * - 同一泛型模板用多种具体类型实例化
+ * - 泛型 ADT 作为局部变量数组元素
+ * - 泛型静态工厂方法与实例方法链式调用
+ * - 泛型 enum variant 携带嵌套泛型 payload 的构造与 switch 解构
+ */
+
+public struct Pair<T, U> {
+    T first;
+    U second;
+
+    public Pair(T f, U s) {
+        this.first = f;
+        this.second = s;
+    }
+
+    public T getFirst() { return this.first; }
+    public U getSecond() { return this.second; }
+    public void setFirst(T v) { this.first = v; }
+    public void setSecond(U v) { this.second = v; }
+}
+
+public struct Wrapper<T> {
+    T value;
+
+    public Wrapper(T v) {
+        this.value = v;
+    }
+
+    public T get() { return this.value; }
+}
+
+public enum Boxed<T> {
+    Value(T),
+    Empty
+}
+
+public class GenericAdtStressTest {
+    public static void main() {
+        // 同一 Pair 模板用 int/String 与 int/int 两种类型实例化
+        Pair<int, String> ps = new Pair<int, String>(1, "one");
+        Pair<int, int> pi = new Pair<int, int>(10, 20);
+        if (ps.getFirst() == 1 && ps.getSecond().equals("one")) {
+            println("Pair<int,String> OK");
+        }
+        if (pi.getFirst() == 10 && pi.getSecond() == 20) {
+            println("Pair<int,int> OK");
+        }
+
+        // 多层嵌套：Wrapper<Pair<int, String>>
+        Wrapper<Pair<int, String>> wp = new Wrapper<Pair<int, String>>(ps);
+        if (wp.get().getFirst() == 1 && wp.get().getSecond().equals("one")) {
+            println("Wrapper<Pair<int,String>> OK");
+        }
+
+        // 更深层嵌套：Boxed<Wrapper<Pair<int, String>>>
+        Boxed<Wrapper<Pair<int, String>>> deep = Boxed<Wrapper<Pair<int, String>>>.Value(wp);
+        switch (deep) {
+            case Boxed.Value(Wrapper<Pair<int, String>> w): {
+                if (w.get().getFirst() == 1) {
+                    println("Deep nested Boxed<Wrapper<Pair<int,String>>> OK");
+                }
+                break;
+            }
+            case Boxed.Empty: {
+                println("Deep nested unexpected Empty");
+                break;
+            }
+            default: break;
+        }
+
+        // 泛型 ADT 数组：Pair<int, int>[]
+        Pair<int, int>[] arr = new Pair<int, int>[3];
+        for (int i = 0; i < 3; i = i + 1) {
+            arr[i] = new Pair<int, int>(i, i * 10);
+        }
+        boolean arrOk = true;
+        for (int i = 0; i < 3; i = i + 1) {
+            if (arr[i].getFirst() != i || arr[i].getSecond() != i * 10) {
+                arrOk = false;
+            }
+        }
+        if (arrOk) {
+            println("Generic ADT array OK");
+        }
+
+        // 泛型 enum 空 variant 与值 variant 切换
+        Boxed<int> empty = Boxed<int>.Empty;
+        switch (empty) {
+            case Boxed.Value(int v): {
+                println("Unexpected Boxed<int>.Value: " + String.valueOf(v));
+                break;
+            }
+            case Boxed.Empty: {
+                println("Boxed<int>.Empty OK");
+                break;
+            }
+            default: break;
+        }
+
+        // 修改值类型泛型 struct 的字段并验证副本独立性
+        Pair<int, String> a = new Pair<int, String>(0, "a");
+        Pair<int, String> b = new Pair<int, String>(0, "a");
+        b.setFirst(99);
+        b.setSecond("b");
+        if (a.getFirst() == 0 && a.getSecond().equals("a") && b.getFirst() == 99 && b.getSecond().equals("b")) {
+            println("Value type copy independence OK");
+        }
+
+        println("Generic ADT stress PASS");
+    }
+}

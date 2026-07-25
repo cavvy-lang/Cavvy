@@ -207,9 +207,8 @@ impl IRGenerator {
     /// 为特化泛型类的方法调用生成与定义完全一致的函数名。
     ///
     /// 特化方法的定义（见 `generate_method_name`）命名为「特化类前缀 +
-    /// 注册表方法签名」，签名中的泛型参数按 `type_to_signature` 保留为 `gT`
-    /// （不经 `generic_type_args` 解析）。调用点必须产生完全相同的名字，
-    /// 才能链接到已生成的单态化版本，而非类型擦除的基础模板。
+    /// 已替换类型实参的方法签名」。调用点必须产生完全相同的名字，才能链接到
+    /// 已生成的单态化版本，而非类型擦除的基础模板。
     ///
     /// 仅当 `class_name` 是泛型类的特化名（其基础类含类型参数）时返回 `Some`。
     fn specialized_generic_method_name(
@@ -220,24 +219,70 @@ impl IRGenerator {
     ) -> Option<String> {
         let registry = self.type_registry.as_ref()?;
         let base = class_name.split('<').next().unwrap_or(class_name);
-        let class_info = registry.get_class(base)?;
-        if class_info.type_params.is_empty() {
-            return None;
+
+        if let Some(class_info) = registry.get_class(base) {
+            if class_info.type_params.is_empty() {
+                return None;
+            }
+            let methods = class_info.methods.get(method_name)?;
+            // 按参数数量选择重载（可变参数方法或数量匹配者）
+            let method_info = methods
+                .iter()
+                .find(|m| m.params.len() == arg_count || m.params.iter().any(|p| p.is_varargs))
+                .or_else(|| methods.first())?;
+            // 将注册表方法签名中的泛型参数按类名中的类型实参替换，避免生成
+            // `PPc` 等降级签名，确保调用名与单态化定义完全一致。
+            let mapping = self.build_specialization_mapping(class_name, class_info);
+            let param_types: Vec<crate::types::Type> = method_info
+                .params
+                .iter()
+                .map(|p| crate::types::substitute_type_params(&p.param_type, &mapping))
+                .collect();
+            return Some(self.mangle_itanium_method(class_name, method_name, &param_types, false, false));
         }
-        let methods = class_info.methods.get(method_name)?;
-        // 按参数数量选择重载（可变参数方法或数量匹配者）
-        let method_info = methods
-            .iter()
-            .find(|m| m.params.len() == arg_count || m.params.iter().any(|p| p.is_varargs))
-            .or_else(|| methods.first())?;
-        // 必须与 generate_method_name 的特化分支保持一致：使用注册表中的原始
-        // 参数类型（未经 generic_type_args 解析），否则会与已生成的单态化定义不匹配。
-        let param_types: Vec<crate::types::Type> = method_info
-            .params
-            .iter()
-            .map(|p| p.param_type.clone())
-            .collect();
-        Some(self.mangle_itanium_method(class_name, method_name, &param_types, false, false))
+
+        // 泛型 struct 的特化方法调用：与泛型类同理，但 struct 无继承、无 vtable，
+        // 直接在 StructInfo 上按类型实参替换方法签名。
+        if let Some(struct_info) = registry.get_struct(base) {
+            if struct_info.type_params.is_empty() {
+                return None;
+            }
+            let methods = struct_info.methods.get(method_name)?;
+            let method_info = methods
+                .iter()
+                .find(|m| m.params.len() == arg_count || m.params.iter().any(|p| p.is_varargs))
+                .or_else(|| methods.first())?;
+            let (_, type_arg_strs) = Self::parse_generic_args_from_name(class_name);
+            let mut parsed_type_args: Vec<crate::types::Type> = type_arg_strs
+                .iter()
+                .map(|s| crate::codegen::specialization::parse_type_str(s))
+                .collect();
+            // 用默认值/占位符填充缺失的类型参数
+            for (idx, param) in struct_info.type_params.iter().enumerate() {
+                if parsed_type_args.get(idx).is_none() {
+                    parsed_type_args.push(
+                        param
+                            .default_type
+                            .clone()
+                            .unwrap_or(crate::types::Type::GenericParam(param.name.clone())),
+                    );
+                }
+            }
+            let mapping: std::collections::HashMap<String, crate::types::Type> = struct_info
+                .type_params
+                .iter()
+                .zip(parsed_type_args.iter())
+                .map(|(p, t)| (p.name.clone(), t.clone()))
+                .collect();
+            let param_types: Vec<crate::types::Type> = method_info
+                .params
+                .iter()
+                .map(|p| crate::types::substitute_type_params(&p.param_type, &mapping))
+                .collect();
+            return Some(self.mangle_itanium_method(class_name, method_name, &param_types, false, false));
+        }
+
+        None
     }
 
     /// 根据方法定义的参数类型构建函数名（Itanium ABI 格式，与 C++ 互操作）

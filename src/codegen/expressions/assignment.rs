@@ -458,6 +458,21 @@ impl IRGenerator {
                 format!("{}*", field_llvm_type)
             };
 
+            // 值类型语义：struct 字段赋值必须让字段持有独立存储。
+            // 直接存储源指针会让字段与源变量（或已返回函数的栈帧）共享存储，
+            // 因此将值堆拷贝后存储新指针。
+            if let Some(struct_name) = self.extract_struct_name_from_ptr_type(&field_llvm_type) {
+                if value_type == field_llvm_type {
+                    if let Some(fresh) = self.emit_struct_heap_copy(val, &struct_name) {
+                        self.emit_line(&format!(
+                            "  store {} {}, {} {}, align {}",
+                            field_llvm_type, fresh, ptr_type, field_ptr, align
+                        ));
+                        return Ok(value.to_string());
+                    }
+                }
+            }
+
             // 如果值类型与字段类型不匹配，需要转换
             let final_val = if value_type != field_llvm_type {
                 let temp = self.new_temp();
@@ -606,12 +621,13 @@ impl IRGenerator {
                 .generate_assignment_with_conversion(&var_type, &llvm_name, value_type, val);
         }
 
-        // 检查是否是 struct 类型赋值（需要深拷贝而非指针复制）
+        // 检查是否是 struct 类型赋值（值类型语义：深拷贝而非指针重绑定）
         if let Some(struct_name) = self.extract_struct_name_from_ptr_type(&var_type) {
-            // struct 深拷贝：通过 llvm.memcpy 复制内容
+            // struct 深拷贝：把源值通过 llvm.memcpy 复制到目标变量已有的存储中，
+            // 使赋值后两个变量互不共享存储。
             let dest_ptr_temp = self.new_temp();
             self.emit_line(&format!(
-                "  {} = load {}* {}** %{}",
+                "  {} = load {}, {}* %{}, align 8",
                 dest_ptr_temp, var_type, var_type, llvm_name
             ));
             self.emit_struct_memcpy(&dest_ptr_temp, val, &struct_name);
@@ -637,6 +653,22 @@ impl IRGenerator {
     ) -> CayResult<String> {
         // 获取数组元素指针
         let (elem_type, elem_ptr, _) = self.get_array_element_ptr(arr_access)?;
+
+        // 值类型语义：struct 元素赋值必须让数组持有独立存储。
+        // 直接存储源指针会让数组元素与源变量（或已返回函数的栈帧）共享存储，
+        // 因此将值堆拷贝后存储新指针。
+        if let Some(struct_name) = self.extract_struct_name_from_ptr_type(&elem_type) {
+            if value_type == elem_type {
+                if let Some(fresh) = self.emit_struct_heap_copy(val, &struct_name) {
+                    let align = self.get_type_align(&elem_type);
+                    self.emit_line(&format!(
+                        "  store {} {}, {}* {}, align {}",
+                        elem_type, fresh, elem_type, elem_ptr, align
+                    ));
+                    return Ok(value.to_string());
+                }
+            }
+        }
 
         // 如果值类型与元素类型不匹配，需要转换
         if value_type != elem_type {
@@ -1113,6 +1145,9 @@ impl IRGenerator {
         }
         let inner = &llvm_type["%struct.".len()..llvm_type.len() - 1];
         if self.is_struct_type(inner) {
+            Some(inner.to_string())
+        } else if self.struct_layouts.contains_key(inner) {
+            // LLVM 改编后的特化名（如 "Pair_int__int_"）：布局表中有别名条目
             Some(inner.to_string())
         } else {
             None

@@ -236,8 +236,8 @@ impl IRGenerator {
         // 计算用于代码生成的规范类名：若已解析出具体类型参数，则使用特化名
         // （如 Box<int>），使构造函数名、vtable 与已生成的特化版本保持一致。
         let canonical_name = if let Some(ref args) = concrete_type_args {
-            let args_str: Vec<String> = args.iter().map(|t| format!("{}", t)).collect();
-            format!("{}<{}>", base_class_name, args_str.join(", "))
+            let args_str: Vec<String> = args.iter().map(|t| t.display_name()).collect();
+            format!("{}<{ }>", base_class_name, args_str.join(", "))
         } else {
             class_name.clone()
         };
@@ -341,8 +341,10 @@ impl IRGenerator {
             new_expr.args.len(),
             &fallback_types,
         );
+        // 使用已单态化的规范类名（如 Container<int>）解析构造函数参数类型，
+        // 使泛型形参被替换为具体类型实参，避免生成 Pc 等降级构造函数名。
         let param_types = self.get_constructor_param_types(
-            &registry_name,
+            &canonical_name,
             new_expr.args.len(),
             &fallback_types,
         );
@@ -454,9 +456,11 @@ impl IRGenerator {
             struct_name.clone()
         };
 
-        // 获取 struct 布局信息
-        let struct_layout = self.get_struct_layout(&base_name);
-        let llvm_struct_type = format!("%struct.{}", base_name);
+        // 获取 struct 布局信息（泛型特化使用完整名查找，失败则回退基础名）
+        let struct_layout = self.get_struct_layout(struct_name).or_else(|| self.get_struct_layout(&base_name));
+        // LLVM 类型名必须将泛型参数与命名空间字符转换为合法标识符
+        let llvm_struct_type_name = self.struct_llvm_type_name(struct_name);
+        let llvm_struct_type = format!("%struct.{}", llvm_struct_type_name);
 
         // 栈分配 struct
         let alloca_temp = self.new_temp();
@@ -469,7 +473,7 @@ impl IRGenerator {
             .map(|arg| self.infer_argument_type(arg))
             .collect();
         let param_types =
-            self.get_constructor_param_types(&base_name, new_expr.args.len(), &fallback_types);
+            self.get_constructor_param_types(struct_name, new_expr.args.len(), &fallback_types);
 
         // 生成参数值
         let mut arg_values = Vec::new();

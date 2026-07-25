@@ -1,0 +1,85 @@
+/**
+ * 泛型 enum 集成测试
+ * 测试内容:
+ * - 泛型 enum 声明（单类型参数）
+ * - 泛型 enum 多类型参数
+ * - 显式类型实参的 variant 构造
+ * - 泛型 enum 的 switch 匹配与 payload 解构
+ */
+public enum Option<T> {
+    Some(T),
+    None
+}
+
+public enum Result<T, E> {
+    Ok(T),
+    Err(E)
+}
+
+public class GenericEnumTest {
+    public static void main() {
+        println("=== Generic enum test ===");
+
+        // 单类型参数泛型 enum
+        Option<int> someInt = Option<int>.Some(42);
+        Option<int> noneInt = Option<int>.None;
+
+        switch (someInt) {
+            case Option.Some(int val): {
+                println("Some int: " + String.valueOf(val));
+                if (val == 42) { println("Option<int>.Some PASS"); }
+                break;
+            }
+            case Option.None: {
+                println("None");
+                break;
+            }
+            default: break;
+        }
+
+        switch (noneInt) {
+            case Option.Some(int val): {
+                println("Unexpected Some");
+                break;
+            }
+            case Option.None: {
+                println("None matched");
+                println("Option<int>.None PASS");
+                break;
+            }
+            default: break;
+        }
+
+        // 多类型参数泛型 enum
+        Result<int, String> okResult = Result<int, String>.Ok(7);
+        Result<int, String> errResult = Result<int, String>.Err("fail");
+
+        switch (okResult) {
+            case Result.Ok(int v): {
+                println("Ok int: " + String.valueOf(v));
+                if (v == 7) { println("Result<int,String>.Ok PASS"); }
+                break;
+            }
+            case Result.Err(String e): {
+                println("Err: " + e);
+                break;
+            }
+            default: break;
+        }
+
+        switch (errResult) {
+            case Result.Ok(int v): {
+                println("Ok int: " + v);
+                break;
+            }
+            case Result.Err(String e): {
+                println("Err string: " + e);
+                println("Result<int,String>.Err PASS");
+                break;
+            }
+            default: break;
+        }
+
+        println("=== Generic enum test end ===");
+    }
+}

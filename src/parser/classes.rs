@@ -866,11 +866,9 @@ pub fn parse_struct(parser: &mut Parser) -> CayResult<StructDecl> {
     let name = parser.consume_identifier(
         "期望 struct 名\n提示: 在 'struct' 后应跟 struct 名，例如: struct Point { ... }",
     )?;
-    // 不支持泛型类型参数的说明：struct 暂不支持泛型，需要时可以添加
-    // 跳过可能的 <T>，报错提示
-    if parser.check(&Token::Lt) {
-        return Err(parser.error("struct 暂不支持泛型类型参数\n提示: 当前版本 struct 不支持泛型语法，请移除 '<T>' 类型参数"));
-    }
+
+    // 解析泛型类型参数 <T, U, ...>
+    let type_params = parse_generic_type_params(parser)?;
 
     parser.consume(
         &Token::LBrace,
@@ -879,10 +877,33 @@ pub fn parse_struct(parser: &mut Parser) -> CayResult<StructDecl> {
 
     let mut fields = Vec::new();
     let mut methods = Vec::new();
+    let mut constructors = Vec::new();
     while !parser.check(&Token::RBrace) && !parser.is_at_end() {
-        // struct 成员可以是字段或方法
-        let member_loc = parser.current_loc();
+        // struct 成员可以是字段、方法或构造函数
+        let checkpoint = parser.pos;
         let member_modifiers = parse_modifiers(parser)?;
+
+        // 检查是否是构造函数：struct 名后跟 '('
+        let is_constructor = if let Token::Identifier(ref id) = parser.current_token().clone() {
+            if id.as_str() == name.as_str() {
+                let saved_pos = parser.pos;
+                parser.advance();
+                let looks_like_ctor = parser.check(&Token::LParen);
+                parser.pos = saved_pos;
+                looks_like_ctor
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        if is_constructor {
+            // 回退到 modifiers 之前，复用类构造函数解析逻辑
+            parser.pos = checkpoint;
+            constructors.push(parse_constructor(parser)?);
+            continue;
+        }
 
         // 检查是否是方法（返回类型 + 方法名 + 括号）
         let is_method = if parser.check(&Token::Void) || super::types::is_type_token(parser) {
@@ -937,8 +958,10 @@ pub fn parse_struct(parser: &mut Parser) -> CayResult<StructDecl> {
     Ok(StructDecl {
         name,
         modifiers,
+        type_params,
         fields,
         methods,
+        constructors,
         namespace_path: Vec::new(),
         loc,
     })

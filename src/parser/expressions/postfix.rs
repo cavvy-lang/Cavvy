@@ -37,7 +37,7 @@ pub fn parse_postfix(parser: &mut Parser) -> CayResult<Expr> {
                             ident.name,
                             type_args
                                 .iter()
-                                .map(|t| t.to_string())
+                                .map(|t| t.display_name())
                                 .collect::<Vec<_>>()
                                 .join(", ")
                         );
@@ -62,7 +62,7 @@ pub fn parse_postfix(parser: &mut Parser) -> CayResult<Expr> {
                             ident.name,
                             type_args
                                 .iter()
-                                .map(|t| t.to_string())
+                                .map(|t| t.display_name())
                                 .collect::<Vec<_>>()
                                 .join(", ")
                         );

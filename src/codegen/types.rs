@@ -40,7 +40,8 @@ impl IRGenerator {
                         "{ i32, i64 }".to_string()
                     } else if registry.get_struct(name).is_some() {
                         // struct 类型使用 %struct.Name* 指针
-                        format!("%struct.{}*", name)
+                        let llvm_name = self.struct_llvm_type_name(name);
+                        format!("%struct.{}*", llvm_name)
                     } else {
                         "i8*".to_string()
                     }
@@ -127,8 +128,18 @@ impl IRGenerator {
                         return "{ i32, i64 }".to_string();
                     }
                     if registry.get_struct(base_name).is_some() {
-                        // struct 特化仍使用基础名的命名结构体指针
-                        return format!("%struct.{}*", base_name);
+                        // struct 特化使用完整特化名的命名结构体指针
+                        let full_name = if class_name.contains('<') {
+                            class_name.to_string()
+                        } else if type_args.is_empty() {
+                            class_name.to_string()
+                        } else {
+                            let args_str: Vec<String> =
+                                type_args.iter().map(|t| t.display_name()).collect();
+                            format!("{}<{}>", class_name, args_str.join(", "))
+                        };
+                        let llvm_name = self.struct_llvm_type_name(&full_name);
+                        return format!("%struct.{}*", llvm_name);
                     }
                 }
                 // 未使用的 type_args 变量占位（类实例为不透明指针，无需展开）

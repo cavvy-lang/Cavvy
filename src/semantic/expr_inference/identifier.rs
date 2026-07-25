@@ -553,7 +553,56 @@ impl SemanticAnalyzer {
 
         if let Some(enum_info) = self.type_registry.get_enum_by_name(&class_name).cloned() {
             if let Some(variant) = enum_info.variants.iter().find(|v| v.name == member.member) {
-                let payload_type_opt = variant.payload_type.clone();
+                // 解析泛型 enum 的类型实参：显式提供或通过 payload 实参推断。
+                let resolved_type_args: Option<Vec<Type>> = if enum_info.type_params.is_empty() {
+                    None
+                } else if let Some(ref explicit_args) = type_args {
+                    Some(explicit_args.clone())
+                } else if call.args.len() == 1 {
+                    if let Some(ref payload_type) = variant.payload_type {
+                        let fake_param = crate::types::ParameterInfo {
+                            name: "value".to_string(),
+                            param_type: payload_type.clone(),
+                            is_varargs: false,
+                        };
+                        self.infer_type_args_from_arguments(
+                            &[fake_param],
+                            &call.args,
+                            &enum_info.type_params,
+                        )
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+                if !enum_info.type_params.is_empty() && resolved_type_args.is_none() {
+                    let param_names: Vec<String> = enum_info
+                        .type_params
+                        .iter()
+                        .map(|p| p.name.clone())
+                        .collect();
+                    return Err(semantic_error_at_loc(
+                        &call.loc,
+                        format!(
+                            "Generic enum '{}<{}>' requires explicit type arguments, e.g. {}<{}>.{}(...)",
+                            enum_info.name,
+                            param_names.join(", "),
+                            enum_info.name,
+                            param_names.join(", "),
+                            member.member
+                        ),
+                    ));
+                }
+
+                let payload_type_opt = variant.payload_type.clone().map(|pt| {
+                    if let Some(ref args) = resolved_type_args {
+                        self.substitute_type_params(&pt, &enum_info.type_params, args)
+                    } else {
+                        pt
+                    }
+                });
                 match &payload_type_opt {
                     Some(expected_payload_type) => {
                         if call.args.len() != 1 {
@@ -592,7 +641,14 @@ impl SemanticAnalyzer {
                         }
                     }
                 }
-                return Ok(Some(Type::Object(enum_info.name.clone())));
+                let return_type = if enum_info.type_params.is_empty() {
+                    Type::Object(enum_info.name.clone())
+                } else if let Some(ref args) = resolved_type_args {
+                    Type::Generic(enum_info.name.clone(), args.clone())
+                } else {
+                    Type::Object(enum_info.name.clone())
+                };
+                return Ok(Some(return_type));
             }
 
             return Err(semantic_error_at_loc(

@@ -346,7 +346,9 @@ impl IRGenerator {
 
                 if is_struct {
                     // struct 字段访问：使用 getelementptr %struct.Name
-                    let llvm_struct_type = format!("%struct.{}", class_name);
+                    // 泛型特化名需要转换为合法 LLVM 标识符。
+                    let llvm_struct_type_name = self.struct_llvm_type_name(&class_name);
+                    let llvm_struct_type = format!("%struct.{}", llvm_struct_type_name);
                     let obj_ptr = if let Expr::Identifier(name) = &*member.object {
                         if name == "this" {
                             // this 指针：从作用域管理器获取

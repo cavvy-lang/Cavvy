@@ -33,7 +33,11 @@ impl SpecializationInstance {
         if self.type_args.is_empty() {
             base
         } else {
-            let args: Vec<String> = self.type_args.iter().map(|t| format!("{}", t)).collect();
+            let args: Vec<String> = self
+                .type_args
+                .iter()
+                .map(|t| t.display_name())
+                .collect();
             format!("{}<{}>", base, args.join(", "))
         }
     }
@@ -98,7 +102,7 @@ fn llvm_type_suffix(ty: &Type) -> String {
         Type::Float32 => "f32".to_string(),
         Type::Float64 => "f64".to_string(),
         Type::Bool => "bool".to_string(),
-        Type::String => "string".to_string(),
+        Type::String => "String".to_string(),
         Type::Char => "char".to_string(),
         Type::Object(name) => name.replace("::", "__"),
         Type::Array(inner) => format!("arr_{}", llvm_type_suffix(inner)),
@@ -122,7 +126,11 @@ pub struct SpecializationCollector {
     current_namespace: Vec<String>,
     /// 泛型类声明及其命名空间（用于收集依赖特化）
     generic_classes: Vec<(ClassDecl, Vec<String>)>,
-    /// 当前正在扫描的泛型类的类型参数名（在作用域内）。
+    /// 泛型 struct 声明及其命名空间（用于收集依赖特化）
+    generic_structs: Vec<(StructDecl, Vec<String>)>,
+    /// 泛型 enum 声明及其命名空间（用于收集依赖特化）
+    generic_enums: Vec<(EnumDecl, Vec<String>)>,
+    /// 当前正在扫描的泛型类/struct/enum 的类型参数名（在作用域内）。
     /// 用于跳过尚未替换的泛型实例（如泛型类体内的 `new Other<T>()`），
     /// 这些实例会在 `collect_dependency_specializations` 中被替换为具体类型后再收集。
     type_param_scope: std::collections::HashSet<String>,
@@ -140,6 +148,14 @@ impl SpecializationCollector {
             self.collect_from_class_decl(class);
         }
 
+        // 收集顶层 struct / enum 中的泛型实例化
+        for struct_decl in &program.structs {
+            self.collect_from_struct_decl(struct_decl);
+        }
+        for enum_decl in &program.enums {
+            self.collect_from_enum_decl(enum_decl);
+        }
+
         // 收集顶层函数中的泛型实例化
         for func in &program.top_level_functions {
             self.collect_from_block(&func.body);
@@ -150,7 +166,7 @@ impl SpecializationCollector {
             self.collect_from_namespace(ns);
         }
 
-        // 收集依赖特化：泛型类方法体中的 `new Other<T>()` 需要为每个特化实例
+        // 收集依赖特化：泛型类/struct/enum 方法体中的 `new Other<T>()` 需要为每个特化实例
         // 生成 `Other<Concrete>`。
         self.collect_dependency_specializations();
     }
@@ -161,6 +177,12 @@ impl SpecializationCollector {
 
         for class in &ns.classes {
             self.collect_from_class_decl(class);
+        }
+        for struct_decl in &ns.structs {
+            self.collect_from_struct_decl(struct_decl);
+        }
+        for enum_decl in &ns.enums {
+            self.collect_from_enum_decl(enum_decl);
         }
         for func in &ns.top_level_functions {
             self.collect_from_block(&func.body);
@@ -214,6 +236,77 @@ impl SpecializationCollector {
                     self.collect_from_block(block);
                 }
                 _ => {}
+            }
+        }
+
+        self.type_param_scope = old_scope;
+        self.current_namespace = old_namespace;
+    }
+
+    fn collect_from_struct_decl(&mut self, struct_decl: &StructDecl) {
+        let old_namespace = self.current_namespace.clone();
+        if !struct_decl.namespace_path.is_empty() {
+            self.current_namespace = struct_decl.namespace_path.clone();
+        }
+
+        // 记录泛型 struct，用于后续依赖特化收集。
+        if !struct_decl.type_params.is_empty() {
+            self.generic_structs
+                .push((struct_decl.clone(), self.current_namespace.clone()));
+        }
+
+        // 将本 struct 的类型参数加入作用域。
+        let old_scope = self.type_param_scope.clone();
+        for tp in &struct_decl.type_params {
+            self.type_param_scope.insert(tp.name.clone());
+        }
+
+        // 收集 struct 字段类型、构造函数和方法体中的泛型实例化
+        for field in &struct_decl.fields {
+            self.collect_type(&field.field_type);
+        }
+        for ctor in &struct_decl.constructors {
+            for param in &ctor.params {
+                self.collect_type(&param.param_type);
+            }
+            self.collect_from_block(&ctor.body);
+        }
+        for method in &struct_decl.methods {
+            for param in &method.params {
+                self.collect_type(&param.param_type);
+            }
+            self.collect_type(&method.return_type);
+            if let Some(body) = &method.body {
+                self.collect_from_block(body);
+            }
+        }
+
+        self.type_param_scope = old_scope;
+        self.current_namespace = old_namespace;
+    }
+
+    fn collect_from_enum_decl(&mut self, enum_decl: &EnumDecl) {
+        let old_namespace = self.current_namespace.clone();
+        if !enum_decl.namespace_path.is_empty() {
+            self.current_namespace = enum_decl.namespace_path.clone();
+        }
+
+        // 记录泛型 enum，用于后续依赖特化收集。
+        if !enum_decl.type_params.is_empty() {
+            self.generic_enums
+                .push((enum_decl.clone(), self.current_namespace.clone()));
+        }
+
+        // 将本 enum 的类型参数加入作用域。
+        let old_scope = self.type_param_scope.clone();
+        for tp in &enum_decl.type_params {
+            self.type_param_scope.insert(tp.name.clone());
+        }
+
+        // 收集 enum variant payload 类型中的泛型实例化
+        for variant in &enum_decl.variants {
+            if let Some(payload_type) = &variant.payload_type {
+                self.collect_type(payload_type);
             }
         }
 
@@ -416,7 +509,8 @@ impl SpecializationCollector {
             }
         }
 
-        // 递归检查嵌套类型
+        // 递归检查嵌套类型（包括泛型类型实参中的嵌套泛型实例，
+        // 如 Boxed<Pair<int, String>> 需要同时收集 Pair<int, String>）。
         match ty {
             Type::Array(inner) => self.collect_type(inner),
             Type::Pointer(inner) => self.collect_type(inner),
@@ -424,6 +518,11 @@ impl SpecializationCollector {
                 self.collect_type(&func_type.return_type);
                 for param in &func_type.params {
                     self.collect_type(param);
+                }
+            }
+            Type::Generic(_, type_args) => {
+                for arg in type_args {
+                    self.collect_type(arg);
                 }
             }
             _ => {}
@@ -441,7 +540,7 @@ impl SpecializationCollector {
             // 按顶层逗号拆分多个类型参数（如 "string, int"）
             let type_args: Vec<Type> = split_top_level_type_args(type_args_str)
                 .iter()
-                .map(|s| self.parse_type_str(s.trim()))
+                .map(|s| parse_type_str(s.trim()))
                 .collect();
 
             if type_args.is_empty() {
@@ -467,6 +566,11 @@ impl SpecializationCollector {
                 self.current_namespace.clone()
             };
 
+            // 递归收集嵌套泛型实参（如 Boxed<Pair<int, String>> 中的 Pair<int, String>）。
+            for arg in &type_args {
+                self.collect_type(arg);
+            }
+
             let instance = SpecializationInstance {
                 base_class_name: base,
                 namespace_path: ns_path,
@@ -480,44 +584,6 @@ impl SpecializationCollector {
         }
     }
 
-    /// 简单类型字符串解析（支持嵌套泛型，如 `Rc<T>`、`Optional<Rc<T>>`）。
-    pub(crate) fn parse_type_str(&self, s: &str) -> Type {
-        let t = s.trim();
-
-        // 数组类型
-        if t.ends_with("[]") {
-            let inner = self.parse_type_str(&t[..t.len() - 2]);
-            return Type::Array(Box::new(inner));
-        }
-
-        // 泛型类型：Base<Arg1, Arg2, ...>
-        if let Some(lt_pos) = t.find('<') {
-            let gt_pos = t.rfind('>').unwrap_or(t.len());
-            if lt_pos < gt_pos {
-                let base = t[..lt_pos].trim().to_string();
-                let args_str = &t[lt_pos + 1..gt_pos];
-                let args: Vec<Type> = split_top_level_type_args(args_str)
-                    .iter()
-                    .map(|a| self.parse_type_str(a.trim()))
-                    .collect();
-                if !args.is_empty() {
-                    return Type::Generic(base, args);
-                }
-            }
-        }
-
-        match t {
-            "int" => Type::Int32,
-            "long" => Type::Int64,
-            "float" => Type::Float32,
-            "double" => Type::Float64,
-            "bool" | "boolean" => Type::Bool,
-            "string" | "String" => Type::String,
-            "char" => Type::Char,
-            _ => Type::Object(t.to_string()),
-        }
-    }
-
     /// 收集依赖特化。
     ///
     /// 当泛型类 `Foo<T>` 的方法体中出现 `new Bar<T>()` 时，需要为 `Foo` 的每个特化
@@ -525,6 +591,7 @@ impl SpecializationCollector {
     /// 执行，将方法体中的类型参数替换为实例的具体类型并收集。
     fn collect_dependency_specializations(&mut self) {
         let generic_classes = self.generic_classes.clone();
+        let generic_structs = self.generic_structs.clone();
 
         // 迭代至定点：某个特化实例（如 ArrayList<int>）可能在被收集后，
         // 其自身方法体又依赖其他泛型实例（如 ArrayListIterator<int>）。
@@ -580,11 +647,62 @@ impl SpecializationCollector {
                 }
             }
 
+            // 泛型 struct 的依赖特化：方法体中引用的泛型类型需按实例替换。
+            for (struct_decl, ns) in &generic_structs {
+                let struct_key = if ns.is_empty() {
+                    struct_decl.name.clone()
+                } else {
+                    format!("{}::{}", ns.join("::"), struct_decl.name)
+                };
+
+                let instances = all_instances
+                    .get(&struct_key)
+                    .or_else(|| all_instances.get(&struct_decl.name))
+                    .cloned()
+                    .unwrap_or_default();
+
+                if instances.is_empty() {
+                    continue;
+                }
+
+                let type_param_infos: Vec<crate::types::TypeParamInfo> = struct_decl
+                    .type_params
+                    .iter()
+                    .map(|p| crate::types::TypeParamInfo {
+                        name: p.name.clone(),
+                        bound: p.bound.clone(),
+                        default_type: p.default_type.clone(),
+                    })
+                    .collect();
+
+                for instance in instances {
+                    let mapping = instance.type_param_mapping(&type_param_infos);
+                    for method in &struct_decl.methods {
+                        for param in &method.params {
+                            let substituted = crate::types::substitute_type_params(&param.param_type, &mapping);
+                            self.collect_type_with_ns(&substituted, ns);
+                        }
+                        let substituted = crate::types::substitute_type_params(&method.return_type, &mapping);
+                        self.collect_type_with_ns(&substituted, ns);
+                        if let Some(body) = &method.body {
+                            self.collect_dependency_from_block(body, &mapping, ns);
+                        }
+                    }
+                }
+            }
+
             // 本轮未产生新实例则已到达定点，停止迭代。
             if self.total_instance_count() == before {
                 break;
             }
         }
+    }
+
+    fn collect_type_with_ns(&mut self, ty: &Type, ns: &[String]) {
+        let old_ns = self.current_namespace.clone();
+        self.current_namespace = ns.to_vec();
+        self.collect_type(ty);
+        self.current_namespace = old_ns;
     }
 
     /// 统计当前已收集的特化实例总数（用于依赖收集的定点判断）。
@@ -790,6 +908,36 @@ pub(crate) fn split_top_level_type_args(s: &str) -> Vec<String> {
     result
 }
 
+/// 简单解析类型字符串（用于从类名字符串中提取泛型实参）。
+///
+/// 支持基本类型别名、数组类型以及泛型类型。无法识别的标识符视为 Object。
+pub(crate) fn parse_type_str(s: &str) -> Type {
+    let s = s.trim();
+    if s.ends_with("[]") {
+        return Type::Array(Box::new(parse_type_str(&s[..s.len() - 2])));
+    }
+    if let Some(lt_pos) = s.find('<') {
+        let gt_pos = s.rfind('>').unwrap_or(s.len());
+        let base = s[..lt_pos].trim().to_string();
+        let args_str = &s[lt_pos + 1..gt_pos];
+        let args: Vec<Type> = split_top_level_type_args(args_str)
+            .iter()
+            .map(|part| parse_type_str(part.trim()))
+            .collect();
+        return Type::Generic(base, args);
+    }
+    match s {
+        "int" => Type::Int32,
+        "long" => Type::Int64,
+        "float" => Type::Float32,
+        "double" => Type::Float64,
+        "bool" | "boolean" => Type::Bool,
+        "string" | "String" => Type::String,
+        "char" => Type::Char,
+        _ => Type::Object(s.to_string()),
+    }
+}
+
 /// 将类名字符串中的泛型类型参数按 mapping 替换为具体类型。
 ///
 /// 例如 `ArrayListIterator<T>` 在 mapping `{T -> int}` 下替换为
@@ -845,7 +993,7 @@ fn substitute_type_arg_str(
 
     // 简单类型参数：直接查 mapping
     if let Some(ty) = mapping.get(arg) {
-        format!("{}", ty)
+        ty.display_name()
     } else {
         arg.to_string()
     }

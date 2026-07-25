@@ -1,0 +1,29 @@
+public struct Point<T> {
+    T x;
+    T y;
+
+    public Point(T x, T y) {
+        this.x = x;
+        this.y = y;
+    }
+
+    public T getX() {
+        return this.x;
+    }
+
+    public T getY() {
+        return this.y;
+    }
+}
+
+public class GenericStructTest {
+    public static void main() {
+        Point<int> p = new Point<int>(10, 20);
+        int x = p.getX();
+        int y = p.getY();
+        println("Point: " + String.valueOf(x) + ", " + String.valueOf(y));
+        if (x == 10 && y == 20) {
+            println("Generic struct test PASS");
+        }
+    }
+}

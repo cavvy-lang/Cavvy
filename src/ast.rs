@@ -121,8 +121,10 @@ pub struct InterfaceDecl {
 pub struct StructDecl {
     pub name: String,
     pub modifiers: Vec<Modifier>,
+    pub type_params: Vec<TypeParam>, // 泛型类型参数: <T, U, ...>
     pub fields: Vec<FieldDecl>,
     pub methods: Vec<MethodDecl>,
+    pub constructors: Vec<ConstructorDecl>, // struct 构造函数
     pub namespace_path: Vec<String>, // 所属命名空间路径
     pub loc: SourceLocation,
 }

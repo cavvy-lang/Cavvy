@@ -1,0 +1,68 @@
+/**
+ * 泛型 ADT 综合边界测试
+ * 测试内容:
+ * - 多类型参数 struct
+ * - 泛型 enum 携带泛型 struct payload
+ * - 嵌套泛型 ADT 的构造、传递与 switch 解构
+ */
+public struct Pair<T, U> {
+    T first;
+    U second;
+
+    public Pair(T f, U s) {
+        this.first = f;
+        this.second = s;
+    }
+
+    public T getFirst() {
+        return this.first;
+    }
+
+    public U getSecond() {
+        return this.second;
+    }
+}
+
+public enum Boxed<T> {
+    Value(T),
+    Empty
+}
+
+public class GenericAdtComprehensiveTest {
+    public static void main() {
+        Pair<int, String> p = new Pair<int, String>(1, "one");
+        println("Pair: " + String.valueOf(p.getFirst()) + ", " + p.getSecond());
+
+        Boxed<Pair<int, String>> boxed = Boxed<Pair<int, String>>.Value(p);
+        switch (boxed) {
+            case Boxed.Value(Pair<int, String> pair): {
+                println("Boxed first: " + String.valueOf(pair.getFirst()));
+                println("Boxed second: " + pair.getSecond());
+                if (pair.getFirst() == 1) {
+                    println("Nested generic ADT PASS");
+                }
+                break;
+            }
+            case Boxed.Empty: {
+                println("Empty");
+                break;
+            }
+            default: break;
+        }
+
+        Boxed<int> emptyInt = Boxed<int>.Empty;
+        switch (emptyInt) {
+            case Boxed.Value(int v): {
+                println("Unexpected Boxed.Value: " + String.valueOf(v));
+                break;
+            }
+            case Boxed.Empty: {
+                println("Boxed<int>.Empty matched");
+                break;
+            }
+            default: break;
+        }
+
+        println("Generic ADT comprehensive PASS");
+    }
+}

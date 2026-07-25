@@ -12,39 +12,26 @@ impl SemanticAnalyzer {
         &mut self,
         new_expr: &NewExpr,
     ) -> crate::miette_diagnostic::CayResult<Type> {
-        // 解析泛型类名: "Optional<T>" -> ("Optional", Some(["T"]))
-        // 支持多类型参数: "Pair<K, V>" -> ("Pair", Some(["K", "V"]))
-        let (base_class_name, type_params) = if let Some(pos) = new_expr.class_name.find('<') {
-            let base = &new_expr.class_name[..pos];
-            let param_start = pos + 1;
-            let param_end = new_expr.class_name.len().saturating_sub(1);
-            let params_str = if param_end > param_start {
-                &new_expr.class_name[param_start..param_end]
-            } else {
-                ""
-            };
-            // 解析多个类型参数，用逗号分隔
-            let params: Vec<String> = params_str
-                .split(',')
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect();
-            (
-                base.to_string(),
-                if params.is_empty() {
-                    None
-                } else {
-                    Some(params)
-                },
-            )
-        } else {
-            (new_expr.class_name.clone(), None)
-        };
+        // 解析泛型类名，并递归解析嵌套泛型实参。
+        // 例如 Wrapper<Pair<int, String>> -> ("Wrapper", Some([Generic("Pair", [Int32, String])]))
+        let (base_class_name, parsed_type_args_opt) =
+            self.split_generic_type_name(&new_expr.class_name);
+        let parsed_type_args = parsed_type_args_opt.unwrap_or_default();
 
         // 先严格推断构造参数，避免非法表达式漏到代码生成阶段。
         for arg in &new_expr.args {
             self.infer_expr_type_internal(arg)?;
         }
+
+        // 辅助闭包：构造返回类型。有显式类型实参时返回 Type::Generic，
+        // 否则返回 Type::Object，保持与非泛型构造的一致性。
+        let make_return_type = |base: &str, args: &[Type]| -> Type {
+            if args.is_empty() {
+                Type::Object(base.to_string())
+            } else {
+                Type::Generic(base.to_string(), args.to_vec())
+            }
+        };
 
         // 检查基础类是否存在
         if let Some(class_info) = self.type_registry.get_class(&base_class_name).cloned() {
@@ -112,38 +99,24 @@ impl SemanticAnalyzer {
                 )?;
             }
 
-            // 如果类有泛型参数，验证类型参数是否合法
+            // 如果类有泛型参数，验证显式提供的类型实参是否合法。
+            // 未提供实参时保持原有行为，由后续单态化或默认类型处理。
             if !class_info.type_params.is_empty() {
-                if let Some(ref params) = type_params {
-                    // 检查每个类型参数是否合法
-                    for param in params {
-                        let is_valid_param = class_info.type_params.iter().any(|p| &p.name == param)
-                            // 允许使用当前类的泛型类型参数（如 HashMap<K,V,A> 中创建 ArrayList<K>）
-                            || self.current_class_type_params.iter().any(|p| &p.name == param)
-                            || self.type_registry.class_exists(param)
-                            || self.type_registry.get_struct(param).is_some()
-                            || matches!(
-                                param.as_str(),
-                                "int" | "long" | "float" | "double" | "bool" | "boolean" | "char" | "String" | "string"
-                            );
-
-                        if !is_valid_param {
-                            return Err(semantic_error_at_loc(
-                                &new_expr.loc,
-                                format!(
-                                    "Unknown type parameter '{}' for class '{}'",
-                                    param, base_class_name
-                                ),
-                            ));
-                        }
+                for ty in &parsed_type_args {
+                    if !self.is_valid_type_arg(ty) {
+                        return Err(semantic_error_at_loc(
+                            &new_expr.loc,
+                            format!(
+                                "Invalid type argument '{}' for class '{}'",
+                                ty.display_name(),
+                                base_class_name
+                            ),
+                        ));
                     }
                 }
-                // 返回泛型类型
-                Ok(Type::Object(new_expr.class_name.clone()))
-            } else {
-                // 非泛型类
-                Ok(Type::Object(base_class_name))
             }
+
+            Ok(make_return_type(&base_class_name, &parsed_type_args))
         } else if self
             .current_class_type_params
             .iter()
@@ -151,15 +124,138 @@ impl SemanticAnalyzer {
         {
             // new A() where A is a type parameter of the current class.
             // The concrete type will be substituted during monomorphization.
-            Ok(Type::Object(new_expr.class_name.clone()))
-        } else if self.type_registry.get_struct(&base_class_name).is_some() {
-            // struct 是值类型，用 Object 包装
-            Ok(Type::Object(new_expr.class_name.clone()))
+            Ok(make_return_type(&base_class_name, &parsed_type_args))
+        } else if let Some(struct_info) = self.type_registry.get_struct(&base_class_name).cloned() {
+            // struct 是值类型，校验构造函数并检查泛型参数。
+            if struct_info.constructors.is_empty() {
+                if !new_expr.args.is_empty() {
+                    return Err(semantic_error_at_loc(
+                        &new_expr.loc,
+                        format!(
+                            "Constructor '{}' cannot be applied to given types: expected 0 arguments, got {}",
+                            base_class_name,
+                            new_expr.args.len()
+                        ),
+                    ));
+                }
+            } else {
+                let mut matched_constructor = None;
+                let mut mismatch_detail = None;
+                for constructor in &struct_info.constructors {
+                    match self.check_arguments_compatible(
+                        &new_expr.args,
+                        &constructor.params,
+                        new_expr.loc.line,
+                        new_expr.loc.column,
+                    ) {
+                        Ok(()) => {
+                            matched_constructor = Some(constructor.clone());
+                            break;
+                        }
+                        Err(msg) => {
+                            if mismatch_detail.is_none() {
+                                mismatch_detail = Some(msg);
+                            }
+                        }
+                    }
+                }
+
+                let Some(constructor) = matched_constructor else {
+                    return Err(semantic_error_at_loc(
+                        &new_expr.loc,
+                        format!(
+                            "Constructor '{}' cannot be applied to given types: {}",
+                            base_class_name,
+                            mismatch_detail.unwrap_or_else(|| "argument mismatch".to_string())
+                        ),
+                    ));
+                };
+
+                super::helpers::check_member_access(
+                    &base_class_name,
+                    constructor.is_public,
+                    constructor.is_protected,
+                    constructor.is_private,
+                    &self.current_class,
+                    &base_class_name,
+                    &self.type_registry,
+                    &new_expr.loc,
+                )?;
+            }
+
+            // 如果 struct 有泛型参数，验证显式提供的类型实参是否合法。
+            if !struct_info.type_params.is_empty() {
+                for ty in &parsed_type_args {
+                    if !self.is_valid_type_arg(ty) {
+                        return Err(semantic_error_at_loc(
+                            &new_expr.loc,
+                            format!(
+                                "Invalid type argument '{}' for struct '{}'",
+                                ty.display_name(),
+                                base_class_name
+                            ),
+                        ));
+                    }
+                }
+            }
+
+            Ok(make_return_type(&base_class_name, &parsed_type_args))
         } else {
             Err(semantic_error_at_loc(
                 &new_expr.loc,
                 format!("Unknown class or struct: {}", base_class_name),
             ))
+        }
+    }
+
+    /// 检查给定的类型实参是否是有效类型。
+    ///
+    /// 有效类型包括：基本类型、已注册的类/结构体/枚举、当前类的泛型参数、
+    /// 以及由上述类型递归构成的泛型类型（支持嵌套泛型）。
+    fn is_valid_type_arg(&self, ty: &Type) -> bool {
+        match ty {
+            Type::Void
+            | Type::Int32
+            | Type::Int64
+            | Type::Float32
+            | Type::Float64
+            | Type::Bool
+            | Type::String
+            | Type::Char
+            | Type::CInt
+            | Type::CUInt
+            | Type::CLong
+            | Type::CULong
+            | Type::CShort
+            | Type::CUShort
+            | Type::CChar
+            | Type::CUChar
+            | Type::CFloat
+            | Type::CDouble
+            | Type::SizeT
+            | Type::SSizeT
+            | Type::UIntPtr
+            | Type::IntPtr
+            | Type::CVoid
+            | Type::CBool => true,
+            Type::Object(name) | Type::Struct(name) => {
+                self.type_registry.class_exists(name)
+                    || self.type_registry.get_struct(name).is_some()
+                    || self.type_registry.get_enum_by_name(name).is_some()
+                    || self.current_class_type_params.iter().any(|p| &p.name == name)
+            }
+            Type::GenericParam(name) => self
+                .current_class_type_params
+                .iter()
+                .any(|p| &p.name == name),
+            Type::Generic(base, args) => {
+                let base_valid = self.type_registry.class_exists(base)
+                    || self.type_registry.get_struct(base).is_some()
+                    || self.type_registry.get_enum_by_name(base).is_some();
+                base_valid && args.iter().all(|a| self.is_valid_type_arg(a))
+            }
+            Type::Array(inner) | Type::Pointer(inner) => self.is_valid_type_arg(inner),
+            _ => false,
         }
     }
 

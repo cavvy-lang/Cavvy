@@ -533,13 +533,30 @@ pub fn parse_new_expression(
 
         // 如果接下来是 '(' 则为对象创建: new ClassName(...)
         if parser.match_token(&crate::lexer::Token::LParen) {
-            // element_type should be Type::Object(name)
+            // element_type should be Type::Object(name) or Type::Generic(name, args)
             match base_element_type {
                 crate::types::Type::Object(name) => {
                     let args = parse_arguments(parser)?;
                     parser.consume(&crate::lexer::Token::RParen, "Expected ')' after arguments")?;
                     return Ok(Expr::New(NewExpr {
                         class_name: name,
+                        args,
+                        loc,
+                    }));
+                }
+                crate::types::Type::Generic(name, args) => {
+                    let args = parse_arguments(parser)?;
+                    parser.consume(&crate::lexer::Token::RParen, "Expected ')' after arguments")?;
+                    let class_name = format!(
+                        "{}<{}>",
+                        name,
+                        args.iter()
+                            .map(|t| format!("{:?}", t))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    );
+                    return Ok(Expr::New(NewExpr {
+                        class_name,
                         args,
                         loc,
                     }));

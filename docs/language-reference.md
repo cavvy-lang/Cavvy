@@ -352,7 +352,7 @@ public class Main {
 
 ## 结构体
 
-值类型，栈分配：
+**值类型**，支持泛型与完整单态化。struct 无继承、无 vtable；赋值、传参、返回均按值拷贝（深拷贝到独立存储），修改副本不影响原值。struct 可包含字段、方法和构造函数：
 
 ```cay
 public struct Point {
@@ -375,9 +375,39 @@ public class Main {
 }
 ```
 
+泛型 struct：
+
+```cay
+public struct Pair<T, U> {
+    T first;
+    U second;
+
+    public Pair(T f, U s) {
+        this.first = f;
+        this.second = s;
+    }
+
+    public T getFirst() { return this.first; }
+    public U getSecond() { return this.second; }
+}
+
+public class Main {
+    public static void main() {
+        Pair<int, String> a = new Pair<int, String>(1, "one");
+        Pair<int, String> b = a;   // 值拷贝：b 拥有独立存储
+        b.first = 99;              // a.first 仍为 1
+        println(String.valueOf(a.getFirst()));  // 输出 1
+    }
+}
+```
+
+> **值语义保证**：`b = a`（赋值）、`f(a)`（传参）、`return a`（返回）都会拷贝整个 struct 值。与之相对，`class` 对象的上述操作只复制引用。
+
 ---
 
 ## 枚举
+
+enum 是 **tagged union / ADT**，属于值类型。variant 可携带一个 payload，支持泛型与完整单态化：
 
 ```cay
 public enum Color {
@@ -386,13 +416,46 @@ public enum Color {
     Blue
 }
 
+public enum Option<T> {
+    Some(T),
+    None
+}
+
+public enum Result<T, E> {
+    Ok(T),
+    Err(E)
+}
+
 public class Main {
     public static void main() {
         Color c = Color.Red;
-        println("enum ok");
+
+        // 泛型 enum：显式类型实参构造 variant
+        Option<int> o = Option<int>.Some(42);
+        Option<int> n = Option<int>.None;
+        Result<int, String> r = Result<int, String>.Ok(7);
+
+        // switch 模式匹配并解构 payload
+        switch (o) {
+            case Option.Some(int v): {
+                println("值: " + String.valueOf(v));
+                break;
+            }
+            case Option.None: {
+                println("无值");
+                break;
+            }
+            default: break;
+        }
     }
 }
 ```
+
+**关键实现细节**：
+
+- enum 值在运行时表示为 `{ i32 判别值, i64 payload }`；基本类型 payload 内联存储，超过 64 位的 payload（struct 值、字符串、对象）以指针形式存放在 payload 槽中。
+- 泛型 enum 构造 variant 时可显式提供类型实参（`Option<int>.Some(42)`）；携带 payload 时也可从实参类型推断。
+- `case EnumName.Variant(Type binding):` 将 payload 绑定为局部变量，其类型由 enum 的类型实参替换后确定。
 
 ---
 
@@ -431,7 +494,9 @@ public class Main {
 }
 ```
 
-> **注意**：泛型语法已解析，但**代码生成尚未实现单态化**。泛型类可以在代码中编写，但尚不能正确编译为机器码。
+泛型在编译期**完整单态化**：每个具体实例化（`Box<int>`、`Pair<int, String>`、`Option<int>` 等）生成独立的 LLVM 类型与方法集合，无类型擦除、无运行期装箱。类、struct、enum 均可声明类型参数，支持多类型参数（`<T, U>`）、默认类型实参与任意深度的嵌套实例化（如 `Boxed<Wrapper<Pair<int, String>>>`）。
+
+> struct / enum 的泛型实例化同时保持值类型语义，详见「结构体」「枚举」两节。
 
 ---
 

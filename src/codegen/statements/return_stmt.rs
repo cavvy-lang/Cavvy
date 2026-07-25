@@ -147,8 +147,19 @@ impl IRGenerator {
                     format!("  ret {}", value)
                 }
             } else {
-                // 类型匹配，直接返回
-                format!("  ret {}", value)
+                // 值类型语义：返回 struct 值时必须堆拷贝。
+                // 直接返回指向本函数栈帧的指针会在 ret 后悬垂，
+                // 因此将值拷贝到堆存储，把独立副本的所有权交给调用者。
+                if let Some(struct_name) = self.extract_struct_name_from_ptr_type(&ret_type) {
+                    if let Some(fresh) = self.emit_struct_heap_copy(&val, &struct_name) {
+                        format!("  ret {} {}", ret_type, fresh)
+                    } else {
+                        format!("  ret {}", value)
+                    }
+                } else {
+                    // 类型匹配，直接返回
+                    format!("  ret {}", value)
+                }
             }
         } else {
             "  ret void".to_string()

@@ -366,6 +366,8 @@ pub struct IRGenerator {
     pub warnings: std::cell::RefCell<Vec<crate::miette_diagnostic::CayError>>,
     // 类定义缓存（用于显式特化查找原始类）
     pub classes_cache: std::collections::HashMap<String, crate::ast::ClassDecl>,
+    // struct 定义缓存（用于泛型 struct 单态化查找原始定义）
+    pub structs_cache: std::collections::HashMap<String, crate::ast::StructDecl>,
     // 显式特化类型组合记录（基础类名 -> 特化类型参数列表集合）
     pub explicit_specializations:
         std::collections::HashMap<String, std::collections::HashSet<String>>,
@@ -485,6 +487,7 @@ impl IRGenerator {
             generated_methods: HashSet::new(),
             warnings: std::cell::RefCell::new(Vec::new()),
             classes_cache: std::collections::HashMap::new(),
+            structs_cache: std::collections::HashMap::new(),
             explicit_specializations: std::collections::HashMap::new(),
         }
     }
@@ -1025,10 +1028,10 @@ impl IRGenerator {
                 let all_concrete =
                     !resolved.is_empty() && resolved.iter().all(|t| self.type_arg_is_concrete(t));
                 if all_concrete {
-                    let args_str: Vec<String> = resolved.iter().map(|t| format!("{}", t)).collect();
+                    let args_str: Vec<String> = resolved.iter().map(|t| t.display_name()).collect();
                     (
                         Some(name.clone()),
-                        Some(format!("{}<{}>", name, args_str.join(", "))),
+                        Some(format!("{}<{ }>", name, args_str.join(", "))),
                     )
                 } else {
                     (None, None) // 类型参数未全部具体，无法生成特化 __dtor，跳过
@@ -1581,6 +1584,39 @@ impl IRGenerator {
         }
     }
 
+    /// 从特化类名（如 `std::vector<int>`）解析类型实参，并结合类定义中的类型形参与
+    /// 默认值，构建类型参数映射 `{ "T" -> Type::Int32 }`。
+    pub(crate) fn build_specialization_mapping(
+        &self,
+        class_name: &str,
+        class_info: &crate::types::ClassInfo,
+    ) -> std::collections::HashMap<String, crate::types::Type> {
+        let (_, type_arg_strs) = Self::parse_generic_args_from_name(class_name);
+        // 使用 specialization 模块的 parse_type_str 以正确解析嵌套泛型类型
+        // （如 "Rc<Tracked_>" 应解析为 Generic("Rc", [Object("Tracked_")])，
+        // 而非整个字符串作为 Object）。
+        let mut parsed_type_args: Vec<crate::types::Type> = type_arg_strs
+            .iter()
+            .map(|s| crate::codegen::specialization::parse_type_str(s))
+            .collect();
+        // 用默认值填充缺失的类型参数
+        for (idx, param) in class_info.type_params.iter().enumerate() {
+            if parsed_type_args.get(idx).is_none() {
+                if let Some(default) = &param.default_type {
+                    parsed_type_args.push(default.clone());
+                } else {
+                    parsed_type_args.push(crate::types::Type::GenericParam(param.name.clone()));
+                }
+            }
+        }
+        class_info
+            .type_params
+            .iter()
+            .zip(parsed_type_args.iter())
+            .map(|(p, t)| (p.name.clone(), t.clone()))
+            .collect()
+    }
+
     /// 使用标准 Itanium ABI 格式生成方法名，以便与 C++ 互操作。
     /// 格式: _ZN<ns><cls><method-len><method>E<itanium-params>
     pub fn generate_method_name(
@@ -1588,8 +1624,20 @@ impl IRGenerator {
         class_name: &str,
         method: &crate::ast::MethodDecl,
     ) -> String {
-        // 对于泛型类，检查注册表以便支持特化。非泛型类直接使用 Itanium ABI。
-        let param_types: Vec<crate::types::Type> = if class_name.contains('<') {
+        // 优先使用 AST 中已解析的参数类型。对于泛型特化类，调用方已经在生成特化代码前
+        // 将方法参数中的泛型参数替换为具体类型，因此 method.params 中保存的是正确类型。
+        let param_types: Vec<crate::types::Type> =
+            method.params.iter().map(|p| p.param_type.clone()).collect();
+
+        // 若参数中仍包含未替换的泛型参数，且当前类名为泛型特化形式，则回退到注册表
+        // 查找基础类的方法签名，以保证旧代码路径的兼容性。
+        // 回退时必须将注册表签名中的泛型参数按类名中的类型实参替换，否则会产生
+        // `PPc` 等降级签名，与已生成的单态化方法不匹配。
+        let needs_registry_fallback = class_name.contains('<')
+            && param_types
+                .iter()
+                .any(|t| matches!(t, crate::types::Type::GenericParam(_)));
+        if needs_registry_fallback {
             if let Some(ref registry) = self.type_registry {
                 let base_class_name = if let Some(pos) = class_name.find('<') {
                     &class_name[..pos]
@@ -1601,10 +1649,22 @@ impl IRGenerator {
                         if let Some(methods) = class_info.methods.get(&method.name) {
                             for method_info in methods {
                                 if method_info.params.len() == method.params.len() {
+                                    let mapping =
+                                        self.build_specialization_mapping(class_name, class_info);
+                                    let substituted: Vec<crate::types::Type> = method_info
+                                        .params
+                                        .iter()
+                                        .map(|p| {
+                                            crate::types::substitute_type_params(
+                                                &p.param_type,
+                                                &mapping,
+                                            )
+                                        })
+                                        .collect();
                                     return self.mangle_itanium_method(
                                         class_name,
                                         &method.name,
-                                        &method_info.params.iter().map(|p| p.param_type.clone()).collect::<Vec<_>>(),
+                                        &substituted,
                                         false,
                                         false,
                                     );
@@ -1614,11 +1674,7 @@ impl IRGenerator {
                     }
                 }
             }
-            // 回退
-            method.params.iter().map(|p| p.param_type.clone()).collect()
-        } else {
-            method.params.iter().map(|p| p.param_type.clone()).collect()
-        };
+        }
 
         self.mangle_itanium_method(class_name, &method.name, &param_types, false, false)
     }
@@ -1793,6 +1849,18 @@ impl IRGenerator {
             .replace("&", "R")
     }
 
+    /// 生成 struct 在 LLVM IR 中的类型名。
+    /// 将源程序中的 struct 名（可能包含泛型参数与命名空间，如 "Point<int>"、
+    /// "std::Vec<int>"）转换为合法的 LLVM 标识符（如 "Point_int_"、
+    /// "std__Vec_int_"），用于 %struct.Name 类型定义与引用。
+    pub fn struct_llvm_type_name(&self, name: &str) -> String {
+        name.replace("::", "__")
+            .replace("<", "_")
+            .replace(">", "_")
+            .replace(",", "_")
+            .replace(" ", "_")
+    }
+
     /// 生成完整的 Itanium ABI mangled 方法名。
     ///
     /// 格式（符合 g++/clang 标准）:
@@ -1935,36 +2003,23 @@ impl IRGenerator {
                     .iter()
                     .map(|p| self.type_to_signature(&p.param_type))
                     .collect();
-            }
-        }
-        fallback_types.to_vec()
-    }
-
-    /// 与 `get_constructor_param_signatures` 相同的重载解析逻辑，但返回真实的
-    /// `Type` 列表而非签名字符串，供 Itanium ABI mangling（`mangle_itanium_method`）使用。
-    pub fn get_constructor_param_types(
-        &self,
-        class_name: &str,
-        arg_count: usize,
-        fallback_types: &[String],
-    ) -> Vec<crate::types::Type> {
-        if let Some(ref registry) = self.type_registry {
-            if let Some(class_info) = registry.get_class(class_name) {
-                let candidates: Vec<_> = class_info
+            } else if let Some(struct_info) = registry.get_struct(class_name) {
+                // struct 构造函数重载解析
+                let candidates: Vec<_> = struct_info
                     .constructors
                     .iter()
                     .filter(|c| c.params.len() == arg_count)
                     .collect();
 
                 if candidates.is_empty() {
-                    return Vec::new();
+                    return fallback_types.to_vec();
                 }
 
                 if candidates.len() == 1 {
                     return candidates[0]
                         .params
                         .iter()
-                        .map(|p| p.param_type.clone())
+                        .map(|p| self.type_to_signature(&p.param_type))
                         .collect();
                 }
 
@@ -1990,6 +2045,123 @@ impl IRGenerator {
                             } else if c_sig.starts_with('o') && f_sig.starts_with('o') {
                                 score += if c_sig == f_sig { 5 } else { 1 };
                             } else if c_sig.starts_with('g') {
+                                score += 2;
+                            } else if (c_sig == "s") != (f_sig == "s") {
+                                score -= 100;
+                            }
+                        }
+                        score
+                    })
+                    .unwrap_or(&candidates[0]);
+
+                return best
+                    .params
+                    .iter()
+                    .map(|p| self.type_to_signature(&p.param_type))
+                    .collect();
+            }
+        }
+        fallback_types.to_vec()
+    }
+
+    /// 与 `get_constructor_param_signatures` 相同的重载解析逻辑，但返回真实的
+    /// `Type` 列表而非签名字符串，供 Itanium ABI mangling（`mangle_itanium_method`）使用。
+    ///
+    /// 对泛型 class/struct 的构造函数，自动用类名中的类型实参（如 `Point<int>`）
+    /// 替换形参中的类型参数，避免生成 `Pc` 等降级签名。
+    pub fn get_constructor_param_types(
+        &self,
+        class_name: &str,
+        arg_count: usize,
+        fallback_types: &[String],
+    ) -> Vec<crate::types::Type> {
+        // 解析可能存在的泛型实参，用于替换构造函数形参中的类型参数。
+        let (base_name, type_args) = Self::parse_generic_args_from_name(class_name);
+
+        // 将类型实参字符串解析为内部 Type（与 new.rs 中 parse_type_arg_from_str 语义一致）。
+        // 使用 specialization::parse_type_str 以正确解析嵌套泛型实参。
+        let parsed_type_args: Vec<crate::types::Type> = type_args
+            .iter()
+            .map(|s| crate::codegen::specialization::parse_type_str(s))
+            .collect();
+
+        let substitute_params = |params: &[crate::types::ParameterInfo],
+                                 type_params: &[crate::types::TypeParamInfo]|
+         -> Vec<crate::types::Type> {
+            let needs_substitution = params
+                .iter()
+                .any(|p| Self::type_contains_generic_param(&p.param_type));
+            if !needs_substitution {
+                return params.iter().map(|p| p.param_type.clone()).collect();
+            }
+            // 优先使用类名中的显式类型实参；若类名不含泛型参数，则回退到当前
+            // generic_type_args 上下文（泛型方法体内 new 的情况）。
+            let resolved_args: Vec<crate::types::Type> = if !parsed_type_args.is_empty()
+                && parsed_type_args.len() == type_params.len()
+            {
+                parsed_type_args.clone()
+            } else {
+                type_params
+                    .iter()
+                    .map(|p| {
+                        self.generic_type_args
+                            .get(&p.name)
+                            .cloned()
+                            .unwrap_or(crate::types::Type::GenericParam(p.name.clone()))
+                    })
+                    .collect()
+            };
+            let mapping: std::collections::HashMap<String, crate::types::Type> = type_params
+                .iter()
+                .zip(resolved_args.iter())
+                .map(|(p, t)| (p.name.clone(), t.clone()))
+                .collect();
+            params
+                .iter()
+                .map(|p| crate::types::substitute_type_params(&p.param_type, &mapping))
+                .collect()
+        };
+
+        if let Some(ref registry) = self.type_registry {
+            if let Some(class_info) = registry.get_class(&base_name) {
+                let candidates: Vec<_> = class_info
+                    .constructors
+                    .iter()
+                    .filter(|c| c.params.len() == arg_count)
+                    .collect();
+
+                if candidates.is_empty() {
+                    return Vec::new();
+                }
+
+                let type_params: Vec<crate::types::TypeParamInfo> =
+                    class_info.type_params.clone();
+
+                if candidates.len() == 1 {
+                    return substitute_params(&candidates[0].params, &type_params);
+                }
+
+                let best = candidates
+                    .iter()
+                    .max_by_key(|ctor| {
+                        let ctor_sigs: Vec<String> = substitute_params(&ctor.params, &type_params)
+                            .iter()
+                            .map(|t| self.type_to_signature(t))
+                            .collect();
+                        let mut score: i32 = 0;
+                        for (c_sig, f_sig) in ctor_sigs.iter().zip(fallback_types.iter()) {
+                            if c_sig == f_sig {
+                                score += 10;
+                            } else if Self::is_int_signature(c_sig) && Self::is_int_signature(f_sig)
+                            {
+                                score += 3;
+                            } else if Self::is_float_signature(c_sig)
+                                && Self::is_float_signature(f_sig)
+                            {
+                                score += 3;
+                            } else if c_sig.starts_with('o') && f_sig.starts_with('o') {
+                                score += if c_sig == f_sig { 5 } else { 1 };
+                            } else if c_sig.starts_with('g') {
                                 // 泛型参数 T 作为通配匹配，分值低于精确匹配但高于不匹配
                                 score += 2;
                             } else if (c_sig == "s") != (f_sig == "s") {
@@ -2000,10 +2172,110 @@ impl IRGenerator {
                     })
                     .unwrap_or(&candidates[0]);
 
-                return best.params.iter().map(|p| p.param_type.clone()).collect();
+                return substitute_params(&best.params, &type_params);
+            } else if let Some(struct_info) = registry.get_struct(&base_name) {
+                // struct 构造函数参数类型解析
+                let candidates: Vec<_> = struct_info
+                    .constructors
+                    .iter()
+                    .filter(|c| c.params.len() == arg_count)
+                    .collect();
+
+                if candidates.is_empty() {
+                    return Vec::new();
+                }
+
+                let type_params: Vec<crate::types::TypeParamInfo> =
+                    struct_info.type_params.clone();
+
+                if candidates.len() == 1 {
+                    return substitute_params(&candidates[0].params, &type_params);
+                }
+
+                let best = candidates
+                    .iter()
+                    .max_by_key(|ctor| {
+                        let ctor_sigs: Vec<String> = substitute_params(&ctor.params, &type_params)
+                            .iter()
+                            .map(|t| self.type_to_signature(t))
+                            .collect();
+                        let mut score: i32 = 0;
+                        for (c_sig, f_sig) in ctor_sigs.iter().zip(fallback_types.iter()) {
+                            if c_sig == f_sig {
+                                score += 10;
+                            } else if Self::is_int_signature(c_sig) && Self::is_int_signature(f_sig)
+                            {
+                                score += 3;
+                            } else if Self::is_float_signature(c_sig)
+                                && Self::is_float_signature(f_sig)
+                            {
+                                score += 3;
+                            } else if c_sig.starts_with('o') && f_sig.starts_with('o') {
+                                score += if c_sig == f_sig { 5 } else { 1 };
+                            } else if c_sig.starts_with('g') {
+                                score += 2;
+                            } else if (c_sig == "s") != (f_sig == "s") {
+                                score -= 100;
+                            }
+                        }
+                        score
+                    })
+                    .unwrap_or(&candidates[0]);
+
+                return substitute_params(&best.params, &type_params);
             }
         }
         Vec::new()
+    }
+
+    /// 检查类型（或其内部元素）是否仍包含未替换的泛型参数。
+    fn type_contains_generic_param(ty: &crate::types::Type) -> bool {
+        use crate::types::Type;
+        match ty {
+            Type::GenericParam(_) => true,
+            Type::Array(inner) | Type::Pointer(inner) => Self::type_contains_generic_param(inner),
+            Type::Generic(_, args) => args.iter().any(|a| Self::type_contains_generic_param(a)),
+            Type::Function(ft) => {
+                ft.params.iter().any(|p| Self::type_contains_generic_param(p))
+                    || Self::type_contains_generic_param(&ft.return_type)
+            }
+            _ => false,
+        }
+    }
+
+    /// 从可能带泛型参数的类名中解析基础名与类型实参字符串。
+    /// 例如 `Point<int>` -> (`Point`, vec!["int"])
+    pub(crate) fn parse_generic_args_from_name(name: &str) -> (String, Vec<String>) {
+        if let Some(lt_pos) = name.find('<') {
+            let gt_pos = name.rfind('>').unwrap_or(name.len());
+            if lt_pos < gt_pos {
+                let base = name[..lt_pos].to_string();
+                let args_str = &name[lt_pos + 1..gt_pos];
+                let args = crate::codegen::specialization::split_top_level_type_args(args_str);
+                return (base, args);
+            }
+        }
+        (name.to_string(), Vec::new())
+    }
+
+    /// 简单类型字符串解析（仅用于构造函数形参替换）。
+    /// 支持基本类型别名、数组后缀与裸对象名。
+    pub(crate) fn parse_simple_type_str(s: &str) -> crate::types::Type {
+        use crate::types::Type;
+        let t = s.trim();
+        if t.ends_with("[]") {
+            return Type::Array(Box::new(Self::parse_simple_type_str(&t[..t.len() - 2])));
+        }
+        match t {
+            "int" => Type::Int32,
+            "long" => Type::Int64,
+            "float" => Type::Float32,
+            "double" => Type::Float64,
+            "bool" | "boolean" => Type::Bool,
+            "string" | "String" => Type::String,
+            "char" => Type::Char,
+            _ => Type::Object(t.to_string()),
+        }
     }
 
     /// 检查签名是否是整数类型（i8, i16, i32, i64 等，但非指针）
@@ -2310,13 +2582,14 @@ impl IRGenerator {
         // 最终对齐到 8 字节边界
         let total_size = (current_offset + 7) & !7;
 
-        // 生成 LLVM 类型定义
+        // 生成 LLVM 类型定义（struct 名可能含泛型参数，需转为合法 LLVM 标识符）
+        let llvm_type_name = self.struct_llvm_type_name(struct_name);
         let llvm_type_def = if llvm_field_types.is_empty() {
-            format!("%struct.{} = type {{ }}\n", struct_name)
+            format!("%struct.{} = type {{ }}\n", llvm_type_name)
         } else {
             format!(
                 "%struct.{} = type {{ {} }}\n",
-                struct_name,
+                llvm_type_name,
                 llvm_field_types.join(", ")
             )
         };
@@ -2330,20 +2603,42 @@ impl IRGenerator {
         };
 
         self.struct_layouts.insert(struct_name.to_string(), layout);
+        // 同时以 LLVM 类型名（如 "Pair_int__int_"）建立别名，
+        // 使从 %struct.X* 反解出的名字也能查到布局（值类型拷贝需要）。
+        if llvm_type_name != struct_name {
+            if let Some(layout) = self.struct_layouts.get(struct_name).cloned() {
+                self.struct_layouts.insert(llvm_type_name, layout);
+            }
+        }
         total_size
     }
 
     /// 获取 struct 布局信息
+    /// 支持泛型特化名（如 "Point<int>"）回退到基础名查找。
     pub fn get_struct_layout(&self, struct_name: &str) -> Option<&StructLayoutInfo> {
         // 直接用传入的 struct 名查找
         if let Some(layout) = self.struct_layouts.get(struct_name) {
             return Some(layout);
+        }
+        // 泛型特化：回退到基础 struct 名
+        let base_name = struct_name.split('<').next().unwrap_or(struct_name);
+        if base_name != struct_name {
+            if let Some(layout) = self.struct_layouts.get(base_name) {
+                return Some(layout);
+            }
         }
         // 简单名找不到，尝试用限定名
         if let Some(ref registry) = self.type_registry {
             if let Some(s) = registry.get_struct(struct_name) {
                 if let Some(layout) = self.struct_layouts.get(&s.name) {
                     return Some(layout);
+                }
+            }
+            if base_name != struct_name {
+                if let Some(s) = registry.get_struct(base_name) {
+                    if let Some(layout) = self.struct_layouts.get(&s.name) {
+                        return Some(layout);
+                    }
                 }
             }
         }
@@ -2396,8 +2691,13 @@ impl IRGenerator {
     /// 生成所有 struct 的 LLVM 类型定义
     pub fn emit_struct_type_definitions(&self) -> String {
         let mut result = String::new();
+        // 布局可能同时以源语言名和 LLVM 类型名注册（别名），按类型定义去重，
+        // 避免同一 %struct.X 被重复定义。
+        let mut emitted: std::collections::HashSet<&str> = std::collections::HashSet::new();
         for layout in self.struct_layouts.values() {
-            result.push_str(&layout.llvm_type_def);
+            if emitted.insert(layout.llvm_type_def.as_str()) {
+                result.push_str(&layout.llvm_type_def);
+            }
         }
         if !result.is_empty() {
             result.push('\n');
@@ -2494,9 +2794,15 @@ impl IRGenerator {
     }
 
     /// 检查给定名称是否是 struct 类型
+    /// 支持泛型特化名（如 "Point<int>"）：先用完整名查找，再用基础名查找。
     pub fn is_struct_type(&self, name: &str) -> bool {
         if let Some(ref registry) = self.type_registry {
             if registry.get_struct(name).is_some() {
+                return true;
+            }
+            // 泛型特化：基础 struct 名在 < 之前
+            let base_name = name.split('<').next().unwrap_or(name);
+            if registry.get_struct(base_name).is_some() {
                 return true;
             }
         }
@@ -2506,19 +2812,21 @@ impl IRGenerator {
     /// 获取 struct 字段的 GEP 索引（字段在 struct 定义中的顺序）
     /// 时间复杂度: O(n)，n 为字段数量
     pub fn get_struct_field_index(&self, struct_name: &str, field_name: &str) -> usize {
-        if let Some(layout) = self.struct_layouts.get(struct_name) {
-            for (idx, name) in layout.field_order.iter().enumerate() {
-                if name == field_name {
-                    return idx;
-                }
-            }
-        }
-        // 回退：从类型注册表获取字段顺序
-        if let Some(ref registry) = self.type_registry {
-            if let Some(struct_info) = registry.get_struct(struct_name) {
-                for (idx, name) in struct_info.field_order.iter().enumerate() {
+        for key in [struct_name, struct_name.split('<').next().unwrap_or(struct_name)] {
+            if let Some(layout) = self.struct_layouts.get(key) {
+                for (idx, name) in layout.field_order.iter().enumerate() {
                     if name == field_name {
                         return idx;
+                    }
+                }
+            }
+            // 回退：从类型注册表获取字段顺序
+            if let Some(ref registry) = self.type_registry {
+                if let Some(struct_info) = registry.get_struct(key) {
+                    for (idx, name) in struct_info.field_order.iter().enumerate() {
+                        if name == field_name {
+                            return idx;
+                        }
                     }
                 }
             }
@@ -2529,21 +2837,21 @@ impl IRGenerator {
     /// 生成 struct 深拷贝代码（通过 llvm.memcpy）
     /// 时间复杂度: O(1) IR 生成，运行时 O(size)
     /// 空间复杂度: O(1) 额外临时变量
-    pub fn emit_struct_memcpy(&mut self, dest_ptr: &str, src_ptr: &str, struct_name: &str) {
-        if let Some(layout) = self.get_struct_layout(struct_name) {
+    pub fn emit_struct_memcpy(&mut self, dest_ptr: &str, src_ptr: &str, struct_name: &str) {        if let Some(layout) = self.get_struct_layout(struct_name) {
             let size = layout.total_size;
+            let llvm_type_name = self.struct_llvm_type_name(struct_name);
             let dest_i8 = self.new_temp();
             let src_i8 = self.new_temp();
             self.emit_line(&format!(
                 "  {} = bitcast {}* {} to i8*",
                 dest_i8,
-                format!("%struct.{}", struct_name),
+                format!("%struct.{}", llvm_type_name),
                 dest_ptr
             ));
             self.emit_line(&format!(
                 "  {} = bitcast {}* {} to i8*",
                 src_i8,
-                format!("%struct.{}", struct_name),
+                format!("%struct.{}", llvm_type_name),
                 src_ptr
             ));
             self.emit_line(&format!(
@@ -2551,6 +2859,34 @@ impl IRGenerator {
                 dest_i8, src_i8, size
             ));
         }
+    }
+
+    /// 生成 struct 值的堆拷贝：malloc 一块新内存并把 src_ptr 指向的值复制进去，
+    /// 返回类型为 `%struct.X*` 的新指针（仅返回值名，不含类型前缀）。
+    ///
+    /// 用于值类型语义中 struct 值「逃逸」到持久存储的场景：
+    /// 字段赋值、数组元素赋值、enum payload、return。栈上 alloca 的副本
+    /// 会随函数返回失效，这些场景必须使用堆存储。
+    pub fn emit_struct_heap_copy(&mut self, src_ptr: &str, struct_name: &str) -> Option<String> {
+        let layout = self.get_struct_layout(struct_name)?;
+        let size = layout.total_size;
+        let llvm_type_name = self.struct_llvm_type_name(struct_name);
+
+        // 确保 malloc 已声明
+        if !self.is_extern_emitted("malloc@i8*@i64") {
+            self.emit_raw("declare i8* @malloc(i64)");
+            self.mark_extern_emitted("malloc@i8*@i64".to_string());
+        }
+
+        let raw = self.new_temp();
+        self.emit_line(&format!("  {} = call i8* @malloc(i64 {})", raw, size));
+        let typed = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = bitcast i8* {} to %struct.{}*",
+            typed, raw, llvm_type_name
+        ));
+        self.emit_struct_memcpy(&typed, src_ptr, struct_name);
+        Some(typed)
     }
 
     /// 获取类的父类名

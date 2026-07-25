@@ -294,8 +294,14 @@ impl IRGenerator {
                             )
                         } else {
                             // 检查是否是 enum 构造函数调用: EnumName.VariantName(args)
+                            // 支持泛型 enum（如 Option<int>.Some(42)），使用基础 enum 名查找。
+                            let enum_base_name = if let Some(lt_pos) = obj_name_str.find('<') {
+                                &obj_name_str[..lt_pos]
+                            } else {
+                                obj_name_str
+                            };
                             if let Some(ref registry) = self.type_registry {
-                                if let Some(enum_info) = registry.get_enum(obj_name_str) {
+                                if let Some(enum_info) = registry.get_enum(enum_base_name) {
                                     if let Some(idx) = enum_info
                                         .variants
                                         .iter()
@@ -313,6 +319,20 @@ impl IRGenerator {
                                                     ext, pl_val
                                                 ));
                                                 ext
+                                            } else if let Some(struct_name) = self
+                                                .extract_struct_name_from_ptr_type(&pl_type)
+                                            {
+                                                // 值类型语义：struct payload 堆拷贝后存入
+                                                // payload 槽，避免 enum 与源变量共享存储。
+                                                let fresh = self
+                                                    .emit_struct_heap_copy(&pl_val, &struct_name)
+                                                    .unwrap_or_else(|| pl_val.to_string());
+                                                let ptr_to_i64 = self.new_temp();
+                                                self.emit_line(&format!(
+                                                    "  {} = ptrtoint {} {} to i64",
+                                                    ptr_to_i64, pl_type, fresh
+                                                ));
+                                                ptr_to_i64
                                             } else if pl_type == "i8*" || pl_type.ends_with('*') {
                                                 let ptr_to_i64 = self.new_temp();
                                                 self.emit_line(&format!(
@@ -457,9 +477,9 @@ impl IRGenerator {
                                     }
                                     // 构建完整特化类名（如 Box<int>）用于方法查找与生成
                                     let type_args_str: Vec<String> =
-                                        type_args.iter().map(|t| format!("{}", t)).collect();
+                                        type_args.iter().map(|t| t.display_name()).collect();
                                     let specialized_class_name =
-                                        format!("{}<{}>", class_name, type_args_str.join(", "));
+                                        format!("{}<{ }>", class_name, type_args_str.join(", "));
                                     // 首先检查是否是函数指针字段
                                     if let Some(field_type) =
                                         self.get_field_type(&class_name, &member.member)
@@ -560,8 +580,8 @@ impl IRGenerator {
                                         .insert(param.name.clone(), resolved_arg);
                                 }
                                 let args_str: Vec<String> =
-                                    exp_args.iter().map(|t| format!("{}", t)).collect();
-                                class_name = format!("{}<{}>", cn_bare, args_str.join(", "));
+                                    exp_args.iter().map(|t| t.display_name()).collect();
+                                class_name = format!("{}<{ }>", cn_bare, args_str.join(", "));
                             }
                         }
                     }
@@ -629,15 +649,13 @@ impl IRGenerator {
             self.is_instance_method(&class_name, &method_name)
         };
 
-        // 判断目标类型是否是 struct，决定 this 指针类型
+        // 判断目标类型是否是 struct，决定 this 指针类型。
+        // 对泛型特化使用完整 struct 类型名（如 Pair_int__String_），
+        // 避免链式调用时退回到未定义的基名（如 Pair）。
         let is_struct_target = self.is_struct_type(&class_name);
         let this_llvm_type = if is_struct_target {
-            let base_name = if let Some(pos) = class_name.find('<') {
-                &class_name[..pos]
-            } else {
-                &class_name
-            };
-            format!("%struct.{}*", base_name)
+            let llvm_struct_name = self.struct_llvm_type_name(&class_name);
+            format!("%struct.{}*", llvm_struct_name)
         } else {
             "i8*".to_string()
         };
