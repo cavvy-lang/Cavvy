@@ -29,6 +29,14 @@ fn main() {
     auto f = (int v) -> { v * 3 };
     println(f(5));                              // 15
 
+    // lambda 参数后置类型
+    auto lp = (x: i32, y: i32) -> x + y;
+    println(lp(3, 4));                          // 7
+
+    // lambda 参数混用：后置 + 裸名 + 传统
+    auto lm = (a: i32, b, int c) -> a + b + c;
+    println(lm(1, 2, 3));                       // 6
+
     // 语句位置块的宽容：末尾无分号（合法，只求值）
     int i = 0;
     while (i < 2) {

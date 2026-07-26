@@ -69,6 +69,23 @@ pub fn try_parse_lambda(
 
 /// 解析 Lambda 参数
 fn parse_lambda_param(parser: &mut Parser) -> CayResult<LambdaParam> {
+    // 6.2.x: 参数后置类型 name: Type（预读：标识符后跟冒号）
+    // 与函数参数一致，例如: (x: i32, y: i32) -> x + y
+    if let crate::lexer::Token::Identifier(param_name) = parser.current_token().clone() {
+        let saved_pos = parser.pos;
+        parser.advance(); // 消费标识符
+        if parser.check(&crate::lexer::Token::Colon) {
+            parser.advance(); // 消费冒号
+            let param_type = parser.parse_type_or_fn_ptr()?;
+            return Ok(LambdaParam {
+                name: param_name,
+                param_type: Some(param_type),
+            });
+        }
+        // 不是后置类型格式，回退到类型前置/裸参数名解析
+        parser.pos = saved_pos;
+    }
+
     // 检查是否有类型注解（可选）
     let checkpoint = parser.pos;
 

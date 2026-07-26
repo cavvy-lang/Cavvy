@@ -35,7 +35,7 @@ fn test_expr_body_fn_and_postfix_params() {
     .expect("test_expr_body_fn should compile and run");
     assert_output_contains(
         &output,
-        &["7", "21", "3", "hi", "15", "2", "done"],
+        &["7", "21", "3", "hi", "15", "6", "2", "done"],
         "test_expr_body_fn",
     );
 }
