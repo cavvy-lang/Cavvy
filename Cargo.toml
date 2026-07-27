@@ -96,6 +96,10 @@ path = "src/bin/cay-pl.rs"
 name = "cay-sir"
 path = "src/bin/cay-sir.rs"
 
+[[bin]]
+name = "cay-pre"
+path = "src/bin/cay-pre.rs"
+
 [features]
 default = []
 # 保留特性标志以向后兼容，但 llvm-sys 现在是默认依赖

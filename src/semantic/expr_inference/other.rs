@@ -398,6 +398,11 @@ impl SemanticAnalyzer {
         {
             // 数值类型进行类型提升
             Ok(self.promote_types(&true_type, &false_type))
+        } else if true_type.is_null_literal() && false_type.is_reference_type() {
+            // null 与引用类型合并：结果为非 null 侧的引用类型
+            Ok(false_type)
+        } else if false_type.is_null_literal() && true_type.is_reference_type() {
+            Ok(true_type)
         } else {
             Err(semantic_error_at_loc(
                 &ternary.loc,
@@ -458,6 +463,11 @@ impl SemanticAnalyzer {
             && Self::is_numeric_type_helper(&else_type)
         {
             Ok(self.promote_types(&then_type, &else_type))
+        } else if then_type.is_null_literal() && else_type.is_reference_type() {
+            // null 与引用类型合并：结果为非 null 侧的引用类型
+            Ok(else_type)
+        } else if else_type.is_null_literal() && then_type.is_reference_type() {
+            Ok(then_type)
         } else {
             Err(semantic_error_at_loc(
                 &if_expr.loc,
@@ -631,7 +641,7 @@ impl SemanticAnalyzer {
             // 内置数值类型
             Type::Int32 | Type::Int64 | Type::Float32 | Type::Float64 | Type::Char |
             // FFI 数值类型
-            Type::CInt | Type::CUInt | Type::CLong |
+            Type::CInt | Type::CUInt | Type::CLong | Type::CULong |
             Type::CShort | Type::CUShort | Type::CChar | Type::CUChar |
             Type::CFloat | Type::CDouble | Type::SizeT | Type::SSizeT |
             Type::UIntPtr | Type::IntPtr

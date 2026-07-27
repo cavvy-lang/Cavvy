@@ -1,0 +1,46 @@
+// 正向测试：null 可赋给任何引用类型、与引用类型比较；数组初始化类型一致
+public class FixSemanticNullOk {
+    public static void main() {
+        // null 可赋给 String / 类实例 / 数组等引用类型
+        String s = null;
+        FixSemanticNullOk obj = null;
+        int[] arr = null;
+
+        // null 与引用类型可以进行相等性比较
+        if (s == null) {
+            println("s is null");
+        }
+        if (obj == null) {
+            println("obj is null");
+        }
+        if (null == arr) {
+            println("arr is null");
+        }
+
+        // null 数组初始化：元素全是 null 时可赋给引用类型数组
+        FixSemanticNullOk[] objs = {null, null};
+        if (objs[0] == null) {
+            println("objs[0] is null");
+        }
+
+        // 混合 null 与实例的数组初始化
+        FixSemanticNullOk[] objs2 = {null, new FixSemanticNullOk()};
+        if (objs2[0] == null && objs2[1] != null) {
+            println("objs2 ok");
+        }
+
+        // 数组初始化：同类型元素合法
+        int[] nums = {1, 2, 3};
+        println(nums[0] + nums[1] + nums[2]);
+
+        // 数值比较合法
+        if (1 < 2 && 2.5 >= 2.0 && 'a' <= 'b') {
+            println("comparisons ok");
+        }
+
+        // bool 相等性比较合法
+        if (true == true && true != false) {
+            println("bool eq ok");
+        }
+    }
+}

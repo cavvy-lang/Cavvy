@@ -65,6 +65,15 @@ pub struct Compiler {
     options: CompilerOptions,
 }
 
+/// 是否启用 token 流调试输出。
+/// 默认关闭；仅在 CAVVY_DEBUG_TOKENS=1（或 true）时启用。
+/// 输出一律走 stderr，避免污染 LSP 等依赖 stdout 的 JSON-RPC 通道。
+fn debug_tokens_enabled() -> bool {
+    std::env::var("CAVVY_DEBUG_TOKENS")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
 impl Compiler {
     pub fn new() -> Self {
         Self {
@@ -84,20 +93,24 @@ impl Compiler {
         crate::miette_diagnostic::print_diagnostics_by_file(warnings, source, filename);
     }
 
-    /// 编译源代码为 LLVM IR
+    /// 编译流水线公共实现：词法 → 语法 → 语义 → 代码生成 → 写出 IR 文件。
     ///
-    /// # Arguments
-    /// * `source` - 原始源代码（已预处理）
-    /// * `output_path` - 输出文件路径
-    ///
-    /// # Returns
-    /// 编译成功返回 Ok(())
-    pub fn compile(&self, source: &str, output_path: &str) -> CayResult<()> {
+    /// `compile()` 与 `compile_with_source_map_and_link_libs()` 共享此实现；
+    /// 当 `source_map_for_analyzer` 为 None 时按无源映射模式运行
+    /// （不设置分析器/生成器的源映射与当前文件）。
+    fn compile_pipeline(
+        &self,
+        source: &str,
+        mut lexer: lexer::Lexer,
+        source_map_for_analyzer: Option<std::collections::HashMap<usize, (String, usize)>>,
+        output_path: &str,
+        main_file: Option<String>,
+        link_libraries: Vec<crate::ast::LinkLibraryDecl>,
+    ) -> CayResult<()> {
+        let default_filename = main_file.as_deref().unwrap_or("");
         let mut warnings: Vec<CayError> = Vec::new();
-        let default_filename = "";
 
         // 1. 词法分析（同时收集警告）
-        let mut lexer = lexer::Lexer::new(source);
         let tokens = match lexer.tokenize() {
             Ok(tokens) => {
                 warnings.extend(lexer.take_warnings());
@@ -110,21 +123,39 @@ impl Compiler {
             }
         };
 
-        // 调试：打印所有token
-        #[cfg(debug_assertions)]
-        {
-            println!("Tokens:");
+        // 调试：打印所有 token（默认关闭，CAVVY_DEBUG_TOKENS=1 时输出到 stderr）
+        if debug_tokens_enabled() {
+            eprintln!("Tokens:");
             for (i, t) in tokens.iter().enumerate() {
-                println!("  {}: {:?} at {}", i, t.token, t.loc);
+                if let Some(ref file) = t.source_file {
+                    eprintln!(
+                        "  {}: {:?} at {}:{} (original: {})",
+                        i,
+                        t.token,
+                        file,
+                        t.source_line.unwrap_or(t.loc.line),
+                        t.loc
+                    );
+                } else {
+                    eprintln!("  {}: {:?} at {}", i, t.token, t.loc);
+                }
             }
-            println!();
+            eprintln!();
         }
 
         // 2. 语法分析（传入源代码以支持内联IR解析）
-        let ast = parser::parse_with_source(tokens, source.to_string())?;
+        let mut ast = parser::parse_with_source(tokens, source.to_string())?;
+
+        // 合并预处理器收集的链接库信息到 AST
+        ast.link_libraries = link_libraries;
 
         // 3. 语义分析
         let mut analyzer = semantic::SemanticAnalyzer::with_features(self.options.features.clone());
+        if let Some(ref map) = source_map_for_analyzer {
+            analyzer.set_current_file(main_file.clone());
+            // 传递源映射表以支持多文件include场景下的正确错误定位
+            analyzer.set_source_map(map.clone());
+        }
         let ast = analyzer.analyze(ast)?;
 
         // 4. 代码生成 - 生成LLVM IR（字符串常量已在生成器内处理）
@@ -133,6 +164,10 @@ impl Compiler {
         ir_gen.set_platform_config(&self.options);
         // 传递类型注册表以支持正确的方法名生成
         ir_gen.set_type_registry(analyzer.get_type_registry().clone());
+        if let Some(ref map) = source_map_for_analyzer {
+            // 设置预处理器源映射（用于多文件include场景）
+            ir_gen.set_preprocessor_source_map(map.clone());
+        }
         // 启用 DWARF 调试信息
         if self.options.debug {
             ir_gen.enable_debug_info();
@@ -141,8 +176,9 @@ impl Compiler {
         if self.options.test_mode {
             ir_gen.enable_test_mode();
         }
-        // 注意：compile方法没有源文件路径，使用空字符串
-        let gen_result = ir_gen.generate(&ast, "");
+        // 设置源文件路径以启用源映射
+        let source_file = main_file.as_deref().unwrap_or("");
+        let gen_result = ir_gen.generate(&ast, source_file);
         warnings.extend(std::mem::take(&mut *ir_gen.warnings.borrow_mut()));
         let mut ir = gen_result?;
 
@@ -163,6 +199,20 @@ impl Compiler {
         Self::print_warnings(&warnings, source, default_filename);
 
         Ok(())
+    }
+
+    /// 编译源代码为 LLVM IR
+    ///
+    /// # Arguments
+    /// * `source` - 原始源代码（已预处理）
+    /// * `output_path` - 输出文件路径
+    ///
+    /// # Returns
+    /// 编译成功返回 Ok(())
+    pub fn compile(&self, source: &str, output_path: &str) -> CayResult<()> {
+        // 注意：compile 方法没有源文件路径与源映射，使用无源映射模式
+        let lexer = lexer::Lexer::new(source);
+        self.compile_pipeline(source, lexer, None, output_path, None, Vec::new())
     }
 
     /// 编译源代码为 LLVM IR（带源映射）
@@ -228,95 +278,18 @@ impl Compiler {
         main_file: Option<String>,
         link_libraries: Vec<crate::ast::LinkLibraryDecl>,
     ) -> CayResult<()> {
-        // 保留一份源映射用于语义分析错误定位
+        // 保留一份源映射用于语义分析错误定位（词法分析器按值消耗一份）
         let source_map_for_analyzer = source_map.clone();
-        let default_filename = main_file.as_deref().unwrap_or("");
-        let mut warnings: Vec<CayError> = Vec::new();
-
-        // 1. 词法分析（带源映射和当前文件路径，同时收集警告）
-        let mut lexer =
-            lexer::Lexer::with_source_map_and_file(source, source_map, main_file.clone());
-        let tokens = match lexer.tokenize() {
-            Ok(tokens) => {
-                warnings.extend(lexer.take_warnings());
-                tokens
-            }
-            Err(e) => {
-                warnings.extend(lexer.take_warnings());
-                Self::print_warnings(&warnings, source, default_filename);
-                return Err(e);
-            }
-        };
-
-        // 调试：打印所有token
-        #[cfg(debug_assertions)]
-        {
-            println!("Tokens:");
-            for (i, t) in tokens.iter().enumerate() {
-                if let Some(ref file) = t.source_file {
-                    println!(
-                        "  {}: {:?} at {}:{} (original: {})",
-                        i,
-                        t.token,
-                        file,
-                        t.source_line.unwrap_or(t.loc.line),
-                        t.loc
-                    );
-                } else {
-                    println!("  {}: {:?} at {}", i, t.token, t.loc);
-                }
-            }
-            println!();
-        }
-
-        // 2. 语法分析（传入源代码以支持内联IR解析）
-        let mut ast = parser::parse_with_source(tokens, source.to_string())?;
-
-        // 合并预处理器收集的链接库信息到 AST
-        ast.link_libraries = link_libraries;
-
-        // 3. 语义分析
-        let mut analyzer = semantic::SemanticAnalyzer::with_features(self.options.features.clone());
-        analyzer.set_current_file(main_file.clone());
-        // 传递源映射表以支持多文件include场景下的正确错误定位
-        analyzer.set_source_map(source_map_for_analyzer.clone());
-        let ast = analyzer.analyze(ast)?;
-
-        // 4. 代码生成 - 生成LLVM IR（字符串常量已在生成器内处理）
-        let mut ir_gen = codegen::IRGenerator::new();
-        // 传递多平台配置
-        ir_gen.set_platform_config(&self.options);
-        // 传递类型注册表以支持正确的方法名生成
-        ir_gen.set_type_registry(analyzer.get_type_registry().clone());
-        // 设置预处理器源映射（用于多文件include场景）
-        ir_gen.set_preprocessor_source_map(source_map_for_analyzer.clone());
-        // 启用 DWARF 调试信息
-        if self.options.debug {
-            ir_gen.enable_debug_info();
-        }
-        // 设置源文件路径以启用源映射
-        let source_file = main_file.as_deref().unwrap_or("");
-        let gen_result = ir_gen.generate(&ast, source_file);
-        warnings.extend(std::mem::take(&mut *ir_gen.warnings.borrow_mut()));
-        let mut ir = gen_result?;
-
-        // 5. 如果启用了混淆，应用IR混淆
-        if self.options.obfuscate {
-            use codegen::obfuscator::IRObfuscator;
-            let mut obfuscator = IRObfuscator::new();
-            ir = obfuscator.obfuscate_ir(&ir);
-        }
-
-        // 输出到文件
-        std::fs::write(output_path, ir).map_err(|e| CayError::Io {
-            error_code: "I0001",
-            file: Some(output_path.to_string()),
-            message: e.to_string(),
-        })?;
-
-        Self::print_warnings(&warnings, source, default_filename);
-
-        Ok(())
+        // 词法分析器带源映射和当前文件路径（同时收集警告）
+        let lexer = lexer::Lexer::with_source_map_and_file(source, source_map, main_file.clone());
+        self.compile_pipeline(
+            source,
+            lexer,
+            Some(source_map_for_analyzer),
+            output_path,
+            main_file,
+            link_libraries,
+        )
     }
 
     /// 从文件编译，自动执行预处理
@@ -563,18 +536,21 @@ public class Example {
         let mut ir_gen = codegen::IRGenerator::new();
         ir_gen.enable_source_map = true;
 
+        // 使用仓库内真实路径（CARGO_MANIFEST_DIR），不再硬编码开发者机器路径。
+        // 保留 Windows 扩展长度路径前缀 \\?\ 以覆盖前缀剥离逻辑。
+        let manifest = env!("CARGO_MANIFEST_DIR");
         let mut source_map = std::collections::HashMap::new();
         source_map.insert(
             621,
             (
-                r"\\?\E:\spj\EOL\target\release\caylibs\StringBuilder.cay".to_string(),
+                format!(r"\\?\{}\target\release\caylibs\StringBuilder.cay", manifest),
                 10,
             ),
         );
         ir_gen.set_preprocessor_source_map(source_map);
 
         let loc = miette_diagnostic::SourceLocation::new(
-            Some(r"\\?\E:\spj\EOL\examples\text_editor.cay".to_string()),
+            Some(format!(r"\\?\{}\examples\text_editor.cay", manifest)),
             621,
             9,
         );
@@ -582,9 +558,10 @@ public class Example {
         ir_gen.emit_line("%x = alloca i32");
 
         assert!(
-            ir_gen
-                .code
-                .contains(r"; !source E:\spj\EOL\examples\text_editor.cay:621:9"),
+            ir_gen.code.contains(&format!(
+                "; !source {}\\examples\\text_editor.cay:621:9",
+                manifest
+            )),
             "{}",
             ir_gen.code
         );

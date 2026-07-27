@@ -11,7 +11,7 @@ mod utils;
 
 use crate::ast::Program;
 use crate::lexer::TokenWithLocation;
-use crate::miette_diagnostic::{CayError, CayResult};
+use crate::miette_diagnostic::CayResult;
 
 /// 语法分析器
 pub struct Parser {
@@ -19,8 +19,6 @@ pub struct Parser {
     pub tokens: Vec<TokenWithLocation>,
     /// 当前解析位置
     pub pos: usize,
-    /// 诊断收集器
-    pub diagnostics: Vec<CayError>,
     /// 源代码文本（用于内联IR等需要直接访问源码的场景）
     source: Option<String>,
     /// 类型别名映射: 别名名称 -> 目标类型
@@ -33,7 +31,6 @@ impl Parser {
         Self {
             tokens,
             pos: 0,
-            diagnostics: Vec::new(),
             source: None,
             type_aliases: std::collections::HashMap::new(),
         }
@@ -44,7 +41,6 @@ impl Parser {
         Self {
             tokens,
             pos: 0,
-            diagnostics: Vec::new(),
             source: Some(source),
             type_aliases: std::collections::HashMap::new(),
         }
@@ -53,11 +49,6 @@ impl Parser {
     /// 获取源代码
     pub fn source(&self) -> Option<&str> {
         self.source.as_deref()
-    }
-
-    /// 获取诊断收集器
-    pub fn diagnostics(&self) -> &Vec<CayError> {
-        &self.diagnostics
     }
 
     /// 解析整个程序
@@ -1026,14 +1017,11 @@ impl Parser {
 
     /// 解析类型或函数指针类型
     pub fn parse_type_or_fn_ptr(&mut self) -> CayResult<crate::types::Type> {
-        //eprintln!("[DEBUG] parse_type_or_fn_ptr called, current token: {:?}", self.current_token());
         // 检查是否是函数指针类型: fn(...) -> ReturnType
         if self.check(&crate::lexer::Token::Fn) {
-            //eprintln!("[DEBUG] Detected Fn token, parsing function pointer type");
             self.parse_fn_ptr_type()
         } else {
             // 普通类型
-            //eprintln!("[DEBUG] Not Fn token, parsing regular type");
             self.parse_type()
         }
     }

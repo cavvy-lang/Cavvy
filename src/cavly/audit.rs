@@ -216,7 +216,10 @@ impl AuditLogger {
 
 impl Default for AuditLogger {
     fn default() -> Self {
-        Self::new().unwrap_or_else(|_| Self::with_path(PathBuf::from("cavly-security.log")))
+        // 无法确定用户主目录时回退到系统临时目录，
+        // 避免在当前工作目录留下 cavly-security.log 污染项目目录
+        Self::new()
+            .unwrap_or_else(|_| Self::with_path(std::env::temp_dir().join("cavly-security.log")))
     }
 }
 

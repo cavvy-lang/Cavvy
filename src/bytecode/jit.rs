@@ -1,5 +1,8 @@
-/// JIT/AOT 编译器
-/// 将Cavvy字节码编译为LLVM IR，然后编译为机器码
+/// 字节码编译后端（实验性）
+/// 将Cavvy字节码翻译为LLVM IR文本，再调用外部clang编译为机器码。
+/// 注意：这并非真正的JIT（无内存中代码生成与执行），而是
+/// “字节码 → IR文本 → clang”的离线编译路径，且目前为实验性功能，
+/// 遇到无法正确翻译的指令会明确报错而不是静默产出错误程序。
 use super::*;
 
 /// JIT编译错误
@@ -174,6 +177,9 @@ impl JitCompiler {
         module: &BytecodeModule,
         output_path: &str,
     ) -> Result<(), JitError> {
+        // 明确警告：该编译路径为实验性功能
+        eprintln!("警告: 字节码编译后端（bytecode→LLVM IR→clang）为实验性功能，输出可能不正确，请勿用于生产环境");
+
         // 1. 将字节码转换为LLVM IR
         let ir_code = self.bytecode_to_ir(module)?;
 
@@ -209,6 +215,9 @@ impl JitCompiler {
 
     /// 将字节码转换为LLVM IR
     pub fn bytecode_to_ir(&self, module: &BytecodeModule) -> Result<String, JitError> {
+        // 明确警告：该编译路径为实验性功能
+        eprintln!("警告: 字节码编译后端（bytecode→LLVM IR→clang）为实验性功能，输出可能不正确，请勿用于生产环境");
+
         let mut ir = String::new();
 
         // 添加IR头部
@@ -218,7 +227,7 @@ impl JitCompiler {
         ir.push_str(&format!("; Obfuscated: {}\n\n", module.header.obfuscated));
 
         // 添加目标平台声明
-        ir.push_str(self.generate_target_declarations());
+        ir.push_str(&self.generate_target_declarations());
 
         // 添加运行时声明
         ir.push_str(self.generate_runtime_declarations());
@@ -262,12 +271,15 @@ impl JitCompiler {
     }
 
     /// 生成目标平台声明
-    fn generate_target_declarations(&self) -> &'static str {
-        r#"; Target declarations
-target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128"
-target triple = "x86_64-pc-windows-gnu"
-
-"#
+    ///
+    /// target triple 取自 JitOptions.target（默认按宿主平台探测），
+    /// 不再硬编码为 Windows。datalayout 目前仅覆盖 x86_64 ELF 布局，
+    /// 其它平台的布局由 clang 按 triple 自行决定。
+    fn generate_target_declarations(&self) -> String {
+        format!(
+            "; Target declarations\ntarget triple = \"{}\"\n\n",
+            self.options.target
+        )
     }
 
     /// 生成运行时声明
@@ -334,12 +346,9 @@ declare void @cavvy_array_set(i8*, i32, i8*)
         let pool_size = module.constant_pool.size() as u16;
         for index in 1..pool_size {
             if let Some(s) = module.constant_pool.get_string(index) {
-                let escaped = s
-                    .replace("\\", "\\\\")
-                    .replace("\"", "\\\"")
-                    .replace("\n", "\\0A")
-                    .replace("\r", "\\0D")
-                    .replace("\t", "\\09");
+                // LLVM IR 字符串只支持可打印ASCII直接书写，其余一律用 \XX 十六进制转义；
+                // 每个源字节恰好对应一个编码字节，因此数组长度仍为 s.len()+1
+                let escaped = escape_llvm_string(&s);
                 ir.push_str(&format!(
                     "@str_{} = private unnamed_addr constant [{} x i8] c\"{}\\00\"\n",
                     index,
@@ -365,30 +374,38 @@ declare void @cavvy_array_set(i8*, i32, i8*)
 
         let mut ir = format!("; Type definition: {}\n", name);
 
-        // 生成结构体类型
-        ir.push_str(&format!("%struct.{} = type {{\n", name));
+        // 生成结构体类型（字段用 ", " 连接，避免尾逗号产生非法IR）
+        let mut struct_fields: Vec<String> = Vec::new();
 
         // vtable指针（如果是类）
         if !type_def.modifiers.is_interface {
-            ir.push_str("  %struct.vtable*,\n");
+            struct_fields.push("%struct.vtable*".to_string());
         }
 
         // 字段
         for field in &type_def.fields {
             let field_type = self.get_llvm_type_string(field.type_index, pool)?;
-            ir.push_str(&format!("  {},\n", field_type));
+            struct_fields.push(field_type);
         }
 
-        ir.push_str("}\n\n");
+        ir.push_str(&format!(
+            "%struct.{} = type {{ {} }}\n\n",
+            name,
+            struct_fields.join(", ")
+        ));
 
         // 生成vtable类型
         if !type_def.modifiers.is_interface {
-            ir.push_str(&format!("%struct.{}.vtable = type {{\n", name));
+            let mut vtable_entries: Vec<String> = Vec::new();
             for method in &type_def.methods {
                 let method_sig = self.get_method_signature(method, pool)?;
-                ir.push_str(&format!("  {},\n", method_sig));
+                vtable_entries.push(method_sig);
             }
-            ir.push_str("}\n\n");
+            ir.push_str(&format!(
+                "%struct.{}.vtable = type {{ {} }}\n\n",
+                name,
+                vtable_entries.join(", ")
+            ));
         }
 
         Ok(ir)
@@ -439,9 +456,9 @@ declare void @cavvy_array_set(i8*, i32, i8*)
 
         let mut ir = format!("; Function: {}\n", name);
 
-        // 确定链接类型
+        // 确定链接类型：internal 是链接性修饰符，必须与 define 连用
         let linkage = if func.modifiers.is_static && !func.modifiers.is_public {
-            "internal"
+            "define internal"
         } else {
             "define"
         };
@@ -484,8 +501,9 @@ declare void @cavvy_array_set(i8*, i32, i8*)
 
         let mut ir = format!("; Method: {}.{}\n", type_name, method_name);
 
+        // internal 是链接性修饰符，必须与 define 连用
         let linkage = if method.modifiers.is_static {
-            "internal"
+            "define internal"
         } else {
             "define"
         };
@@ -569,6 +587,21 @@ declare void @cavvy_array_set(i8*, i32, i8*)
         Ok(ir)
     }
 
+    /// 校验指令操作数长度，防止内存中构造出的畸形指令导致越界 panic。
+    /// Instruction 的字段均为 pub，无法保证 operands 长度与 opcode 匹配，
+    /// 因此所有读取操作数的代码路径必须先经过此校验。
+    fn require_operands(instr: &Instruction, expected: usize) -> Result<&[u8], JitError> {
+        if instr.operands.len() < expected {
+            return Err(JitError::InvalidBytecode(format!(
+                "指令 {:?} 需要至少 {} 字节操作数，实际只有 {} 字节",
+                instr.opcode,
+                expected,
+                instr.operands.len()
+            )));
+        }
+        Ok(&instr.operands)
+    }
+
     /// 生成单条指令 - 完整实现所有指令
     fn generate_instruction(
         &self,
@@ -582,7 +615,8 @@ declare void @cavvy_array_set(i8*, i32, i8*)
         match instr.opcode {
             // ==================== 常量加载指令 ====================
             Opcode::Ldc => {
-                let index = u16::from_le_bytes([instr.operands[0], instr.operands[1]]);
+                let ops = Self::require_operands(instr, 2)?;
+                let index = u16::from_le_bytes([ops[0], ops[1]]);
                 let val = self.get_constant_value(index, ctx.pool)?;
                 let temp = ctx.next_temp();
 
@@ -607,22 +641,17 @@ declare void @cavvy_array_set(i8*, i32, i8*)
             }
 
             Opcode::Iconst => {
-                let value = instr.operands[0] as i8 as i32;
+                let ops = Self::require_operands(instr, 1)?;
+                let value = ops[0] as i8 as i32;
                 let temp = ctx.next_temp();
                 ir.push_str(&format!("  {} = add i32 {}, 0\n", temp, value));
                 ctx.push(temp);
             }
 
             Opcode::Lconst => {
+                let ops = Self::require_operands(instr, 8)?;
                 let value = i64::from_le_bytes([
-                    instr.operands[0],
-                    instr.operands[1],
-                    instr.operands[2],
-                    instr.operands[3],
-                    instr.operands[4],
-                    instr.operands[5],
-                    instr.operands[6],
-                    instr.operands[7],
+                    ops[0], ops[1], ops[2], ops[3], ops[4], ops[5], ops[6], ops[7],
                 ]);
                 let temp = ctx.next_temp();
                 ir.push_str(&format!("  {} = add i64 {}, 0\n", temp, value));
@@ -630,30 +659,29 @@ declare void @cavvy_array_set(i8*, i32, i8*)
             }
 
             Opcode::Fconst => {
-                let value = f32::from_le_bytes([
-                    instr.operands[0],
-                    instr.operands[1],
-                    instr.operands[2],
-                    instr.operands[3],
-                ]);
+                let ops = Self::require_operands(instr, 4)?;
+                let value = f32::from_le_bytes([ops[0], ops[1], ops[2], ops[3]]);
                 let temp = ctx.next_temp();
-                ir.push_str(&format!("  {} = fadd float {}, 0.0\n", temp, value));
+                // LLVM 浮点字面量必须带小数点或采用十六进制位模式，这里统一用双精度十六进制形式
+                ir.push_str(&format!(
+                    "  {} = fadd float {}, 0.0\n",
+                    temp,
+                    format_f32_const(value)
+                ));
                 ctx.push(temp);
             }
 
             Opcode::Dconst => {
+                let ops = Self::require_operands(instr, 8)?;
                 let value = f64::from_le_bytes([
-                    instr.operands[0],
-                    instr.operands[1],
-                    instr.operands[2],
-                    instr.operands[3],
-                    instr.operands[4],
-                    instr.operands[5],
-                    instr.operands[6],
-                    instr.operands[7],
+                    ops[0], ops[1], ops[2], ops[3], ops[4], ops[5], ops[6], ops[7],
                 ]);
                 let temp = ctx.next_temp();
-                ir.push_str(&format!("  {} = fadd double {}, 0.0\n", temp, value));
+                ir.push_str(&format!(
+                    "  {} = fadd double {}, 0.0\n",
+                    temp,
+                    format_f64_const(value)
+                ));
                 ctx.push(temp);
             }
 
@@ -683,7 +711,8 @@ declare void @cavvy_array_set(i8*, i32, i8*)
 
             // ==================== 局部变量加载指令 ====================
             Opcode::Iload | Opcode::Lload | Opcode::Fload | Opcode::Dload | Opcode::Aload => {
-                let index = u16::from_le_bytes([instr.operands[0], instr.operands[1]]);
+                let ops = Self::require_operands(instr, 2)?;
+                let index = u16::from_le_bytes([ops[0], ops[1]]);
                 let local_name = ctx.get_local(index);
                 ctx.push(local_name);
             }
@@ -714,7 +743,8 @@ declare void @cavvy_array_set(i8*, i32, i8*)
 
             // ==================== 局部变量存储指令 ====================
             Opcode::Istore | Opcode::Lstore | Opcode::Fstore | Opcode::Dstore | Opcode::Astore => {
-                let index = u16::from_le_bytes([instr.operands[0], instr.operands[1]]);
+                let ops = Self::require_operands(instr, 2)?;
+                let index = u16::from_le_bytes([ops[0], ops[1]]);
                 if let Some(value) = ctx.pop() {
                     let local_name = format!("%local{}", index);
                     ir.push_str(&format!("  {} = {}\n", local_name, value));
@@ -1035,7 +1065,8 @@ declare void @cavvy_array_set(i8*, i32, i8*)
 
             // ==================== 条件跳转指令 ====================
             Opcode::Ifeq => {
-                let offset = i16::from_le_bytes([instr.operands[0], instr.operands[1]]);
+                let ops = Self::require_operands(instr, 2)?;
+                let offset = i16::from_le_bytes([ops[0], ops[1]]);
                 if let Some(val) = ctx.pop() {
                     // 生成条件分支：如果 val == 0，则跳转到目标位置
                     let label_true = ctx.next_label();
@@ -1053,7 +1084,8 @@ declare void @cavvy_array_set(i8*, i32, i8*)
             }
 
             Opcode::Ifne => {
-                let offset = i16::from_le_bytes([instr.operands[0], instr.operands[1]]);
+                let ops = Self::require_operands(instr, 2)?;
+                let offset = i16::from_le_bytes([ops[0], ops[1]]);
                 if let Some(val) = ctx.pop() {
                     // 生成条件分支：如果 val != 0，则跳转到目标位置
                     let label_true = ctx.next_label();
@@ -1070,7 +1102,8 @@ declare void @cavvy_array_set(i8*, i32, i8*)
             }
 
             Opcode::Goto => {
-                let offset = i16::from_le_bytes([instr.operands[0], instr.operands[1]]);
+                let ops = Self::require_operands(instr, 2)?;
+                let offset = i16::from_le_bytes([ops[0], ops[1]]);
                 let label = ctx.next_label();
                 ir.push_str(&format!("  br label %{}\n", label));
                 ir.push_str(&format!("{}:\n", label));
@@ -1078,7 +1111,8 @@ declare void @cavvy_array_set(i8*, i32, i8*)
 
             // ==================== 方法调用指令 ====================
             Opcode::Invokestatic => {
-                let index = u16::from_le_bytes([instr.operands[0], instr.operands[1]]);
+                let ops = Self::require_operands(instr, 2)?;
+                let index = u16::from_le_bytes([ops[0], ops[1]]);
                 if let Some(name) = ctx.pool.get_utf8(index) {
                     let temp = ctx.next_temp();
                     ir.push_str(&format!("  {} = call i32 @{}()\n", temp, name));
@@ -1087,7 +1121,8 @@ declare void @cavvy_array_set(i8*, i32, i8*)
             }
 
             Opcode::Invokefunction => {
-                let index = u16::from_le_bytes([instr.operands[0], instr.operands[1]]);
+                let ops = Self::require_operands(instr, 2)?;
+                let index = u16::from_le_bytes([ops[0], ops[1]]);
                 if let Some(name) = ctx.pool.get_utf8(index) {
                     let temp = ctx.next_temp();
                     ir.push_str(&format!("  {} = call i32 @{}()\n", temp, name));
@@ -1202,7 +1237,8 @@ declare void @cavvy_array_set(i8*, i32, i8*)
             }
 
             Opcode::Newarray => {
-                let type_index = u16::from_le_bytes([instr.operands[0], instr.operands[1]]);
+                let ops = Self::require_operands(instr, 2)?;
+                let type_index = u16::from_le_bytes([ops[0], ops[1]]);
                 if let Some(len) = ctx.pop() {
                     let temp = ctx.next_temp();
                     ir.push_str(&format!(
@@ -1215,18 +1251,25 @@ declare void @cavvy_array_set(i8*, i32, i8*)
 
             // ==================== 对象操作指令 ====================
             Opcode::New => {
-                let index = u16::from_le_bytes([instr.operands[0], instr.operands[1]]);
-                if let Some(class_name) = ctx.pool.get_utf8(index) {
-                    let temp = ctx.next_temp();
-                    ir.push_str(&format!("  {} = call i8* @malloc(i64 64)\n", temp));
-                    ctx.push(temp);
-                }
+                // 此前硬编码 malloc(64)：对象真实大小无法从常量池可靠推导，
+                // 分配固定大小会静默破坏程序，因此明确报错而不是产出错误代码
+                let ops = Self::require_operands(instr, 2)?;
+                let index = u16::from_le_bytes([ops[0], ops[1]]);
+                let class_name = ctx.pool.get_utf8(index).unwrap_or_default();
+                return Err(JitError::CompilationError(format!(
+                    "JIT 暂不支持 New 指令（创建对象 '{}'）：无法确定对象分配大小",
+                    class_name
+                )));
             }
 
-            // ==================== 未实现指令的占位符 ====================
-            _ => {
-                // 对于未完全实现的指令，生成注释
-                ir.push_str(&format!("  ; Unhandled opcode: {:?}\n", instr.opcode));
+            // ==================== 未实现指令：明确报错 ====================
+            other => {
+                // 未实现的指令不得静默丢弃（只生成注释会继续产出语义错误的程序），
+                // 必须让调用方知道该字节码无法被正确编译
+                return Err(JitError::CompilationError(format!(
+                    "JIT 暂不支持的字节码指令: {:?}",
+                    other
+                )));
             }
         }
 
@@ -1296,16 +1339,12 @@ declare void @cavvy_array_set(i8*, i32, i8*)
         } else if let Some(val) = pool.get_long(index) {
             Ok(val.to_string())
         } else if let Some(val) = pool.get_float(index) {
-            Ok(format!("0x{:x}", val.to_bits()))
+            // 采用双精度十六进制位模式，避免 "1" 这类无小数点的非法浮点字面量
+            Ok(format_f32_const(val))
         } else if let Some(val) = pool.get_double(index) {
-            Ok(format!("0x{:x}", val.to_bits()))
+            Ok(format_f64_const(val))
         } else if let Some(val) = pool.get_string(index) {
-            let escaped = val
-                .replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\0A")
-                .replace("\r", "\\0D")
-                .replace("\t", "\\09");
+            let escaped = escape_llvm_string(&val);
             Ok(format!("c\"{}\\00\"", escaped))
         } else if let Some(val) = pool.get_utf8(index) {
             Ok(format!("\"{}\"", val))
@@ -1392,6 +1431,34 @@ impl Default for JitCompiler {
     fn default() -> Self {
         Self::new(JitOptions::default())
     }
+}
+
+/// 将字符串转义为合法的 LLVM IR 字符串常量内容。
+/// LLVM IR 不支持 \" 或 \\ 这类 C 风格转义，只支持可打印 ASCII
+/// 直接书写，其余字节一律使用 \XX 十六进制形式。
+fn escape_llvm_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            // 可打印 ASCII 中仅 " 和 \ 需要转义
+            0x22 | 0x5C => out.push_str(&format!("\\{:02X}", b)),
+            0x20..=0x7E => out.push(b as char),
+            _ => out.push_str(&format!("\\{:02X}", b)),
+        }
+    }
+    out
+}
+
+/// 将 f32 格式化为合法的 LLVM float 常量。
+/// 采用双精度十六进制位模式（LLVM 接受并自动收窄），
+/// 避免 Display 输出 "1"、"inf" 这类非法浮点字面量。
+fn format_f32_const(value: f32) -> String {
+    format!("0x{:016X}", (value as f64).to_bits())
+}
+
+/// 将 f64 格式化为合法的 LLVM double 常量（十六进制位模式）。
+fn format_f64_const(value: f64) -> String {
+    format!("0x{:016X}", value.to_bits())
 }
 
 /// 查找clang编译器

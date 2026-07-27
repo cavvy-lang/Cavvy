@@ -181,8 +181,6 @@ pub struct IndexPackage {
     pub repository: String,
     pub latest_commit: String,
     pub latest_sha256: String,
-    pub cert_url: String,
-    pub meta_url: String,
     pub status: String,
 }
 
@@ -377,11 +375,23 @@ pub fn verify_dual_signatures(
     )
     .context("发布者签名验证失败")?;
 
-    // 5. 验证官方签名（如果提供了根公钥）
-    if let Some(root_pk) = root_public_key {
-        verify_ed25519(&payload, &cert.signatures.authority.signature, root_pk)
-            .context("Ethernos 官方签名验证失败")?;
-    }
+    // 5. 验证官方签名（fail-closed：未配置根公钥时一律拒绝）
+    //
+    // 信任链说明：发布者公钥来自服务器下发的元信息（meta.public_keys），
+    // 与证书、签名同源。若没有独立的官方根公钥作为信任锚，攻击者控制
+    // 服务器即可同时伪造元信息、发布者公钥和双重签名，验证形同虚设。
+    // 因此未配置根公钥时绝不静默跳过官方签名验证，而是明确报错拒绝。
+    let root_pk = root_public_key.ok_or_else(|| {
+        anyhow::anyhow!(
+            "未配置官方根公钥，无法验证 Ethernos 官方签名，拒绝继续。\n\
+             注意：发布者公钥与元信息来自同一服务器，缺少独立信任锚，不能作为唯一验证依据。\n\
+             配置方法：在 cavly.toml 的 [security] 段设置 \
+             root_public_key = \"<Base64 编码的 32 字节 Ed25519 公钥>\"，\
+             根公钥需通过官方独立可信渠道获取。"
+        )
+    })?;
+    verify_ed25519(&payload, &cert.signatures.authority.signature, root_pk)
+        .context("Ethernos 官方签名验证失败")?;
 
     Ok(())
 }
@@ -400,7 +410,10 @@ pub fn verify_certificate_chain(
     // 1. 验证包指纹格式 (UUID v5)
     verify_uuid(&cert.fingerprint, 5).context("包指纹格式无效")?;
 
-    // 2. 验证元信息一致性
+    // 2. 验证证书有效期（expires_at），过期证书一律拒绝
+    check_certificate_expiry(cert).context("证书有效期校验失败")?;
+
+    // 3. 验证元信息一致性
     if cert.name != meta.current_name {
         bail!(
             "证书名称与元信息不一致: {} vs {}",
@@ -423,16 +436,111 @@ pub fn verify_certificate_chain(
         );
     }
 
-    // 3. 验证 SHA-256 完整性
+    // 4. 验证 SHA-256 完整性
     verify_sha256(package_data, &cert.package_sha256).context("包完整性校验失败")?;
 
-    // 4. 验证双重签名
+    // 5. 验证双重签名
     verify_dual_signatures(cert, meta, root_public_key).context("双重签名验证失败")?;
 
     Ok(())
 }
 
-/// 验证 UUID v4 格式
+/// 检查证书是否过期
+///
+/// 解析 `expires_at`（ISO 8601 UTC，格式 `YYYY-MM-DDTHH:MM:SSZ`）并与
+/// 当前系统时间比较；过期则拒绝。未设置 `expires_at` 的证书视为长期有效。
+pub fn check_certificate_expiry(cert: &VersionCertificate) -> Result<()> {
+    if let Some(ref expires_at) = cert.expires_at {
+        let expiry = parse_iso8601_unix(expires_at)
+            .with_context(|| format!("解析证书过期时间失败: {}", expires_at))?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        if now >= expiry {
+            bail!("证书已过期: expires_at={}", expires_at);
+        }
+    }
+    Ok(())
+}
+
+/// 解析定长十进制数字串
+fn parse_digits(s: &str, start: usize, end: usize) -> Result<u64> {
+    let part = &s[start..end];
+    if !part.bytes().all(|b| b.is_ascii_digit()) {
+        bail!("时间字段包含非数字字符: {:?}", part);
+    }
+    part.parse::<u64>()
+        .with_context(|| format!("解析时间字段失败: {:?}", part))
+}
+
+/// 判断闰年
+fn is_leap_year(year: u64) -> bool {
+    (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
+}
+
+/// 解析 ISO 8601 UTC 时间戳（`YYYY-MM-DDTHH:MM:SSZ`）为 UNIX 秒数
+///
+/// 不引入 chrono 等外部依赖，仅支持证书使用的固定格式。
+fn parse_iso8601_unix(s: &str) -> Result<u64> {
+    let b = s.as_bytes();
+    if b.len() != 20
+        || b[4] != b'-'
+        || b[7] != b'-'
+        || b[10] != b'T'
+        || b[13] != b':'
+        || b[16] != b':'
+        || b[19] != b'Z'
+    {
+        bail!("ISO 8601 时间格式无效（要求 YYYY-MM-DDTHH:MM:SSZ）: {}", s);
+    }
+
+    let year = parse_digits(s, 0, 4)?;
+    let month = parse_digits(s, 5, 7)?;
+    let day = parse_digits(s, 8, 10)?;
+    let hour = parse_digits(s, 11, 13)?;
+    let min = parse_digits(s, 14, 16)?;
+    let sec = parse_digits(s, 17, 19)?;
+
+    if year < 1970
+        || !(1..=12).contains(&month)
+        || !(1..=31).contains(&day)
+        || hour > 23
+        || min > 59
+        || sec > 60
+    {
+        bail!("ISO 8601 时间数值越界: {}", s);
+    }
+
+    // 年月日 -> 自 1970-01-01 起的天数
+    let mut days: u64 = 0;
+    for y in 1970..year {
+        days += if is_leap_year(y) { 366 } else { 365 };
+    }
+    let days_in_month = [
+        31u64,
+        if is_leap_year(year) { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
+    for m in 1..month {
+        days += days_in_month[(m - 1) as usize];
+    }
+    days += day - 1;
+
+    Ok(days * 86400 + hour * 3600 + min * 60 + sec)
+}
+
+/// 验证 UUID 格式，包括版本位（expected_version 指定期望的 UUID 版本号）
+/// 与变体位校验
 fn verify_uuid(s: &str, expected_version: u8) -> Result<()> {
     // 使用简单字符检查而非正则，避免引入 regex 开销到核心路径
     if s.len() != 36 {
@@ -478,13 +586,22 @@ pub fn compute_key_fingerprint(public_key_bytes: &[u8]) -> String {
     hash[..32].to_string()
 }
 
-/// 官方根公钥（硬编码占位，实际应从可信通道获取）
+/// 官方根公钥（编译期内置的信任锚）
 ///
-/// 注意：在生产环境中，此公钥应通过独立可信渠道分发，
-/// 或编译时通过环境变量/构建脚本注入。
+/// 信任链模型：发布者公钥与元信息均由索引/证书服务器下发，若官方签名
+/// 也依赖服务器下发的密钥来验证，则整条信任链无锚。根公钥必须通过
+/// 独立可信渠道分发：
+/// 1. 编译时在此处硬编码官方 Ed25519 根公钥；或
+/// 2. 用户在 cavly.toml 的 [security] 段配置 root_public_key
+///    （Base64 编码的 32 字节 Ed25519 公钥），
+///    由 `load_root_public_key_from_config` 读取。
+///
+/// 当前发布版未内置根公钥，返回 None。未配置根公钥时
+/// `verify_dual_signatures` 会拒绝所有携带官方签名的证书
+/// （fail-closed），不会静默跳过官方签名验证。
 pub fn official_root_public_key() -> Option<Ed25519PublicKey> {
-    // 返回 None 表示未配置根公钥，此时跳过官方签名验证
-    // 实际部署时应替换为硬编码的根公钥
+    // 待官方根公钥发布后在此硬编码，例如：
+    // return Ed25519PublicKey::from_base64("ethernos-root", "<BASE64 公钥>").ok();
     None
 }
 
@@ -873,5 +990,84 @@ mod tests {
             &pk,
         );
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_check_certificate_expiry_expired() {
+        let mut cert = make_test_cert();
+        cert.expires_at = Some("2000-01-01T00:00:00Z".to_string());
+        assert!(check_certificate_expiry(&cert).is_err());
+    }
+
+    #[test]
+    fn test_check_certificate_expiry_valid() {
+        let mut cert = make_test_cert();
+        cert.expires_at = Some("2999-01-01T00:00:00Z".to_string());
+        assert!(check_certificate_expiry(&cert).is_ok());
+        // 未设置 expires_at 视为长期有效
+        cert.expires_at = None;
+        assert!(check_certificate_expiry(&cert).is_ok());
+    }
+
+    #[test]
+    fn test_check_certificate_expiry_bad_format() {
+        let mut cert = make_test_cert();
+        cert.expires_at = Some("not-a-date".to_string());
+        assert!(check_certificate_expiry(&cert).is_err());
+    }
+
+    /// fail-closed：发布者签名有效但未配置根公钥时也必须拒绝
+    #[test]
+    fn test_verify_dual_signatures_fail_closed_without_root_key() {
+        let cert_json = r#"{"esso_version":"1.0.0","fingerprint":"54274058-c8bf-485b-a71e-d7bdee8b3b0f","version":"0.1.0","name":"caysdlib","publisher":"Ethernos Studio","repository":"https://github.com/cavvy-lang/caysdlib","commit_hash":"a7ea8dcc48de6649f8101b64efa4403c6e04239d","package_sha256":"ced1e7182690910be5a18c30f3d96f3cb3719004980ac9ee50cfff43f9ca4979","certified_at":"2026-06-29T13:12:30Z","expires_at":"2031-06-29T13:12:30Z","signatures":{"publisher":{"key_id":"7a1a00b49d394f65d0a7f6031a1b2692","algorithm":"Ed25519","signature":"9eBxjlvd6mS2xutnI1Y5o2JzRRgHVBxQ/LBeds814gzumo6Ytj2J51LUR7D6Ht89ZdgVI2nxf8p91+xC/FfJBQ=="},"authority":{"key_id":"a3d59261417db6d1b8c3398465274d5e","algorithm":"Ed25519","signature":"NsriHQWLDERowOLqt5p7c8ao+123MHJLI01IlXmnqQXAclNNNwJFL8RUhPR6mBNvMuRXeRLNUuwolsbwAOYdDA=="}}}"#;
+        let cert: VersionCertificate = serde_json::from_str(cert_json).unwrap();
+        let meta = FingerprintMetadata {
+            esso_version: "1.0.0".to_string(),
+            fingerprint: cert.fingerprint.clone(),
+            current_name: cert.name.clone(),
+            current_publisher: cert.publisher.clone(),
+            current_repository: cert.repository.clone(),
+            created_at: "2026-06-29T13:12:30Z".to_string(),
+            history: None,
+            public_keys: vec![PublicKeyEntry {
+                key_id: "7a1a00b49d394f65d0a7f6031a1b2692".to_string(),
+                algorithm: "Ed25519".to_string(),
+                public_key: "RTfAQ4kW+D+2LpOQlrglBE0ZsPjIhLlR1+cAymRbx2U=".to_string(),
+                activated_at: "2026-06-29T13:12:30Z".to_string(),
+                status: "active".to_string(),
+            }],
+        };
+        let result = verify_dual_signatures(&cert, &meta, None);
+        let err = format!("{}", result.unwrap_err());
+        assert!(err.contains("根公钥"), "错误信息应说明缺少根公钥: {}", err);
+    }
+
+    fn make_test_cert() -> VersionCertificate {
+        VersionCertificate {
+            esso_version: "1.0.0".to_string(),
+            fingerprint: "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d".to_string(),
+            version: "1.0.0".to_string(),
+            name: "test".to_string(),
+            publisher: "pub".to_string(),
+            repository: "https://example.com".to_string(),
+            commit_hash: "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0".to_string(),
+            package_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+                .to_string(),
+            certified_at: "2026-06-17T12:00:00Z".to_string(),
+            expires_at: None,
+            dependencies: None,
+            signatures: DualSignatures {
+                publisher: SignatureData {
+                    key_id: "k".to_string(),
+                    algorithm: "Ed25519".to_string(),
+                    signature: "s".to_string(),
+                },
+                authority: SignatureData {
+                    key_id: "root".to_string(),
+                    algorithm: "Ed25519".to_string(),
+                    signature: "s".to_string(),
+                },
+            },
+        }
     }
 }

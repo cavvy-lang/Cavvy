@@ -29,7 +29,7 @@ mod string_substring;
 impl IRGenerator {
     /// 发射IR头部（外部声明和运行时函数声明）
     pub fn emit_header(&mut self) {
-        self.emit_raw("; cay (Ethernos Object Language) Generated LLVM IR");
+        self.emit_raw("; Cavvy Generated LLVM IR");
 
         // 根据目标平台设置目标三元组
         let target_triple = if let Some(config) = &self.platform_config {
@@ -37,16 +37,11 @@ impl IRGenerator {
                 "windows" => "x86_64-w64-mingw32",
                 "linux" => "x86_64-unknown-linux-gnu",
                 "macos" => "x86_64-apple-darwin",
-                _ => "x86_64-unknown-linux-gnu",
+                // 未识别的目标平台：回退到编译器构建平台的三元组
+                _ => crate::codegen::context::default_target_triple(),
             }
-        } else if cfg!(target_os = "windows") {
-            "x86_64-w64-mingw32"
-        } else if cfg!(target_os = "linux") {
-            "x86_64-unknown-linux-gnu"
-        } else if cfg!(target_os = "macos") {
-            "x86_64-apple-darwin"
         } else {
-            "x86_64-unknown-linux-gnu"
+            crate::codegen::context::default_target_triple()
         };
         self.emit_raw(&format!("target triple = \"{}\"", target_triple));
         self.emit_raw("");

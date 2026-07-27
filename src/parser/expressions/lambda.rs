@@ -53,8 +53,9 @@ pub fn try_parse_lambda(
     // 解析 Lambda 体：可以是表达式或语句块
     let body = if parser.check(&crate::lexer::Token::LBrace) {
         // 语句块: { ... }
+        let block_loc = parser.current_loc();
         parser.advance(); // 跳过 '{'
-        let mut block = parse_lambda_block(parser)?;
+        let mut block = parse_lambda_block(parser, block_loc)?;
         // 6.2.x: 块尾表达式提升为隐式 return
         super::super::statements::promote_tail_to_return(&mut block);
         LambdaBody::Block(block)
@@ -138,7 +139,11 @@ fn parse_lambda_param(parser: &mut Parser) -> CayResult<LambdaParam> {
 }
 
 /// 解析 Lambda 语句块
-fn parse_lambda_block(parser: &mut Parser) -> CayResult<Block> {
+/// loc 为 '{' 的真实 token 位置（此前硬编码为 line 0/column 0，会误导错误报告）
+fn parse_lambda_block(
+    parser: &mut Parser,
+    loc: crate::miette_diagnostic::SourceLocation,
+) -> CayResult<Block> {
     let mut statements = Vec::new();
     let mut tail_expr = None;
 
@@ -160,10 +165,6 @@ fn parse_lambda_block(parser: &mut Parser) -> CayResult<Block> {
     Ok(Block {
         statements,
         tail_expr,
-        loc: crate::miette_diagnostic::SourceLocation {
-            file: None,
-            line: 0,
-            column: 0,
-        },
+        loc,
     })
 }

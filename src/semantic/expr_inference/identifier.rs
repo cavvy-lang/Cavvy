@@ -13,13 +13,14 @@ impl SemanticAnalyzer {
         match self.infer_expr_type_internal(expr) {
             Ok(ty) => ty,
             Err(e) => {
-                // 将错误转换为 SemanticErrorInfo 并收集
-                if let Some((line, column)) = crate::miette_diagnostic::get_error_location(&e) {
-                    let message = crate::miette_diagnostic::get_error_message(&e);
-                    let file = crate::miette_diagnostic::get_error_file(&e);
-                    self.errors
-                        .push(self.create_error_info_with_file(file, line, column, message));
-                }
+                // 将错误转换为 SemanticErrorInfo 并收集。
+                // 即使错误没有位置信息也必须上报（用 (0,0) 占位），不能静默丢弃。
+                let message = crate::miette_diagnostic::get_error_message(&e);
+                let file = crate::miette_diagnostic::get_error_file(&e);
+                let (line, column) =
+                    crate::miette_diagnostic::get_error_location(&e).unwrap_or((0, 0));
+                self.errors
+                    .push(self.create_error_info_with_file(file, line, column, message));
                 Type::Int32 // 返回默认类型继续分析
             }
         }
@@ -39,7 +40,7 @@ impl SemanticAnalyzer {
                 LiteralValue::String(_) => Ok(Type::String),
                 LiteralValue::Bool(_) => Ok(Type::Bool),
                 LiteralValue::Char(_) => Ok(Type::Char),
-                LiteralValue::Null => Ok(Type::Object("Object".to_string())),
+                LiteralValue::Null => Ok(Type::Object(crate::types::NULL_TYPE_NAME.to_string())),
             },
             Expr::Identifier(ident) => {
                 let name = &ident.name;
@@ -179,7 +180,12 @@ impl SemanticAnalyzer {
         }
 
         let mut class_to_check = self.current_class.clone();
+        // 防止循环继承导致死循环
+        let mut visited = std::collections::HashSet::new();
         while let Some(class_name) = class_to_check {
+            if !visited.insert(class_name.clone()) {
+                break;
+            }
             if let Some(class_info) = self.type_registry.get_class(&class_name) {
                 if class_info.fields.contains_key(name) {
                     return true;

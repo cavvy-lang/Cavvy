@@ -319,15 +319,11 @@ pub enum ToolchainType {
 }
 
 /// 查找 clang 可执行文件
+///
+/// 优先使用随编译器分发的捆绑工具（llvm-minimal/，构建时复制到可执行文件旁），
+/// 保证工具链版本锁定、避免 PATH 劫持；PATH 中的 clang 仅作为兜底。
 pub fn find_clang() -> Result<PathBuf, String> {
-    // 1. 首先尝试系统 PATH 中的 clang
-    if let Ok(output) = process::Command::new("clang").arg("--version").output() {
-        if output.status.success() {
-            return Ok(PathBuf::from("clang"));
-        }
-    }
-
-    // 2. 尝试编译器所在目录或项目根目录下的 llvm-minimal
+    // 1. 优先尝试编译器所在目录或项目根目录下的 llvm-minimal（hermetic）
     if let Ok(exe_path) = env::current_exe() {
         if let Some(exe_dir) = exe_path.parent() {
             for path in get_bundled_clang_paths(exe_dir) {
@@ -338,20 +334,22 @@ pub fn find_clang() -> Result<PathBuf, String> {
         }
     }
 
-    // 3. 都找不到，返回错误
-    Err("找不到 clang 编译器。请确保 clang 已安装并在 PATH 中，或将 llvm-minimal 放在编译器同目录下。".to_string())
-}
-
-/// 查找 llc 可执行文件
-pub fn find_llc() -> Result<PathBuf, String> {
-    // 1. 首先尝试系统 PATH 中的 llc
-    if let Ok(output) = process::Command::new("llc").arg("--version").output() {
+    // 2. 兜底：系统 PATH 中的 clang
+    if let Ok(output) = process::Command::new("clang").arg("--version").output() {
         if output.status.success() {
-            return Ok(PathBuf::from("llc"));
+            return Ok(PathBuf::from("clang"));
         }
     }
 
-    // 2. 尝试编译器所在目录或项目根目录下的 llvm-minimal
+    // 3. 都找不到，返回错误
+    Err("找不到 clang 编译器。请将 llvm-minimal 放在编译器同目录下（推荐），或确保 clang 已安装并在 PATH 中。".to_string())
+}
+
+/// 查找 llc 可执行文件
+///
+/// 优先使用捆绑的 llvm-minimal 工具，PATH 中的 llc 仅作为兜底。
+pub fn find_llc() -> Result<PathBuf, String> {
+    // 1. 优先尝试编译器所在目录或项目根目录下的 llvm-minimal（hermetic）
     if let Ok(exe_path) = env::current_exe() {
         if let Some(exe_dir) = exe_path.parent() {
             let sub_path = if cfg!(target_os = "windows") {
@@ -368,8 +366,15 @@ pub fn find_llc() -> Result<PathBuf, String> {
         }
     }
 
+    // 2. 兜底：系统 PATH 中的 llc
+    if let Ok(output) = process::Command::new("llc").arg("--version").output() {
+        if output.status.success() {
+            return Ok(PathBuf::from("llc"));
+        }
+    }
+
     // 3. 都找不到，返回错误
-    Err("找不到 llc (LLVM IR 编译器)。请确保 LLVM 已安装并在 PATH 中，或将 llvm-minimal 放在编译器同目录下。".to_string())
+    Err("找不到 llc (LLVM IR 编译器)。请将 llvm-minimal 放在编译器同目录下（推荐），或确保 LLVM 已安装并在 PATH 中。".to_string())
 }
 
 /// 获取可能的 llvm-minimal 路径列表
@@ -414,20 +419,10 @@ pub fn find_lld_for_target(target: &str) -> Result<PathBuf, String> {
 }
 
 /// 查找指定名称的 lld 链接器
+///
+/// 优先使用捆绑的 llvm-minimal 工具，PATH 中的链接器仅作为兜底。
 pub fn find_lld_linker(linker_name: &str) -> Result<PathBuf, String> {
-    // 1. 首先尝试系统 PATH
-    let test_arg = if linker_name == "lld-link" {
-        "/?"
-    } else {
-        "--version"
-    };
-    if let Ok(output) = process::Command::new(linker_name).arg(test_arg).output() {
-        if output.status.code().is_some() {
-            return Ok(PathBuf::from(linker_name));
-        }
-    }
-
-    // 2. 尝试编译器所在目录或项目根目录下的 llvm-minimal
+    // 1. 优先尝试编译器所在目录或项目根目录下的 llvm-minimal（hermetic）
     if let Ok(exe_path) = env::current_exe() {
         if let Some(exe_dir) = exe_path.parent() {
             let exe_name = if cfg!(target_os = "windows") {
@@ -449,11 +444,70 @@ pub fn find_lld_linker(linker_name: &str) -> Result<PathBuf, String> {
         }
     }
 
+    // 2. 兜底：系统 PATH
+    let test_arg = if linker_name == "lld-link" {
+        "/?"
+    } else {
+        "--version"
+    };
+    if let Ok(output) = process::Command::new(linker_name).arg(test_arg).output() {
+        if output.status.code().is_some() {
+            return Ok(PathBuf::from(linker_name));
+        }
+    }
+
     // 3. 都找不到，返回错误
     Err(format!(
-        "找不到 {} (LLVM 链接器)。请确保 LLVM 已安装并在 PATH 中，或将 llvm-minimal 放在编译器同目录下。",
+        "找不到 {} (LLVM 链接器)。请将 llvm-minimal 放在编译器同目录下（推荐），或确保 LLVM 已安装并在 PATH 中。",
         linker_name
     ))
+}
+
+/// 自动编译 Linux 版本的 Cavvy 运行时库（libcayrt-linux.a）。
+///
+/// 仅当目标平台为 Linux、运行时库缺失且存在 build.sh 时触发。
+/// 失败时返回明确错误（编译器宁可 noisy 报错，不可带着缺失的运行时库继续链接）：
+/// - 环境无 bash：提示安装 bash 或手动执行 build.sh；
+/// - build.sh 非零退出：附带回显的 stderr。
+fn auto_build_linux_runtime(cayrt_path: &Path, target: &str) -> Result<(), String> {
+    if !target.contains("linux") {
+        return Ok(());
+    }
+    let linux_lib = cayrt_path.join("libcayrt-linux.a");
+    if linux_lib.exists() {
+        return Ok(());
+    }
+    let build_script = cayrt_path.join("build.sh");
+    if !build_script.exists() {
+        return Ok(());
+    }
+
+    eprintln!("  [I] 未找到 Linux 运行时库，正在自动编译...");
+    let output = process::Command::new("bash")
+        .arg(&build_script)
+        .arg("linux")
+        .current_dir(cayrt_path)
+        .output()
+        .map_err(|e| {
+            format!(
+                "无法执行 {}（需要 bash）: {}。请安装 bash，或手动在 {} 下运行 `bash build.sh linux` 生成 libcayrt-linux.a。",
+                build_script.display(),
+                e,
+                cayrt_path.display()
+            )
+        })?;
+
+    if output.status.success() {
+        eprintln!("  [+] Linux 运行时库编译成功");
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!(
+            "自动编译 Linux 运行时库失败 ({}): {}",
+            build_script.display(),
+            stderr.trim()
+        ))
+    }
 }
 
 /// 检测可用的工具链
@@ -703,33 +757,7 @@ fn compile_with_clang(
         lib_paths.push(cayrt_path.clone());
 
         // 检查是否需要自动编译 Linux 版本的运行时库
-        if options.target.contains("linux") {
-            let linux_lib = cayrt_path.join("libcayrt-linux.a");
-            if !linux_lib.exists() {
-                let build_script = cayrt_path.join("build.sh");
-                if build_script.exists() {
-                    eprintln!("  [I] 未找到 Linux 运行时库，正在自动编译...");
-                    let output = std::process::Command::new("bash")
-                        .arg(&build_script)
-                        .arg("linux")
-                        .current_dir(&cayrt_path)
-                        .output();
-
-                    match output {
-                        Ok(result) if result.status.success() => {
-                            eprintln!("  [+] Linux 运行时库编译成功");
-                        }
-                        Ok(result) => {
-                            let stderr = String::from_utf8_lossy(&result.stderr);
-                            eprintln!("  [W] 自动编译 Linux 运行时库失败: {}", stderr);
-                        }
-                        Err(e) => {
-                            eprintln!("  [W] 无法执行 build.sh: {}", e);
-                        }
-                    }
-                }
-            }
-        }
+        auto_build_linux_runtime(&cayrt_path, &options.target)?;
     }
 
     // 构建 clang 命令
@@ -964,33 +992,7 @@ fn compile_with_embedded_llc(
     let cayrt_path = exe_dir.join("caylibs/bin");
     if cayrt_path.exists() {
         // 检查是否需要自动编译 Linux 版本的运行时库
-        if options.target.contains("linux") {
-            let linux_lib = cayrt_path.join("libcayrt-linux.a");
-            if !linux_lib.exists() {
-                let build_script = cayrt_path.join("build.sh");
-                if build_script.exists() {
-                    eprintln!("  [I] 未找到 Linux 运行时库，正在自动编译...");
-                    let build_result = process::Command::new("bash")
-                        .arg(&build_script)
-                        .arg("linux")
-                        .current_dir(&cayrt_path)
-                        .output();
-
-                    match build_result {
-                        Ok(output) if output.status.success() => {
-                            eprintln!("  [+] Linux 运行时库编译成功");
-                        }
-                        Ok(output) => {
-                            let stderr = String::from_utf8_lossy(&output.stderr);
-                            eprintln!("  [!] 运行时库编译失败: {}", stderr);
-                        }
-                        Err(e) => {
-                            eprintln!("  [!] 无法执行构建脚本: {}", e);
-                        }
-                    }
-                }
-            }
-        }
+        auto_build_linux_runtime(&cayrt_path, &options.target)?;
     }
 
     // 生成临时目标文件路径
@@ -1334,33 +1336,7 @@ fn compile_with_llc_lld(
     let cayrt_path = exe_dir.join("caylibs/bin");
     if cayrt_path.exists() {
         // 检查是否需要自动编译 Linux 版本的运行时库
-        if options.target.contains("linux") {
-            let linux_lib = cayrt_path.join("libcayrt-linux.a");
-            if !linux_lib.exists() {
-                let build_script = cayrt_path.join("build.sh");
-                if build_script.exists() {
-                    eprintln!("  [I] 未找到 Linux 运行时库，正在自动编译...");
-                    let build_result = process::Command::new("bash")
-                        .arg(&build_script)
-                        .arg("linux")
-                        .current_dir(&cayrt_path)
-                        .output();
-
-                    match build_result {
-                        Ok(output) if output.status.success() => {
-                            eprintln!("  [+] Linux 运行时库编译成功");
-                        }
-                        Ok(output) => {
-                            let stderr = String::from_utf8_lossy(&output.stderr);
-                            eprintln!("  [!] 运行时库编译失败: {}", stderr);
-                        }
-                        Err(e) => {
-                            eprintln!("  [!] 无法执行构建脚本: {}", e);
-                        }
-                    }
-                }
-            }
-        }
+        auto_build_linux_runtime(&cayrt_path, &options.target)?;
     }
 
     // 生成临时目标文件路径

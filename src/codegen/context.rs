@@ -7,6 +7,22 @@ fn normalize_source_file_path(path: &str) -> String {
     path.strip_prefix("\\\\?\\").unwrap_or(path).to_string()
 }
 
+/// 按编译器自身的构建平台探测默认 target triple。
+///
+/// `IRGenerator::new()` 与 `emit_header()` 共用此函数，
+/// 避免两处各自硬编码默认目标。
+pub fn default_target_triple() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "x86_64-w64-mingw32"
+    } else if cfg!(target_os = "linux") {
+        "x86_64-unknown-linux-gnu"
+    } else if cfg!(target_os = "macos") {
+        "x86_64-apple-darwin"
+    } else {
+        "x86_64-unknown-linux-gnu"
+    }
+}
+
 /// 循环上下文，用于支持 break/continue
 #[derive(Debug, Clone)]
 pub struct LoopContext {
@@ -415,7 +431,8 @@ struct DebugVariable {
 
 impl IRGenerator {
     pub fn new() -> Self {
-        Self::with_target("x86_64-w64-mingw32".to_string())
+        // 默认目标按编译器构建平台探测，不再硬编码 Windows 三元组
+        Self::with_target(default_target_triple().to_string())
     }
 
     pub fn with_target(target_triple: String) -> Self {

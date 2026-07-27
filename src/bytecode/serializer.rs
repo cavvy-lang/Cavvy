@@ -382,8 +382,12 @@ pub fn deserialize(bytes: &[u8]) -> Result<BytecodeModule, SerializationError> {
     offset += 4;
 
     if major != CAYBC_VERSION_MAJOR || minor != CAYBC_VERSION_MINOR {
-        // 版本不匹配，但仍然尝试解析
-        // 在实际应用中可能需要更严格的版本检查
+        // 版本不匹配必须硬错误：不同版本的格式可能不兼容，
+        // 静默继续解析会产出语义错误的模块
+        return Err(SerializationError::InvalidFormat(format!(
+            "字节码版本不匹配: 文件为 {}.{}, 本工具支持 {}.{}",
+            major, minor, CAYBC_VERSION_MAJOR, CAYBC_VERSION_MINOR
+        )));
     }
 
     // 3. 反序列化头部
@@ -505,6 +509,26 @@ fn read_u64(bytes: &[u8], offset: &mut usize) -> Result<u64, SerializationError>
     Ok(value)
 }
 
+/// 校验从数据中读出的元素数量是否合理。
+/// 长度字段来自文件（攻击者可控），直接 Vec::with_capacity(len) 可能导致
+/// 巨额内存预分配。序列化后每个元素至少占 1 字节，因此 len 超过剩余输入
+/// 字节数时必为非法数据，直接报错。
+fn check_count(
+    len: usize,
+    bytes: &[u8],
+    offset: usize,
+    what: &str,
+) -> Result<(), SerializationError> {
+    let remaining = bytes.len().saturating_sub(offset);
+    if len > remaining {
+        return Err(SerializationError::InvalidFormat(format!(
+            "{} 数量 {} 超出剩余输入数据 {} 字节",
+            what, len, remaining
+        )));
+    }
+    Ok(())
+}
+
 /// 反序列化字符串
 fn deserialize_string(bytes: &[u8], offset: &mut usize) -> Result<String, SerializationError> {
     let len = read_u32(bytes, offset)? as usize;
@@ -525,6 +549,7 @@ fn deserialize_string_vec(
     offset: &mut usize,
 ) -> Result<Vec<String>, SerializationError> {
     let len = read_u32(bytes, offset)? as usize;
+    check_count(len, bytes, *offset, "字符串数组")?;
     let mut vec = Vec::with_capacity(len);
     for _ in 0..len {
         vec.push(deserialize_string(bytes, offset)?);
@@ -538,6 +563,7 @@ fn deserialize_type_definitions(
     offset: &mut usize,
 ) -> Result<Vec<TypeDefinition>, SerializationError> {
     let len = read_u32(bytes, offset)? as usize;
+    check_count(len, bytes, *offset, "类型定义")?;
     let mut types = Vec::with_capacity(len);
     for _ in 0..len {
         types.push(deserialize_type_definition(bytes, offset)?);
@@ -558,6 +584,7 @@ fn deserialize_type_definition(
     };
 
     let interface_count = read_u16(bytes, offset)? as usize;
+    check_count(interface_count, bytes, *offset, "接口索引")?;
     let mut interface_indices = Vec::with_capacity(interface_count);
     for _ in 0..interface_count {
         interface_indices.push(read_u16(bytes, offset)?);
@@ -566,12 +593,14 @@ fn deserialize_type_definition(
     let modifiers = deserialize_type_modifiers(bytes, offset)?;
 
     let field_count = read_u16(bytes, offset)? as usize;
+    check_count(field_count, bytes, *offset, "字段")?;
     let mut fields = Vec::with_capacity(field_count);
     for _ in 0..field_count {
         fields.push(deserialize_field_definition(bytes, offset)?);
     }
 
     let method_count = read_u16(bytes, offset)? as usize;
+    check_count(method_count, bytes, *offset, "方法")?;
     let mut methods = Vec::with_capacity(method_count);
     for _ in 0..method_count {
         methods.push(deserialize_method_definition(bytes, offset)?);
@@ -647,12 +676,14 @@ fn deserialize_method_definition(
     let return_type_index = read_u16(bytes, offset)?;
 
     let param_type_count = read_u16(bytes, offset)? as usize;
+    check_count(param_type_count, bytes, *offset, "参数类型索引")?;
     let mut param_type_indices = Vec::with_capacity(param_type_count);
     for _ in 0..param_type_count {
         param_type_indices.push(read_u16(bytes, offset)?);
     }
 
     let param_name_count = read_u16(bytes, offset)? as usize;
+    check_count(param_name_count, bytes, *offset, "参数名称索引")?;
     let mut param_name_indices = Vec::with_capacity(param_name_count);
     for _ in 0..param_name_count {
         param_name_indices.push(read_u16(bytes, offset)?);
@@ -702,6 +733,7 @@ fn deserialize_method_modifiers(
 /// 反序列化代码体
 fn deserialize_code_body(bytes: &[u8], offset: &mut usize) -> Result<CodeBody, SerializationError> {
     let instr_count = read_u32(bytes, offset)? as usize;
+    check_count(instr_count, bytes, *offset, "指令")?;
     let mut instructions = Vec::with_capacity(instr_count);
 
     for _ in 0..instr_count {
@@ -728,6 +760,7 @@ fn deserialize_code_body(bytes: &[u8], offset: &mut usize) -> Result<CodeBody, S
     }
 
     let exception_count = read_u16(bytes, offset)? as usize;
+    check_count(exception_count, bytes, *offset, "异常处理表")?;
     let mut exception_table = Vec::with_capacity(exception_count);
     for _ in 0..exception_count {
         exception_table.push(ExceptionHandler {
@@ -739,6 +772,7 @@ fn deserialize_code_body(bytes: &[u8], offset: &mut usize) -> Result<CodeBody, S
     }
 
     let line_count = read_u16(bytes, offset)? as usize;
+    check_count(line_count, bytes, *offset, "行号表")?;
     let mut line_number_table = Vec::with_capacity(line_count);
     for _ in 0..line_count {
         line_number_table.push(LineNumberEntry {
@@ -760,6 +794,7 @@ fn deserialize_function_definitions(
     offset: &mut usize,
 ) -> Result<Vec<FunctionDefinition>, SerializationError> {
     let len = read_u32(bytes, offset)? as usize;
+    check_count(len, bytes, *offset, "函数定义")?;
     let mut functions = Vec::with_capacity(len);
     for _ in 0..len {
         functions.push(deserialize_function_definition(bytes, offset)?);
@@ -776,12 +811,14 @@ fn deserialize_function_definition(
     let return_type_index = read_u16(bytes, offset)?;
 
     let param_type_count = read_u16(bytes, offset)? as usize;
+    check_count(param_type_count, bytes, *offset, "参数类型索引")?;
     let mut param_type_indices = Vec::with_capacity(param_type_count);
     for _ in 0..param_type_count {
         param_type_indices.push(read_u16(bytes, offset)?);
     }
 
     let param_name_count = read_u16(bytes, offset)? as usize;
+    check_count(param_name_count, bytes, *offset, "参数名称索引")?;
     let mut param_name_indices = Vec::with_capacity(param_name_count);
     for _ in 0..param_name_count {
         param_name_indices.push(read_u16(bytes, offset)?);
@@ -810,6 +847,7 @@ fn deserialize_global_variables(
     offset: &mut usize,
 ) -> Result<Vec<GlobalVariable>, SerializationError> {
     let len = read_u32(bytes, offset)? as usize;
+    check_count(len, bytes, *offset, "全局变量")?;
     let mut vars = Vec::with_capacity(len);
     for _ in 0..len {
         let name_index = read_u16(bytes, offset)?;
@@ -836,6 +874,7 @@ fn deserialize_string_table(
     offset: &mut usize,
 ) -> Result<Vec<String>, SerializationError> {
     let len = read_u32(bytes, offset)? as usize;
+    check_count(len, bytes, *offset, "字符串表")?;
     let mut table = Vec::with_capacity(len);
     for _ in 0..len {
         table.push(deserialize_string(bytes, offset)?);
@@ -849,6 +888,7 @@ fn deserialize_metadata(
     offset: &mut usize,
 ) -> Result<std::collections::HashMap<String, Vec<u8>>, SerializationError> {
     let len = read_u32(bytes, offset)? as usize;
+    check_count(len, bytes, *offset, "元数据条目")?;
     let mut metadata = std::collections::HashMap::new();
     for _ in 0..len {
         let key = deserialize_string(bytes, offset)?;

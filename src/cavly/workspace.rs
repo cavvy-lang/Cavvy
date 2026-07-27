@@ -306,8 +306,9 @@ impl WorkspaceResolver {
                         let version_dir =
                             entry_path.file_name().unwrap_or_default().to_string_lossy();
                         if version == "latest" || version_dir.starts_with(version) {
-                            // 安全验证：如果可能，验证本地包完整性
-                            let _ = self.verify_local_package_if_possible(name, &entry_path);
+                            // 安全验证：验证失败（哈希不匹配、证书无效等）必须
+                            // 中止并返回错误，绝不继续使用未通过验证的包
+                            self.verify_local_package_if_possible(name, &entry_path)?;
                             return self.resolve_local_lib(&entry_path, optional);
                         }
                     }

@@ -12,31 +12,26 @@ trait DiagnosticVec {
     fn has_warnings(&self) -> bool;
     fn error_count(&self) -> usize;
     fn warning_count(&self) -> usize;
-    fn has_fatal_errors(&self) -> bool;
     fn all_errors(&self) -> &[CayError];
     fn get_error_code(&self, code: &str) -> Option<&CayError>;
 }
 
 impl DiagnosticVec for Vec<CayError> {
     fn has_errors(&self) -> bool {
-        self.iter()
-            .any(|e| matches!(e.severity(), Severity::Error | Severity::Fatal))
+        self.iter().any(|e| e.severity() == Severity::Error)
     }
     fn has_warnings(&self) -> bool {
         self.iter().any(|e| e.severity() == Severity::Warning)
     }
     fn error_count(&self) -> usize {
         self.iter()
-            .filter(|e| matches!(e.severity(), Severity::Error | Severity::Fatal))
+            .filter(|e| e.severity() == Severity::Error)
             .count()
     }
     fn warning_count(&self) -> usize {
         self.iter()
             .filter(|e| e.severity() == Severity::Warning)
             .count()
-    }
-    fn has_fatal_errors(&self) -> bool {
-        self.iter().any(|e| e.severity() == Severity::Fatal)
     }
     fn all_errors(&self) -> &[CayError] {
         self.as_slice()
@@ -73,24 +68,6 @@ fn test_lint_warning_is_severity_warning() {
         cavvy::miette_diagnostic::CompilationPhase::Semantic
     );
     assert_eq!(warning.error_code(), ErrorCodes::SEMANTIC_NON_STANDARD);
-}
-
-fn fatal_error(
-    code: &'static str,
-    line: usize,
-    column: usize,
-    message: impl Into<String>,
-) -> CayError {
-    CayError::CodeGen {
-        error_code: code,
-        kind: "致命错误".to_string(),
-        file: None,
-        line,
-        column,
-        message: message.into(),
-        suggestion: ErrorCodes::get_suggestion(code).to_string(),
-        is_warning: false,
-    }
 }
 
 // ==================== 构造测试（曾经的 DiagnosticCollector 功能） ====================
@@ -186,7 +163,6 @@ fn test_error_codes_suggestions() {
 fn test_severity_ordering() {
     assert!(Severity::Note < Severity::Warning);
     assert!(Severity::Warning < Severity::Error);
-    assert!(Severity::Error < Severity::Fatal);
 }
 
 #[test]
@@ -194,7 +170,6 @@ fn test_severity_display() {
     assert_eq!(format!("{}", Severity::Note), "提示");
     assert_eq!(format!("{}", Severity::Warning), "警告");
     assert_eq!(format!("{}", Severity::Error), "错误");
-    assert_eq!(format!("{}", Severity::Fatal), "致命错误");
 }
 
 // ==================== 编译阶段测试 ====================
@@ -382,23 +357,31 @@ fn test_error_without_suggestion() {
 }
 
 #[test]
-fn test_fatal_error_detection() {
+fn test_error_detection() {
+    // Severity 不再设 Fatal 级别：非警告（is_warning=false）即为错误，
+    // 编译失败语义由是否返回 Err 表达。
     let mut errors: Vec<CayError> = Vec::new();
 
-    errors.push(fatal_error(
-        ErrorCodes::CODEGEN_LLVM_ERROR,
-        1,
-        1,
-        "LLVM致命错误",
-    ));
+    errors.push(CayError::CodeGen {
+        error_code: ErrorCodes::CODEGEN_LLVM_ERROR,
+        kind: "代码生成错误".to_string(),
+        file: None,
+        line: 1,
+        column: 1,
+        message: "LLVM错误".to_string(),
+        suggestion: ErrorCodes::get_suggestion(ErrorCodes::CODEGEN_LLVM_ERROR).to_string(),
+        is_warning: false,
+    });
 
-    assert!(errors.has_fatal_errors());
+    assert!(errors.has_errors());
+    assert!(!errors.has_warnings());
+    assert_eq!(errors.error_count(), 1);
 }
 
 // ==================== 行号为0调试信息测试 ====================
 
-/// 测试当诊断信息的行号为0时，系统应输出调试信息并保存到文件
-/// 这是为了检测和报告编译器内部的定位问题
+/// 行号为0的诊断不应再往用户工作目录倾倒含完整源代码的 debug_*.txt 文件
+/// （该行为已作为信息泄露/环境污染问题移除）
 #[test]
 fn test_zero_line_debug_info() {
     use std::fs;
@@ -415,58 +398,33 @@ fn test_zero_line_debug_info() {
         "Test",
     ));
 
-    // 获取当前时间戳用于查找生成的调试文件
     let before_timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
 
-    // 调用 print_diagnostics 触发调试信息输出
-    // 注意：这会输出到 stderr 并可能创建 debug_*.txt 文件
     print_diagnostics(&errors, source, "test.cay");
 
-    // 验证：查找是否生成了调试文件
+    // 验证：不得生成 debug_*.txt 文件
     let entries = fs::read_dir(".").expect("无法读取当前目录");
-    let mut found_debug_file = false;
 
     for entry in entries {
         if let Ok(entry) = entry {
             let filename = entry.file_name();
             let filename_str = filename.to_string_lossy();
 
-            // 检查是否是 debug_*.txt 文件且创建时间在测试之后
             if filename_str.starts_with("debug_") && filename_str.ends_with(".txt") {
                 if let Ok(metadata) = entry.metadata() {
                     if let Ok(modified) = metadata.modified() {
                         if let Ok(elapsed) = modified.duration_since(SystemTime::UNIX_EPOCH) {
-                            let file_timestamp = elapsed.as_secs();
-                            // 文件是在测试开始之后创建的
-                            if file_timestamp >= before_timestamp {
-                                found_debug_file = true;
-
-                                // 验证文件内容
-                                let content =
-                                    fs::read_to_string(entry.path()).expect("无法读取调试文件");
-                                assert!(content.contains("Cavvy Bug Report"));
-                                assert!(content.contains("错误代码:"));
-                                assert!(content.contains("E4002"));
-                                assert!(content.contains("重复定义"));
-                                assert!(content.contains("行号: 0 (行号为0)"));
-                                assert!(content.contains("=== 源代码 ==="));
-                                assert!(content.contains("public class Test {}"));
-
-                                // 清理测试文件
-                                let _ = fs::remove_file(entry.path());
-                                break;
-                            }
+                            assert!(
+                                elapsed.as_secs() < before_timestamp,
+                                "不应再生成 debug_*.txt 调试文件（会泄露源代码并污染用户目录）"
+                            );
                         }
                     }
                 }
             }
         }
     }
-
-    // 如果 stderr 被捕获，可能无法验证输出，但至少验证文件被创建
-    // 注意：在测试环境中，stderr 可能被捕获，所以主要验证文件创建
-    assert!(found_debug_file, "应该生成 debug_*.txt 调试文件当行号为0时");
 }

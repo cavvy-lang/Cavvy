@@ -236,7 +236,18 @@ impl LlvmBackend {
             IrLinkage::External => "",
             IrLinkage::Internal => "internal ",
             IrLinkage::Private => "private ",
-            IrLinkage::Declare => unreachable!(),
+            // Declare 已在上方提前返回；到达此处说明分支逻辑被破坏，明确报错而非 panic
+            IrLinkage::Declare => {
+                return Err(crate::miette_diagnostic::codegen_error(
+                    crate::miette_diagnostic::ErrorCodes::CODEGEN_INVALID_OPERATION,
+                    0,
+                    0,
+                    format!(
+                        "内部错误：函数 '{}' 为 Declare 链接类型，不应进入函数体发射路径",
+                        func.name
+                    ),
+                ));
+            }
         };
 
         let ret_str = func.return_type.to_llvm_str();

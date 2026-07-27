@@ -124,6 +124,43 @@ fn get_system_include_paths() -> Vec<PathBuf> {
 
 const VERSION: &str = env!("CAY_CHECK_VERSION");
 
+/// 词法分析阶段（三个检查级别共用）：
+/// 打印进度与警告；失败时打印错误并退出进程
+fn run_lexer_stage(
+    processed_source: &str,
+    source_map: &Option<std::collections::HashMap<usize, (String, usize)>>,
+    source_path: &str,
+    preprocess: bool,
+) -> Vec<lexer::TokenWithLocation> {
+    if preprocess {
+        println!("");
+    }
+    println!("[1] 词法分析...");
+    let mut lexer = if let Some(map) = source_map {
+        lexer::Lexer::with_source_map(processed_source, map.clone())
+    } else {
+        lexer::Lexer::new(processed_source)
+    };
+    match lexer.tokenize() {
+        Ok(tokens) => {
+            let warnings = lexer.take_warnings();
+            if !warnings.is_empty() {
+                print_diagnostics_by_file(&warnings, processed_source, source_path);
+            }
+            println!("  [+] 词法分析通过");
+            tokens
+        }
+        Err(e) => {
+            let warnings = lexer.take_warnings();
+            if !warnings.is_empty() {
+                print_diagnostics_by_file(&warnings, processed_source, source_path);
+            }
+            print_error_with_context(&e, processed_source, source_path);
+            process::exit(1);
+        }
+    }
+}
+
 fn print_usage() {
     println!("Cay Check v{}", VERSION);
     println!("Usage: cay-check [options] <source_file.cay>");
@@ -296,68 +333,24 @@ fn main() {
 
     match options.level {
         CheckLevel::LexOnly => {
-            if options.preprocess {
-                println!("");
-            }
-            println!("[1] 词法分析...");
-            let mut lexer = if let Some(ref map) = source_map {
-                lexer::Lexer::with_source_map(&processed_source, map.clone())
-            } else {
-                lexer::Lexer::new(&processed_source)
-            };
-            match lexer.tokenize() {
-                Ok(tokens) => {
-                    let warnings = lexer.take_warnings();
-                    if !warnings.is_empty() {
-                        print_diagnostics_by_file(&warnings, &processed_source, &source_path);
-                    }
-                    let elapsed = start_time.elapsed();
-                    println!("  [+] 词法分析通过");
-                    println!("      发现 {} 个 token", tokens.len());
-                    if !warnings.is_empty() {
-                        println!("      发现 {} 个警告", warnings.len());
-                    }
-                    println!("");
-                    println!("[+] 语法检查完成! (耗时: {:?})", elapsed);
-                }
-                Err(e) => {
-                    let warnings = lexer.take_warnings();
-                    if !warnings.is_empty() {
-                        print_diagnostics_by_file(&warnings, &processed_source, &source_path);
-                    }
-                    print_error_with_context(&e, &processed_source, &source_path);
-                    process::exit(1);
-                }
-            }
+            let tokens = run_lexer_stage(
+                &processed_source,
+                &source_map,
+                &source_path,
+                options.preprocess,
+            );
+            let elapsed = start_time.elapsed();
+            println!("      发现 {} 个 token", tokens.len());
+            println!("");
+            println!("[+] 语法检查完成! (耗时: {:?})", elapsed);
         }
         CheckLevel::ParseOnly => {
-            if options.preprocess {
-                println!("");
-            }
-            println!("[1] 词法分析...");
-            let mut lexer = if let Some(ref map) = source_map {
-                lexer::Lexer::with_source_map(&processed_source, map.clone())
-            } else {
-                lexer::Lexer::new(&processed_source)
-            };
-            let tokens = match lexer.tokenize() {
-                Ok(tokens) => {
-                    let warnings = lexer.take_warnings();
-                    if !warnings.is_empty() {
-                        print_diagnostics_by_file(&warnings, &processed_source, &source_path);
-                    }
-                    println!("  [+] 词法分析通过");
-                    tokens
-                }
-                Err(e) => {
-                    let warnings = lexer.take_warnings();
-                    if !warnings.is_empty() {
-                        print_diagnostics_by_file(&warnings, &processed_source, &source_path);
-                    }
-                    print_error_with_context(&e, &processed_source, &source_path);
-                    process::exit(1);
-                }
-            };
+            let tokens = run_lexer_stage(
+                &processed_source,
+                &source_map,
+                &source_path,
+                options.preprocess,
+            );
 
             println!("");
             println!("[2] 语法分析...");
@@ -376,33 +369,12 @@ fn main() {
             }
         }
         CheckLevel::Full => {
-            if options.preprocess {
-                println!("");
-            }
-            println!("[1] 词法分析...");
-            let mut lexer = if let Some(ref map) = source_map {
-                lexer::Lexer::with_source_map(&processed_source, map.clone())
-            } else {
-                lexer::Lexer::new(&processed_source)
-            };
-            let tokens = match lexer.tokenize() {
-                Ok(tokens) => {
-                    let warnings = lexer.take_warnings();
-                    if !warnings.is_empty() {
-                        print_diagnostics_by_file(&warnings, &processed_source, &source_path);
-                    }
-                    println!("  [+] 词法分析通过");
-                    tokens
-                }
-                Err(e) => {
-                    let warnings = lexer.take_warnings();
-                    if !warnings.is_empty() {
-                        print_diagnostics_by_file(&warnings, &processed_source, &source_path);
-                    }
-                    print_error_with_context(&e, &processed_source, &source_path);
-                    process::exit(1);
-                }
-            };
+            let tokens = run_lexer_stage(
+                &processed_source,
+                &source_map,
+                &source_path,
+                options.preprocess,
+            );
 
             println!("");
             println!("[2] 语法分析...");

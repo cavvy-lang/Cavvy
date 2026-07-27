@@ -91,7 +91,7 @@ impl InlineIrBridge {
         inline_ir: &InlineIrStmt,
     ) -> CayResult<InlineIrResult> {
         // 1. 收集当前作用域的可用变量
-        let available_vars = self.collect_scope_variables(codegen);
+        let available_vars = self.collect_scope_variables(codegen)?;
 
         // 2. 准备IR Builder的输入
         let ir_inputs: Vec<(String, crate::ir::value::IrValue)> = available_vars
@@ -175,13 +175,31 @@ impl InlineIrBridge {
     /// 收集当前作用域的变量信息
     ///
     /// 从CodeGen的作用域管理器中提取所有可见变量
-    fn collect_scope_variables(&self, codegen: &IRGenerator) -> Vec<(String, String, Type)> {
+    fn collect_scope_variables(
+        &self,
+        codegen: &IRGenerator,
+    ) -> CayResult<Vec<(String, String, Type)>> {
         let mut vars = Vec::new();
         let class_name = codegen.get_current_class();
 
         // 获取参数变量
         for (name, var_scope) in codegen.get_all_scope_vars() {
-            let cay_type = codegen.get_var_cay_type(&name).unwrap_or(Type::Void);
+            // 类型信息缺失时静默按 Void 处理会生成错误的 IR，必须显式处理
+            let cay_type = match codegen.get_var_cay_type(&name) {
+                Some(ty) => ty,
+                // this 的类型就是当前类（作用域变量表里有 this，但类型注册表不记录它）
+                None if name == "this" && !class_name.is_empty() => {
+                    Type::Object(class_name.clone())
+                }
+                None => {
+                    return Err(crate::miette_diagnostic::codegen_error(
+                        ErrorCodes::CODEGEN_SYMBOL_NOT_FOUND,
+                        0,
+                        0,
+                        format!("内联 IR 桥接：找不到变量 '{}' 的类型信息", name),
+                    ));
+                }
+            };
 
             // 对于参数，使用原始LLVM参数名（如 TestInlineIrBasic.a）
             // 而不是alloca创建的变量名（如 a_s1）
@@ -194,7 +212,7 @@ impl InlineIrBridge {
             vars.push((name, llvm_name, cay_type));
         }
 
-        vars
+        Ok(vars)
     }
 
     /// 将Cavvy类型转换为IR类型

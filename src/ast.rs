@@ -1,8 +1,7 @@
 use crate::miette_diagnostic::SourceLocation;
-use crate::types::{ClassInfo, MethodInfo, ParameterInfo, Type};
+use crate::types::{ParameterInfo, Type};
 use serde::Serialize;
 use std::fmt;
-use std::hash::{Hash, Hasher};
 
 /// 提供位置信息的trait
 pub trait HasLocation {
@@ -755,22 +754,6 @@ pub struct InstanceOfExpr {
 }
 
 impl Program {
-    pub fn find_main_class(&self) -> Option<&ClassDecl> {
-        self.classes.iter().find(|c| {
-            c.members.iter().any(|m| {
-                if let ClassMember::Method(method) = m {
-                    method.name == "main"
-                        && method.modifiers.contains(&Modifier::Public)
-                        && method.modifiers.contains(&Modifier::Static)
-                        && method.params.is_empty()
-                        && method.return_type == Type::Void
-                } else {
-                    false
-                }
-            })
-        })
-    }
-
     /// 扁平化 namespace 声明：将块级 namespace 和文件级 namespace_path 应用到所有声明
     pub fn flatten_namespaces(&self) -> Program {
         let mut classes = self.classes.clone();
@@ -843,16 +826,11 @@ impl Program {
                 type_aliases.push(alias);
             }
             for nested in &ns.nested_namespaces {
-                // 对于嵌套的 namespace，如果它的 path 和当前 ns 的 path 相同，
-                // 则使用 parent_path 作为基础，避免重复
-                let nested_parent_path = if nested.path == ns.path {
-                    parent_path.to_vec()
-                } else {
-                    full_path.clone()
-                };
+                // 嵌套 namespace 的路径如实累加：
+                // namespace a { namespace a {} } 的完整路径就是 a::a，不得静默去重
                 flatten_ns(
                     nested,
-                    &nested_parent_path,
+                    &full_path,
                     classes,
                     structs,
                     enums,
@@ -865,7 +843,7 @@ impl Program {
             }
         }
 
-        for (i, ns) in self.namespace_decls.iter().enumerate() {
+        for ns in &self.namespace_decls {
             flatten_ns(
                 ns,
                 &[],

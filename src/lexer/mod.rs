@@ -1,7 +1,25 @@
 use crate::miette_diagnostic::{CayError, CayResult, ErrorCodes, SourceLocation};
 use logos::Logos;
 
+/// logos 词法错误负载
+///
+/// 通过 `#[logos(error = ...)]` 声明，字面量回调返回 `Err(...)` 时可携带
+/// 具体错误类别（如数字溢出），由 `Lexer` 转成带精确消息的 `CayError`。
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum LexerErrorKind {
+    /// 无法识别的输入（logos 默认错误）
+    #[default]
+    Unknown,
+    /// 整数字面量超出 i64 可表示范围
+    IntegerLiteralOutOfRange,
+    /// 浮点字面量超出 f64 有限范围
+    FloatLiteralOutOfRange,
+    /// 字符字面量中的无效转义序列
+    InvalidEscapeSequence,
+}
+
 #[derive(Logos, Debug, Clone, PartialEq)]
+#[logos(error = LexerErrorKind)]
 #[logos(skip r"[ \t\f]+")]
 #[logos(skip r"//.*")]
 pub enum Token {
@@ -226,11 +244,15 @@ pub enum Token {
             10
         };
         let num = if radix == 10 {
-            cleaned.parse::<i64>().ok()
+            cleaned.parse::<i64>()
         } else {
-            i64::from_str_radix(&cleaned[2..], radix).ok()
+            i64::from_str_radix(&cleaned[2..], radix)
         };
-        num.map(|val| (val, suffix))
+        match num {
+            Ok(val) => Ok(Some((val, suffix))),
+            // 语法已由正则保证合法，解析失败即超出 i64 可表示范围
+            Err(_) => Err(LexerErrorKind::IntegerLiteralOutOfRange),
+        }
     })]
     IntegerLiteral(Option<(i64, Option<char>)>),
 
@@ -249,7 +271,11 @@ pub enum Token {
         };
         // 移除下划线
         let cleaned: String = num_str.chars().filter(|c| *c != '_').collect();
-        cleaned.parse::<f64>().ok().map(|val| (val, suffix))
+        match cleaned.parse::<f64>() {
+            // 语法合法但超出 f64 有限范围时解析得到 ±inf，同样视为溢出
+            Ok(val) if val.is_finite() => Ok(Some((val, suffix))),
+            _ => Err(LexerErrorKind::FloatLiteralOutOfRange),
+        }
     })]
     FloatLiteral(Option<(f64, Option<char>)>),
 
@@ -263,7 +289,11 @@ pub enum Token {
     #[regex(r"'([^'\\]|\\.)'", |lex| {
         let s = lex.slice();
         let content = &s[1..s.len()-1];
-        process_char_escape(content)
+        match process_char_escape(content) {
+            Some(c) => Ok(Some(c)),
+            // 无效转义序列：经 logos 错误通道上报为明确的词法错误
+            None => Err(LexerErrorKind::InvalidEscapeSequence),
+        }
     })]
     CharLiteral(Option<char>),
 
@@ -423,8 +453,6 @@ pub enum LexerErrorType {
     UnterminatedString,
     InvalidEscapeSequence,
     InvalidNumberLiteral,
-    UnterminatedComment,
-    InvalidIdentifier,
 }
 
 /// 增强的词法分析器，支持诊断收集和源映射
@@ -685,25 +713,6 @@ impl<'a> Lexer<'a> {
                 ),
                 suggestion: "检查数字格式，确保使用正确的进制前缀".to_string(),
             },
-            LexerErrorType::UnterminatedComment => CayError::Lexer {
-                error_code: ErrorCodes::LEXER_UNTERMINATED_COMMENT,
-                file,
-                line,
-                column,
-                message: "未闭合的注释 — 块注释以 /* 开始，但没有找到配对的结束标记 */".to_string(),
-                suggestion: "添加 */ 结束注释，或将块注释改为行注释 //".to_string(),
-            },
-            LexerErrorType::InvalidIdentifier => CayError::Lexer {
-                error_code: ErrorCodes::LEXER_INVALID_IDENTIFIER,
-                file,
-                line,
-                column,
-                message: format!(
-                    "无效的标识符: '{}' — 标识符必须以字母或下划线开头",
-                    error_char
-                ),
-                suggestion: "使用有效的标识符名称".to_string(),
-            },
         }
     }
 
@@ -772,7 +781,7 @@ impl<'a> Lexer<'a> {
                         lexeme: self.source[span.clone()].to_string(),
                     });
                 }
-                Err(_) => {
+                Err(kind) => {
                     let span = self.inner.span();
                     let error_char = &self.source[span.clone()];
 
@@ -792,34 +801,53 @@ impl<'a> Lexer<'a> {
                         continue;
                     }
 
-                    // 检查是否是未闭合的字符串
-                    // 如果错误字符以"开头，说明是未闭合的字符串
-                    let is_unterminated_string =
-                        error_char.starts_with('"') || self.is_inside_unterminated_string(pos);
+                    // 根据 logos 错误负载构造精确的诊断
+                    let error = match kind {
+                        LexerErrorKind::IntegerLiteralOutOfRange => CayError::Lexer {
+                            error_code: ErrorCodes::LEXER_INVALID_NUMBER_LITERAL,
+                            file: error_file.clone(),
+                            line: error_line,
+                            column: self.column,
+                            message: format!(
+                                "整数字面量 '{}' 超出 i64 可表示范围（-9223372036854775808..=9223372036854775807）",
+                                error_char
+                            ),
+                            suggestion: "缩小字面值，或改用浮点字面量".to_string(),
+                        },
+                        LexerErrorKind::FloatLiteralOutOfRange => CayError::Lexer {
+                            error_code: ErrorCodes::LEXER_INVALID_NUMBER_LITERAL,
+                            file: error_file.clone(),
+                            line: error_line,
+                            column: self.column,
+                            message: format!(
+                                "浮点字面量 '{}' 超出 f64 可表示的有限范围",
+                                error_char
+                            ),
+                            suggestion: "缩小字面值或指数，使结果落在有限范围内".to_string(),
+                        },
+                        LexerErrorKind::InvalidEscapeSequence => {
+                            self.create_lexer_diagnostic(
+                                LexerErrorType::InvalidEscapeSequence,
+                                span.clone(),
+                            )
+                        }
+                        LexerErrorKind::Unknown => {
+                            // 检查是否是未闭合的字符串
+                            // 如果错误字符以"开头，说明是未闭合的字符串
+                            let is_unterminated_string = error_char.starts_with('"')
+                                || self.is_inside_unterminated_string(pos);
+                            let error_type = if is_unterminated_string {
+                                LexerErrorType::UnterminatedString
+                            } else {
+                                LexerErrorType::InvalidCharacter
+                            };
+                            self.create_lexer_diagnostic(error_type, span.clone())
+                        }
+                    };
+                    self.diagnostics.push(error);
 
-                    if self.collect_all_errors {
-                        // 收集错误但继续分析
-                        let error_type = if is_unterminated_string {
-                            LexerErrorType::UnterminatedString
-                        } else {
-                            LexerErrorType::InvalidCharacter
-                        };
-                        let error = self.create_lexer_diagnostic(error_type, span.clone());
-                        self.diagnostics.push(error);
-
-                        // 跳过这个字符继续
-                        self.column += span.end - span.start;
-                    } else {
-                        // 未启用错误收集模式时，也尝试收集诊断信息后再继续
-                        let error_type = if is_unterminated_string {
-                            LexerErrorType::UnterminatedString
-                        } else {
-                            LexerErrorType::InvalidCharacter
-                        };
-                        let error = self.create_lexer_diagnostic(error_type, span.clone());
-                        self.diagnostics.push(error);
-                        self.column += span.end - span.start;
-                    }
+                    // 跳过这个字符继续（诊断在扫描结束后统一处理）
+                    self.column += span.end - span.start;
                 }
             }
         }
@@ -827,8 +855,11 @@ impl<'a> Lexer<'a> {
         // 运行代码风格检查（别名混用），在同一文件内发现不同拼写才报告警告
         self.check_alias_style_lints(&tokens);
 
-        // 检查是否有收集到的错误
-        if !self.diagnostics.is_empty() {
+        // 检查是否有收集到的错误：
+        // - 默认模式：任一诊断即报错（返回第一个），行为与之前一致；
+        // - 多错误收集模式（collect_all_errors）：诊断经 diagnostics() 暴露，
+        //   token 全量返回，不丢弃已收集结果。
+        if !self.diagnostics.is_empty() && !self.collect_all_errors {
             let first = self.diagnostics[0].clone();
             return Err(first);
         }
@@ -1015,12 +1046,15 @@ pub fn tokenize_with_newlines(source: &str) -> CayResult<Vec<TokenWithLocation>>
 }
 
 /// 收集所有词法错误的tokenize函数
+/// 多错误收集模式下 tokenize 始终返回全部 token（诊断经返回值第二项暴露），
+/// 出错时不再丢弃已收集的 token。
 pub fn tokenize_collect_errors(source: &str) -> (Vec<TokenWithLocation>, Vec<CayError>) {
     let mut lexer = Lexer::new(source).with_collect_all_errors();
-    match lexer.tokenize() {
-        Ok(tokens) => (tokens, lexer.diagnostics().clone()),
-        Err(_) => (Vec::new(), lexer.diagnostics().clone()),
-    }
+    let tokens = match lexer.tokenize() {
+        Ok(tokens) => tokens,
+        Err(_) => Vec::new(), // 收集模式下不会发生；保底
+    };
+    (tokens, lexer.diagnostics().clone())
 }
 
 /// 带诊断的词法分析函数（别名）
@@ -1673,5 +1707,73 @@ i32 b;"#;
         lexer.check_alias_style_lints(&tokens);
         let warnings = lexer.take_warnings();
         assert!(warnings.is_empty(), "不同文件之间的别名差异不应产生警告");
+    }
+
+    #[test]
+    fn test_integer_literal_overflow_is_error() {
+        // 超出 i64 范围的整数字面量必须产生明确的词法错误，而非静默得到 None
+        let result = tokenize("99999999999999999999999999");
+        let err = result.expect_err("溢出的整数字面量应报错");
+        assert_eq!(err.error_code(), ErrorCodes::LEXER_INVALID_NUMBER_LITERAL);
+        assert!(
+            err.message().contains("超出"),
+            "错误消息应说明字面量超出范围: {}",
+            err.message()
+        );
+    }
+
+    #[test]
+    fn test_hex_integer_literal_overflow_is_error() {
+        let result = tokenize("0xFFFFFFFFFFFFFFFFF");
+        let err = result.expect_err("溢出的十六进制字面量应报错");
+        assert_eq!(err.error_code(), ErrorCodes::LEXER_INVALID_NUMBER_LITERAL);
+    }
+
+    #[test]
+    fn test_float_literal_overflow_is_error() {
+        // 1e999 超出 f64 有限范围（解析得 ±inf），应报错而非静默接受 inf
+        let result = tokenize("1e999");
+        let err = result.expect_err("溢出的浮点字面量应报错");
+        assert_eq!(err.error_code(), ErrorCodes::LEXER_INVALID_NUMBER_LITERAL);
+        assert!(
+            err.message().contains("超出"),
+            "错误消息应说明字面量超出范围: {}",
+            err.message()
+        );
+    }
+
+    #[test]
+    fn test_integer_literal_max_ok() {
+        // i64::MAX 仍应正常解析
+        let tokens = tokenize("9223372036854775807").unwrap();
+        assert!(matches!(
+            tokens[0].token,
+            Token::IntegerLiteral(Some((9223372036854775807, None)))
+        ));
+    }
+
+    #[test]
+    fn test_invalid_char_escape_is_error() {
+        // 无效转义序列应产生 LEXER_INVALID_ESCAPE_SEQUENCE，而非笼统的非法字符错误
+        let result = tokenize(r"'\q'");
+        let err = result.expect_err("无效转义序列应报错");
+        assert_eq!(err.error_code(), ErrorCodes::LEXER_INVALID_ESCAPE_SEQUENCE);
+    }
+
+    #[test]
+    fn test_tokenize_collect_errors_keeps_tokens() {
+        // 多错误收集模式：出错时仍返回已收集的 token
+        let (tokens, diagnostics) = tokenize_collect_errors("int x; ¥ int y;");
+        assert_eq!(diagnostics.len(), 1, "应收集到一个诊断");
+        // ¥ 前后的合法 token 都应保留
+        assert!(
+            tokens
+                .iter()
+                .filter(|t| matches!(t.token, Token::Int))
+                .count()
+                == 2,
+            "出错后不应丢弃已收集的 token: {:?}",
+            tokens.iter().map(|t| &t.token).collect::<Vec<_>>()
+        );
     }
 }

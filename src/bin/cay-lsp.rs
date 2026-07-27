@@ -199,7 +199,9 @@ impl LanguageServer for CavvyLanguageServer {
             let lines: Vec<&str> = content.lines().collect();
             if let Some(line) = lines.get(position.line as usize) {
                 // 提取当前位置的单词
-                let word = extract_word_at_position(line, position.character as usize);
+                // LSP 的 position.character 是 UTF-16 单元数，需转换为 char 索引
+                let char_pos = utf16_offset_to_char_index(line, position.character as usize);
+                let word = extract_word_at_position(line, char_pos);
 
                 if !word.is_empty() {
                     // 尝试从文档和 include 文件获取详细的 hover 信息
@@ -256,10 +258,7 @@ impl LanguageServer for CavvyLanguageServer {
 
             // 获取当前行的内容
             let lines: Vec<&str> = content.lines().collect();
-            if let Some(line) = lines.get(position.line as usize) {
-                let line_before_cursor =
-                    &line[..position.character.min(line.len() as u32) as usize];
-
+            if lines.get(position.line as usize).is_some() {
                 // 简单的关键字补全
                 let mut items = Vec::new();
 
@@ -938,12 +937,12 @@ impl CavvyLanguageServer {
                 tags: None,
                 deprecated: None,
                 range: Range {
-                    start: Position::new(class.loc.line as u32, 0),
-                    end: Position::new(class.loc.line as u32, 0),
+                    start: Position::new((class.loc.line as u32).saturating_sub(1), 0),
+                    end: Position::new((class.loc.line as u32).saturating_sub(1), 0),
                 },
                 selection_range: Range {
-                    start: Position::new(class.loc.line as u32, 0),
-                    end: Position::new(class.loc.line as u32, 0),
+                    start: Position::new((class.loc.line as u32).saturating_sub(1), 0),
+                    end: Position::new((class.loc.line as u32).saturating_sub(1), 0),
                 },
                 children: Some(extract_class_members(class)),
             };
@@ -1212,12 +1211,12 @@ fn extract_class_members(class: &cavvy::ast::ClassDecl) -> Vec<DocumentSymbol> {
                     tags: None,
                     deprecated: None,
                     range: Range {
-                        start: Position::new(field.loc.line as u32, 0),
-                        end: Position::new(field.loc.line as u32, 0),
+                        start: Position::new((field.loc.line as u32).saturating_sub(1), 0),
+                        end: Position::new((field.loc.line as u32).saturating_sub(1), 0),
                     },
                     selection_range: Range {
-                        start: Position::new(field.loc.line as u32, 0),
-                        end: Position::new(field.loc.line as u32, 0),
+                        start: Position::new((field.loc.line as u32).saturating_sub(1), 0),
+                        end: Position::new((field.loc.line as u32).saturating_sub(1), 0),
                     },
                     children: None,
                 };
@@ -1232,12 +1231,12 @@ fn extract_class_members(class: &cavvy::ast::ClassDecl) -> Vec<DocumentSymbol> {
                     tags: None,
                     deprecated: None,
                     range: Range {
-                        start: Position::new(method.loc.line as u32, 0),
-                        end: Position::new(method.loc.line as u32, 0),
+                        start: Position::new((method.loc.line as u32).saturating_sub(1), 0),
+                        end: Position::new((method.loc.line as u32).saturating_sub(1), 0),
                     },
                     selection_range: Range {
-                        start: Position::new(method.loc.line as u32, 0),
-                        end: Position::new(method.loc.line as u32, 0),
+                        start: Position::new((method.loc.line as u32).saturating_sub(1), 0),
+                        end: Position::new((method.loc.line as u32).saturating_sub(1), 0),
                     },
                     children: None,
                 };
@@ -1251,12 +1250,12 @@ fn extract_class_members(class: &cavvy::ast::ClassDecl) -> Vec<DocumentSymbol> {
                     tags: None,
                     deprecated: None,
                     range: Range {
-                        start: Position::new(ctor.loc.line as u32, 0),
-                        end: Position::new(ctor.loc.line as u32, 0),
+                        start: Position::new((ctor.loc.line as u32).saturating_sub(1), 0),
+                        end: Position::new((ctor.loc.line as u32).saturating_sub(1), 0),
                     },
                     selection_range: Range {
-                        start: Position::new(ctor.loc.line as u32, 0),
-                        end: Position::new(ctor.loc.line as u32, 0),
+                        start: Position::new((ctor.loc.line as u32).saturating_sub(1), 0),
+                        end: Position::new((ctor.loc.line as u32).saturating_sub(1), 0),
                     },
                     children: None,
                 };
@@ -1267,6 +1266,21 @@ fn extract_class_members(class: &cavvy::ast::ClassDecl) -> Vec<DocumentSymbol> {
     }
 
     members
+}
+
+/// 将 LSP 的 UTF-16 偏移转换为 char 索引
+/// position.character 以 UTF-16 代码单元计数，而 Rust 字符串操作按 char（标量值）处理
+fn utf16_offset_to_char_index(line: &str, utf16_offset: usize) -> usize {
+    let mut units = 0usize;
+    let mut index = 0usize;
+    for c in line.chars() {
+        if units >= utf16_offset {
+            break;
+        }
+        units += c.len_utf16();
+        index += 1;
+    }
+    index
 }
 
 /// 从行中提取指定位置的单词

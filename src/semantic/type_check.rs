@@ -323,12 +323,9 @@ impl SemanticAnalyzer {
                 } else {
                     self.replace_type_params(&var.var_type, &self.current_class_type_params)
                 };
-                let mut init_type_opt: Option<Type> = None;
-
                 // 处理 auto 类型推断或类型检查（只分析初始化器一次）
                 if let Some(init) = &var.initializer {
                     let init_type = self.infer_expr_type_collect_errors(init);
-                    init_type_opt = Some(init_type.clone());
 
                     if var_type == Type::Auto {
                         // auto 类型推断：使用初始化器的类型
@@ -623,11 +620,8 @@ impl SemanticAnalyzer {
                     } else {
                         self.replace_type_params(&var.var_type, &self.current_class_type_params)
                     };
-                    let mut init_type_opt: Option<Type> = None;
-
                     if let Some(init_expr) = &var.initializer {
                         let init_type = self.infer_expr_type_collect_errors(init_expr);
-                        init_type_opt = Some(init_type.clone());
 
                         if var_type == Type::Auto {
                             var_type = init_type;

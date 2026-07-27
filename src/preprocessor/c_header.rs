@@ -100,25 +100,10 @@ impl CayType {
 /// 收集系统/环境 include 路径（CPATH/C_INCLUDE_PATH/CPLUS_INCLUDE_PATH + 常见位置）
 fn system_include_paths() -> Vec<PathBuf> {
     let mut paths: Vec<PathBuf> = Vec::new();
-    if let Ok(cpath) = std::env::var("CPATH") {
-        for p in cpath.split(':') {
-            if !p.is_empty() {
-                paths.push(PathBuf::from(p));
-            }
-        }
-    }
-    if let Ok(p) = std::env::var("C_INCLUDE_PATH") {
-        for s in p.split(':') {
-            if !s.is_empty() {
-                paths.push(PathBuf::from(s));
-            }
-        }
-    }
-    if let Ok(p) = std::env::var("CPLUS_INCLUDE_PATH") {
-        for s in p.split(':') {
-            if !s.is_empty() {
-                paths.push(PathBuf::from(s));
-            }
+    // 用 std::env::split_paths 按平台分隔符拆分（Unix ':'，Windows ';'），自动跳过空段
+    for var in ["CPATH", "C_INCLUDE_PATH", "CPLUS_INCLUDE_PATH"] {
+        if let Some(value) = std::env::var_os(var) {
+            paths.extend(std::env::split_paths(&value));
         }
     }
     // 常见系统位置
@@ -162,7 +147,6 @@ fn make_mangled_name(base: &str, params: &[Param]) -> String {
                 let mut s = ty.render();
                 s = s.replace('*', "p");
                 s = s.replace(' ', "_");
-                s = s.replace("c_string", "c_string");
                 parts.push(s);
             }
         }
@@ -443,12 +427,12 @@ fn c_preprocess(
                     out_lines.push(String::new());
                 }
                 "if" => {
-                    let cond = eval_c_condition(&args, &macros);
+                    let cond = eval_c_condition(&args, &macros, &mut warnings);
                     push_cond(&mut stack, cond, &mut skipping);
                     out_lines.push(String::new());
                 }
                 "elif" => {
-                    let cond = eval_c_condition(&args, &macros);
+                    let cond = eval_c_condition(&args, &macros, &mut warnings);
                     handle_elif(&mut stack, cond, &mut skipping);
                     out_lines.push(String::new());
                 }
@@ -474,13 +458,13 @@ fn c_preprocess(
                         inc.to_string()
                     };
 
-                    // 尝试解析为本地文件（基于 base_dir），否则记录为跳过
+                    // 尝试解析为本地文件（基于当前被处理文件的目录 base_dir），否则记录为跳过；
+                    // 不提供相对 CWD 的候选路径，避免构建结果依赖工作目录
                     let mut found = false;
                     let mut candidates: Vec<PathBuf> = Vec::new();
                     if let Some(d) = base_dir {
                         candidates.push(d.join(&inc_inner));
                     }
-                    candidates.push(PathBuf::from(&inc_inner));
                     if let Some(paths) = include_paths {
                         for inc_dir in paths {
                             candidates.push(inc_dir.join(&inc_inner));
@@ -625,7 +609,7 @@ fn handle_elif(stack: &mut Vec<CCond>, cond: bool, skipping: &mut bool) {
     }
 }
 
-fn eval_c_condition(expr: &str, macros: &CMacros) -> bool {
+fn eval_c_condition(expr: &str, macros: &CMacros, warnings: &mut Vec<String>) -> bool {
     let trimmed = expr.trim();
     if trimmed.is_empty() {
         return false;
@@ -640,7 +624,11 @@ fn eval_c_condition(expr: &str, macros: &CMacros) -> bool {
     let mut parser = ConditionParser::new(trimmed, &view);
     match parser.parse_expression() {
         Ok(v) => v != 0,
-        Err(_) => false,
+        Err(_) => {
+            // 解析失败按 C 预处理语义回退为 false，但记录警告而非静默吞错
+            warnings.push(format!("#if 条件表达式 '{}' 解析失败，按 false 处理", trimmed));
+            false
+        }
     }
 }
 

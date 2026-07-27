@@ -538,9 +538,6 @@ fn main() {
     } else {
         println!("工具链: llc+lld (默认)");
     }
-    if options.use_embedded_llc {
-        println!("实验性: 使用内嵌 llc");
-    }
     if options.debug {
         println!("调试信息: 启用");
     }

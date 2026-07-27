@@ -129,8 +129,38 @@ impl SemanticAnalyzer {
                 "Cannot infer type of empty array initializer".to_string(),
             ));
         }
-        // 推断第一个元素的类型作为数组元素类型
-        let elem_type = self.infer_expr_type_internal(&init.elements[0])?;
+        // 检查所有元素的类型一致性（不能只检查第一个元素）。
+        // null 元素不参与元素类型的确定，但会被检查为可赋值。
+        let mut elem_type: Option<Type> = None;
+        for element in &init.elements {
+            let ty = self.infer_expr_type_internal(element)?;
+            if ty.is_null_literal() {
+                continue;
+            }
+            match &elem_type {
+                None => elem_type = Some(ty),
+                Some(t) => {
+                    if self.types_compatible(&ty, t) {
+                        // 元素可赋值给当前元素类型，继续
+                    } else if Self::is_numeric_type_helper(t) && Self::is_numeric_type_helper(&ty)
+                    {
+                        // 混合数值类型进行类型提升（如 {1, 2L} -> long[]）
+                        elem_type = Some(self.promote_types(t, &ty));
+                    } else {
+                        return Err(semantic_error_at_loc(
+                            &init.loc,
+                            format!(
+                                "Array initializer elements must have consistent types: expected {}, got {}",
+                                t, ty
+                            ),
+                        ));
+                    }
+                }
+            }
+        }
+        // 全是 null 元素时，元素类型为 null 标记类型（可赋值给任何引用类型数组）
+        let elem_type =
+            elem_type.unwrap_or_else(|| Type::Object(crate::types::NULL_TYPE_NAME.to_string()));
         Ok(Type::Array(Box::new(elem_type)))
     }
 

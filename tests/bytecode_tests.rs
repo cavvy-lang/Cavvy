@@ -163,16 +163,17 @@ fn test_bcgen_obfuscated_bytecode() {
         .expect("Failed to execute cay-bcgen");
 
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        output.status.success(),
-        "cay-bcgen with obfuscation failed: {}",
-        stderr
-    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
 
-    // 检查字节码文件是否生成
+    // 字节码混淆为实验性功能，当前版本必须明确报错退出，不得静默产出未混淆产物
     assert!(
-        std::path::Path::new(bc_path).exists(),
-        "Obfuscated bytecode file not generated"
+        !output.status.success(),
+        "cay-bcgen --obfuscate should fail with an explicit unavailable error"
+    );
+    assert!(
+        stderr.contains("不可用") || stdout.contains("不可用") || stderr.contains("实验性"),
+        "error message should explain obfuscation is unavailable, stderr: {}",
+        stderr
     );
 
     // 清理
@@ -448,18 +449,22 @@ fn test_bytecode_obfuscation() {
     };
 
     let mut obfuscator = BytecodeObfuscator::new(options);
-    obfuscator.obfuscate(&mut module);
+    let result = obfuscator.obfuscate(&mut module);
 
-    // 验证混淆效果
+    // 字节码混淆是实验性功能，当前版本必须明确报错而不是产出假混淆
     assert!(
-        module.header.obfuscated,
-        "Module should be marked as obfuscated"
+        result.is_err(),
+        "obfuscate() should return an explicit NotAvailable error"
     );
 
-    // 调试信息应该被移除
+    // 模块不得被标记为已混淆，内容保持原样
     assert!(
-        module.functions[0].body.line_number_table.is_empty(),
-        "Debug info should be stripped"
+        !module.header.obfuscated,
+        "Module must NOT be marked as obfuscated when obfuscation is unavailable"
+    );
+    assert!(
+        !module.functions[0].body.line_number_table.is_empty(),
+        "Module content must remain untouched"
     );
 }
 

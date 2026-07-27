@@ -3,6 +3,12 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::fmt;
 
+/// null 字面量的内部类型标记名。
+/// `<null>` 不是合法的源语言标识符，不会与用户定义的类名冲突。
+/// 语义分析阶段用 `Type::Object(NULL_TYPE_NAME)` 表示 null 字面量的类型，
+/// 以便与真正的 Object 实例精确区分（修复 null 与 Object 混用导致的类型大洞）。
+pub const NULL_TYPE_NAME: &str = "<null>";
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 pub enum Type {
     Void,
@@ -751,7 +757,10 @@ impl Type {
             Type::Array(_) => 8,    // 指针大小
             Type::Function(_) => 8, // 函数指针
             Type::Auto => {
-                unreachable!("Cannot get size of auto type - type inference not completed")
+                // auto 应在语义分析阶段被解析为具体类型，不应泄漏到这里。
+                // 与 codegen/ir 中对 Auto 的既有处理保持一致（按指针大小回退），
+                // 避免对用户代码 panic。
+                8
             }
             // 泛型类型 — 大小取决于具体实例化，运行时由单态化版本决定
             Type::GenericParam(_) => 8, // 泛型参数默认指针大小
@@ -806,8 +815,21 @@ impl Type {
         )
     }
 
+    /// 判断是否为 null 字面量的内部标记类型
+    pub fn is_null_literal(&self) -> bool {
+        matches!(self, Type::Object(name) if name == NULL_TYPE_NAME)
+    }
+
     pub fn is_integer(&self) -> bool {
-        matches!(self, Type::Int32 | Type::Int64 | Type::CULong)
+        matches!(
+            self,
+            // 内置整数类型（char 可参与整数运算）
+            Type::Int32 | Type::Int64 | Type::Char |
+            // FFI 整数类型
+            Type::CInt | Type::CUInt | Type::CLong | Type::CULong |
+            Type::CShort | Type::CUShort | Type::CChar | Type::CUChar |
+            Type::SizeT | Type::SSizeT | Type::UIntPtr | Type::IntPtr
+        )
     }
 
     /// 检查是否是泛型相关类型
@@ -882,7 +904,14 @@ impl fmt::Display for Type {
             Type::Bool => write!(f, "bool"),
             Type::String => write!(f, "string"),
             Type::Char => write!(f, "char"),
-            Type::Object(name) => write!(f, "{}", name),
+            Type::Object(name) => {
+                // null 字面量的内部标记类型对用户显示为 "null"
+                if name == NULL_TYPE_NAME {
+                    write!(f, "null")
+                } else {
+                    write!(f, "{}", name)
+                }
+            }
             Type::Array(inner) => write!(f, "{}[]", inner),
             Type::Function(func_type) => {
                 write!(f, "fn(")?;
@@ -1981,7 +2010,9 @@ impl TypeRegistry {
             (Some(p), Some(a)) => p.name == a.name,
             (Some(p), None) => Self::simple_name(&p.name) == Self::simple_name(arg_base),
             (None, Some(a)) => Self::simple_name(param_base) == Self::simple_name(&a.name),
-            (None, None) => Self::simple_name(param_base) == Self::simple_name(arg_base),
+            // 两个类名都无法解析到注册信息时，不能仅凭简单名相同判定兼容：
+            // 不同命名空间下的同名类并不是同一个类，此处保守判不兼容。
+            (None, None) => false,
         }
     }
 
@@ -2066,23 +2097,26 @@ impl TypeRegistry {
         if !self.interfaces.contains_key(interface_name) {
             return None;
         }
-        // 查找实现了该接口且拥有该方法的类
-        for (_, class_info) in &self.classes {
-            if class_info.interfaces.iter().any(|i| {
-                let bare_name = match i {
-                    Type::Object(name) | Type::Generic(name, _) => {
-                        name.split('<').next().unwrap_or(name)
-                    }
-                    _ => &format!("{}", i),
-                };
-                bare_name == interface_name
-            }) {
-                if class_info.methods.contains_key(method_name) {
-                    return Some(class_info);
-                }
-            }
-        }
-        None
+        // 查找实现了该接口且拥有该方法的类。
+        // HashMap 遍历顺序不确定，先收集候选再按类名排序，
+        // 保证结果确定性；存在多个实现类时按类名字典序取第一个。
+        let mut candidates: Vec<&ClassInfo> = self
+            .classes
+            .values()
+            .filter(|class_info| {
+                class_info.interfaces.iter().any(|i| {
+                    let bare_name = match i {
+                        Type::Object(name) | Type::Generic(name, _) => {
+                            name.split('<').next().unwrap_or(name)
+                        }
+                        _ => &format!("{}", i),
+                    };
+                    bare_name == interface_name
+                }) && class_info.methods.contains_key(method_name)
+            })
+            .collect();
+        candidates.sort_by(|a, b| a.name.cmp(&b.name));
+        candidates.into_iter().next()
     }
 
     /// 根据简单名查找枚举的命名空间限定名（如 "JsonType" → "json::JsonType"）

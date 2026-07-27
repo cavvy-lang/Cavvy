@@ -222,15 +222,28 @@ pub fn parse_statement(parser: &mut Parser) -> CayResult<Stmt> {
             if super::types::is_type_token(parser) {
                 // 尝试解析类型（不消耗最终位置）以判断是否紧跟变量名。
                 let checkpoint = parser.pos;
-                if super::types::parse_type(parser).is_ok() {
-                    // 如果解析类型后当前token是标识符，则认为是变量声明
-                    if let crate::lexer::Token::Identifier(_) = parser.current_token() {
-                        parser.pos = checkpoint; // 回退到类型前位置
-                        return parse_var_decl(parser);
+                match super::types::parse_type(parser) {
+                    Ok(_) => {
+                        // 如果解析类型后当前token是标识符，则认为是变量声明
+                        if let crate::lexer::Token::Identifier(_) = parser.current_token() {
+                            parser.pos = checkpoint; // 回退到类型前位置
+                            return parse_var_decl(parser);
+                        }
+                        // 回退到初始位置，继续解析为表达式语句
+                        parser.pos = checkpoint;
+                    }
+                    Err(e) => {
+                        // 类型关键字不可能开始表达式（标识符才有歧义，如泛型 vs 比较运算），
+                        // 直接上报类型解析错误，避免落进表达式解析产生误导性报错
+                        if !matches!(
+                            parser.tokens[checkpoint].token,
+                            crate::lexer::Token::Identifier(_)
+                        ) {
+                            return Err(e);
+                        }
+                        parser.pos = checkpoint;
                     }
                 }
-                // 回退到初始位置，继续解析为表达式语句
-                parser.pos = checkpoint;
             }
 
             parse_expression_statement(parser)
@@ -560,6 +573,23 @@ pub fn parse_switch_statement(parser: &mut Parser) -> CayResult<Stmt> {
         if parser.match_token(&crate::lexer::Token::Case) {
             // 解析 case 值（支持整数、字符常量和 enum variant）
             let case_value = match *parser.current_token() {
+                // 负数常量: case -1:
+                crate::lexer::Token::Minus => {
+                    parser.advance();
+                    match *parser.current_token() {
+                        crate::lexer::Token::IntegerLiteral(Some((v, _))) => {
+                            // 字面量文本不含符号，v 必为非负，取负安全
+                            let val = -v;
+                            parser.advance();
+                            CaseValue::Integer(val)
+                        }
+                        _ => {
+                            return Err(parser.error(
+                                "case 标签中 '-' 后应为整数常量\n提示: 负常量格式为 case -1:",
+                            ));
+                        }
+                    }
+                }
                 crate::lexer::Token::IntegerLiteral(Some((v, _))) => {
                     let val = v; // v 是 i64
                     parser.advance();
@@ -885,7 +915,12 @@ fn parse_inline_ir_from_tokens(parser: &mut Parser) -> CayResult<Vec<String>> {
                     crate::lexer::Token::IntegerLiteral(opt) => {
                         let val = match opt {
                             Some((v, _)) => v.to_string(),
-                            None => "0".to_string(),
+                            // 词法器无法解析的整数（如溢出）不得静默当作 0，否则生成错误 IR
+                            None => {
+                                return Err(parser.error(
+                                    "内联 IR 中的整数字面量无效（可能超出 i64 范围）\n提示: 请使用合法的整数常量",
+                                ));
+                            }
                         };
                         parser.advance();
                         val
@@ -1073,9 +1108,75 @@ fn parse_inline_ir_from_tokens(parser: &mut Parser) -> CayResult<Vec<String>> {
             crate::lexer::Token::IntegerLiteral(opt) => {
                 let val = match opt {
                     Some((v, _)) => v.to_string(),
-                    None => "0".to_string(),
+                    // 词法器无法解析的整数（如溢出）不得静默当作 0，否则生成错误 IR
+                    None => {
+                        return Err(parser.error(
+                            "内联 IR 中的整数字面量无效（可能超出 i64 范围）\n提示: 请使用合法的整数常量",
+                        ));
+                    }
                 };
                 current_line.push(val);
+                parser.advance();
+            }
+            // 负号：LLVM IR 负数常量（如 add i32 -5, 0）
+            crate::lexer::Token::Minus => {
+                current_line.push("-".to_string());
+                parser.advance();
+            }
+            // 元数据：!dbg、!{...}、!5
+            crate::lexer::Token::Bang => {
+                current_line.push("!".to_string());
+                parser.advance();
+            }
+            // 标签定义：entry:
+            crate::lexer::Token::Colon => {
+                current_line.push(":".to_string());
+                parser.advance();
+            }
+            // 可变参数声明：declare i32 @printf(i8*, ...)
+            crate::lexer::Token::DotDotDot => {
+                current_line.push("...".to_string());
+                parser.advance();
+            }
+            // 字符串字面量：c"hello"
+            crate::lexer::Token::StringLiteral(opt) => match opt {
+                Some(s) => {
+                    current_line.push(format!("\"{}\"", escape_ir_string(s)));
+                    parser.advance();
+                }
+                None => {
+                    return Err(parser.error(
+                        "内联 IR 中的字符串字面量无效\n提示: 请检查字符串中的转义序列是否合法",
+                    ));
+                }
+            },
+            // 字符字面量：按字节值输出（如 i8 65）
+            crate::lexer::Token::CharLiteral(opt) => match opt {
+                Some(c) => {
+                    current_line.push((*c as u32).to_string());
+                    parser.advance();
+                }
+                None => {
+                    return Err(parser.error(
+                        "内联 IR 中的字符字面量无效\n提示: 请检查字符中的转义序列是否合法",
+                    ));
+                }
+            },
+            // 浮点常量：fadd float 1.5, %x
+            crate::lexer::Token::FloatLiteral(opt) => match opt {
+                Some((v, _)) => {
+                    current_line.push(format_ir_float(*v));
+                    parser.advance();
+                }
+                None => {
+                    return Err(parser.error(
+                        "内联 IR 中的浮点字面量无效\n提示: 请使用合法的浮点常量",
+                    ));
+                }
+            },
+            // @main 全局符号（lexer 会把 @main 识别为注解 token）
+            crate::lexer::Token::AtMain => {
+                current_line.push("@main".to_string());
                 parser.advance();
             }
             crate::lexer::Token::Comma => {
@@ -1189,8 +1290,13 @@ fn parse_inline_ir_from_tokens(parser: &mut Parser) -> CayResult<Vec<String>> {
                 // Newline token被lexer跳过，这里不需要处理
                 parser.advance();
             }
+            // 无法识别的 token 不得静默丢弃（否则生成的 IR 与源码不符，属于 silent miscompile）
             _ => {
-                parser.advance();
+                let token_name = super::utils::get_token_name(parser.current_token());
+                return Err(parser.error(&format!(
+                    "内联 IR 中不支持 token {}\n提示: __ir 块内只能书写 LLVM IR 指令；请检查是否拼写错误，或改用等效的 IR 写法",
+                    token_name
+                )));
             }
         }
     }
@@ -1213,15 +1319,19 @@ fn join_ir_tokens(tokens: &[String]) -> String {
         if i > 0 {
             let prev = &tokens[i - 1];
             // 不需要在前面加空格的情况:
-            // - 当前是 ) , ( *  时
-            // - 前一个是 @ (  时
+            // - 当前是 ) , . : ( 或字符串字面量（紧跟 c 前缀，如 c"..."）时
+            // - 前一个是 @ . ( - !  时（- 和 ! 分别对应负数常量与元数据引用）
             let no_space = token == ")"
                 || token == ","
                 || token == "."
+                || token == ":"
                 || token == "("
+                || token.starts_with('"')
                 || prev == "@"
                 || prev == "."
                 || prev == "("
+                || prev == "-"
+                || prev == "!"
                 || (*token == "*" && is_llvm_type_token(prev));
             if !no_space {
                 result.push(' ');
@@ -1238,6 +1348,30 @@ fn is_llvm_type_token(token: &str) -> bool {
         token,
         "i1" | "i8" | "i16" | "i32" | "i64" | "float" | "double" | "void" | "%struct" | "label"
     )
+}
+
+/// 将字符串内容转义为 LLVM IR 字符串字面量形式
+/// 非可打印 ASCII、双引号和反斜杠统一转义为 \XX（两位大写十六进制）
+fn escape_ir_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            0x20..=0x7E if b != b'"' && b != b'\\' => out.push(b as char),
+            _ => out.push_str(&format!("\\{:02X}", b)),
+        }
+    }
+    out
+}
+
+/// 格式化浮点数为 LLVM IR 常量形式
+/// LLVM IR 浮点常量必须含小数点或指数，纯数字形式补 ".0"
+fn format_ir_float(v: f64) -> String {
+    let s = v.to_string();
+    if s.chars().all(|c| c.is_ascii_digit() || c == '-') {
+        format!("{}.0", s)
+    } else {
+        s
+    }
 }
 
 #[cfg(test)]
@@ -1274,5 +1408,120 @@ mod tests {
             inline_ir.raw_lines[0],
             "call void @llvm.memcpy.p0i8.p0i8.i64(i8* %dest, i8* %src, i64 8, i1 false)"
         );
+    }
+
+    /// 回归测试：内联 IR 中的负数常量必须保留负号
+    /// （修复前 Minus token 被静默丢弃，add i32 -5, 0 会变成 add i32 5, 0）
+    #[test]
+    fn inline_ir_preserves_negative_constants() {
+        let source = r#"
+            class InlineIrNegProbe {
+                void neg() {
+                    __ir {
+                        %neg = add i32 -5, 0
+                    }
+                }
+            }
+        "#;
+
+        let tokens = crate::lexer::lex(source).expect("source should lex");
+        let ast = crate::parser::parse_with_source(tokens, source.to_string())
+            .expect("source should parse");
+
+        let method = match &ast.classes[0].members[0] {
+            ClassMember::Method(method) => method,
+            _ => panic!("expected method"),
+        };
+        let body = method.body.as_ref().expect("method should have body");
+        let inline_ir = match &body.statements[0] {
+            Stmt::InlineIr(inline_ir) => inline_ir,
+            _ => panic!("expected inline IR statement"),
+        };
+
+        assert_eq!(inline_ir.raw_lines[0], "%neg = add i32 -5, 0");
+    }
+
+    /// 回归测试：内联 IR 支持标签冒号与元数据叹号
+    #[test]
+    fn inline_ir_preserves_labels_and_metadata() {
+        let source = r#"
+            class InlineIrLabelProbe {
+                void lbl() {
+                    __ir {
+                        entry:
+                        call void @foo(), !dbg !5
+                    }
+                }
+            }
+        "#;
+
+        let tokens = crate::lexer::lex(source).expect("source should lex");
+        let ast = crate::parser::parse_with_source(tokens, source.to_string())
+            .expect("source should parse");
+
+        let method = match &ast.classes[0].members[0] {
+            ClassMember::Method(method) => method,
+            _ => panic!("expected method"),
+        };
+        let body = method.body.as_ref().expect("method should have body");
+        let inline_ir = match &body.statements[0] {
+            Stmt::InlineIr(inline_ir) => inline_ir,
+            _ => panic!("expected inline IR statement"),
+        };
+
+        assert_eq!(inline_ir.raw_lines[0], "entry:");
+        assert_eq!(inline_ir.raw_lines[1], "call void @foo(), !dbg !5");
+    }
+
+    /// 回归测试：内联 IR 中无法识别的 token 必须报错，不得静默丢弃
+    #[test]
+    fn inline_ir_rejects_unknown_tokens() {
+        let source = r#"
+            class InlineIrErrProbe {
+                void bad() {
+                    __ir {
+                        %x = add i32 1 && 2
+                    }
+                }
+            }
+        "#;
+
+        let tokens = crate::lexer::lex(source).expect("source should lex");
+        let result = crate::parser::parse_with_source(tokens, source.to_string());
+        assert!(result.is_err(), "unknown token in inline IR must error");
+    }
+
+    /// 回归测试：switch 的 case 支持负整数常量
+    #[test]
+    fn switch_case_supports_negative_constant() {
+        let source = r#"
+            class SwitchNegProbe {
+                void f(int x) {
+                    switch (x) {
+                        case -1:
+                            println("neg");
+                        default:
+                            println("other");
+                    }
+                }
+            }
+        "#;
+
+        let tokens = crate::lexer::lex(source).expect("source should lex");
+        let ast = crate::parser::parse_with_source(tokens, source.to_string())
+            .expect("source should parse");
+
+        let method = match &ast.classes[0].members[0] {
+            ClassMember::Method(method) => method,
+            _ => panic!("expected method"),
+        };
+        let body = method.body.as_ref().expect("method should have body");
+        match &body.statements[0] {
+            Stmt::Switch(switch) => match &switch.cases[0].value {
+                crate::ast::CaseValue::Integer(v) => assert_eq!(*v, -1),
+                other => panic!("expected integer case value, got {:?}", other),
+            },
+            other => panic!("expected switch statement, got {:?}", other),
+        }
     }
 }

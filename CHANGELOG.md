@@ -7,6 +7,53 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **构建**：`.verinfo` 为空或缺失 `[CAYC] version` 时 `build.rs` 回退到 `CARGO_PKG_VERSION`
+  并打印警告（此前会静默缺失 `CAY*_VERSION` 宏导致编译失败）；移除对 `.git/index`
+  的监听（任何 stage 操作都会触发全量重编）；16 段版本环境变量设置改为表驱动。
+- **预处理器**：`#if !defined(X)`、`#if A&&B` 等无空格写法不再静默求值错误；
+  宏展开跳过字符串/字符字面量且宏表排序移出逐字符循环；`#define` 值中的
+  `http://` 不再被当作注释截断；`#if` 表达式解析失败发出警告而非静默为 false。
+- **词法**：整数/浮点字面量超出范围时产生明确错误（启用此前从未构造的
+  `InvalidNumberLiteral`），不再退化为 `IntegerLiteral(None)`；非法转义序列报
+  `InvalidEscapeSequence`。
+- **解析器**：内联 IR 不再静默丢弃 token（曾导致 `add i32 -5, 0` 负号被吞的
+  silent miscompile）；`(a) + b` 类表达式可正确解析（cast 预读失败时回退）；
+  `c_uint64_t` 报「暂不支持」（此前被静默映射为有符号 `Int64`）；`case -1:`
+  支持负常量；重复/冲突修饰符报错；同名嵌套 namespace 路径不再被静默去重。
+- **语义**：null 字面量获得独立类型标记，`Object` 实例不再能赋给任意类型；
+  比较运算符检查操作数类型（`"abc" < 42` 报错）；数组初始化检查所有元素；
+  重载决议失败候选的错误不再污染全局错误列表；`Type::is_integer` 补齐；
+  `size_in_bytes` 不再对 `Type::Auto` panic；父链遍历全部加防环。
+- **代码生成**：字段偏移查找失败、类大小未知、方法签名解析失败均改为硬错误
+  （此前分别静默回退为偏移 0、8 字节、`"x"` 占位符）；IR 混淆器不再破坏
+  `c"..."` 字符串字面量内容，且不再混淆外部符号（declare）与 `main`；
+  默认目标三元组按宿主平台探测（此前硬编码 Windows）。
+- **诊断**：移除 `emit_zero_line_debug_info`（任何行号为 0 的错误都会往用户
+  工作目录写含完整源代码的 `debug_*.txt`）；`Severity::Fatal` 及中文魔法字符串
+  判断移除，严重级别由结构化 `is_warning` 决定；多字节标识符高亮长度按字节
+  计算；删除约 400 行零引用的「保留供未来使用」死类型。
+- **cavly 安全**：未配置官方根公钥时拒绝携带官方签名的包（fail-closed，此前
+  静默跳过验证）；本地包完整性校验失败不再被 `let _ =` 吞掉；修复 PowerShell
+  下载分支命令注入与可预测临时文件名；服务器下发的 fingerprint 入路径前做
+  格式校验（防路径遍历）；`curl` 加 `--fail`（404 不再被当作包数据）；证书
+  过期时间纳入校验并记录审计事件。
+- **工具**：`cay-lsp` 修复 UTF-16/字节混用导致的中文行 panic 与文档符号行号
+  off-by-one；`cay-dt --json` 改用 serde_json（此前输出带尾随逗号的非法 JSON）；
+  `cay-run` 被信号杀死时返回 128+signal；RCPL 修复 Ctrl-D 忙等死循环；
+  工具链查找改为捆绑 LLVM 优先、PATH 兜底（hermetic）；删除永不编译的
+  `src/main.rs`，`cay-pre` 接入 Cargo 构建。
+
+### Changed
+
+- **字节码子系统降级为实验性**：字节码混淆器（混淆为假功能且控制流混淆会改变
+  程序语义）、`cay-run --obfuscate/--bytecode`（产出空程序）、JIT（生成非法
+  LLVM IR）现在全部明确报错而非静默产出错误程序；`cay-bcgen` 对 break/continue
+  生成真实跳转，未定义变量、不支持构造全部硬报错。
+- **核心原则确立**：编译器/工具宁可 noisy 报错，不可 silently wrong。
+  静默回退默认值、`let _ =` 吞错、`_ => {}` 丢弃构造均视为缺陷。
+
 ## [6.1.0] - 2026-07-14
 
 ### Added

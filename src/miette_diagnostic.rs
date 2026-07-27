@@ -4,7 +4,9 @@
 //! 所有错误构造函数要求显式传入 error_code — 不再使用字符串匹配推断。
 //!
 //! 架构: CayError → CayDiagnostic(轻量包装) → miette 输出
-//! 已移除: CompilerError, DisplayDiagnostic, 旧 Diagnostic, 旧 DiagnosticCollector
+//! 已移除: CompilerError, DisplayDiagnostic, 旧 Diagnostic, 旧 DiagnosticCollector，
+//!         以及一组零引用的 miette-derive 死类型（原「保留供未来使用」的
+//!         按阶段划分的错误/警告结构体与枚举）
 
 use miette::{NamedSource, SourceSpan as MietteSpan};
 use serde::Serialize;
@@ -250,7 +252,6 @@ pub enum Severity {
     Note,
     Warning,
     Error,
-    Fatal,
 }
 
 impl fmt::Display for Severity {
@@ -259,7 +260,6 @@ impl fmt::Display for Severity {
             Severity::Note => write!(f, "提示"),
             Severity::Warning => write!(f, "警告"),
             Severity::Error => write!(f, "错误"),
-            Severity::Fatal => write!(f, "致命错误"),
         }
     }
 }
@@ -514,11 +514,11 @@ impl CayError {
     }
     pub fn severity(&self) -> Severity {
         match self {
-            CayError::CodeGen {
-                kind,
-                is_warning: false,
-                ..
-            } if kind == "致命错误" => Severity::Fatal,
+            // 严重级别由结构化的 is_warning 标志决定，
+            // 不再解析 kind 字段中的中文魔法字符串。
+            // 注: 当前所有 CodeGen 构造点的 kind 仅为显示用标签
+            // （"代码生成错误"/"代码生成警告"）；非警告即错误，
+            // 编译失败语义由是否返回 Err 表达，不设独立 Fatal 级别。
             CayError::CodeGen {
                 is_warning: true, ..
             }
@@ -599,7 +599,7 @@ impl miette::Diagnostic for CayError {
     }
     fn severity(&self) -> Option<miette::Severity> {
         match self.severity() {
-            Severity::Error | Severity::Fatal => Some(miette::Severity::Error),
+            Severity::Error => Some(miette::Severity::Error),
             Severity::Warning => Some(miette::Severity::Warning),
             _ => Some(miette::Severity::Advice),
         }
@@ -1189,7 +1189,7 @@ impl CayDiagnostic {
         Self {
             error_code: error.error_code(),
             severity: match error.severity() {
-                Severity::Error | Severity::Fatal => miette::Severity::Error,
+                Severity::Error => miette::Severity::Error,
                 Severity::Warning => miette::Severity::Warning,
                 _ => miette::Severity::Advice,
             },
@@ -1209,11 +1209,15 @@ impl CayDiagnostic {
     }
     fn compute_highlight_len(&self, offset: usize) -> usize {
         match &self.highlight_kind {
+            // Fixed 存的是标识符字节长度（String::len 即 UTF-8 字节数）
             HighlightKind::Fixed(len) => *len,
+            // LabeledSpan 使用字节长度：累加字符的 UTF-8 字节数，而非字符个数，
+            // 否则多字节字符（如中文标识符）会导致高亮错位
             HighlightKind::ToWhitespace => self.source[offset..]
                 .chars()
                 .take_while(|c| !c.is_whitespace())
-                .count()
+                .map(char::len_utf8)
+                .sum::<usize>()
                 .max(1),
         }
     }
@@ -1312,63 +1316,13 @@ pub fn line_range(source: &str, line: usize) -> (usize, usize) {
 // print_diagnostics
 // ============================================================
 
-/// 当诊断行号为 0 时输出调试文件，帮助定位编译器内部定位失败。
-fn emit_zero_line_debug_info(error: &CayError, source: &str, filename: &str) {
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    let errors_to_check: Vec<&CayError> = match error {
-        CayError::MultipleErrors { errors } => errors.iter().collect(),
-        _ => vec![error],
-    };
-
-    for err in errors_to_check {
-        let (line, column) = err.location().unwrap_or((0, 0));
-        if line != 0 {
-            continue;
-        }
-
-        let code = err.error_code();
-        let message = err.message();
-        let suggestion = err.suggestion_text().unwrap_or("无");
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-        let path = format!("debug_{}_{}.txt", code, timestamp);
-
-        let content = format!(
-            "Cavvy Bug Report\n\
-             ================\n\
-             错误代码: {}\n\
-             错误类型: {}\n\
-             文件: {}\n\
-             行号: {} (行号为0)\n\
-             列号: {}\n\
-             错误信息: {}\n\
-             建议: {}\n\n\
-             === 源代码 ===\n\
-             {}\n",
-            code,
-            err.phase().label(),
-            filename,
-            line,
-            column,
-            message,
-            suggestion,
-            source
-        );
-
-        let _ = std::fs::write(&path, content);
-    }
-}
-
 pub fn print_diagnostics(errors: &[CayError], source: &str, filename: &str) {
     if errors.is_empty() {
         return;
     }
     let error_count = errors
         .iter()
-        .filter(|e| matches!(e.severity(), Severity::Error | Severity::Fatal))
+        .filter(|e| e.severity() == Severity::Error)
         .count();
     let warning_count = errors
         .iter()
@@ -1376,9 +1330,6 @@ pub fn print_diagnostics(errors: &[CayError], source: &str, filename: &str) {
         .count();
     eprintln!();
     for error in errors {
-        // 行号为0通常是编译器内部定位失败，额外输出调试文件
-        emit_zero_line_debug_info(error, source, filename);
-
         let diag = CayDiagnostic::new(error, source, filename);
         let report = miette::Report::new(diag)
             .with_source_code(NamedSource::new(filename, source.to_string()));
@@ -1454,412 +1405,6 @@ pub fn print_diagnostics_by_file(
         print_diagnostics(&owned, default_source, default_filename);
     }
 }
-
-// ============================================================
-// 新生代 miette-derive 类型（保留供未来使用）
-// ============================================================
-
-#[derive(Error, Debug, miette::Diagnostic)]
-#[error("{message}")]
-#[diagnostic()]
-pub struct CavvyError {
-    message: String,
-    #[diagnostic(code)]
-    code: String,
-    #[source_code]
-    src: NamedSource<String>,
-    #[label("{label_text}")]
-    span: MietteSpan,
-    #[diagnostic(transparent)]
-    label_text: String,
-    #[help]
-    help: Option<String>,
-}
-
-#[derive(Error, Debug, miette::Diagnostic)]
-#[error("{message}")]
-#[diagnostic(severity(warning))]
-pub struct CavvyWarning {
-    message: String,
-    #[diagnostic(code)]
-    code: String,
-    #[source_code]
-    src: NamedSource<String>,
-    #[label("{label_text}")]
-    span: MietteSpan,
-    #[diagnostic(transparent)]
-    label_text: String,
-    #[help]
-    help: Option<String>,
-}
-
-#[derive(Error, Debug, miette::Diagnostic)]
-pub enum LexerError {
-    #[error("非法字符: {ch}")]
-    #[diagnostic(code(E2001), help("请删除非法字符或使用支持的字符替换"))]
-    InvalidCharacter {
-        ch: char,
-        #[source_code]
-        src: NamedSource<String>,
-        #[label("非法字符在这里")]
-        span: MietteSpan,
-    },
-
-    #[error("未闭合的字符串字面量")]
-    #[diagnostic(code(E2002), help("请在字符串末尾添加双引号"))]
-    UnterminatedString {
-        #[source_code]
-        src: NamedSource<String>,
-        #[label("字符串从这里开始")]
-        span: MietteSpan,
-    },
-
-    #[error("无效的转义序列: {sequence}")]
-    #[diagnostic(code(E2003), help("有效的转义序列: \\n, \\t, \\\", \\\\"))]
-    InvalidEscapeSequence {
-        sequence: String,
-        #[source_code]
-        src: NamedSource<String>,
-        #[label("无效的转义序列")]
-        span: MietteSpan,
-    },
-
-    #[error("无效的数字字面量")]
-    #[diagnostic(
-        code(E2004),
-        help("支持的格式: 十进制(123), 十六进制(0xFF), 二进制(0b101)")
-    )]
-    InvalidNumberLiteral {
-        #[source_code]
-        src: NamedSource<String>,
-        #[label("无效的数字格式")]
-        span: MietteSpan,
-    },
-
-    #[error("词法警告: {message}")]
-    #[diagnostic(code(W2001), severity(warning))]
-    LexerWarning {
-        message: String,
-        #[source_code]
-        src: NamedSource<String>,
-        #[label("{message}")]
-        span: MietteSpan,
-        #[help]
-        help: Option<String>,
-    },
-}
-
-impl LexerError {
-    pub fn invalid_character(ch: char, source: &str, source_name: &str, offset: usize) -> Self {
-        Self::InvalidCharacter {
-            ch,
-            src: NamedSource::new(source_name, source.to_string()),
-            span: (offset, ch.len_utf8()).into(),
-        }
-    }
-    pub fn unterminated_string(source: &str, source_name: &str, start: usize) -> Self {
-        Self::UnterminatedString {
-            src: NamedSource::new(source_name, source.to_string()),
-            span: (start, 1).into(),
-        }
-    }
-    pub fn invalid_escape(sequence: &str, source: &str, source_name: &str, offset: usize) -> Self {
-        Self::InvalidEscapeSequence {
-            sequence: sequence.to_string(),
-            src: NamedSource::new(source_name, source.to_string()),
-            span: (offset, sequence.len()).into(),
-        }
-    }
-    pub fn invalid_number(source: &str, source_name: &str, offset: usize, len: usize) -> Self {
-        Self::InvalidNumberLiteral {
-            src: NamedSource::new(source_name, source.to_string()),
-            span: (offset, len).into(),
-        }
-    }
-}
-
-#[derive(Error, Debug, miette::Diagnostic)]
-pub enum ParserError {
-    #[error("期望 {expected}，但找到 {found}")]
-    #[diagnostic(code(E3001))]
-    UnexpectedToken {
-        expected: String,
-        found: String,
-        #[source_code]
-        src: NamedSource<String>,
-        #[label("这里")]
-        span: MietteSpan,
-        #[help]
-        help: Option<String>,
-    },
-
-    #[error("缺少分号")]
-    #[diagnostic(code(E3002), help("在语句末尾添加分号 ';'"))]
-    MissingSemicolon {
-        #[source_code]
-        src: NamedSource<String>,
-        #[label("这里应该有一个分号")]
-        span: MietteSpan,
-    },
-
-    #[error("期望标识符")]
-    #[diagnostic(code(E3005), help("使用有效的标识符名称（以字母或下划线开头）"))]
-    ExpectedIdentifier {
-        #[source_code]
-        src: NamedSource<String>,
-        #[label("这里")]
-        span: MietteSpan,
-    },
-
-    #[error("未闭合的括号")]
-    #[diagnostic(code(E3003), help("确保所有括号都正确配对"))]
-    UnmatchedBrace {
-        brace: char,
-        #[source_code]
-        src: NamedSource<String>,
-        #[label("未闭合的括号")]
-        span: MietteSpan,
-    },
-
-    #[error("无效的表达式")]
-    #[diagnostic(code(E3008))]
-    InvalidExpression {
-        #[source_code]
-        src: NamedSource<String>,
-        #[label("无效的表达式")]
-        span: MietteSpan,
-        #[help]
-        help: Option<String>,
-    },
-
-    #[error("语法警告: {message}")]
-    #[diagnostic(code(W3001), severity(warning))]
-    ParserWarning {
-        message: String,
-        #[source_code]
-        src: NamedSource<String>,
-        #[label("{message}")]
-        span: MietteSpan,
-        #[help]
-        help: Option<String>,
-    },
-}
-
-impl ParserError {
-    pub fn unexpected_token(
-        expected: impl Into<String>,
-        found: impl Into<String>,
-        source: &str,
-        source_name: &str,
-        offset: usize,
-        len: usize,
-    ) -> Self {
-        Self::UnexpectedToken {
-            expected: expected.into(),
-            found: found.into(),
-            src: NamedSource::new(source_name, source.to_string()),
-            span: (offset, len).into(),
-            help: None,
-        }
-    }
-    pub fn with_help(mut self, help: impl Into<String>) -> Self {
-        if let Self::UnexpectedToken { help: h, .. } = &mut self {
-            *h = Some(help.into());
-        }
-        self
-    }
-}
-
-#[derive(Error, Debug, miette::Diagnostic)]
-pub enum SemanticError {
-    #[error("未定义的标识符: {name}")]
-    #[diagnostic(code(E4001), help("请检查拼写或声明该变量/函数"))]
-    UndefinedIdentifier {
-        name: String,
-        #[source_code]
-        src: NamedSource<String>,
-        #[label("未定义的标识符")]
-        span: MietteSpan,
-    },
-
-    #[error("类型不匹配: 期望 {expected}，但找到 {found}")]
-    #[diagnostic(code(E4003), help("确保类型兼容或进行显式转换"))]
-    TypeMismatch {
-        expected: String,
-        found: String,
-        #[source_code]
-        src: NamedSource<String>,
-        #[label("类型不匹配")]
-        span: MietteSpan,
-    },
-
-    #[error("重复定义: {name}")]
-    #[diagnostic(code(E4002), help("该名称已在作用域中定义，请使用不同的名称"))]
-    DuplicateDefinition {
-        name: String,
-        #[source_code]
-        src: NamedSource<String>,
-        #[label("重复定义")]
-        span: MietteSpan,
-    },
-
-    #[error("'break' 只能在循环或switch中使用")]
-    #[diagnostic(code(E4013), help("break只能在循环或switch语句内部使用"))]
-    BreakOutsideLoop {
-        #[source_code]
-        src: NamedSource<String>,
-        #[label("这里的break无效")]
-        span: MietteSpan,
-    },
-
-    #[error("'continue' 只能在循环中使用")]
-    #[diagnostic(code(E4014), help("continue只能在循环内部使用"))]
-    ContinueOutsideLoop {
-        #[source_code]
-        src: NamedSource<String>,
-        #[label("这里的continue无效")]
-        span: MietteSpan,
-    },
-
-    #[error("函数调用参数数量不匹配: 期望 {expected} 个，但找到 {found} 个")]
-    #[diagnostic(code(E4018))]
-    ArgCountMismatch {
-        expected: usize,
-        found: usize,
-        #[source_code]
-        src: NamedSource<String>,
-        #[label("函数调用")]
-        span: MietteSpan,
-    },
-
-    #[error("语义警告: {message}")]
-    #[diagnostic(code(W4001), severity(warning))]
-    SemanticWarning {
-        message: String,
-        #[source_code]
-        src: NamedSource<String>,
-        #[label("{message}")]
-        span: MietteSpan,
-        #[help]
-        help: Option<String>,
-    },
-}
-
-impl SemanticError {
-    pub fn undefined_identifier(
-        name: &str,
-        source: &str,
-        source_name: &str,
-        offset: usize,
-        len: usize,
-    ) -> Self {
-        Self::UndefinedIdentifier {
-            name: name.to_string(),
-            src: NamedSource::new(source_name, source.to_string()),
-            span: (offset, len).into(),
-        }
-    }
-    pub fn type_mismatch(
-        expected: impl Into<String>,
-        found: impl Into<String>,
-        source: &str,
-        source_name: &str,
-        offset: usize,
-        len: usize,
-    ) -> Self {
-        Self::TypeMismatch {
-            expected: expected.into(),
-            found: found.into(),
-            src: NamedSource::new(source_name, source.to_string()),
-            span: (offset, len).into(),
-        }
-    }
-}
-
-#[derive(Error, Debug, miette::Diagnostic)]
-pub enum CodeGenError {
-    #[error("不支持的特性: {feature}")]
-    #[diagnostic(code(E5001), help("该特性在当前版本中不受支持"))]
-    UnsupportedFeature {
-        feature: String,
-        #[source_code]
-        src: NamedSource<String>,
-        #[label("不支持的特性")]
-        span: MietteSpan,
-    },
-
-    #[error("内部编译错误: {message}")]
-    #[diagnostic(code(E5004))]
-    InternalError {
-        message: String,
-        #[source_code]
-        src: NamedSource<String>,
-        #[label("错误位置")]
-        span: MietteSpan,
-    },
-
-    #[error("代码生成警告: {message}")]
-    #[diagnostic(code(W5001), severity(warning))]
-    CodeGenWarning {
-        message: String,
-        #[source_code]
-        src: NamedSource<String>,
-        #[label("{message}")]
-        span: MietteSpan,
-        #[help]
-        help: Option<String>,
-    },
-}
-
-impl CavvyError {
-    pub fn new(
-        message: impl Into<String>,
-        code: impl Into<String>,
-        source: impl Into<String>,
-        source_name: impl AsRef<str>,
-        span: (usize, usize),
-        label: impl Into<String>,
-    ) -> Self {
-        Self {
-            message: message.into(),
-            code: code.into(),
-            src: NamedSource::new(source_name, source.into()),
-            span: span.into(),
-            label_text: label.into(),
-            help: None,
-        }
-    }
-    pub fn with_help(mut self, help: impl Into<String>) -> Self {
-        self.help = Some(help.into());
-        self
-    }
-}
-
-impl CavvyWarning {
-    pub fn new(
-        message: impl Into<String>,
-        code: impl Into<String>,
-        source: impl Into<String>,
-        source_name: impl AsRef<str>,
-        span: (usize, usize),
-        label: impl Into<String>,
-    ) -> Self {
-        Self {
-            message: message.into(),
-            code: code.into(),
-            src: NamedSource::new(source_name, source.into()),
-            span: span.into(),
-            label_text: label.into(),
-            help: None,
-        }
-    }
-    pub fn with_help(mut self, help: impl Into<String>) -> Self {
-        self.help = Some(help.into());
-        self
-    }
-}
-
-pub type MietteResult<T> = miette::Result<T>;
 
 // ============================================================
 // 测试
@@ -1963,11 +1508,6 @@ mod tests {
     fn test_miette_diag() {
         let e = lexer_error(ErrorCodes::LEXER_UNTERMINATED_STRING, 2, 5, "unclosed");
         assert!(miette::Diagnostic::code(&e).is_some());
-    }
-    #[test]
-    fn test_lexer_error_display() {
-        let e = LexerError::invalid_character('@', "int x = @;", "t.cay", 8);
-        assert!(e.to_string().contains('@'));
     }
     #[test]
     fn test_cay_diag_render() {

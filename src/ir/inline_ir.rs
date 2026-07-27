@@ -100,6 +100,10 @@ impl InlineIrParser {
     }
 
     /// 创建开发模式解析器（允许所有指令）
+    ///
+    /// 仅限测试使用：生产路径必须走 `new()` 的指令白名单，
+    /// 不允许绕过安全验证。
+    #[cfg(test)]
     pub fn new_unsafe() -> Self {
         Self {
             allowed_functions: Vec::new(),

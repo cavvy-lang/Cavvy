@@ -1,7 +1,7 @@
 //! 类定义、继承关系分析和主类冲突分析
 
 use super::analyzer::SemanticAnalyzer;
-use crate::ast::{ClassMember, MethodDecl, Modifier, Program};
+use crate::ast::{ClassMember, Modifier, Program};
 use crate::miette_diagnostic::{CayResult, ErrorCodes, SourceLocation, semantic_error, semantic_error_with_file};
 use crate::types::{ClassInfo, FieldInfo, MethodInfo, ParameterInfo, Type};
 
@@ -415,7 +415,7 @@ impl SemanticAnalyzer {
                                 method.loc.line,
                                 method.loc.column,
                                 format!(
-                                    "@Test 方法 '{}' 的返回类型必须是 void，当前为 {}\n提示: 将返回类型改为 void，例如: public void {}(, ErrorCodes::get_suggestion(ErrorCodes::SEMANTIC_INVALID_OPERATION).to_string())",
+                                    "@Test 方法 '{}' 的返回类型必须是 void，当前为 {}\n提示: 将返回类型改为 void，例如: public void {}()",
                                     method.name, method.return_type, method.name
                                 ),
                             ));
@@ -428,7 +428,7 @@ impl SemanticAnalyzer {
                                 method.loc.line,
                                 method.loc.column,
                                 format!(
-                                    "@Test 方法 '{}' 不能有参数（发现 {} 个参数）\n提示: 移除参数，例如: public void {}(, ErrorCodes::get_suggestion(ErrorCodes::SEMANTIC_INVALID_OPERATION).to_string())",
+                                    "@Test 方法 '{}' 不能有参数（发现 {} 个参数）\n提示: 移除参数，例如: public void {}()",
                                     method.name,
                                     method.params.len(),
                                     method.name
@@ -443,7 +443,7 @@ impl SemanticAnalyzer {
                                 method.loc.line,
                                 method.loc.column,
                                 format!(
-                                    "@Test 方法 '{}' 不能是 private\n提示: 将 private 改为 public，例如: public void {}(, ErrorCodes::get_suggestion(ErrorCodes::SEMANTIC_INVALID_OPERATION).to_string())",
+                                    "@Test 方法 '{}' 不能是 private\n提示: 将 private 改为 public，例如: public void {}()",
                                     method.name, method.name
                                 ),
                             ));
@@ -1217,8 +1217,13 @@ impl SemanticAnalyzer {
     fn compute_class_depth(&self, class_name: &str) -> usize {
         let mut depth = 0;
         let mut current = class_name.to_string();
+        // 防止循环继承导致死循环
+        let mut visited = std::collections::HashSet::new();
 
         while let Some(class_info) = self.type_registry.get_class(&current) {
+            if !visited.insert(current.clone()) {
+                break; // 检测到循环继承
+            }
             if let Some(ref parent) = class_info.parent {
                 depth += 1;
                 current = parent.clone();

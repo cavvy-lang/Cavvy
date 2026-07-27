@@ -336,6 +336,23 @@ impl IrBuilder {
     // 顶层函数
     // ============================================================
 
+    /// 取出当前正在构建的函数。
+    ///
+    /// `current_function` 缺失属于 Builder 内部状态错误：
+    /// 返回带上下文的硬错误，而不是 panic。
+    fn take_current_function(&mut self, context: &str) -> CayResult<IrFunction> {
+        self.current_function.take().ok_or_else(|| {
+            codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
+                SourceLocation::default(),
+                format!(
+                    "IR Builder 内部错误：current_function 未设置（{}）",
+                    context
+                ),
+            )
+        })
+    }
+
     fn build_top_level_function(&mut self, func: &TopLevelFunction) -> CayResult<()> {
         let fn_name = format!("__toplevel_{}", func.name);
         let return_type = IrType::from(&func.return_type);
@@ -382,10 +399,7 @@ impl IrBuilder {
             self.set_terminator(IrTerminator::Return { value: None })?;
         }
 
-        let func_ir = self
-            .current_function
-            .take()
-            .expect("IR Builder: current_function 应在 build_top_level_function 中设置");
+        let func_ir = self.take_current_function("build_top_level_function")?;
         self.module.add_function(func_ir);
         Ok(())
     }
@@ -459,10 +473,16 @@ impl IrBuilder {
         }
 
         self.current_function = Some(IrFunction::new(fn_name, return_type, params));
-        self.current_function
-            .as_mut()
-            .expect("IR Builder: current_function 应在 build_method 中设置")
-            .is_static = is_static;
+        // 上一行刚设置 current_function；若未来重构破坏该不变量，明确报错而非 panic
+        if let Some(func_ir) = self.current_function.as_mut() {
+            func_ir.is_static = is_static;
+        } else {
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
+                SourceLocation::default(),
+                "IR Builder 内部错误：current_function 未设置（build_method）".to_string(),
+            ));
+        }
         self.scope_manager.reset();
         self.loop_stack.clear();
         self.temp_counter = 0;
@@ -521,10 +541,7 @@ impl IrBuilder {
             self.set_terminator(IrTerminator::Return { value: None })?;
         }
 
-        let func_ir = self
-            .current_function
-            .take()
-            .expect("IR Builder: current_function 应在方法构建前设置");
+        let func_ir = self.take_current_function("build_method")?;
         self.module.add_function(func_ir);
         Ok(())
     }
@@ -596,9 +613,12 @@ impl IrBuilder {
                     } else {
                         let param_types: Vec<String> = args
                             .iter()
-                            .filter_map(|arg| self.infer_expr_type(arg).ok())
-                            .map(|ty| self.type_to_signature(&ty))
-                            .collect();
+                            .map(|arg| {
+                                // 类型推断失败必须传播真实错误，不能静默丢弃
+                                let ty = self.infer_expr_type(arg)?;
+                                Ok(self.type_to_signature(&ty))
+                            })
+                            .collect::<CayResult<Vec<_>>>()?;
                         format!("{}.__ctor_{}", qualified_class, param_types.join("_"))
                     };
 
@@ -637,9 +657,12 @@ impl IrBuilder {
                                 } else {
                                     let param_types: Vec<String> = args
                                         .iter()
-                                        .filter_map(|arg| self.infer_expr_type(arg).ok())
-                                        .map(|ty| self.type_to_signature(&ty))
-                                        .collect();
+                                        .map(|arg| {
+                                            // 类型推断失败必须传播真实错误，不能静默丢弃
+                                            let ty = self.infer_expr_type(arg)?;
+                                            Ok(self.type_to_signature(&ty))
+                                        })
+                                        .collect::<CayResult<Vec<_>>>()?;
                                     format!("{}.__ctor_{}", qualified_parent, param_types.join("_"))
                                 };
 
@@ -677,10 +700,7 @@ impl IrBuilder {
         self.build_block(&ctor.body)?;
         self.set_terminator(IrTerminator::Return { value: None })?;
 
-        let func_ir = self
-            .current_function
-            .take()
-            .expect("IR Builder: current_function 应在方法构建前设置");
+        let func_ir = self.take_current_function("build_constructor")?;
         self.module.add_function(func_ir);
         Ok(())
     }
@@ -718,10 +738,7 @@ impl IrBuilder {
         self.build_block(&dtor.body)?;
         self.set_terminator(IrTerminator::Return { value: None })?;
 
-        let func_ir = self
-            .current_function
-            .take()
-            .expect("IR Builder: current_function 应在方法构建前设置");
+        let func_ir = self.take_current_function("build_destructor")?;
         self.module.add_function(func_ir);
         Ok(())
     }
@@ -758,10 +775,7 @@ impl IrBuilder {
 
         self.set_terminator(IrTerminator::Return { value: None })?;
 
-        let func_ir = self
-            .current_function
-            .take()
-            .expect("IR Builder: current_function 应在方法构建前设置");
+        let func_ir = self.take_current_function("build_default_constructor")?;
         self.module.add_function(func_ir);
         Ok(())
     }
@@ -778,10 +792,7 @@ impl IrBuilder {
         self.build_block(block)?;
         self.set_terminator(IrTerminator::Return { value: None })?;
 
-        let func_ir = self
-            .current_function
-            .take()
-            .expect("IR Builder: current_function 应在方法构建前设置");
+        let func_ir = self.take_current_function("build_static_init")?;
         self.module.add_function(func_ir);
         Ok(())
     }
@@ -792,9 +803,7 @@ impl IrBuilder {
 
     fn build_block(&mut self, block: &Block) -> CayResult<()> {
         self.scope_manager.enter_scope();
-        // eprintln!("DEBUG: build_block with {} statements", block.statements.len());
-        for (i, stmt) in block.statements.iter().enumerate() {
-            // eprintln!("DEBUG:  Statement {}: {:?}", i, std::mem::discriminant(stmt));
+        for stmt in &block.statements {
             self.build_statement(stmt)?;
         }
         self.scope_manager.exit_scope();
@@ -846,12 +855,6 @@ impl IrBuilder {
     /// 构建内联IR语句
     fn build_inline_ir(&mut self, inline_ir: &InlineIrStmt) -> CayResult<()> {
         use super::inline_ir::InlineIrParser;
-
-        // 调试：检查raw_lines
-        // eprintln!("DEBUG: Inline IR raw_lines count: {}", inline_ir.raw_lines.len());
-        for (i, line) in inline_ir.raw_lines.iter().enumerate() {
-            // eprintln!("DEBUG: Line {}: '{}'", i, line);
-        }
 
         if inline_ir.raw_lines.is_empty() {
             return Err(crate::miette_diagnostic::CayError::CodeGen {
@@ -1829,111 +1832,138 @@ impl IrBuilder {
         Ok(())
     }
 
+    /// 解析静态方法调用 `ClassName.methodName(args)` 的目标函数名
+    ///
+    /// 通过类型注册表查找方法定义，按方法定义时的参数类型生成签名。
+    /// 解析失败一律返回硬错误：回退到 `Class.__method_x_x` 之类的占位名
+    /// 只会拼出必然不存在的符号，把错误推迟到链接期且难以定位。
+    fn resolve_static_method_name(
+        &self,
+        class_name: &str,
+        method_name: &str,
+        args: &[Expr],
+        loc: &SourceLocation,
+    ) -> CayResult<String> {
+        let qualified_class = self.get_qualified_class_name(class_name);
+
+        let registry = self.type_registry.as_ref().ok_or_else(|| {
+            codegen_error_at(
+                ErrorCodes::CODEGEN_SYMBOL_NOT_FOUND,
+                loc.clone(),
+                format!(
+                    "类型注册表不可用，无法解析静态方法调用 '{}.{}'",
+                    class_name, method_name
+                ),
+            )
+        })?;
+
+        let class_info = registry.get_class(class_name).ok_or_else(|| {
+            codegen_error_at(
+                ErrorCodes::CODEGEN_SYMBOL_NOT_FOUND,
+                loc.clone(),
+                format!(
+                    "类 '{}' 未在类型注册表中注册，无法解析静态方法 '{}'",
+                    class_name, method_name
+                ),
+            )
+        })?;
+
+        // 收集实参类型用于查找匹配的重载；类型推断失败必须传播真实错误
+        let arg_type_list: Vec<crate::types::Type> = args
+            .iter()
+            .map(|arg| self.infer_expr_type(arg))
+            .collect::<CayResult<Vec<_>>>()?;
+
+        let method_info = class_info.find_method(method_name, &arg_type_list).ok_or_else(|| {
+            codegen_error_at(
+                ErrorCodes::CODEGEN_SYMBOL_NOT_FOUND,
+                loc.clone(),
+                format!(
+                    "类 '{}' 中找不到与实参类型匹配的方法 '{}'",
+                    class_name, method_name
+                ),
+            )
+        })?;
+
+        // 使用方法定义时的参数类型生成函数名
+        let param_types: Vec<String> = method_info
+            .params
+            .iter()
+            .map(|p| self.type_to_signature(&p.param_type))
+            .collect();
+
+        if param_types.is_empty() {
+            Ok(format!("{}.{}", qualified_class, method_name))
+        } else {
+            Ok(format!(
+                "{}.__{}_{}",
+                qualified_class,
+                method_name,
+                param_types.join("_")
+            ))
+        }
+    }
+
     fn build_call(&mut self, call: &CallExpr) -> CayResult<IrValue> {
         let func_name = match call.callee.as_ref() {
             Expr::Identifier(ident) => ident.name.clone(),
             Expr::MemberAccess(member) => {
-                // 检查是否是静态方法调用: ClassName.methodName(args)
-                if let Expr::Identifier(class_ident) = member.object.as_ref() {
-                    // 可能是静态方法调用
-                    let class_name = &class_ident.name;
-                    let method_name = &member.member;
-
-                    // 对于泛型方法，我们需要查找类型注册表来确定正确的函数名
-                    // 因为泛型方法的参数类型在定义时是 GenericParam，但在调用时是实际类型
-                    let qualified_class = self.get_qualified_class_name(class_name);
-                    // eprintln!("[DEBUG] build_call: class_name={}, qualified_class={}, method_name={}", class_name, qualified_class, method_name);
-                    let func_name_result = if let Some(ref registry) = self.type_registry {
-                        // 尝试查找类信息
-                        // eprintln!("[DEBUG] Looking up class in registry: {}", class_name);
-                        if let Some(class_info) = registry.get_class(class_name) {
-                            // eprintln!("[DEBUG] Found class: {}, type_params={:?}, methods={:?}",
-                            //     class_name, class_info.type_params,
-                            //     class_info.methods.keys().collect::<Vec<_>>());
-                            // 构建参数类型列表用于查找方法
-                            let arg_type_list: Vec<crate::types::Type> = call
-                                .args
-                                .iter()
-                                .map(|arg| self.infer_expr_type(arg))
-                                .filter_map(|ty| ty.ok())
-                                .collect();
-                            // eprintln!("[DEBUG] Arg types: {:?}", arg_type_list);
-
-                            // 查找匹配的方法
-                            if let Some(method_info) =
-                                class_info.find_method(method_name, &arg_type_list)
-                            {
-                                // eprintln!("[DEBUG] Found method: {}, params={:?}", method_name,
-                                //     method_info.params.iter().map(|p| format!("{:?}", p.param_type)).collect::<Vec<_>>());
-                                // 使用方法定义时的参数类型生成函数名
-                                let param_types: Vec<String> = method_info
-                                    .params
-                                    .iter()
-                                    .map(|p| self.type_to_signature(&p.param_type))
-                                    .collect();
-                                // eprintln!("[DEBUG] Param signatures: {:?}", param_types);
-
-                                if param_types.is_empty() {
-                                    format!("{}.{}", qualified_class, method_name)
-                                } else {
-                                    format!(
-                                        "{}.__{}_{}",
-                                        qualified_class,
-                                        method_name,
-                                        param_types.join("_")
-                                    )
-                                }
-                            } else {
-                                // eprintln!("[DEBUG] Method not found: {} with args {:?}", method_name, arg_type_list);
-                                // 方法未找到，回退到简单处理
-                                let arg_types: Vec<String> =
-                                    call.args.iter().map(|_| "x".to_string()).collect();
-                                if arg_types.is_empty() {
-                                    format!("{}.{}", qualified_class, method_name)
-                                } else {
-                                    format!(
-                                        "{}.__{}_{}",
-                                        qualified_class,
-                                        method_name,
-                                        arg_types.join("_")
-                                    )
-                                }
+                // 区分静态方法调用（ClassName.method）与实例方法调用（var.method）
+                if let Expr::Identifier(ident) = member.object.as_ref() {
+                    if ident.name == "this" {
+                        // this.method() —— 当前类的实例方法
+                        self.resolve_static_method_name(
+                            &self.current_class.clone(),
+                            &member.member,
+                            &call.args,
+                            &call.loc,
+                        )?
+                    } else if self.scope_manager.lookup(&ident.name).is_some() {
+                        // 实例方法调用：obj.method(args) —— 用变量的 Cay 类型解析所在类
+                        match self.scope_manager.get_cay_type(&ident.name) {
+                            Some(crate::types::Type::String) => {
+                                // String 的方法是内建运行时函数（__cay_string_*），
+                                // 与主代码生成路径（src/codegen/expressions/string_methods.rs）一致
+                                format!("__cay_string_{}", member.member)
                             }
-                        } else {
-                            // eprintln!("[DEBUG] Class not found in registry: {}", class_name);
-                            // 类未找到，回退到简单处理
-                            let arg_types: Vec<String> =
-                                call.args.iter().map(|_| "x".to_string()).collect();
-                            if arg_types.is_empty() {
-                                format!("{}.{}", qualified_class, method_name)
-                            } else {
-                                format!(
-                                    "{}.__{}_{}",
-                                    qualified_class,
-                                    method_name,
-                                    arg_types.join("_")
-                                )
+                            Some(crate::types::Type::Object(name)) => {
+                                self.resolve_static_method_name(
+                                    &name.clone(),
+                                    &member.member,
+                                    &call.args,
+                                    &call.loc,
+                                )?
+                            }
+                            Some(other) => {
+                                return Err(crate::miette_diagnostic::codegen_error_at(
+                                    ErrorCodes::CODEGEN_INVALID_OPERATION,
+                                    call.loc.clone(),
+                                    format!(
+                                        "类型 '{}' 的值不支持实例方法调用 '{}'",
+                                        other, member.member
+                                    ),
+                                ));
+                            }
+                            None => {
+                                return Err(crate::miette_diagnostic::codegen_error_at(
+                                    ErrorCodes::CODEGEN_SYMBOL_NOT_FOUND,
+                                    call.loc.clone(),
+                                    format!(
+                                        "变量 '{}' 的类型未知，无法解析实例方法 '{}'",
+                                        ident.name, member.member
+                                    ),
+                                ));
                             }
                         }
                     } else {
-                        // eprintln!("[DEBUG] Type registry is None");
-                        // 回退到简单处理：使用 "x" 作为泛型参数的签名
-                        let arg_types: Vec<String> =
-                            call.args.iter().map(|_| "x".to_string()).collect();
-
-                        if arg_types.is_empty() {
-                            format!("{}.{}", qualified_class, method_name)
-                        } else {
-                            format!(
-                                "{}.__{}_{}",
-                                qualified_class,
-                                method_name,
-                                arg_types.join("_")
-                            )
-                        }
-                    };
-                    // eprintln!("[DEBUG] Generated func_name: {}", func_name_result);
-                    func_name_result
+                        // 静态方法调用: ClassName.methodName(args)
+                        self.resolve_static_method_name(
+                            &ident.name,
+                            &member.member,
+                            &call.args,
+                            &call.loc,
+                        )?
+                    }
                 } else {
                     // obj.method() - 需要虚调用分派
                     format!("{}.{}", self.current_class, member.member)
@@ -2195,8 +2225,20 @@ impl IrBuilder {
     fn build_new(&mut self, new_expr: &NewExpr) -> CayResult<IrValue> {
         let class_name = &new_expr.class_name;
 
-        // 获取类大小
-        let size = self.class_sizes.get(class_name).copied().unwrap_or(8);
+        // 获取类大小：大小未知时若按固定 8 字节分配会堆溢出，必须硬报错
+        let size = match self.class_sizes.get(class_name).copied() {
+            Some(size) => size,
+            None => {
+                return Err(codegen_error_at(
+                    ErrorCodes::CODEGEN_SYMBOL_NOT_FOUND,
+                    new_expr.loc.clone(),
+                    format!(
+                        "类 '{}' 的大小信息未知，无法生成对象分配代码",
+                        class_name
+                    ),
+                ));
+            }
+        };
         let size_val = IrValue::IntConst(size as i64, IrType::I64);
 
         // 调用 GC 分配函数 (cavvy_gc_alloc)

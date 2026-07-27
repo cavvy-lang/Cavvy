@@ -120,11 +120,9 @@ impl SemanticAnalyzer {
             (Type::CChar, Type::Int32) | (Type::Int32, Type::CChar) => true,
             (Type::CUChar, Type::Int32) | (Type::Int32, Type::CUChar) => true,
             (Type::CChar, Type::Char) | (Type::Char, Type::CChar) => true,
-            // c_short/c_ushort <-> int
-            (Type::CShort, Type::Int32) | (Type::Int32, Type::CShort) => true,
+            // c_ushort <-> int
             (Type::CUShort, Type::Int32) | (Type::Int32, Type::CUShort) => true,
-            // c_int/c_uint <-> int/long
-            (Type::CInt, Type::Int32) | (Type::Int32, Type::CInt) => true,
+            // c_uint <-> int/long
             (Type::CUInt, Type::Int32) | (Type::Int32, Type::CUInt) => true,
             (Type::CInt, Type::Int64) | (Type::Int64, Type::CInt) => true,
             (Type::CUInt, Type::Int64) | (Type::Int64, Type::CUInt) => true,
@@ -178,17 +176,21 @@ impl SemanticAnalyzer {
 
             // 引用类型之间的转换：需要继承关系
             (Type::Object(from_name), Type::Object(to_name)) => {
+                // null 字面量可以转换为任何引用类型
+                if from_name == crate::types::NULL_TYPE_NAME {
+                    return true;
+                }
                 // 检查是否存在继承关系（双向）
                 self.is_related_type(from_name, to_name)
             }
+
+            // null 字面量可以转换为指针类型
+            (from, Type::Pointer(_)) if from.is_null_literal() => true,
 
             // 数组类型之间的转换：元素类型兼容
             (Type::Array(from_elem), Type::Array(to_elem)) => {
                 self.is_valid_cast(from_elem, to_elem)
             }
-
-            // null 可以转换为任何引用类型
-            (Type::Object(obj_name), Type::Object(_)) if obj_name == "Object" => true,
 
             // 其他组合都不合法
             _ => false,

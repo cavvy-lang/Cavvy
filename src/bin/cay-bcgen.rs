@@ -208,36 +208,29 @@ fn generate_bytecode_from_ast(
         for member in &class.members {
             match member {
                 ClassMember::Field(field) => {
-                    // 处理字段初始化值（仅支持字面量常量）
-                    let initial_value = field.initializer.as_ref().and_then(|init| {
-                        if let Expr::Literal(lit) = init {
-                            match &lit.value {
-                                LiteralValue::Int32(v) => {
-                                    Some(module.constant_pool.add_integer(*v))
-                                }
-                                LiteralValue::Int64(v) => Some(module.constant_pool.add_long(*v)),
-                                LiteralValue::Float32(v) => {
-                                    Some(module.constant_pool.add_float(*v))
-                                }
-                                LiteralValue::Float64(v) => {
-                                    Some(module.constant_pool.add_double(*v))
-                                }
-                                LiteralValue::String(s) => Some(module.constant_pool.add_string(s)),
-                                LiteralValue::Bool(true) => {
-                                    Some(module.constant_pool.add_integer(1))
-                                }
-                                LiteralValue::Bool(false) => {
-                                    Some(module.constant_pool.add_integer(0))
-                                }
-                                LiteralValue::Char(c) => {
-                                    Some(module.constant_pool.add_integer(*c as i32))
-                                }
-                                LiteralValue::Null => None,
+                    // 处理字段初始化值（仅支持字面量常量；null 表示无初始值）
+                    let initial_value = match field.initializer.as_ref() {
+                        Some(Expr::Literal(lit)) => match &lit.value {
+                            LiteralValue::Int32(v) => Some(module.constant_pool.add_integer(*v)),
+                            LiteralValue::Int64(v) => Some(module.constant_pool.add_long(*v)),
+                            LiteralValue::Float32(v) => Some(module.constant_pool.add_float(*v)),
+                            LiteralValue::Float64(v) => Some(module.constant_pool.add_double(*v)),
+                            LiteralValue::String(s) => Some(module.constant_pool.add_string(s)),
+                            LiteralValue::Bool(true) => Some(module.constant_pool.add_integer(1)),
+                            LiteralValue::Bool(false) => Some(module.constant_pool.add_integer(0)),
+                            LiteralValue::Char(c) => {
+                                Some(module.constant_pool.add_integer(*c as i32))
                             }
-                        } else {
-                            None // 非字面量初始化器在字节码中暂不支持
+                            LiteralValue::Null => None,
+                        },
+                        Some(_) => {
+                            return Err(format!(
+                                "字段 '{}' 的初始化器不是字面量，暂不支持其字节码生成 (行 {})",
+                                field.name, field.loc.line
+                            ));
                         }
-                    });
+                        None => None,
+                    };
                     let field_def = FieldDefinition {
                         name_index: module.constant_pool.add_utf8(&field.name),
                         type_index: get_type_index(&field.field_type, &mut module.constant_pool),
@@ -268,12 +261,15 @@ fn generate_bytecode_from_ast(
                         param_names.push(param.name.clone());
                     }
 
-                    let body = method
-                        .body
-                        .as_ref()
-                        .map(|b| generate_code_body(b, module, &param_names).ok())
-                        .flatten()
-                        .map(|(body, max_locals)| (body, max_locals));
+                    // 方法体生成失败必须报错，不能静默产出空方法体
+                    let body = match method.body.as_ref() {
+                        Some(b) => Some(
+                            generate_code_body(b, module, &param_names).map_err(|e| {
+                                format!("方法 '{}' 的方法体生成失败: {}", method.name, e)
+                            })?,
+                        ),
+                        None => None,
+                    };
 
                     let method_modifiers = MethodModifiers {
                         is_public: method.modifiers.contains(&Modifier::Public),
@@ -307,7 +303,30 @@ fn generate_bytecode_from_ast(
                     };
                     methods.push(method_def);
                 }
-                _ => {}
+                ClassMember::Constructor(ctor) => {
+                    return Err(format!(
+                        "暂不支持类 '{}' 的构造函数的字节码生成 (行 {})",
+                        class.name, ctor.loc.line
+                    ));
+                }
+                ClassMember::Destructor(dtor) => {
+                    return Err(format!(
+                        "暂不支持类 '{}' 的析构函数的字节码生成 (行 {})",
+                        class.name, dtor.loc.line
+                    ));
+                }
+                ClassMember::InstanceInitializer(_) => {
+                    return Err(format!(
+                        "暂不支持类 '{}' 的实例初始化块的字节码生成",
+                        class.name
+                    ));
+                }
+                ClassMember::StaticInitializer(_) => {
+                    return Err(format!(
+                        "暂不支持类 '{}' 的静态初始化块的字节码生成",
+                        class.name
+                    ));
+                }
             }
         }
 
@@ -376,16 +395,55 @@ enum JumpPlaceholder {
     },
 }
 
+/// 可跳出作用域的种类
+#[derive(Debug, Clone, Copy)]
+enum BreakableKind {
+    /// 循环：continue 跳转到条件判断处（指令索引）。
+    /// while 的条件位置已知为 Some；do-while 的条件位置需事后修补为 None。
+    Loop { continue_target: Option<usize> },
+    /// switch：只支持 break
+    Switch,
+}
+
+/// 可跳出作用域（循环 / switch），记录待修复的跳转占位符
+#[derive(Debug)]
+struct BreakableScope {
+    kind: BreakableKind,
+    /// break 语句生成的 goto 占位符位置，离开作用域时统一修复
+    break_placeholders: Vec<usize>,
+    /// continue 语句生成的 goto 占位符位置（仅 do-while 使用），条件位置确定后修复
+    continue_placeholders: Vec<usize>,
+}
+
 /// 语句生成上下文
 struct StatementContext {
     placeholders: Vec<(usize, JumpPlaceholder)>,
+    /// 循环 / switch 作用域栈（内层在栈顶）
+    scopes: Vec<BreakableScope>,
 }
 
 impl StatementContext {
     fn new() -> Self {
         Self {
             placeholders: Vec::new(),
+            scopes: Vec::new(),
         }
+    }
+
+    /// 查找最近的循环作用域（跳过中间的 switch 作用域）
+    fn nearest_loop_mut(&mut self) -> Option<&mut BreakableScope> {
+        self.scopes
+            .iter_mut()
+            .rev()
+            .find(|s| matches!(s.kind, BreakableKind::Loop { .. }))
+    }
+}
+
+/// 修复一组 goto 占位符，使其跳转到目标位置
+fn patch_goto_placeholders(instructions: &mut [Instruction], placeholders: &[usize], target: usize) {
+    for pos in placeholders {
+        let offset = (target as i16) - (*pos as i16) - 1;
+        instructions[*pos] = Instruction::goto(offset);
     }
 }
 
@@ -516,8 +574,19 @@ fn generate_statement(
             }
         }
         Stmt::While(while_stmt) => {
+            if while_stmt.label.is_some() {
+                return Err("暂不支持带标签的 while 循环的字节码生成".to_string());
+            }
             // while 循环: while (cond) { body }
             let loop_start = instructions.len();
+            // continue 跳转到条件判断处
+            ctx.scopes.push(BreakableScope {
+                kind: BreakableKind::Loop {
+                    continue_target: Some(loop_start),
+                },
+                break_placeholders: Vec::new(),
+                continue_placeholders: Vec::new(),
+            });
             // 生成条件表达式
             generate_expression(&while_stmt.condition, instructions, module, tracker)?;
             // 条件为假时跳出循环
@@ -533,12 +602,34 @@ fn generate_statement(
             let after_loop = instructions.len();
             let cond_offset = (after_loop as i16) - (ifeq_pos as i16) - 1;
             instructions[ifeq_pos] = Instruction::ifeq(cond_offset);
+            // 修复循环体内的 break 跳转
+            let scope = ctx.scopes.pop().expect("循环作用域栈不平衡");
+            patch_goto_placeholders(instructions, &scope.break_placeholders, after_loop);
         }
         Stmt::DoWhile(do_while_stmt) => {
+            if do_while_stmt.label.is_some() {
+                return Err("暂不支持带标签的 do-while 循环的字节码生成".to_string());
+            }
             // do-while 循环: do { body } while (cond);
             let loop_start = instructions.len();
+            // continue 目标（条件判断处）要在循环体生成后才知道，先占位
+            ctx.scopes.push(BreakableScope {
+                kind: BreakableKind::Loop {
+                    continue_target: None,
+                },
+                break_placeholders: Vec::new(),
+                continue_placeholders: Vec::new(),
+            });
             // 生成循环体
             generate_statement(&do_while_stmt.body, instructions, module, ctx, tracker)?;
+            // continue 跳转到条件判断处，修复循环体内的 continue 占位符
+            let cond_pos = instructions.len();
+            if let Some(scope) = ctx.scopes.last_mut() {
+                scope.kind = BreakableKind::Loop {
+                    continue_target: Some(cond_pos),
+                };
+                patch_goto_placeholders(instructions, &scope.continue_placeholders, cond_pos);
+            }
             // 生成条件表达式
             generate_expression(&do_while_stmt.condition, instructions, module, tracker)?;
             // 条件为真时跳回循环开始
@@ -549,17 +640,80 @@ fn generate_statement(
                 Opcode::Ifne,
                 loop_offset.to_le_bytes().to_vec(),
             ));
+            // 修复循环体内的 break 跳转
+            let after_loop = instructions.len();
+            let scope = ctx.scopes.pop().expect("循环作用域栈不平衡");
+            patch_goto_placeholders(instructions, &scope.break_placeholders, after_loop);
         }
-        Stmt::Break(_label, _loc) => {
-            // break 语句 - 简化实现：生成 return 指令
-            instructions.push(Instruction::new(Opcode::Return));
+        Stmt::Break(label, loc) => {
+            if label.is_some() {
+                return Err(format!(
+                    "暂不支持带标签的 break 语句的字节码生成 (行 {})",
+                    loc.line
+                ));
+            }
+            // break 必须位于循环或 switch 内
+            if ctx.scopes.is_empty() {
+                return Err(format!("break 语句必须位于循环或 switch 内 (行 {})", loc.line));
+            }
+            // 跳出 switch 前需弹出 switch 值，保持栈平衡
+            if matches!(
+                ctx.scopes.last().map(|s| s.kind),
+                Some(BreakableKind::Switch)
+            ) {
+                instructions.push(Instruction::new(Opcode::Pop));
+            }
+            // 生成 goto 占位符，离开作用域时统一修复为跳转到作用域之后
+            let pos = instructions.len();
+            instructions.push(Instruction::goto(0));
+            ctx.scopes
+                .last_mut()
+                .expect("已检查作用域栈非空")
+                .break_placeholders
+                .push(pos);
         }
-        Stmt::Continue(_label, _loc) => {
-            // continue 语句 - 简化实现
+        Stmt::Continue(label, loc) => {
+            if label.is_some() {
+                return Err(format!(
+                    "暂不支持带标签的 continue 语句的字节码生成 (行 {})",
+                    loc.line
+                ));
+            }
+            // continue 跳转到最近的循环的条件判断处（允许隔着 switch）
+            let loop_scope = ctx.nearest_loop_mut();
+            match loop_scope {
+                Some(scope) => match scope.kind {
+                    BreakableKind::Loop {
+                        continue_target: Some(target),
+                    } => {
+                        let pos = instructions.len();
+                        let offset = (target as i16) - (pos as i16) - 1;
+                        instructions.push(Instruction::goto(offset));
+                    }
+                    BreakableKind::Loop {
+                        continue_target: None,
+                    } => {
+                        // do-while：条件位置尚未确定，生成占位符，事后修补
+                        let pos = instructions.len();
+                        instructions.push(Instruction::goto(0));
+                        scope.continue_placeholders.push(pos);
+                    }
+                    BreakableKind::Switch => unreachable!("已过滤为循环作用域"),
+                },
+                None => {
+                    return Err(format!("continue 语句必须位于循环内 (行 {})", loc.line));
+                }
+            }
         }
         Stmt::Switch(switch_stmt) => {
             // switch 语句 - 简化实现：生成条件分支链
             generate_expression(&switch_stmt.expr, instructions, module, tracker)?;
+            // break 可跳出 switch
+            ctx.scopes.push(BreakableScope {
+                kind: BreakableKind::Switch,
+                break_placeholders: Vec::new(),
+                continue_placeholders: Vec::new(),
+            });
             // 简化处理：将 switch 转换为 if-else 链
             for case in &switch_stmt.cases {
                 // 复制 switch 值
@@ -574,9 +728,14 @@ fn generate_statement(
                             instructions.push(Instruction::ldc(index));
                         }
                     }
-                    CaseValue::EnumVariant { .. } => {
-                        // enum variant 暂不支持在字节码中处理
-                        continue;
+                    CaseValue::EnumVariant {
+                        enum_name,
+                        variant_name,
+                    } => {
+                        return Err(format!(
+                            "暂不支持 switch 枚举分支 ({}.{}) 的字节码生成 (行 {})",
+                            enum_name, variant_name, case.loc.line
+                        ));
                     }
                 }
                 // 比较 - 使用 if_icmpne 判断不相等则跳过
@@ -603,6 +762,10 @@ fn generate_statement(
             }
             // 弹出 switch 值
             instructions.push(Instruction::new(Opcode::Pop));
+            // 修复 switch 体内的 break 跳转（跳到 switch 结束之后）
+            let after_switch = instructions.len();
+            let scope = ctx.scopes.pop().expect("switch 作用域栈不平衡");
+            patch_goto_placeholders(instructions, &scope.break_placeholders, after_switch);
         }
         Stmt::Scope(scope_stmt) => {
             // scope 语句 - 生成块内容
@@ -610,8 +773,23 @@ fn generate_statement(
                 generate_statement(stmt, instructions, module, ctx, tracker)?;
             }
         }
-        _ => {
-            // 其他语句类型（InlineIr 等）暂不支持
+        Stmt::For(for_stmt) => {
+            return Err(format!(
+                "暂不支持 for 循环的字节码生成 (行 {})",
+                for_stmt.loc.line
+            ));
+        }
+        Stmt::ForEach(for_each) => {
+            return Err(format!(
+                "暂不支持 for-each 循环的字节码生成 (行 {})",
+                for_each.loc.line
+            ));
+        }
+        Stmt::InlineIr(inline_ir) => {
+            return Err(format!(
+                "暂不支持内联 IR 语句的字节码生成 (行 {})",
+                inline_ir.loc.line
+            ));
         }
     }
 
@@ -711,12 +889,15 @@ fn generate_expression(
             }
         },
         Expr::Identifier(ident) => {
-            // 加载局部变量
-            if let Some(index) = tracker.lookup(&ident.name) {
-                instructions.push(Instruction::iload(index));
-            } else {
-                // 变量未找到，使用默认索引0（兼容旧行为）
-                instructions.push(Instruction::iload(0));
+            // 加载局部变量；查不到必须报错，不能静默加载 slot 0
+            match tracker.lookup(&ident.name) {
+                Some(index) => instructions.push(Instruction::iload(index)),
+                None => {
+                    return Err(format!(
+                        "未定义的变量: '{}' (行 {})",
+                        ident.name, ident.loc.line
+                    ));
+                }
             }
         }
         Expr::Binary(bin) => {
@@ -729,7 +910,12 @@ fn generate_expression(
                 BinaryOp::Mul => instructions.push(Instruction::new(Opcode::Imul)),
                 BinaryOp::Div => instructions.push(Instruction::new(Opcode::Idiv)),
                 BinaryOp::Mod => instructions.push(Instruction::new(Opcode::Irem)),
-                _ => {}
+                other => {
+                    return Err(format!(
+                        "暂不支持二元运算符 {:?} 的字节码生成 (行 {})",
+                        other, bin.loc.line
+                    ));
+                }
             }
         }
         Expr::Call(call) => {
@@ -755,7 +941,10 @@ fn generate_expression(
                     ));
                 }
                 _ => {
-                    // 其他调用形式暂不支持
+                    return Err(format!(
+                        "暂不支持该调用形式的字节码生成 (行 {})",
+                        call.loc.line
+                    ));
                 }
             }
         }
@@ -777,7 +966,12 @@ fn generate_expression(
                     instructions.push(Instruction::new(Opcode::Iconst1));
                     instructions.push(Instruction::new(Opcode::Isub));
                 }
-                _ => {}
+                other => {
+                    return Err(format!(
+                        "暂不支持一元运算符 {:?} 的字节码生成 (行 {})",
+                        other, unary.loc.line
+                    ));
+                }
             }
         }
         Expr::Assignment(assignment) => {
@@ -785,9 +979,20 @@ fn generate_expression(
             generate_expression(&assignment.value, instructions, module, tracker)?;
             // 处理赋值目标
             if let Expr::Identifier(ident) = assignment.target.as_ref() {
-                if let Some(index) = tracker.lookup(&ident.name) {
-                    instructions.push(Instruction::istore(index));
+                match tracker.lookup(&ident.name) {
+                    Some(index) => instructions.push(Instruction::istore(index)),
+                    None => {
+                        return Err(format!(
+                            "赋值目标未定义: '{}' (行 {})",
+                            ident.name, ident.loc.line
+                        ));
+                    }
                 }
+            } else {
+                return Err(format!(
+                    "暂不支持非标识符赋值目标的字节码生成 (行 {})",
+                    assignment.loc.line
+                ));
             }
         }
         Expr::MemberAccess(member) => {
@@ -839,12 +1044,45 @@ fn generate_expression(
             let false_offset = (after_false as i16) - (goto_pos as i16) - 1;
             instructions[goto_pos] = Instruction::goto(false_offset);
         }
-        _ => {
-            // 其他表达式类型暂不支持
+        other => {
+            return Err(format!(
+                "暂不支持 {} 表达式的字节码生成 (行 {})",
+                expr_kind_name(other),
+                other.location().line
+            ));
         }
     }
 
     Ok(())
+}
+
+/// 获取表达式种类名称（用于错误信息）
+fn expr_kind_name(expr: &cavvy::ast::Expr) -> &'static str {
+    use cavvy::ast::Expr;
+    match expr {
+        Expr::Literal(_) => "字面量",
+        Expr::Identifier(_) => "标识符",
+        Expr::Binary(_) => "二元运算",
+        Expr::Unary(_) => "一元运算",
+        Expr::Call(_) => "函数调用",
+        Expr::MemberAccess(_) => "成员访问",
+        Expr::New(_) => "new",
+        Expr::Assignment(_) => "赋值",
+        Expr::Cast(_) => "类型转换",
+        Expr::ArrayCreation(_) => "数组创建",
+        Expr::ArrayAccess(_) => "数组访问",
+        Expr::ArrayInit(_) => "数组初始化",
+        Expr::MethodRef(_) => "方法引用",
+        Expr::Lambda(_) => "Lambda",
+        Expr::Ternary(_) => "三元运算",
+        Expr::If(_) => "if 表达式",
+        Expr::Try(_) => "try (?)",
+        Expr::InstanceOf(_) => "instanceof",
+        Expr::Alloc(_) => "__cay_alloc",
+        Expr::Dealloc(_) => "__cay_free",
+        Expr::AllocArray(_) => "__cay_alloc_array",
+        Expr::NamedArg(_) => "命名参数",
+    }
 }
 
 /// 获取类型索引
@@ -975,7 +1213,15 @@ fn main() {
         };
 
         let mut obfuscator = obfuscator::BytecodeObfuscator::new(obf_options);
-        obfuscator.obfuscate(&mut module);
+        // 混淆库当前明确返回"不可用"错误；必须处理，不能静默产出未混淆的产物
+        if let Err(e) = obfuscator.obfuscate(&mut module) {
+            print_tool_error(
+                "字节码混淆器",
+                &e.to_string(),
+                Some("请去掉 --obfuscate 选项后重试"),
+            );
+            process::exit(1);
+        }
     } else if options.verbose {
         println!("[2/3] 跳过混淆");
     }

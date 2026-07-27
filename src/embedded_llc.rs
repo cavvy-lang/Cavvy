@@ -60,6 +60,14 @@ pub fn is_embedded_llc_supported() -> bool {
     // Windows 上现在支持内嵌 llc，因为我们使用正确的目标初始化
     true
 }
+/// 是否启用嵌入式 llc 的详细日志。
+/// 库代码默认静默：仅在 CAVVY_LLC_VERBOSE=1（或 true）时才向 stderr 输出诊断信息，
+/// 避免污染调用方（如 LSP）使用的标准输出/错误通道。
+fn verbose_logging() -> bool {
+    std::env::var("CAVVY_LLC_VERBOSE")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
 /// 使用嵌入式 LLVM 将 IR 编译为目标文件
 ///
 /// # Arguments
@@ -84,31 +92,22 @@ pub fn compile_ir_to_object(
     use llvm_sys::target::*;
     use llvm_sys::target_machine::*;
     use std::ptr;
-    // // eprintln!("  [DEBUG] 开始 LLVM 初始化...");
     // 初始化 LLVM - 初始化所有目标（包括 MinGW）
     unsafe {
-        // // eprintln!("  [DEBUG] 调用 LLVM_InitializeAllTargets...");
         LLVM_InitializeAllTargets();
-        // // eprintln!("  [DEBUG] 调用 LLVM_InitializeAllTargetInfos...");
         LLVM_InitializeAllTargetInfos();
-        // // eprintln!("  [DEBUG] 调用 LLVM_InitializeAllTargetMCs...");
         LLVM_InitializeAllTargetMCs();
-        // // eprintln!("  [DEBUG] 调用 LLVM_InitializeAllAsmPrinters...");
         LLVM_InitializeAllAsmPrinters();
-        // // eprintln!("  [DEBUG] 调用 LLVM_InitializeAllAsmParsers...");
         LLVM_InitializeAllAsmParsers();
-        // // eprintln!("  [DEBUG] 调用 LLVM_InitializeAllDisassemblers...");
         LLVM_InitializeAllDisassemblers();
 
         // 额外初始化 x86 目标（MinGW 需要）
-        // // eprintln!("  [DEBUG] 初始化 x86 目标...");
         llvm_sys::target::LLVMInitializeX86Target();
         llvm_sys::target::LLVMInitializeX86TargetInfo();
         llvm_sys::target::LLVMInitializeX86TargetMC();
         llvm_sys::target::LLVMInitializeX86AsmPrinter();
         llvm_sys::target::LLVMInitializeX86AsmParser();
     }
-    // // eprintln!("  [DEBUG] LLVM 初始化完成");
 
     // 规范化目标三元组 - 将 x86_64-w64-mingw32 转换为 x86_64-pc-windows-gnu
     // 这样 LLVM 才能正确识别为 COFF 格式（MinGW 使用 COFF）
@@ -118,15 +117,11 @@ pub fn compile_ir_to_object(
         options.target_triple.clone()
     };
 
-    // // eprintln!("  [DEBUG] 原始目标三元组: {}", options.target_triple);
-    // // eprintln!("  [DEBUG] 规范化后的目标三元组: {}", normalized_triple_str);
-    // // eprintln!("  [DEBUG] 创建上下文...");
     // 创建 LLVM 上下文
     let context = unsafe { LLVMContextCreate() };
     if context.is_null() {
         return Err("无法创建 LLVM 上下文".to_string());
     }
-    // // eprintln!("  [DEBUG] LLVM 上下文创建成功: {:?}", context);
     // 使用 RAII 确保上下文被释放
     struct ContextGuard(*mut llvm_sys::LLVMContext);
     impl Drop for ContextGuard {
@@ -135,8 +130,6 @@ pub fn compile_ir_to_object(
         }
     }
     let _context_guard = ContextGuard(context);
-    // // eprintln!("  [DEBUG] IR 内容长度: {} 字节", ir_content.len());
-    // // eprintln!("  [DEBUG] 创建内存缓冲区...");
     // 创建内存缓冲区 - 直接使用 ir_content 的指针，避免 CString 转换
     // 注意: LLVMCreateMemoryBufferWithMemoryRangeCopy 会复制数据
     let buffer_name = CString::new("cavvy_ir").unwrap();
@@ -150,7 +143,6 @@ pub fn compile_ir_to_object(
     if buffer.is_null() {
         return Err("无法创建内存缓冲区".to_string());
     }
-    // // eprintln!("  [DEBUG] 内存缓冲区创建成功: {:?}", buffer);
     struct BufferGuard(*mut llvm_sys::LLVMMemoryBuffer);
     impl Drop for BufferGuard {
         fn drop(&mut self) {
@@ -158,7 +150,6 @@ pub fn compile_ir_to_object(
         }
     }
     let _buffer_guard = BufferGuard(buffer);
-    // // eprintln!("  [DEBUG] 开始解析 IR...");
     // 解析 IR - 使用 LLVMParseIRInContext2 (新版API，LLVMParseIRInContext 已弃用)
     // 注意: LLVMParseIRInContext2 返回 LLVMBool，0 表示成功
     let mut module: *mut llvm_sys::LLVMModule = ptr::null_mut();
@@ -181,7 +172,6 @@ pub fn compile_ir_to_object(
         };
         return Err(format!("IR 解析失败: {}", error));
     }
-    // // eprintln!("  [DEBUG] IR 解析成功，模块指针: {:?}", module);
     struct ModuleGuard(*mut llvm_sys::LLVMModule);
     impl Drop for ModuleGuard {
         fn drop(&mut self) {
@@ -189,7 +179,6 @@ pub fn compile_ir_to_object(
         }
     }
     let _module_guard = ModuleGuard(module);
-    // // eprintln!("  [DEBUG] 开始验证模块...");
     // 验证模块
     let mut verify_msg: *mut i8 = ptr::null_mut();
     let verify_result = unsafe {
@@ -199,8 +188,6 @@ pub fn compile_ir_to_object(
             &mut verify_msg,
         )
     };
-
-    // eprintln!("  [DEBUG] 模块验证结果: {}", verify_result);
 
     if verify_result != 0 {
         let error = if !verify_msg.is_null() {
@@ -219,7 +206,7 @@ pub fn compile_ir_to_object(
     // LLVMVerifyModule 在 OutMessages 非空时，即使验证成功也可能返回一个
     // 指向空字符串的非空指针；该指针不能安全地用 LLVMDisposeMessage 释放
     // （在 Windows/当前 LLVM 构建上会崩溃），因此只读取其内容，非空时再输出。
-    if !verify_msg.is_null() {
+    if !verify_msg.is_null() && verbose_logging() {
         let msg = unsafe {
             std::ffi::CStr::from_ptr(verify_msg)
                 .to_string_lossy()
@@ -231,13 +218,9 @@ pub fn compile_ir_to_object(
         }
     }
 
-    // eprintln!("  [DEBUG] 模块验证成功");
-
     // 获取规范化后的目标三元组
     let target_triple = CString::new(normalized_triple_str.as_str())
         .map_err(|e| format!("目标三元组包含空字节: {}", e))?;
-
-    // eprintln!("  [DEBUG] 查找目标平台...");
 
     // 查找目标 - 使用 target_machine 模块中的函数
     let mut target: *mut llvm_sys::target_machine::LLVMTarget = ptr::null_mut();
@@ -245,25 +228,6 @@ pub fn compile_ir_to_object(
 
     let lookup_result =
         unsafe { LLVMGetTargetFromTriple(target_triple.as_ptr(), &mut target, &mut target_error) };
-
-    // eprintln!("  [DEBUG] 目标查找结果: {}", lookup_result);
-
-    // 获取目标名称
-    if !target.is_null() {
-        let target_name = unsafe {
-            let name_ptr = LLVMGetTargetName(target);
-            std::ffi::CStr::from_ptr(name_ptr)
-                .to_string_lossy()
-                .to_string()
-        };
-        let target_desc = unsafe {
-            let desc_ptr = LLVMGetTargetDescription(target);
-            std::ffi::CStr::from_ptr(desc_ptr)
-                .to_string_lossy()
-                .to_string()
-        };
-        // eprintln!("  [DEBUG] 目标名称: {}, 描述: {}", target_name, target_desc);
-    }
 
     if lookup_result != 0 {
         let error = if !target_error.is_null() {
@@ -282,8 +246,6 @@ pub fn compile_ir_to_object(
     if target.is_null() {
         return Err("无法获取目标".to_string());
     }
-
-    // eprintln!("  [DEBUG] 目标平台查找成功，创建目标机器...");
 
     // 设置 CPU
     let cpu = options
@@ -320,8 +282,6 @@ pub fn compile_ir_to_object(
         _ => LLVMCodeGenOptLevel::LLVMCodeGenLevelDefault,
     };
 
-    // eprintln!("  [DEBUG] 创建目标机器: opt_level={:?}, reloc_mode={:?}", opt_level, reloc_mode);
-
     let target_machine = unsafe {
         LLVMCreateTargetMachine(
             target,
@@ -338,19 +298,14 @@ pub fn compile_ir_to_object(
         return Err("无法创建目标机器".to_string());
     }
 
-    // eprintln!("  [DEBUG] 目标机器创建成功: {:?}", target_machine);
-
     // 首先设置模块的目标三元组（在设置数据布局之前）
-    // eprintln!("  [DEBUG] 设置模块目标三元组...");
     unsafe {
         LLVMSetTarget(module, target_triple.as_ptr());
     }
 
     // 获取并设置模块的数据布局
-    // eprintln!("  [DEBUG] 设置模块数据布局...");
     unsafe {
         let data_layout = LLVMCreateTargetDataLayout(target_machine);
-        // eprintln!("  [DEBUG] 数据布局: {:?}", data_layout);
         if !data_layout.is_null() {
             LLVMSetModuleDataLayout(module, data_layout);
             LLVMDisposeTargetData(data_layout);
@@ -360,8 +315,6 @@ pub fn compile_ir_to_object(
     // 输出文件路径
     let output_cstring = CString::new(output_path.to_str().ok_or("无效输出路径")?)
         .map_err(|e| format!("输出路径包含空字节: {}", e))?;
-
-    // eprintln!("  [DEBUG] 开始编译为目标文件: {:?}", output_path);
 
     // 编译为目标文件
     let mut codegen_error: *mut i8 = ptr::null_mut();
@@ -374,8 +327,6 @@ pub fn compile_ir_to_object(
             &mut codegen_error,
         )
     };
-
-    // eprintln!("  [DEBUG] 编译结果: {}", emit_result);
 
     // 释放目标机器
     unsafe {

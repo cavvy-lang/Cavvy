@@ -9,13 +9,9 @@ mod class_analysis;
 mod expr_inference;
 mod symbol_table;
 mod type_check;
-mod type_inference_result;
 mod type_utils;
 
 // 公开导出
 pub use analyzer::{SemanticAnalyzer, SemanticErrorInfo};
 pub use symbol_table::{SemanticSymbolInfo, SemanticSymbolTable};
-pub use type_inference_result::{
-    TypeInferenceError, TypeInferenceErrorCollector, TypeInferenceResult,
-};
 pub use type_utils::resolve_call_args;

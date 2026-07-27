@@ -168,16 +168,12 @@ fn print_tokens_pretty(
         println!("{}诊断信息:{}", header_color, reset);
         for diag in diagnostics.iter() {
             let sev = diag.severity();
-            let color = if sev == cavvy::miette_diagnostic::Severity::Error
-                || sev == cavvy::miette_diagnostic::Severity::Fatal
-            {
+            let color = if sev == cavvy::miette_diagnostic::Severity::Error {
                 error_color
             } else {
                 warning_color
             };
-            let severity = if sev == cavvy::miette_diagnostic::Severity::Error
-                || sev == cavvy::miette_diagnostic::Severity::Fatal
-            {
+            let severity = if sev == cavvy::miette_diagnostic::Severity::Error {
                 "错误"
             } else {
                 "警告"
@@ -241,59 +237,48 @@ fn print_tokens_pretty(
 fn print_tokens_json(tokens: &[TokenWithLocation], diagnostics: &[CayError]) {
     use std::io::Write;
 
-    let mut output = String::new();
-    output.push_str("{\n");
-    output.push_str("  \"tokens\": [\n");
+    // 用 serde_json 构建，保证输出一定是合法 JSON（手写拼接会产生尾随逗号）
+    let tokens_json: Vec<serde_json::Value> = tokens
+        .iter()
+        .enumerate()
+        .map(|(i, token)| {
+            let mut obj = serde_json::json!({
+                "index": i,
+                "type": format!("{:?}", token.token),
+                "value": get_token_value(&token.token),
+                "line": token.loc.line,
+                "column": token.loc.column,
+            });
+            if let Some(ref file) = token.source_file {
+                obj["source_file"] = serde_json::json!(file);
+            }
+            if let Some(line) = token.source_line {
+                obj["source_line"] = serde_json::json!(line);
+            }
+            obj
+        })
+        .collect();
 
-    for (i, token) in tokens.iter().enumerate() {
-        output.push_str("    {\n");
-        output.push_str(&format!("      \"index\": {},\n", i));
-        output.push_str(&format!(
-            "      \"type\": {:?},\n",
-            format!("{:?}", token.token)
-        ));
-        output.push_str(&format!(
-            "      \"value\": {:?},\n",
-            get_token_value(&token.token)
-        ));
-        output.push_str(&format!("      \"line\": {},\n", token.loc.line));
-        output.push_str(&format!("      \"column\": {},\n", token.loc.column));
-        if let Some(ref file) = token.source_file {
-            output.push_str(&format!("      \"source_file\": {:?},\n", file));
-        }
-        if let Some(line) = token.source_line {
-            output.push_str(&format!("      \"source_line\": {},\n", line));
-        }
-        output.push_str("    }");
-        if i < tokens.len() - 1 {
-            output.push(',');
-        }
-        output.push('\n');
-    }
+    let diagnostics_json: Vec<serde_json::Value> = diagnostics
+        .iter()
+        .map(|diag| {
+            let (line, col) = diag.location().unwrap_or((0, 0));
+            serde_json::json!({
+                "severity": format!("{:?}", diag.severity()),
+                "code": diag.error_code(),
+                "message": diag.message(),
+                "line": line,
+                "column": col,
+            })
+        })
+        .collect();
 
-    output.push_str("  ],\n");
-    output.push_str("  \"diagnostics\": [\n");
-
-    for (i, diag) in diagnostics.iter().enumerate() {
-        let (line, col) = diag.location().unwrap_or((0, 0));
-        output.push_str("    {\n");
-        output.push_str(&format!(
-            "      \"severity\": {:?},\n",
-            format!("{:?}", diag.severity())
-        ));
-        output.push_str(&format!("      \"code\": {:?},\n", diag.error_code()));
-        output.push_str(&format!("      \"message\": {:?},\n", diag.message()));
-        output.push_str(&format!("      \"line\": {},\n", line));
-        output.push_str(&format!("      \"column\": {},\n", col));
-        output.push_str("    }");
-        if i < diagnostics.len() - 1 {
-            output.push(',');
-        }
-        output.push('\n');
-    }
-
-    output.push_str("  ]\n");
-    output.push_str("}\n");
+    let output = serde_json::json!({
+        "tokens": tokens_json,
+        "diagnostics": diagnostics_json,
+    });
+    let output = serde_json::to_string_pretty(&output)
+        .unwrap_or_else(|e| format!("{{\"error\": \"JSON 序列化失败: {}\"}}", e));
 
     if let Err(e) = std::io::stdout().write_all(output.as_bytes()) {
         eprintln!("写入stdout失败: {}", e);
@@ -315,11 +300,4 @@ fn get_token_value(token: &cavvy::lexer::Token) -> String {
         Token::FloatLiteral(None) => String::new(),
         _ => String::new(),
     }
-}
-
-fn is_error(severity: &cavvy::miette_diagnostic::Severity) -> bool {
-    matches!(
-        severity,
-        cavvy::miette_diagnostic::Severity::Error | cavvy::miette_diagnostic::Severity::Fatal
-    )
 }

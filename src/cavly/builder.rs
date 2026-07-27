@@ -421,16 +421,20 @@ impl Builder {
                 script_path.to_string_lossy().to_string(),
             ]),
             "bat" | "cmd" => {
-                let shell = if cfg!(target_os = "windows") {
-                    "cmd"
+                // cmd/bat 是 Windows 批处理脚本；非 Windows 平台没有 cmd 解释器，
+                // 回退到 sh 尝试执行（至少不会调用不存在的程序）
+                if cfg!(target_os = "windows") {
+                    Ok(vec![
+                        "cmd".to_string(),
+                        "/C".to_string(),
+                        script_path.to_string_lossy().to_string(),
+                    ])
                 } else {
-                    "cmd"
-                };
-                Ok(vec![
-                    shell.to_string(),
-                    "/C".to_string(),
-                    script_path.to_string_lossy().to_string(),
-                ])
+                    Ok(vec![
+                        "sh".to_string(),
+                        script_path.to_string_lossy().to_string(),
+                    ])
+                }
             }
             _ => {
                 // 无扩展名时尝试直接执行

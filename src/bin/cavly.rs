@@ -619,8 +619,17 @@ fn cmd_trust(args: &[String]) -> Result<()> {
 
     println!("已添加可信公钥 (指纹: {})", fingerprint);
 
-    // 审计日志
-    let logger = AuditLogger::new().unwrap_or_default();
+    // 审计日志：初始化失败时打印明确警告并回退到默认路径，不静默吞错
+    let logger = match AuditLogger::new() {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!(
+                "警告: 审计日志初始化失败 ({})，将回退到系统临时目录记录日志",
+                e
+            );
+            AuditLogger::default()
+        }
+    };
     logger.log_silent(
         &AuditLogEntry::new(SecurityEventType::UserConfirmed, "cmd_trust")
             .with_details(&format!("添加可信公钥，指纹: {}", fingerprint)),

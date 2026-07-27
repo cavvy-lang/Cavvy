@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use super::audit::{AuditLogEntry, AuditLogger, SecurityEventType};
 use super::security::{
     FingerprintMetadata, SecureIndex, VersionCertificate, load_root_public_key_from_config,
-    official_root_public_key, verify_certificate_chain,
+    verify_certificate_chain,
 };
 
 /// 官方安全源索引服务器地址
@@ -132,6 +132,8 @@ impl SecureRegistry {
     /// - 时间: O(1) 网络 + O(n) JSON 解析
     /// - 空间: O(n)
     pub fn fetch_fingerprint_metadata(&self, fingerprint: &str) -> Result<FingerprintMetadata> {
+        validate_fingerprint(fingerprint)?;
+
         if self.offline {
             return self.read_cached_metadata(fingerprint);
         }
@@ -166,6 +168,8 @@ impl SecureRegistry {
     /// - 时间: O(1) 网络 + O(n) JSON 解析
     /// - 空间: O(n)
     pub fn fetch_certificate(&self, fingerprint: &str) -> Result<VersionCertificate> {
+        validate_fingerprint(fingerprint)?;
+
         if self.offline {
             return self.read_cached_certificate(fingerprint);
         }
@@ -323,22 +327,29 @@ impl SecureRegistry {
                     .with_context(|| format!("写入包文件失败: {}", dest.display()))?;
                 return Ok(dest);
             }
-            Err(_) => {
+            Err(e1) => {
                 // 策略2: 不带 refs/tags/ 前缀（兼容旧格式）
                 let url_alt = format!("{}/archive/v{}.tar.gz", repo, pkg.latest_version);
-                if let Ok(data) = http_get(&url_alt, self.config.timeout_secs) {
-                    std::fs::write(&dest, &data)
-                        .with_context(|| format!("写入包文件失败: {}", dest.display()))?;
-                    return Ok(dest);
+                match http_get(&url_alt, self.config.timeout_secs) {
+                    Ok(data) => {
+                        std::fs::write(&dest, &data)
+                            .with_context(|| format!("写入包文件失败: {}", dest.display()))?;
+                        return Ok(dest);
+                    }
+                    Err(e2) => {
+                        bail!(
+                            "包 {}@{} 下载失败，无法从 release 页面获取 (tar.gz)\n  策略1 ({}): {}\n  策略2 ({}): {}",
+                            pkg.name,
+                            pkg.latest_version,
+                            url,
+                            e1,
+                            url_alt,
+                            e2
+                        );
+                    }
                 }
             }
         }
-
-        bail!(
-            "包 {}@{} 下载失败，无法从 release 页面获取 (tar.gz)",
-            pkg.name,
-            pkg.latest_version
-        )
     }
 
     // ---- 缓存管理 ----
@@ -363,6 +374,7 @@ impl SecureRegistry {
 
     /// 缓存元信息（pub 以便测试使用）
     pub fn cache_metadata(&self, fingerprint: &str, data: &[u8]) -> Result<PathBuf> {
+        validate_fingerprint(fingerprint)?;
         let path = self.config.cache_dir.join(format!("{}.json", fingerprint));
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -373,6 +385,7 @@ impl SecureRegistry {
 
     /// 读取缓存的元信息（pub 以便测试使用）
     pub fn read_cached_metadata(&self, fingerprint: &str) -> Result<FingerprintMetadata> {
+        validate_fingerprint(fingerprint)?;
         let path = self.config.cache_dir.join(format!("{}.json", fingerprint));
         let data = std::fs::read(&path)
             .with_context(|| format!("读取缓存元信息失败: {}", path.display()))?;
@@ -382,6 +395,7 @@ impl SecureRegistry {
     }
 
     fn cache_certificate(&self, fingerprint: &str, data: &[u8]) -> Result<PathBuf> {
+        validate_fingerprint(fingerprint)?;
         let path = self.config.cache_dir.join(format!("{}.cert", fingerprint));
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -391,11 +405,26 @@ impl SecureRegistry {
     }
 
     fn read_cached_certificate(&self, fingerprint: &str) -> Result<VersionCertificate> {
+        validate_fingerprint(fingerprint)?;
         let path = self.config.cache_dir.join(format!("{}.cert", fingerprint));
         let data = std::fs::read(&path)
             .with_context(|| format!("读取缓存证书失败: {}", path.display()))?;
         let cert: VersionCertificate =
             serde_json::from_slice(&data).with_context(|| "解析缓存证书失败")?;
+
+        // 缓存证书过期检查：过期证书不得继续使用，记录审计事件后拒绝
+        if let Err(e) = super::security::check_certificate_expiry(&cert) {
+            self.logger.log_silent(
+                &AuditLogEntry::new(
+                    SecurityEventType::CachedCertificateExpired,
+                    "read_cached_certificate",
+                )
+                .with_package(fingerprint, &cert.name, &cert.version)
+                .with_details(&format!("{}", e)),
+            );
+            bail!("缓存证书已过期: {}。请清除缓存后重试", fingerprint);
+        }
+
         Ok(cert)
     }
 
@@ -409,6 +438,39 @@ impl SecureRegistry {
     }
 }
 
+/// 校验包指纹字符串，防止路径遍历与 URL 注入
+///
+/// 服务器下发的指纹会被拼入缓存文件路径（`{fp}.json` / `{fp}.cert`）
+/// 和请求 URL，必须限制为安全字符集：仅允许 [A-Za-z0-9_-]，
+/// 拒绝路径分隔符、`..` 及其他特殊字符。
+fn validate_fingerprint(fingerprint: &str) -> Result<()> {
+    if fingerprint.is_empty()
+        || !fingerprint
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    {
+        bail!(
+            "无效的包指纹（含非法字符，拒绝使用以防路径遍历）: {:?}",
+            fingerprint
+        );
+    }
+    Ok(())
+}
+
+/// 校验 URL 合法性，防止命令注入
+///
+/// URL 会被拼入 curl/wget 参数和 PowerShell 脚本，仅允许 http/https
+/// 协议，并拒绝控制字符与空白字符。
+fn validate_url(url: &str) -> Result<()> {
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        bail!("URL 协议不允许（仅支持 http/https）: {}", url);
+    }
+    if url.chars().any(|c| c.is_control() || c.is_whitespace()) {
+        bail!("URL 包含非法字符（控制字符或空白）: {:?}", url);
+    }
+    Ok(())
+}
+
 /// HTTP GET 请求（最小依赖实现）
 ///
 /// 优先使用系统 curl，Windows 回退到 PowerShell。
@@ -417,10 +479,14 @@ impl SecureRegistry {
 /// - 时间: O(n) 网络 + O(n) IO
 /// - 空间: O(n)
 pub(crate) fn http_get(url: &str, timeout_secs: u64) -> Result<Vec<u8>> {
+    validate_url(url)?;
+
     // 尝试使用 curl
+    // --fail: HTTP 错误状态码（如 404）视为失败，避免错误页被当作数据
     let curl_result = std::process::Command::new("curl")
         .args(&[
             "-sL",
+            "--fail",
             "--max-time",
             &timeout_secs.to_string(),
             "--connect-timeout",
@@ -438,12 +504,22 @@ pub(crate) fn http_get(url: &str, timeout_secs: u64) -> Result<Vec<u8>> {
     // 回退到 PowerShell (Windows)
     // 使用 -OutFile 保存到临时文件，避免二进制数据在 stdout 传输中被损坏
     if cfg!(target_os = "windows") {
-        let temp_file = std::env::temp_dir().join(format!("cavvy_http_{}.tmp", std::process::id()));
+        // 使用 tempfile 生成不可预测的临时文件名，
+        // 避免固定文件名（cavvy_http_{pid}.tmp）被预判/劫持
+        let temp_file = tempfile::Builder::new()
+            .prefix("cavvy_http_")
+            .suffix(".tmp")
+            .tempfile()
+            .context("创建临时文件失败")?;
+        let temp_path = temp_file.path().to_path_buf();
+
+        // PowerShell 单引号字符串转义: ' -> ''，防止命令注入
+        let ps_escape = |s: &str| s.replace('\'', "''");
         let ps_cmd = format!(
             "try {{ Invoke-WebRequest -Uri '{}' -UseBasicParsing -MaximumRedirection 5 -TimeoutSec {} -OutFile '{}'; exit 0 }} catch {{ exit 1 }}",
-            url,
+            ps_escape(url),
             timeout_secs,
-            temp_file.display()
+            ps_escape(&temp_path.to_string_lossy())
         );
         let output = std::process::Command::new("powershell")
             .args(&["-NoProfile", "-Command", &ps_cmd])
@@ -451,20 +527,18 @@ pub(crate) fn http_get(url: &str, timeout_secs: u64) -> Result<Vec<u8>> {
 
         if let Ok(output) = output {
             if output.status.success() {
-                let data = std::fs::read(&temp_file);
-                std::fs::remove_file(&temp_file).ok();
-                if let Ok(data) = data {
+                if let Ok(data) = std::fs::read(&temp_path) {
                     if !data.is_empty() {
                         return Ok(data);
                     }
                 }
-            } else {
-                std::fs::remove_file(&temp_file).ok();
             }
         }
+        // temp_file 离开作用域时自动删除临时文件
     }
 
     // 回退到 wget (Linux)
+    // wget 默认对 HTTP 错误状态码返回非零退出码，下方检查退出码即可
     let wget_result = std::process::Command::new("wget")
         .args(&["-qO-", "--timeout", &timeout_secs.to_string(), url])
         .output();
@@ -587,5 +661,31 @@ mod tests {
         // 使用一个不可能成功的 URL 测试错误处理
         let result = http_get("http://localhost:59999/nonexistent", 1);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_fingerprint() {
+        // 合法指纹
+        assert!(validate_fingerprint("a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d").is_ok());
+        assert!(validate_fingerprint("pkg_name-123").is_ok());
+        // 路径遍历与非法字符一律拒绝
+        assert!(validate_fingerprint("../../x").is_err());
+        assert!(validate_fingerprint("..").is_err());
+        assert!(validate_fingerprint("a/b").is_err());
+        assert!(validate_fingerprint("a\\b").is_err());
+        assert!(validate_fingerprint("").is_err());
+        assert!(validate_fingerprint("a b").is_err());
+    }
+
+    #[test]
+    fn test_validate_url() {
+        assert!(validate_url("https://example.com/x.json").is_ok());
+        assert!(validate_url("http://example.com").is_ok());
+        // 非 http/https 协议拒绝
+        assert!(validate_url("file:///etc/passwd").is_err());
+        assert!(validate_url("ftp://example.com").is_err());
+        // 控制字符/空白拒绝（防止命令注入）
+        assert!(validate_url("https://example.com/x\ny").is_err());
+        assert!(validate_url("https://example.com/x y").is_err());
     }
 }

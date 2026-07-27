@@ -141,13 +141,20 @@ impl Rcpl {
     }
 
     /// 读取输入（支持多行）
+    ///
+    /// EOF（Ctrl-D / stdin 关闭）时优雅退出进程，与 :q 行为一致，
+    /// 避免 read_line 返回 Ok(0) 导致的忙等死循环。
     fn read_input(&self, stdin: &io::Stdin) -> anyhow::Result<String> {
         let mut lines = Vec::new();
         let mut reader = stdin.lock();
 
         // 读取第一行
         let mut first_line = String::new();
-        reader.read_line(&mut first_line)?;
+        if reader.read_line(&mut first_line)? == 0 {
+            // EOF：stdin 已关闭，继续循环只会无限刷提示符
+            println!("\nBye!");
+            std::process::exit(0);
+        }
         lines.push(first_line.trim_end().to_string());
 
         // 检查是否需要多行输入
@@ -156,7 +163,11 @@ impl Rcpl {
             io::stdout().flush()?;
 
             let mut line = String::new();
-            reader.read_line(&mut line)?;
+            if reader.read_line(&mut line)? == 0 {
+                // 多行输入未闭合时遇到 EOF：同样优雅退出，避免死循环
+                println!("\nBye!");
+                std::process::exit(0);
+            }
 
             // 空行结束多行输入
             if line.trim().is_empty() {
@@ -320,11 +331,14 @@ impl Rcpl {
 
     /// 执行生成的代码
     fn execute(&self, program: &str) -> anyhow::Result<String> {
-        // 创建临时文件
-        let temp_dir = std::env::temp_dir();
-        let temp_file = temp_dir.join(format!("cavvy_rcpl_{}.cay", std::process::id()));
-
-        std::fs::write(&temp_file, program)?;
+        // 创建临时文件（tempfile 保证文件名不可预测，并在离开作用域时自动清理）
+        let mut tmp = tempfile::Builder::new()
+            .prefix("cavvy_rcpl_")
+            .suffix(".cay")
+            .tempfile()?;
+        tmp.write_all(program.as_bytes())?;
+        tmp.flush()?;
+        let temp_file = tmp.path().to_path_buf();
 
         // 获取 cay-run 所在目录作为工作目录
         let cay_run_dir = self
@@ -346,8 +360,7 @@ impl Rcpl {
         }
         let output = cmd.output()?;
 
-        // 清理临时文件
-        let _ = std::fs::remove_file(&temp_file);
+        // 临时文件随 tmp 离开作用域自动删除
 
         if output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout);
@@ -381,8 +394,6 @@ impl Rcpl {
     }
 }
 
-impl Default for Rcpl {
-    fn default() -> Self {
-        Self::new().expect("Failed to create RCPL")
-    }
-}
+// 不提供 Default 实现：Rcpl 的创建依赖 cay-run 可执行文件等外部资源，
+// 可能失败，必须由调用方通过 Rcpl::new()/new_with_options() 处理 Result，
+// 而不是在 Default::default() 里 expect panic。

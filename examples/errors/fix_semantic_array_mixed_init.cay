@@ -1,0 +1,6 @@
+// 错误测试：数组初始化元素类型必须一致
+public class FixSemanticArrayMixedInit {
+    public static void main() {
+        int[] arr = {1, "hello"};
+    }
+}

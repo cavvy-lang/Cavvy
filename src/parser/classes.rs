@@ -163,8 +163,6 @@ pub fn parse_class_member(parser: &mut Parser) -> CayResult<ClassMember> {
     let checkpoint = parser.pos;
     let modifiers = parse_modifiers(parser)?;
 
-    //eprintln!("[DEBUG] parse_class_member after modifiers, current token: {:?}", parser.current_token());
-
     // 检查是否是静态初始化块 static { ... }
     if modifiers.contains(&Modifier::Static) && parser.check(&Token::LBrace) {
         parser.pos = checkpoint;
@@ -805,12 +803,47 @@ pub fn parse_modifiers(parser: &mut Parser) -> CayResult<Vec<Modifier>> {
         }
     }
 
+    // 校验重复与冲突修饰符，不得静默接受非法组合（如 static static、public private）
+    validate_modifiers(parser, &modifiers)?;
+
     Ok(modifiers)
+}
+
+/// 校验修饰符列表：同一修饰符重复、访问修饰符互斥、abstract/final 冲突均报错
+fn validate_modifiers(parser: &Parser, modifiers: &[Modifier]) -> CayResult<()> {
+    for (i, m) in modifiers.iter().enumerate() {
+        if modifiers[..i].contains(m) {
+            return Err(parser.error(&format!(
+                "修饰符 '{:?}' 重复\n提示: 每个修饰符只能出现一次",
+                m
+            )));
+        }
+    }
+
+    // 访问修饰符 public/private/protected 互斥
+    let access: Vec<&Modifier> = modifiers
+        .iter()
+        .filter(|m| matches!(m, Modifier::Public | Modifier::Private | Modifier::Protected))
+        .collect();
+    if access.len() > 1 {
+        return Err(parser.error(&format!(
+            "访问修饰符冲突：'{:?}' 与 '{:?}' 不能同时使用\n提示: public/private/protected 只能三选一",
+            access[0], access[1]
+        )));
+    }
+
+    // abstract 与 final 语义冲突
+    if modifiers.contains(&Modifier::Abstract) && modifiers.contains(&Modifier::Final) {
+        return Err(parser.error(
+            "修饰符冲突：abstract 与 final 不能同时使用\n提示: abstract 要求被实现/重写，final 禁止被继承/重写",
+        ));
+    }
+
+    Ok(())
 }
 
 /// 解析参数列表（支持可变参数）
 pub fn parse_parameters(parser: &mut Parser) -> CayResult<Vec<ParameterInfo>> {
-    //eprintln!("[DEBUG] parse_parameters called");
     let mut params = Vec::new();
 
     if !parser.check(&Token::RParen) {
@@ -852,9 +885,7 @@ pub fn parse_parameters(parser: &mut Parser) -> CayResult<Vec<ParameterInfo>> {
             }
 
             // 检查是否是可变参数类型（type...）
-            //eprintln!("[DEBUG] About to call parse_type_or_fn_ptr");
             let param_type = parser.parse_type_or_fn_ptr()?;
-            //eprintln!("[DEBUG] parse_type_or_fn_ptr returned: {:?}", param_type);
 
             // 检查是否有 ... 标记
             let is_varargs = parser.match_token(&Token::DotDotDot);
@@ -1058,7 +1089,10 @@ fn parse_method_after_modifiers(
 
     // 检查是否有方法体
     let body = if parser.check(&Token::LBrace) {
-        Some(super::statements::parse_block(parser)?)
+        let mut body = parse_block(parser)?;
+        // 与 class 方法行为一致：函数体尾表达式提升为隐式 return
+        promote_tail_to_return(&mut body);
+        Some(body)
     } else if parser.check(&Token::Semicolon) {
         // 抽象方法或声明
         parser.advance();

@@ -176,19 +176,15 @@ pub fn consume<'a>(parser: &'a mut Parser, token: &Token, message: &str) -> CayR
             ),
         };
 
-        // 添加到诊断收集器
-        let error = CayError::Parser {
+        // 直接返回错误（diagnostics 收集器无读者，不再双重记录）
+        Err(CayError::Parser {
             error_code,
             file: loc.file.clone(),
             line: loc.line,
             column: loc.column,
-            message: detailed_message.clone(),
+            message: detailed_message,
             suggestion,
-        };
-
-        parser.diagnostics.push(error.clone());
-
-        Err(error)
+        })
     }
 }
 
@@ -203,18 +199,14 @@ pub fn consume_identifier(parser: &mut Parser, message: &str) -> CayResult<Strin
         let actual = get_token_name(current_token(parser));
         let detailed_message = format!("期望标识符，但找到 '{}'", actual);
 
-        let error = CayError::Parser {
+        Err(CayError::Parser {
             error_code: ErrorCodes::PARSER_EXPECTED_IDENTIFIER,
             file: loc.file.clone(),
             line: loc.line,
             column: loc.column,
-            message: detailed_message.clone(),
+            message: detailed_message,
             suggestion: "使用有效的标识符名称（以字母或下划线开头）".to_string(),
-        };
-
-        parser.diagnostics.push(error.clone());
-
-        Err(error)
+        })
     }
 }
 
@@ -232,31 +224,11 @@ pub fn error(parser: &Parser, message: &str) -> CayError {
     }
 }
 
-/// 创建详细的语法错误
-pub fn create_parser_error(
-    parser: &mut Parser,
-    error_code: &'static str,
-    message: impl Into<String>,
-) -> CayError {
-    let loc = current_full_loc(parser);
-    let message = message.into();
-
-    let error = CayError::Parser {
-        error_code,
-        file: loc.file.clone(),
-        line: loc.line,
-        column: loc.column,
-        message: message.clone(),
-        suggestion: ErrorCodes::get_suggestion(error_code).to_string(),
-    };
-
-    parser.diagnostics.push(error.clone());
-    error
-}
-
 /// 检查下一个令牌是否匹配给定令牌
 pub fn check_next(parser: &Parser, token: &Token) -> bool {
-    if parser.pos + 1 >= parser.tokens.len() - 1 {
+    // pos + 1 越界（含空令牌流）时返回 false；
+    // 注意不能写成 >= len - 1：既会在 len==0 时下溢，又会漏掉最后一个令牌
+    if parser.pos + 1 >= parser.tokens.len() {
         false
     } else {
         &parser.tokens[parser.pos + 1].token == token
@@ -398,69 +370,5 @@ pub fn get_token_name(token: &Token) -> String {
         Token::Fn => "fn".to_string(),
         Token::As => "as".to_string(),
         Token::Interop => "interop".to_string(),
-    }
-}
-
-/// 检查令牌是否是类型关键字
-pub fn is_type_token(parser: &Parser) -> bool {
-    matches!(
-        current_token(parser),
-        Token::Int
-            | Token::Long
-            | Token::Float
-            | Token::Double
-            | Token::Bool
-            | Token::String
-            | Token::Char
-            | Token::Void
-            | Token::Auto
-            | Token::Var
-            | Token::Let
-            | Token::CInt
-            | Token::CLong
-            | Token::CShort
-            | Token::CChar
-            | Token::CFloat
-            | Token::CDouble
-            | Token::SizeT
-            | Token::SSizeT
-            | Token::UIntPtr
-            | Token::IntPtr
-            | Token::CVoid
-            | Token::CBool
-            | Token::CInt64
-            | Token::CUInt64
-            | Token::Identifier(_)
-    )
-}
-
-/// 同步到下一个语句边界（用于错误恢复）
-pub fn synchronize(parser: &mut Parser) {
-    advance(parser);
-
-    while !is_at_end(parser) {
-        if matches!(current_token(parser), Token::Semicolon) {
-            advance(parser);
-            return;
-        }
-
-        match current_token(parser) {
-            Token::Class
-            | Token::Struct
-            | Token::Enum
-            | Token::Interface
-            | Token::Public
-            | Token::Private
-            | Token::Protected
-            | Token::If
-            | Token::While
-            | Token::For
-            | Token::Return => {
-                return;
-            }
-            _ => {
-                advance(parser);
-            }
-        }
     }
 }

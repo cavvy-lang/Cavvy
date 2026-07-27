@@ -3,7 +3,7 @@
 //! 本模块将 cay AST 转换为 LLVM IR 代码。
 //! 已重构为多个子模块以提高可维护性。
 //!
-//! # 0.5.0.0 架构更新
+//! # 架构说明
 //!
 //! 引入 CodeGen-IR Builder 协作桥，支持两个IR生成系统的协同工作：
 //! - CodeGen (IRGenerator): 主代码生成管线，直接生成LLVM IR文本
@@ -23,7 +23,7 @@ pub mod specialization;
 mod statements;
 mod types;
 
-// 0.5.0.0: CodeGen-IR Builder 协作桥
+// CodeGen-IR Builder 协作桥
 pub mod bridge;
 
 // 公开 IRGenerator 作为代码生成器的入口

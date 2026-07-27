@@ -141,19 +141,11 @@ impl SemanticAnalyzer {
             return true;
         }
 
-        // null 可以赋值给任何引用类型（包括 string 和指针）
-        if let Type::Object(obj_name) = from {
-            if obj_name == "Object" {
-                // null 是 Object 类型，可以赋值给 String 或其他引用类型
-                return true;
-            }
-        }
-
-        // null (Object 类型) 可以赋值给任何指针类型
-        if let Type::Object(obj_name) = from {
-            if obj_name == "Object" && matches!(to, Type::Pointer(_)) {
-                return true;
-            }
+        // null 字面量（内部标记类型）可以赋值给任何引用类型（包括 String 和指针），
+        // 但不能赋值给值类型（int/bool/struct 等）。
+        // 注意：真正的 Object 实例不再享受此待遇，Object 实例赋给 String/无关类会报错。
+        if from.is_null_literal() {
+            return to.is_reference_type() || matches!(to, Type::Pointer(_));
         }
 
         if self.type_registry.types_compatible_with_namespace(to, from) {
@@ -374,7 +366,7 @@ impl SemanticAnalyzer {
             // 内置数值类型
             Type::Int32 | Type::Int64 | Type::Float32 | Type::Float64 | Type::Char |
             // FFI 数值类型
-            Type::CInt | Type::CUInt | Type::CLong |
+            Type::CInt | Type::CUInt | Type::CLong | Type::CULong |
             Type::CShort | Type::CUShort | Type::CChar | Type::CUChar |
             Type::CFloat | Type::CDouble | Type::SizeT | Type::SSizeT |
             Type::UIntPtr | Type::IntPtr

@@ -87,8 +87,13 @@ pub fn is_subclass(
     type_registry: &crate::types::TypeRegistry,
 ) -> bool {
     let mut current = Some(child_class.to_string());
+    // 防止循环继承导致死循环
+    let mut visited = std::collections::HashSet::new();
 
     while let Some(class_name) = current {
+        if !visited.insert(class_name.clone()) {
+            return false; // 检测到循环继承
+        }
         if class_name == parent_class {
             return true;
         }

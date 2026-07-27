@@ -137,9 +137,12 @@ fn parse_type_inner(parser: &mut Parser) -> CayResult<(Type, usize)> {
             parser.advance();
             Type::Int64
         }
+        // c_uint64_t 之前被静默映射为有符号 Int64（无符号→有符号截断）。
+        // Type 枚举目前没有无符号 64 位类型，明确报错而不是静默映射错。
         crate::lexer::Token::CUInt64 => {
-            parser.advance();
-            Type::Int64
+            return Err(parser.error(
+                "c_uint64_t 暂不支持：类型系统没有无符号 64 位整数类型\n提示: 可改用 c_int64_t，或在目标平台为 64 位时使用 c_ulong",
+            ));
         }
         crate::lexer::Token::Identifier(name) => {
             let mut name = name.clone();

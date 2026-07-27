@@ -17,6 +17,11 @@ enum SmartPtrKind {
     Optional,
 }
 
+/// 从可能包含 `::` 的限定名中提取简单名（`a::b::C` -> `C`）
+fn simple_class_name(qualified: &str) -> &str {
+    qualified.rsplit("::").next().unwrap_or(qualified)
+}
+
 /// 泛型特化：替换类型中的泛型参数为实际类型
 fn substitute_type_params(
     ty: &Type,
@@ -791,15 +796,7 @@ impl IRGenerator {
         };
 
         // 提取简单类名用于 static_field_map key（与 self.current_class 查找一致）
-        let simple_class = if class_name.contains("::") {
-            class_name
-                .split("::")
-                .last()
-                .expect("split 应始终产生至少一个元素")
-                .to_string()
-        } else {
-            class_name.to_string()
-        };
+        let simple_class = simple_class_name(class_name).to_string();
         let key = format!("{}.{}", simple_class, field.name);
         self.static_field_map.insert(key, field_info.clone());
         self.static_fields.push(field_info);
@@ -1629,15 +1626,7 @@ impl IRGenerator {
         self.generated_methods.insert(fn_name.clone());
 
         self.current_function = fn_name.clone();
-        let raw_struct_name = if struct_name.contains("::") {
-            struct_name
-                .split("::")
-                .last()
-                .expect("split 应始终产生至少一个元素")
-                .to_string()
-        } else {
-            struct_name.to_string()
-        };
+        let raw_struct_name = simple_class_name(struct_name).to_string();
         self.current_class = if let Some(pos) = raw_struct_name.find('<') {
             raw_struct_name[..pos].to_string()
         } else {
@@ -1748,15 +1737,7 @@ impl IRGenerator {
         self.generated_methods.insert(fn_name.clone());
 
         self.current_function = fn_name.clone();
-        let raw_struct_name = if struct_name.contains("::") {
-            struct_name
-                .split("::")
-                .last()
-                .expect("split 应始终产生至少一个元素")
-                .to_string()
-        } else {
-            struct_name.to_string()
-        };
+        let raw_struct_name = simple_class_name(struct_name).to_string();
         self.current_class = if let Some(pos) = raw_struct_name.find('<') {
             raw_struct_name[..pos].to_string()
         } else {
@@ -2094,15 +2075,7 @@ impl IRGenerator {
 
         self.current_function = fn_name.clone();
         // 从可能包含 :: 的限定名中提取简单名用于 current_class
-        let raw_class_name = if class_name.contains("::") {
-            class_name
-                .split("::")
-                .last()
-                .expect("split 应始终产生至少一个元素")
-                .to_string()
-        } else {
-            class_name.to_string()
-        };
+        let raw_class_name = simple_class_name(class_name).to_string();
         // 提取简单类名（不含泛型参数）用于参数名生成
         self.current_class = if let Some(pos) = raw_class_name.find('<') {
             raw_class_name[..pos].to_string()
@@ -2404,15 +2377,7 @@ impl IRGenerator {
 
         self.current_function = fn_name.clone();
         // 从可能包含 :: 的限定名中提取简单名用于 current_class
-        let raw_class_name = if class_name.contains("::") {
-            class_name
-                .split("::")
-                .last()
-                .expect("split 应始终产生至少一个元素")
-                .to_string()
-        } else {
-            class_name.to_string()
-        };
+        let raw_class_name = simple_class_name(class_name).to_string();
         // 提取简单类名（不含泛型参数）用于参数名生成
         self.current_class = if let Some(pos) = raw_class_name.find('<') {
             raw_class_name[..pos].to_string()
@@ -2588,15 +2553,7 @@ impl IRGenerator {
 
         self.current_function = fn_name.clone();
         // 从可能包含 :: 的限定名中提取简单名用于 current_class
-        let raw_class_name = if class_name.contains("::") {
-            class_name
-                .split("::")
-                .last()
-                .expect("split 应始终产生至少一个元素")
-                .to_string()
-        } else {
-            class_name.to_string()
-        };
+        let raw_class_name = simple_class_name(class_name).to_string();
         // 提取简单类名（不含泛型参数）用于参数名生成
         self.current_class = if let Some(pos) = raw_class_name.find('<') {
             raw_class_name[..pos].to_string()
@@ -2738,12 +2695,17 @@ impl IRGenerator {
                 return Ok(field.offset as i64);
             }
         }
-        // 布局查找失败时返回 0（不应发生）
-        eprintln!(
-            "[WARNING] Cannot find field '{}' in class '{}' layout, using offset 0",
-            field_name, class_name
-        );
-        Ok(0)
+        // 布局查找失败必须硬报错：若静默按偏移 0 生成代码，
+        // 会产生读写 this+0 的错误机器码
+        Err(crate::miette_diagnostic::codegen_error(
+            ErrorCodes::CODEGEN_SYMBOL_NOT_FOUND,
+            0,
+            0,
+            format!(
+                "找不到类 '{}' 中字段 '{}' 的布局信息，无法生成字段访问代码",
+                class_name, field_name
+            ),
+        ))
     }
 
     fn generate_destructor(
@@ -2762,15 +2724,7 @@ impl IRGenerator {
 
         self.current_function = fn_name.clone();
         // 从可能包含 :: 的限定名中提取简单名用于 current_class
-        let raw_class_name = if class_name.contains("::") {
-            class_name
-                .split("::")
-                .last()
-                .expect("split 应始终产生至少一个元素")
-                .to_string()
-        } else {
-            class_name.to_string()
-        };
+        let raw_class_name = simple_class_name(class_name).to_string();
         // 提取简单类名（不含泛型参数）用于参数名生成
         self.current_class = if let Some(pos) = raw_class_name.find('<') {
             raw_class_name[..pos].to_string()
@@ -3360,15 +3314,7 @@ impl IRGenerator {
         let fn_name = format!("{}.__static_init", llvm_class);
         self.current_function = fn_name.clone();
         // 从可能包含 :: 的限定名中提取简单名用于 current_class
-        self.current_class = if class_name.contains("::") {
-            class_name
-                .split("::")
-                .last()
-                .expect("split 应始终产生至少一个元素")
-                .to_string()
-        } else {
-            class_name.to_string()
-        };
+        self.current_class = simple_class_name(class_name).to_string();
         self.current_return_type = "void".to_string();
 
         self.temp_counter = 0;

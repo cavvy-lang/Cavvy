@@ -110,8 +110,11 @@ impl Inliner {
             inlined_calls.insert(key);
 
             if let Err(e) = self.inline_call(&mut module, caller_idx, &callee_name) {
-                // 内联失败不影响编译，只是跳过此优化
-                eprintln!("Inliner: failed to inline {}: {}", callee_name, e);
+                // 内联失败不影响编译，只是跳过此优化；通过项目警告体系上报
+                crate::miette_diagnostic::print_warning(&format!(
+                    "Inliner: 内联 {} 失败，已跳过该优化: {}",
+                    callee_name, e
+                ));
             }
         }
 

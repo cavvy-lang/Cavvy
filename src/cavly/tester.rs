@@ -321,24 +321,37 @@ impl TestRunner {
                     loop {
                         match child.try_wait() {
                             Ok(Some(status)) => {
-                                // 进程已退出
-                                let output = child.wait_with_output().ok();
-                                let stdout = output
-                                    .as_ref()
-                                    .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
-                                    .unwrap_or_default();
+                                // 进程已退出，收集输出；收集失败时明确报告错误
+                                match child.wait_with_output() {
+                                    Ok(output) => {
+                                        let stdout =
+                                            String::from_utf8_lossy(&output.stdout).to_string();
 
-                                return TestResult {
-                                    name: test.name.clone(),
-                                    passed: status.success(),
-                                    duration: start.elapsed(),
-                                    error: if status.success() {
-                                        None
-                                    } else {
-                                        Some(format!("退出码: {:?}", status.code()))
-                                    },
-                                    stdout,
-                                };
+                                        return TestResult {
+                                            name: test.name.clone(),
+                                            passed: status.success(),
+                                            duration: start.elapsed(),
+                                            error: if status.success() {
+                                                None
+                                            } else {
+                                                Some(format!("退出码: {:?}", status.code()))
+                                            },
+                                            stdout,
+                                        };
+                                    }
+                                    Err(e) => {
+                                        return TestResult {
+                                            name: test.name.clone(),
+                                            passed: false,
+                                            duration: start.elapsed(),
+                                            error: Some(format!(
+                                                "收集测试进程输出失败: {}",
+                                                e
+                                            )),
+                                            stdout: String::new(),
+                                        };
+                                    }
+                                }
                             }
                             Ok(None) => {
                                 if Instant::now() >= deadline {

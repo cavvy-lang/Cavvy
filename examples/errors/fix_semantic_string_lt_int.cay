@@ -1,0 +1,8 @@
+// 错误测试：String 与 int 不能进行关系比较
+public class FixSemanticStringLtInt {
+    public static void main() {
+        if ("abc" < 42) {
+            println("unreachable");
+        }
+    }
+}

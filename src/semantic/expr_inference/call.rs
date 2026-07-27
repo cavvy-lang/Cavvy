@@ -271,30 +271,47 @@ impl SemanticAnalyzer {
                 }
 
                 // 第一步：尝试精确匹配（参数类型完全相同）
+                // 试探期间使用错误缓冲：失败候选产生的错误会被丢弃，避免级联误报；
+                // 只有最终选定的候选产生的错误（如实参内部的未定义标识符）才保留。
+                let mut selected_return_type: Option<Type> = None;
                 for (return_type, params, is_static) in &candidate_methods {
                     // 检查：静态方法中不能调用实例方法
                     if self.current_method_is_static && !is_static {
                         continue;
                     }
+                    let error_checkpoint = self.errors.len();
                     if self.check_arguments_exact(&call.args, params) {
-                        return Ok(return_type.clone());
+                        selected_return_type = Some(return_type.clone());
+                        break;
                     }
+                    // 试探失败：回滚该候选产生的错误
+                    self.errors.truncate(error_checkpoint);
                 }
 
                 // 第二步：尝试兼容匹配（允许隐式类型转换）
-                for (return_type, params, is_static) in &candidate_methods {
-                    // 检查：静态方法中不能调用实例方法
-                    if self.current_method_is_static && !is_static {
-                        continue;
+                if selected_return_type.is_none() {
+                    for (return_type, params, is_static) in &candidate_methods {
+                        // 检查：静态方法中不能调用实例方法
+                        if self.current_method_is_static && !is_static {
+                            continue;
+                        }
+                        let error_checkpoint = self.errors.len();
+                        if let Ok(()) = self.check_arguments_compatible(
+                            &call.args,
+                            params,
+                            call.loc.line,
+                            call.loc.column,
+                        ) {
+                            selected_return_type = Some(return_type.clone());
+                            break;
+                        }
+                        // 试探失败：回滚该候选产生的错误
+                        self.errors.truncate(error_checkpoint);
                     }
-                    if let Ok(()) = self.check_arguments_compatible(
-                        &call.args,
-                        params,
-                        call.loc.line,
-                        call.loc.column,
-                    ) {
-                        return Ok(return_type.clone());
-                    }
+                }
+
+                if let Some(return_type) = selected_return_type {
+                    return Ok(return_type);
                 }
             }
 
@@ -477,7 +494,6 @@ impl SemanticAnalyzer {
                         &self.type_registry,
                         &member.loc,
                     )?;
-                    // eprintln!("[DEBUG] Found method: {}.{}, params={:?}, return_type={:?}", class_name, member.member, params, return_type);
                     // 检查参数类型兼容性（支持可变参数）
                     if let Err(msg) = self.check_arguments_compatible(
                         &call.args,

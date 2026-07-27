@@ -1,5 +1,4 @@
 use cavvy::Compiler;
-use cavvy::bytecode::obfuscator;
 use cavvy::bytecode::{jit, serializer};
 use cavvy::ir2exe_lib::parse_link_libraries_from_ir;
 use cavvy::miette_diagnostic::CayError;
@@ -333,70 +332,14 @@ fn compile_cay_to_ir(source_path: &str, options: &RunOptions) -> Result<String, 
 }
 
 /// 编译Cay源码为字节码
+///
+/// 当前版本的字节码生成尚未实现（此前实现只产出不含任何代码的空模块，
+/// 加 --obfuscate 会得到一个空程序）。为避免静默产出错误产物，这里直接报错。
 fn compile_cay_to_bytecode(
-    source_path: &str,
-    options: &RunOptions,
+    _source_path: &str,
+    _options: &RunOptions,
 ) -> Result<cavvy::bytecode::BytecodeModule, String> {
-    let source = fs::read_to_string(source_path).map_err(|e| format!("读取源文件失败: {}", e))?;
-
-    // 词法分析
-    let tokens = cavvy::lexer::lex(&source).map_err(|e| format!("词法分析错误: {:?}", e))?;
-
-    // 语法分析
-    let ast = cavvy::parser::parse(tokens).map_err(|e| format!("语法分析错误: {:?}", e))?;
-
-    // 语义分析
-    let mut analyzer = cavvy::semantic::SemanticAnalyzer::new();
-    let ast = analyzer
-        .analyze(ast)
-        .map_err(|e| format!("语义分析错误: {:?}", e))?;
-
-    // 生成字节码模块
-    let mut module = cavvy::bytecode::BytecodeModule::new(
-        Path::new(source_path)
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("unnamed")
-            .to_string(),
-        env::consts::OS.to_string(),
-    );
-
-    // TODO: 实现完全完整的字节码模块生成逻辑
-
-    if options.obfuscate {
-        let obf_options = match options.obfuscate_level.as_str() {
-            "light" => obfuscator::ObfuscationOptions {
-                obfuscate_names: true,
-                obfuscate_control_flow: false,
-                insert_junk_code: false,
-                encrypt_strings: false,
-                shuffle_functions: false,
-                strip_debug_info: true,
-            },
-            "normal" => obfuscator::ObfuscationOptions {
-                obfuscate_names: true,
-                obfuscate_control_flow: true,
-                insert_junk_code: false,
-                encrypt_strings: true,
-                shuffle_functions: false,
-                strip_debug_info: true,
-            },
-            "deep" => obfuscator::ObfuscationOptions {
-                obfuscate_names: true,
-                obfuscate_control_flow: true,
-                insert_junk_code: true,
-                encrypt_strings: true,
-                shuffle_functions: true,
-                strip_debug_info: true,
-            },
-            _ => obfuscator::ObfuscationOptions::default(),
-        };
-
-        let mut obfuscator = obfuscator::BytecodeObfuscator::new(obf_options);
-        obfuscator.obfuscate(&mut module);
-    }
-
-    Ok(module)
+    Err("字节码生成尚未实现：--obfuscate/--bytecode 在当前版本不可用，请去掉这些选项后直接编译 .cay 源码".to_string())
 }
 
 /// 编译字节码为IR
@@ -555,7 +498,22 @@ fn run_executable(exe_path: &str, options: &RunOptions) -> Result<i32, String> {
 
     let status = cmd.status().map_err(|e| format!("运行程序失败: {}", e))?;
 
-    Ok(status.code().unwrap_or(1))
+    match status.code() {
+        Some(code) => Ok(code),
+        None => {
+            // 进程没有退出码，通常是被信号杀死（Unix）
+            #[cfg(unix)]
+            {
+                use std::os::unix::process::ExitStatusExt;
+                if let Some(signal) = status.signal() {
+                    eprintln!("程序被信号 {} 杀死", signal);
+                    // 遵循 shell 约定：128 + 信号号
+                    return Ok(128 + signal);
+                }
+            }
+            Err("程序异常终止：未返回退出码".to_string())
+        }
+    }
 }
 
 fn main() {

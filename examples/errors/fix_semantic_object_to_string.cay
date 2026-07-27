@@ -1,0 +1,7 @@
+// 错误测试：Object 实例不能赋给 String（null 与 Object 混用的大洞已修复）
+public class FixSemanticObjectToString {
+    public static void main() {
+        Object o = new FixSemanticObjectToString();
+        String s = o;
+    }
+}

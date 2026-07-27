@@ -9,7 +9,8 @@ use std::process;
 
 /// 查找 clang 可执行文件
 /// 1. 首先尝试直接调用 "clang"（系统 PATH 中）
-/// 2. 如果失败，尝试查找编译器所在目录下的 llvm-minimal/bin/clang.exe
+/// 2. 如果失败，尝试查找编译器所在目录下捆绑的 llvm-minimal/clang（Windows 为 clang.exe）
+///    注意：捆绑目录是扁平布局，可执行文件直接位于 llvm-minimal/ 下
 /// 3. 如果都找不到，返回错误
 fn find_clang() -> Result<PathBuf, String> {
     // 1. 首先尝试系统 PATH 中的 clang
@@ -19,10 +20,11 @@ fn find_clang() -> Result<PathBuf, String> {
         }
     }
 
-    // 2. 尝试编译器所在目录下的 llvm-minimal
+    // 2. 尝试编译器所在目录下的 llvm-minimal（扁平布局）
     if let Ok(exe_path) = env::current_exe() {
         if let Some(exe_dir) = exe_path.parent() {
-            let bundled_clang = exe_dir.join("llvm-minimal/bin/clang.exe");
+            let clang_name = if cfg!(windows) { "clang.exe" } else { "clang" };
+            let bundled_clang = exe_dir.join("llvm-minimal").join(clang_name);
             if bundled_clang.exists() {
                 return Ok(bundled_clang);
             }

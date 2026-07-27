@@ -336,7 +336,12 @@ impl SemanticAnalyzer {
             // 沿继承链查找字段：先查当前类，再逐级查父类
             {
                 let mut current_opt = Some(base_class_name.to_string());
+                // 防止循环继承导致死循环
+                let mut visited = std::collections::HashSet::new();
                 while let Some(cls_name) = current_opt {
+                    if !visited.insert(cls_name.clone()) {
+                        break;
+                    }
                     if let Some(ci) = self.type_registry.get_class(&cls_name) {
                         if let Some(field_info) = ci.fields.get(&member.member) {
                             // 在定义该字段的类上检查访问权限

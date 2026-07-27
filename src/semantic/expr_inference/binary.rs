@@ -91,12 +91,69 @@ impl SemanticAnalyzer {
                     ))
                 }
             }
-            BinaryOp::Eq
-            | BinaryOp::Ne
-            | BinaryOp::Lt
-            | BinaryOp::Le
-            | BinaryOp::Gt
-            | BinaryOp::Ge => Ok(Type::Bool),
+            BinaryOp::Eq | BinaryOp::Ne => {
+                // 相等性比较规则：
+                // - 数值类型之间可以比较（含 char 与 FFI 数值类型）
+                // - 同类型可以比较（含 bool、String、对象、数组、指针、函数指针）
+                // - null 字面量可以与任何引用类型/指针类型比较
+                // - 引用类型之间存在继承/实现关系（任一方向可赋值）时可以比较
+                // - 泛型模板体内的类型参数延迟到单态化后检查
+                let both_numeric =
+                    Self::is_numeric_type_helper(&left_type) && Self::is_numeric_type_helper(&right_type);
+                let involves_generic_param = matches!(left_type, Type::GenericParam(_))
+                    || matches!(right_type, Type::GenericParam(_));
+                let null_vs_reference = (left_type.is_null_literal()
+                    && (right_type.is_reference_type() || matches!(right_type, Type::Pointer(_))))
+                    || (right_type.is_null_literal()
+                        && (left_type.is_reference_type() || matches!(left_type, Type::Pointer(_))));
+                let both_reference_like = (left_type.is_reference_type()
+                    || matches!(left_type, Type::Pointer(_)))
+                    && (right_type.is_reference_type() || matches!(right_type, Type::Pointer(_)));
+                let related = both_reference_like
+                    && (self.types_compatible(&left_type, &right_type)
+                        || self.types_compatible(&right_type, &left_type));
+
+                if both_numeric
+                    || left_type == right_type
+                    || involves_generic_param
+                    || null_vs_reference
+                    || related
+                {
+                    Ok(Type::Bool)
+                } else {
+                    Err(semantic_error_at_loc(
+                        &bin.loc,
+                        format!(
+                            "Cannot compare {} and {} with {:?}: incomparable types",
+                            left_type, right_type, bin.op
+                        ),
+                    ))
+                }
+            }
+            BinaryOp::Lt | BinaryOp::Le | BinaryOp::Gt | BinaryOp::Ge => {
+                // 关系比较规则：
+                // - 数值类型之间可以比较
+                // - String 与 String 可以比较
+                // - 泛型模板体内的类型参数延迟到单态化后检查
+                // - bool、对象（无重载时）等不支持关系比较
+                let both_numeric =
+                    Self::is_numeric_type_helper(&left_type) && Self::is_numeric_type_helper(&right_type);
+                let both_string = left_type == Type::String && right_type == Type::String;
+                let involves_generic_param = matches!(left_type, Type::GenericParam(_))
+                    || matches!(right_type, Type::GenericParam(_));
+
+                if both_numeric || both_string || involves_generic_param {
+                    Ok(Type::Bool)
+                } else {
+                    Err(semantic_error_at_loc(
+                        &bin.loc,
+                        format!(
+                            "Cannot compare {} and {} with {:?}: operator requires numeric or string operands",
+                            left_type, right_type, bin.op
+                        ),
+                    ))
+                }
+            }
             BinaryOp::And | BinaryOp::Or => {
                 if left_type == Type::Bool && right_type == Type::Bool {
                     Ok(Type::Bool)
