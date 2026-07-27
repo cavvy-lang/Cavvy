@@ -1,0 +1,16 @@
+# 这是 GitHub 官方支持的平台，有就填，没有就留空或删掉
+github: # 比如: [dhjs0000]
+patreon: 
+open_collective: 
+ko_fi: 
+tidelift: 
+community_bridge: 
+liberapay: 
+issuehunt: 
+lfx_crowdfunding: 
+polar: 
+buy_me_a_coffee: 
+thanks_dev: 
+
+# 爱发电走 custom，最多可以填 4 个自定义链接
+custom: ['https://ifdian.net/a/dhjs0000']
