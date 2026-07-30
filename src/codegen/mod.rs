@@ -14,7 +14,8 @@
 pub mod allocator;
 pub mod context;
 mod expressions;
-mod generator;
+pub mod generator;
+pub mod itanium_mangle;
 pub mod obfuscator;
 mod platform;
 pub mod runtime;

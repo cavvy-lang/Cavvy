@@ -1785,119 +1785,15 @@ impl IRGenerator {
         result
     }
 
-    /// 生成 Itanium ABI 类前缀（不含尾部 `E`），用于在类名之后继续编码方法名。
-    /// 格式: _ZN<len>ns1<len>ns2<len>className
-    /// 与标准 C++ 编译器输出一致。
-    pub(crate) fn get_itanium_class_prefix(&self, class_name: &str) -> String {
-        let mut result = "_ZN".to_string();
-        // 如果 class_name 已经包含 :: 则直接使用，否则查 class_namespaces
-        let parts = if class_name.contains("::") {
-            let v: Vec<String> = class_name
-                .split("::")
-                .map(|s| self.mangle_itanium_entity_name(s))
-                .collect();
-            v
-        } else {
-            let base_name = if let Some(lt_pos) = class_name.find('<') {
-                &class_name[..lt_pos]
-            } else {
-                class_name
-            };
-            let ns = self.get_class_namespace(base_name);
-            let simple = if class_name.contains('<') {
-                // 特化名：将 <, >, ,, 空格 替换为 _ 生成唯一标识
-                self.mangle_itanium_entity_name(class_name)
-            } else {
-                class_name.to_string()
-            };
-            if ns.is_empty() {
-                vec![simple]
-            } else {
-                let mut v: Vec<String> = ns.into_iter().collect();
-                v.push(simple);
-                v
-            }
-        };
-        for part in &parts {
-            result.push_str(&format!("{}{}", part.len(), part));
-        }
-        result
-    }
-
     /// Itanium ABI 类型编码：将 Cavvy type 转换为 Itanium mangled 类型字符串。
     /// https://itanium-cxx-abi.github.io/cxx-abi/abi.html#mangling-type
     pub fn type_to_itanium_sig(&self, ty: &crate::types::Type) -> String {
-        use crate::types::Type;
-        match ty {
-            Type::Void => "v".to_string(),
-            Type::Int32 => "i".to_string(),
-            Type::Int64 => "x".to_string(), // long long
-            Type::Float32 => "f".to_string(),
-            Type::Float64 => "d".to_string(),
-            Type::Bool => "b".to_string(),
-            Type::String => "Pc".to_string(), // char*
-            Type::Char => "c".to_string(),
-            Type::Object(name) => {
-                // 当作 class/struct 指针: P<qualified name>
-                let prefix = self.get_itanium_class_prefix(name);
-                format!("P{}E", &prefix[3..]) // strip _ZN prefix, use P + name + E
-            }
-            Type::Array(inner) => {
-                // 当作指针 (数组退化为指针)
-                format!("P{}", self.type_to_itanium_sig(inner))
-            }
-            Type::Function(_) => "PFvvE".to_string(), // 简化函数指针
-            Type::Auto => "v".to_string(),
-            Type::CInt => "i".to_string(),
-            Type::CUInt => "j".to_string(), // unsigned int
-            Type::CLong => {
-                if self.is_windows_target() { "i".to_string() } else { "l".to_string() }
-            }
-            Type::CULong => {
-                if self.is_windows_target() { "j".to_string() } else { "m".to_string() }
-            }
-            Type::CShort => "s".to_string(),
-            Type::CUShort => "t".to_string(),
-            Type::CChar => "c".to_string(),
-            Type::CUChar => "h".to_string(),
-            Type::CFloat => "f".to_string(),
-            Type::CDouble => "d".to_string(),
-            Type::SizeT => { if self.is_windows_target() { "y".to_string() } else { "m".to_string() } }
-            Type::SSizeT => "x".to_string(),
-            Type::UIntPtr => "y".to_string(),
-            Type::IntPtr => "l".to_string(),
-            Type::CVoid => "v".to_string(),
-            Type::CBool => "b".to_string(),
-            Type::Pointer(inner) => {
-                format!("P{}", self.type_to_itanium_sig(inner))
-            }
-            Type::Struct(name) => {
-                // struct 指针
-                let prefix = self.get_itanium_class_prefix(name);
-                format!("P{}E", &prefix[3..])
-            }
-            Type::GenericParam(name) => {
-                // 泛型参数的降级表示
-                format!("Pc") // 回退到 char*
-            }
-            Type::Generic(name, _args) => {
-                // 特化泛型类指针
-                let mangled_name = self.mangle_itanium_entity_name(name);
-                format!("P{}{}", mangled_name.len(), mangled_name)
-            }
-        }
-    }
-
-    /// 将类名中的 Itanium-非法字符（<, >, ,, 空格, ::）替换为 _。
-    /// 用于构建 LLVM 标识符时确保合法性，同时生成可识别的特化名称。
-    fn mangle_itanium_entity_name(&self, name: &str) -> String {
-        name.replace("::", "_")
-            .replace("<", "_")
-            .replace(">", "_")
-            .replace(",", "_")
-            .replace(" ", "_")
-            .replace("*", "P")
-            .replace("&", "R")
+        let mut mangler = crate::codegen::itanium_mangle::ItaniumMangler::new(
+            self.type_registry.as_ref(),
+            &self.class_namespaces,
+            self.is_windows_target(),
+        );
+        mangler.mangle_type(ty)
     }
 
     /// 生成 struct 在 LLVM IR 中的类型名。
@@ -1927,27 +1823,12 @@ impl IRGenerator {
         is_constructor: bool,
         is_destructor: bool,
     ) -> String {
-        let prefix = self.get_itanium_class_prefix(class_name);
-
-        let method_enc = if is_constructor {
-            "C1".to_string() // C1 = complete object constructor
-        } else if is_destructor {
-            "D1".to_string() // D1 = complete object destructor
-        } else {
-            format!("{}{}", method_name.len(), method_name)
-        };
-
-        let params_enc: String = if is_destructor || param_types.is_empty() {
-            "v".to_string() // 无参函数按 Itanium ABI 编码为 v（destructor 恒为 D1Ev)
-        } else {
-            param_types
-                .iter()
-                .map(|t| self.type_to_itanium_sig(t))
-                .collect::<Vec<_>>()
-                .join("")
-        };
-
-        format!("{}{}E{}", prefix, method_enc, params_enc)
+        let mut mangler = crate::codegen::itanium_mangle::ItaniumMangler::new(
+            self.type_registry.as_ref(),
+            &self.class_namespaces,
+            self.is_windows_target(),
+        );
+        mangler.mangle_method(class_name, method_name, param_types, is_constructor, is_destructor)
     }
 
     /// Mangle 变量名以确保是合法的 LLVM 标识符
