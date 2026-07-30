@@ -195,6 +195,7 @@ impl SemanticAnalyzer {
                 is_final: false,
                 is_test: false,
                 vtable_slot: None,
+                loc: crate::miette_diagnostic::SourceLocation::default(),
             };
 
             class_info.add_method(method);

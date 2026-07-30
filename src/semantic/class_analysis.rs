@@ -2,7 +2,7 @@
 
 use super::analyzer::SemanticAnalyzer;
 use crate::ast::{ClassMember, Modifier, Program};
-use crate::miette_diagnostic::{CayResult, ErrorCodes, SourceLocation, semantic_error, semantic_error_with_file};
+use crate::miette_diagnostic::{CayResult, ErrorCodes, SourceLocation, semantic_error_with_file};
 use crate::types::{ClassInfo, FieldInfo, MethodInfo, ParameterInfo, Type};
 
 impl SemanticAnalyzer {
@@ -15,7 +15,7 @@ impl SemanticAnalyzer {
     ///    - 如果没有类标记 @main，报错并提示使用 @main
     pub fn check_main_class_conflicts(&mut self, program: &Program) -> CayResult<()> {
         // 收集所有有 main 方法的类
-        let mut main_classes: Vec<(String, bool)> = Vec::new(); // (类名, 是否有@main标记)
+        let mut main_classes: Vec<(String, bool, SourceLocation)> = Vec::new(); // (类名, 是否有@main标记, 源位置)
 
         for class in &program.classes {
             let has_main = class.members.iter().any(|m| {
@@ -30,7 +30,7 @@ impl SemanticAnalyzer {
 
             if has_main {
                 let has_main_marker = class.modifiers.contains(&crate::ast::Modifier::Main);
-                main_classes.push((class.name.clone(), has_main_marker));
+                main_classes.push((class.name.clone(), has_main_marker, class.loc.clone()));
             }
         }
 
@@ -46,19 +46,23 @@ impl SemanticAnalyzer {
             }
             _ => {
                 // 多个类有 main 方法，需要检查 @main 标记
-                let marked_classes: Vec<&(String, bool)> =
-                    main_classes.iter().filter(|(_, marked)| *marked).collect();
+                let marked_classes: Vec<&(String, bool, SourceLocation)> =
+                    main_classes.iter().filter(|(_, marked, _)| *marked).collect();
 
                 match marked_classes.len() {
                     0 => {
                         // 多个类有 main，但没有标记 @main
                         let class_names: Vec<String> =
-                            main_classes.iter().map(|(name, _)| name.clone()).collect();
+                            main_classes.iter().map(|(name, _, _)| name.clone()).collect();
+                        let first_loc = main_classes
+                            .first()
+                            .map(|(_, _, loc)| loc.clone())
+                            .unwrap_or_else(|| SourceLocation::new(self.current_file.clone(), 1, 1));
                         Err(semantic_error_with_file(
                             ErrorCodes::SEMANTIC_INVALID_OPERATION,
-                            None,
-                            0,
-                            0,
+                            first_loc.file.clone().or_else(|| self.current_file.clone()),
+                            first_loc.line,
+                            first_loc.column,
                             format!(
                                 "多个类包含 main 方法: {}。请使用 @main 标记指定主类，例如：\n@main public class {} {{ ... }}",
                                 class_names.join(", "),
@@ -74,13 +78,17 @@ impl SemanticAnalyzer {
                         // 多个类标记了 @main
                         let marked_names: Vec<String> = marked_classes
                             .iter()
-                            .map(|(name, _)| name.clone())
+                            .map(|(name, _, _)| name.clone())
                             .collect();
+                        let first_loc = marked_classes
+                            .first()
+                            .map(|(_, _, loc)| (*loc).clone())
+                            .unwrap_or_else(|| SourceLocation::new(self.current_file.clone(), 1, 1));
                         Err(semantic_error_with_file(
                             ErrorCodes::SEMANTIC_INVALID_OPERATION,
-                            None,
-                            0,
-                            0,
+                            first_loc.file.clone().or_else(|| self.current_file.clone()),
+                            first_loc.line,
+                            first_loc.column,
                             format!(
                                 "多个类标记了 @main: {}。只能有一个主类。",
                                 marked_names.join(", ")
@@ -138,6 +146,7 @@ impl SemanticAnalyzer {
                     is_final: false, // 接口方法不是final
                     is_test: false,  // 接口方法不能是 @Test
                     vtable_slot: None,
+                    loc: method.loc.clone(),
                 };
                 interface_info.add_method(method_info);
             }
@@ -225,6 +234,7 @@ impl SemanticAnalyzer {
                             is_public: ctor.modifiers.contains(&Modifier::Public),
                             is_private: ctor.modifiers.contains(&Modifier::Private),
                             is_protected: ctor.modifiers.contains(&Modifier::Protected),
+                            loc: ctor.loc.clone(),
                         };
                         // 检查是否存在签名完全相同的构造函数（重复定义）
                         for existing in &class_info.constructors {
@@ -234,13 +244,39 @@ impl SemanticAnalyzer {
                                         a.param_type == b.param_type && a.is_varargs == b.is_varargs
                                     });
                                 if same_params {
+                                    let first_loc = &existing.loc;
+                                    let first_loc_str = if first_loc
+                                        .file
+                                        .as_deref()
+                                        .unwrap_or("")
+                                        .is_empty()
+                                    {
+                                        format!("{}:{}", first_loc.line, first_loc.column)
+                                    } else {
+                                        format!(
+                                            "{}:{}:{}",
+                                            first_loc.file_str(),
+                                            first_loc.line,
+                                            first_loc.column
+                                        )
+                                    };
+                                    let current_file = ctor
+                                        .loc
+                                        .file
+                                        .clone()
+                                        .or_else(|| self.current_file.clone());
                                     return Err(semantic_error_with_file(
-                                        ErrorCodes::SEMANTIC_INVALID_OPERATION,
-                                        self.current_file.clone(),
+                                        ErrorCodes::SEMANTIC_DUPLICATE_DEFINITION,
+                                        current_file,
                                         ctor.loc.line,
                                         ctor.loc.column,
-                                        "构造函数已被定义，不能重复定义相同签名的构造函数"
-                                            .to_string(),
+                                        format!(
+                                            "构造函数已被定义，不能重复定义相同签名的构造函数\n首次定义于: {}\n当前定义于: {}:{}:{}",
+                                            first_loc_str,
+                                            ctor.loc.file.as_deref().unwrap_or("<unknown>"),
+                                            ctor.loc.line,
+                                            ctor.loc.column
+                                        ),
                                     ));
                                 }
                             }
@@ -361,10 +397,23 @@ impl SemanticAnalyzer {
             .collect()
     }
 
+    /// 获取类的限定查找名（包含命名空间路径）
+    ///
+    /// 使用限定名可避免 `using` 别名或全局非限定名注册导致类查找错位，
+    /// 确保不同命名空间下同名类的成员被收集到正确的 ClassInfo 中。
+    fn qualified_class_name(&self, class: &crate::ast::ClassDecl) -> String {
+        if class.namespace_path.is_empty() {
+            class.name.clone()
+        } else {
+            format!("{}::{}", class.namespace_path.join("::"), class.name)
+        }
+    }
+
     /// 分析方法定义
     pub fn analyze_methods(&mut self, program: &Program) -> CayResult<()> {
         for class in &program.classes {
-            self.current_class = Some(class.name.clone());
+            let class_lookup_name = self.qualified_class_name(class);
+            self.current_class = Some(class_lookup_name.clone());
             self.type_registry.current_namespace = class.namespace_path.clone();
 
             for member in &class.members {
@@ -403,6 +452,7 @@ impl SemanticAnalyzer {
                         is_final: method.modifiers.contains(&Modifier::Final),
                         is_test,
                         vtable_slot: None,
+                        loc: method.loc.clone(),
                     };
 
                     // 验证 @Test 方法签名
@@ -450,7 +500,7 @@ impl SemanticAnalyzer {
                         }
                     }
 
-                    if let Some(class_info) = self.type_registry.get_class_mut(&class.name) {
+                    if let Some(class_info) = self.type_registry.get_class_mut(&class_lookup_name) {
                         // 检查是否存在签名完全相同的方法（重复定义）
                         if let Some(existing_methods) = class_info.methods.get(&method_info.name) {
                             for existing in existing_methods {
@@ -463,14 +513,42 @@ impl SemanticAnalyzer {
                                             },
                                         );
                                     if same_params {
+                                        let first_loc = &existing.loc;
+                                        let first_loc_str = if first_loc
+                                            .file
+                                            .as_deref()
+                                            .unwrap_or("")
+                                            .is_empty()
+                                        {
+                                            format!(
+                                                "{}:{}",
+                                                first_loc.line, first_loc.column
+                                            )
+                                        } else {
+                                            format!(
+                                                "{}:{}:{}",
+                                                first_loc.file_str(),
+                                                first_loc.line,
+                                                first_loc.column
+                                            )
+                                        };
+                                        let current_file = method
+                                            .loc
+                                            .file
+                                            .clone()
+                                            .or_else(|| self.current_file.clone());
                                         return Err(semantic_error_with_file(
-                                            ErrorCodes::SEMANTIC_INVALID_OPERATION,
-                                            self.current_file.clone(),
+                                            ErrorCodes::SEMANTIC_DUPLICATE_DEFINITION,
+                                            current_file,
                                             method.loc.line,
                                             method.loc.column,
                                             format!(
-                                                "方法 '{}' 已被定义，不能重复定义相同签名的方法",
-                                                method.name
+                                                "方法 '{}' 已被定义，不能重复定义相同签名的方法\n首次定义于: {}\n当前定义于: {}:{}:{}",
+                                                method.name,
+                                                first_loc_str,
+                                                method.loc.file.as_deref().unwrap_or("<unknown>"),
+                                                method.loc.line,
+                                                method.loc.column
                                             ),
                                         ));
                                     }
@@ -534,7 +612,7 @@ impl SemanticAnalyzer {
 
         // 第三遍：检测循环继承
         for class in &program.classes {
-            self.check_circular_inheritance(&class.name, &class.name, &mut Vec::new())?;
+            self.check_circular_inheritance(&class.name, &class.name, &mut Vec::new(), &class.loc)?;
         }
 
         // 第四遍：验证 @Override 注解 和 final 方法检查
@@ -680,13 +758,15 @@ impl SemanticAnalyzer {
         original: &str,
         current: &str,
         visited: &mut Vec<String>,
+        loc: &SourceLocation,
     ) -> CayResult<()> {
         if visited.contains(&current.to_string()) {
+            let file = loc.file.clone().or_else(|| self.current_file.clone());
             return Err(semantic_error_with_file(
                 ErrorCodes::SEMANTIC_INVALID_OPERATION,
-                None,
-                0,
-                0,
+                file,
+                loc.line,
+                loc.column,
                 format!(
                     "Circular inheritance detected involving class '{}'",
                     original
@@ -697,7 +777,7 @@ impl SemanticAnalyzer {
         if let Some(class_info) = self.type_registry.get_class(current) {
             if let Some(ref parent_name) = class_info.parent {
                 visited.push(current.to_string());
-                self.check_circular_inheritance(original, parent_name, visited)?;
+                self.check_circular_inheritance(original, parent_name, visited, loc)?;
             }
         }
 
@@ -954,6 +1034,7 @@ impl SemanticAnalyzer {
                             .modifiers
                             .iter()
                             .any(|m| matches!(m, Modifier::Protected)),
+                        loc: ctor.loc.clone(),
                     })
                     .collect(),
                 is_public: struct_decl
@@ -1017,6 +1098,7 @@ impl SemanticAnalyzer {
                         .any(|m| matches!(m, Modifier::Final)),
                     is_test: false,
                     vtable_slot: None,
+                    loc: method.loc.clone(),
                 };
                 struct_info
                     .methods
@@ -1101,6 +1183,7 @@ impl SemanticAnalyzer {
                             is_final: false,
                             is_test: false,
                             vtable_slot: None,
+                            loc: method.loc.clone(),
                         };
 
                         // 获取源映射后的位置

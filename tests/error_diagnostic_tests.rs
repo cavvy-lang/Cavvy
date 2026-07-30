@@ -1,7 +1,7 @@
 // 错误诊断测试集
 // Phase 3.4: 验证编译器正确拒绝无效代码并提供清晰的错误信息
 
-use common::compile_eol_expect_error;
+use common::{compile_and_run_eol, compile_eol_expect_error};
 
 mod common;
 
@@ -290,6 +290,149 @@ public class Test {
         error
     );
     let _ = std::fs::remove_file("examples/test_err_diag13.cay");
+}
+
+// === 重复方法定义诊断 ===
+
+#[test]
+fn test_error_duplicate_method_includes_first_location() {
+    let code = r#"
+public class Test {
+    public int getStatusCode() {
+        return 0;
+    }
+
+    public int getStatusCode() {
+        return 1;
+    }
+
+    public static void main() {
+    }
+}
+"#;
+    std::fs::write("examples/test_err_dup_method_ctx.cay", code).unwrap();
+    let error =
+        compile_eol_expect_error("examples/test_err_dup_method_ctx.cay").expect("应该编译失败");
+    assert!(
+        error.contains("已被定义")
+            && error.contains("首次定义于")
+            && error.contains("当前定义于"),
+        "应报告重复方法并包含首次定义位置: {}",
+        error
+    );
+    assert!(
+        error.contains("E4002"),
+        "重复定义应使用 E4002 错误码: {}",
+        error
+    );
+    assert!(
+        error.contains("test_err_dup_method_ctx.cay:3:")
+            || error.contains("test_err_dup_method_ctx.cay:2:"),
+        "应指向首次定义行: {}",
+        error
+    );
+    let _ = std::fs::remove_file("examples/test_err_dup_method_ctx.cay");
+}
+
+#[test]
+fn test_error_duplicate_class_across_includes_has_source_context() {
+    let code_a = r#"
+public class Helper {
+    public int getValue() {
+        return 0;
+    }
+}
+"#;
+    let code_b = r#"
+public class Helper {
+    public int getValue() {
+        return 1;
+    }
+}
+"#;
+    let code_main = r#"
+#include "test_err_dup_cross_a.cay"
+#include "test_err_dup_cross_b.cay"
+
+public class Test {
+    public static void main() {
+    }
+}
+"#;
+    std::fs::write("examples/test_err_dup_cross_a.cay", code_a).unwrap();
+    std::fs::write("examples/test_err_dup_cross_b.cay", code_b).unwrap();
+    std::fs::write("examples/test_err_dup_cross_main.cay", code_main).unwrap();
+    let error =
+        compile_eol_expect_error("examples/test_err_dup_cross_main.cay").expect("应该编译失败");
+    assert!(
+        error.contains("已被定义") || error.contains("重复定义"),
+        "应报告重复定义: {}",
+        error
+    );
+    assert!(
+        error.contains("E4002"),
+        "重复定义应使用 E4002 错误码: {}",
+        error
+    );
+    assert!(
+        error.contains("test_err_dup_cross_b.cay"),
+        "错误信息应指向第二个定义所在文件: {}",
+        error
+    );
+    // 验证有源代码上下文（miette 源码片段）
+    assert!(
+        error.contains("public class Helper"),
+        "错误信息应包含源码上下文: {}",
+        error
+    );
+    let _ = std::fs::remove_file("examples/test_err_dup_cross_a.cay");
+    let _ = std::fs::remove_file("examples/test_err_dup_cross_b.cay");
+    let _ = std::fs::remove_file("examples/test_err_dup_cross_main.cay");
+}
+
+#[test]
+fn test_no_conflict_for_same_name_in_different_namespaces() {
+    let code_a = r#"
+namespace ns_a {
+    public class Helper {
+        public int getValue() {
+            return 0;
+        }
+    }
+}
+"#;
+    let code_b = r#"
+namespace ns_b {
+    public class Helper {
+        public int getValue() {
+            return 1;
+        }
+    }
+}
+"#;
+    let code_main = r#"
+#include "test_ns_no_conflict_a.cay"
+#include "test_ns_no_conflict_b.cay"
+
+public class Test {
+    public static void main() {
+        ns_a::Helper a = new ns_a::Helper();
+        ns_b::Helper b = new ns_b::Helper();
+        println(String.valueOf(a.getValue()));
+        println(String.valueOf(b.getValue()));
+    }
+}
+"#;
+    std::fs::write("examples/test_ns_no_conflict_a.cay", code_a).unwrap();
+    std::fs::write("examples/test_ns_no_conflict_b.cay", code_b).unwrap();
+    std::fs::write("examples/test_ns_no_conflict_main.cay", code_main).unwrap();
+    let result = compile_and_run_eol("examples/test_ns_no_conflict_main.cay");
+    let _ = std::fs::remove_file("examples/test_ns_no_conflict_a.cay");
+    let _ = std::fs::remove_file("examples/test_ns_no_conflict_b.cay");
+    let _ = std::fs::remove_file("examples/test_ns_no_conflict_main.cay");
+    let output = result.expect("不同命名空间同名类应能正常编译运行");
+    assert!(output.contains("0"), "应输出 0: {}", output);
+    assert!(output.contains("1"), "应输出 1: {}", output);
 }
 
 // === 访问控制错误 ===

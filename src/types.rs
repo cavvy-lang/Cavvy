@@ -121,6 +121,7 @@ pub struct ConstructorInfo {
     pub is_public: bool,
     pub is_private: bool,
     pub is_protected: bool,
+    pub loc: crate::miette_diagnostic::SourceLocation,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -691,6 +692,7 @@ pub struct MethodInfo {
     pub is_final: bool,             // 是否是final方法（禁止重写）
     pub is_test: bool,              // 是否被 @Test 注解标记
     pub vtable_slot: Option<usize>, // 在 vtable 中的槽位编号（仅虚方法有值）
+    pub loc: crate::miette_diagnostic::SourceLocation, // 方法定义的源位置
 }
 
 /// VTable 布局信息
@@ -1043,6 +1045,7 @@ impl TypeRegistry {
             is_override: false,
             is_test: false,
             vtable_slot: None,
+            loc: crate::miette_diagnostic::SourceLocation::default(),
         });
 
         // bool equals(Object other)：默认基于对象身份（地址）的相等性
@@ -1066,6 +1069,7 @@ impl TypeRegistry {
             is_override: false,
             is_test: false,
             vtable_slot: None,
+            loc: crate::miette_diagnostic::SourceLocation::default(),
         });
 
         // Object 默认构造函数：无参数，无字段初始化
@@ -1074,6 +1078,7 @@ impl TypeRegistry {
             is_public: true,
             is_private: false,
             is_protected: false,
+            loc: crate::miette_diagnostic::SourceLocation::default(),
         });
 
         self.classes.insert("Object".to_string(), object_class);
@@ -1115,6 +1120,7 @@ impl TypeRegistry {
             is_override: true,
             is_test: false,
             vtable_slot: None,
+            loc: crate::miette_diagnostic::SourceLocation::default(),
         });
 
         // 覆盖 Object.equals(Object other)
@@ -1138,6 +1144,7 @@ impl TypeRegistry {
             is_override: true,
             is_test: false,
             vtable_slot: None,
+            loc: crate::miette_diagnostic::SourceLocation::default(),
         });
 
         // 添加 String.valueOf() 方法（各种重载版本）
@@ -1162,6 +1169,7 @@ impl TypeRegistry {
             is_override: false,
             is_test: false,
             vtable_slot: None,
+            loc: crate::miette_diagnostic::SourceLocation::default(),
         });
 
         // valueOf(long)
@@ -1185,6 +1193,7 @@ impl TypeRegistry {
             is_override: false,
             is_test: false,
             vtable_slot: None,
+            loc: crate::miette_diagnostic::SourceLocation::default(),
         });
 
         // valueOf(float)
@@ -1208,6 +1217,7 @@ impl TypeRegistry {
             is_override: false,
             is_test: false,
             vtable_slot: None,
+            loc: crate::miette_diagnostic::SourceLocation::default(),
         });
 
         // valueOf(double)
@@ -1231,6 +1241,7 @@ impl TypeRegistry {
             is_override: false,
             is_test: false,
             vtable_slot: None,
+            loc: crate::miette_diagnostic::SourceLocation::default(),
         });
 
         // valueOf(boolean)
@@ -1254,6 +1265,7 @@ impl TypeRegistry {
             is_override: false,
             is_test: false,
             vtable_slot: None,
+            loc: crate::miette_diagnostic::SourceLocation::default(),
         });
 
         // valueOf(char)
@@ -1277,6 +1289,7 @@ impl TypeRegistry {
             is_override: false,
             is_test: false,
             vtable_slot: None,
+            loc: crate::miette_diagnostic::SourceLocation::default(),
         });
 
         // valueOf(String) - 返回自身
@@ -1300,6 +1313,7 @@ impl TypeRegistry {
             is_override: false,
             is_test: false,
             vtable_slot: None,
+            loc: crate::miette_diagnostic::SourceLocation::default(),
         });
 
         // 注册 String 类
@@ -1346,6 +1360,7 @@ impl TypeRegistry {
             is_override: false,
             is_test: false,
             vtable_slot: None,
+            loc: crate::miette_diagnostic::SourceLocation::default(),
         });
 
         // 注册 Integer 类
