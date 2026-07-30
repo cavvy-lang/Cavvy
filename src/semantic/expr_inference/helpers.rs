@@ -56,8 +56,12 @@ pub fn check_member_access(
         }
     };
 
-    // 同一个类可以访问所有成员
+    // 同一个类可以访问所有成员（支持 current_class 为限定名而 target_class 为非限定名）
     if current_class_name == target_class {
+        return Ok(());
+    }
+    let current_simple = current_class_name.rsplit("::").next().unwrap_or(current_class_name);
+    if current_simple == target_class {
         return Ok(());
     }
 
@@ -95,6 +99,10 @@ pub fn is_subclass(
             return false; // 检测到循环继承
         }
         if class_name == parent_class {
+            return true;
+        }
+        let class_simple = class_name.rsplit("::").next().unwrap_or(&class_name);
+        if class_simple == parent_class {
             return true;
         }
 

@@ -1567,16 +1567,17 @@ impl TypeRegistry {
         if let Some(class) = self.classes.get(name) {
             return Some(class);
         }
-        // 尝试命名空间别名（using 声明）
-        if let Some(qualified) = self.namespace_aliases.get(name) {
-            return self.classes.get(qualified);
-        }
-        // 尝试当前命名空间上下文
+        // 在当前命名空间上下文中查找（优先于 using 别名，
+        // 避免 include 文件内部的类型被外层 using 错误覆盖）
         if !self.current_namespace.is_empty() {
             let qualified = format!("{}::{}", self.current_namespace.join("::"), name);
             if let Some(class) = self.classes.get(&qualified) {
                 return Some(class);
             }
+        }
+        // 尝试命名空间别名（using 声明）
+        if let Some(qualified) = self.namespace_aliases.get(name) {
+            return self.classes.get(qualified);
         }
         None
     }
@@ -1586,11 +1587,15 @@ impl TypeRegistry {
         if self.classes.contains_key(name) {
             return self.classes.get_mut(name);
         }
-        if let Some(qualified) = self.namespace_aliases.get(name).cloned() {
-            return self.classes.get_mut(&qualified);
-        }
+        // 在当前命名空间上下文中查找（优先于 using 别名）
         if !self.current_namespace.is_empty() {
             let qualified = format!("{}::{}", self.current_namespace.join("::"), name);
+            if self.classes.contains_key(&qualified) {
+                return self.classes.get_mut(&qualified);
+            }
+        }
+        // 尝试命名空间别名（using 声明）
+        if let Some(qualified) = self.namespace_aliases.get(name).cloned() {
             return self.classes.get_mut(&qualified);
         }
         None

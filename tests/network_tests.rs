@@ -16,6 +16,14 @@ mod common;
 /// 网络测试超时时间（秒）
 const NETWORK_TEST_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// 回归测试：easyhttp_demo.cay 使用 #include 引入 Network.cay 和 EasyHTTP.cay，
+/// 二者都包含同名但不同命名空间的类；该测试确保跨文件 using 不会导致类型解析冲突。
+#[test]
+fn test_easyhttp_demo_compiles() {
+    common::compile_eol_only("examples/easyhttp_demo.cay")
+        .expect("examples/easyhttp_demo.cay 应该能够成功编译");
+}
+
 /// 测试网络工具函数
 #[test]
 fn test_network_utils() {

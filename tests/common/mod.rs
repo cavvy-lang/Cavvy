@@ -63,6 +63,39 @@ pub fn compile_and_run_eol(source_path: &str) -> Result<String, String> {
     compile_and_run_eol_with_features(source_path, &[])
 }
 
+/// 仅编译单个 EOL 文件，不运行生成的可执行文件
+///
+/// 用于验证依赖网络或用户交互的示例能够成功编译。
+pub fn compile_eol_only(source_path: &str) -> Result<(), String> {
+    let _lock = TEST_LOCK.lock().unwrap();
+    let output_exe = format!("temp_{}", std::path::Path::new(source_path).file_stem().unwrap().to_str().unwrap());
+    let output_exe_with_ext = if cfg!(target_os = "windows") {
+        format!("{}.exe", output_exe)
+    } else {
+        output_exe.clone()
+    };
+
+    let output = std::process::Command::new("./target/release/cayc")
+        .arg(source_path)
+        .arg(&output_exe)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .output()
+        .map_err(|e| format!("Failed to run cayc: {}", e))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    // 清理生成的临时文件
+    let _ = std::fs::remove_file(&output_exe_with_ext);
+    let _ = std::fs::remove_file(format!("{}.ll", output_exe));
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(format!("{}{}", stdout, stderr))
+    }
+}
+
 /// 编译并运行单个 EOL 文件，支持特性标志，返回输出结果
 ///
 /// 使用 release 版本的 cayc.exe 编译 EOL 源代码为 EXE，

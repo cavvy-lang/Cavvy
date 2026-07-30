@@ -4,7 +4,7 @@ use super::analyzer::SemanticAnalyzer;
 use super::symbol_table::SemanticSymbolInfo;
 use crate::ast::*;
 use crate::miette_diagnostic::{CayResult, SourceLocation};
-use crate::types::{ParameterInfo, Type};
+use crate::types::Type;
 
 impl SemanticAnalyzer {
     /// 类型检查程序
@@ -56,7 +56,13 @@ impl SemanticAnalyzer {
         self.program = Some(std::rc::Rc::new(program.clone()));
 
         for class in &mut program.classes {
-            self.current_class = Some(class.name.clone());
+            // 使用限定类名作为当前类标识，避免 `using` 别名导致 `this` 类型解析错位
+            let class_lookup_name = if class.namespace_path.is_empty() {
+                class.name.clone()
+            } else {
+                format!("{}::{}", class.namespace_path.join("::"), class.name)
+            };
+            self.current_class = Some(class_lookup_name.clone());
             self.current_class_type_params = class.type_params.clone();
             self.type_registry.current_namespace = class.namespace_path.clone();
 
@@ -131,7 +137,7 @@ impl SemanticAnalyzer {
                                     return_type = inferred.clone();
                                     // 同步更新 type_registry 中该方法的返回类型
                                     let _ = self.type_registry.update_method_return_type(
-                                        &class.name,
+                                        &class_lookup_name,
                                         &method.name,
                                         &method.params,
                                         inferred,
@@ -155,12 +161,12 @@ impl SemanticAnalyzer {
                         self.current_method_is_constructor = true;
                         self.symbol_table.enter_scope();
 
-                        // 添加 this 到符号表
+                        // 添加 this 到符号表（使用限定类名避免 using 别名干扰）
                         self.symbol_table.declare(
                             "this".to_string(),
                             SemanticSymbolInfo {
                                 name: "this".to_string(),
-                                symbol_type: Type::Object(class.name.clone()),
+                                symbol_type: Type::Object(class_lookup_name.clone()),
                                 is_final: true,
                                 is_initialized: true,
                             },
@@ -194,12 +200,12 @@ impl SemanticAnalyzer {
                         self.current_method_is_constructor = false;
                         self.symbol_table.enter_scope();
 
-                        // 添加 this 到符号表
+                        // 添加 this 到符号表（使用限定类名避免 using 别名干扰）
                         self.symbol_table.declare(
                             "this".to_string(),
                             SemanticSymbolInfo {
                                 name: "this".to_string(),
-                                symbol_type: Type::Object(class.name.clone()),
+                                symbol_type: Type::Object(class_lookup_name.clone()),
                                 is_final: true,
                                 is_initialized: true,
                             },
@@ -394,8 +400,8 @@ impl SemanticAnalyzer {
                     } else {
                         crate::miette_diagnostic::SourceLocation::new(
                             self.current_file.clone(),
-                            0,
-                            0,
+                            1,
+                            1,
                         )
                     };
                     self.errors.push(
@@ -412,8 +418,8 @@ impl SemanticAnalyzer {
                         } else {
                             crate::miette_diagnostic::SourceLocation::new(
                                 self.current_file.clone(),
-                                0,
-                                0,
+                                1,
+                                1,
                             )
                         };
                         self.errors.push(self.create_error_info_with_file(

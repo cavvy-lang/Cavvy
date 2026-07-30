@@ -87,13 +87,21 @@ impl SemanticAnalyzer {
                     ));
                 };
 
+                // 当在当前类/struct 内部 new 本类时，target_class 需与 current_class 对齐
+                // （current_class 为限定名而 base_class_name 可能为非限定名）。
+                let target_class = self
+                    .current_class
+                    .as_ref()
+                    .filter(|c| **c == base_class_name || c.ends_with(&format!("::{}", base_class_name)))
+                    .cloned()
+                    .unwrap_or_else(|| base_class_name.clone());
                 super::helpers::check_member_access(
                     &base_class_name,
                     constructor.is_public,
                     constructor.is_protected,
                     constructor.is_private,
                     &self.current_class,
-                    &base_class_name,
+                    &target_class,
                     &self.type_registry,
                     &new_expr.loc,
                 )?;
@@ -171,13 +179,21 @@ impl SemanticAnalyzer {
                     ));
                 };
 
+                // 当在当前类/struct 内部 new 本类时，target_class 需与 current_class 对齐
+                // （current_class 为限定名而 base_class_name 可能为非限定名）。
+                let target_class = self
+                    .current_class
+                    .as_ref()
+                    .filter(|c| **c == base_class_name || c.ends_with(&format!("::{}", base_class_name)))
+                    .cloned()
+                    .unwrap_or_else(|| base_class_name.clone());
                 super::helpers::check_member_access(
                     &base_class_name,
                     constructor.is_public,
                     constructor.is_protected,
                     constructor.is_private,
                     &self.current_class,
-                    &base_class_name,
+                    &target_class,
                     &self.type_registry,
                     &new_expr.loc,
                 )?;

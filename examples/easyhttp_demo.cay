@@ -52,7 +52,7 @@ public class EasyHTTPDemo {
 
         /* 更新头部 */
         headers.set("Content-Type", "text/html");
-        println("Updated Content-Type: " + String.valueOf(headers.get)("Content-Type"));
+        println("Updated Content-Type: " + String.valueOf(headers.get("Content-Type")));
 
         /* 移除头部 */
         headers.remove("X-Custom-Header");
@@ -60,7 +60,7 @@ public class EasyHTTPDemo {
         println(headers.size());
 
         /* 构建头部字符串 */
-        println("Built headers:\n" + String.valueOf(headers.build)());
+        println("Built headers:\n" + String.valueOf(headers.build()));
         println("");
     }
 
@@ -111,13 +111,13 @@ public class EasyHTTPDemo {
         params.add("q", "cavvy");
         params.add("page", 1);
 
-        println("Params built: " + String.valueOf(params.build)());
+        println("Params built: " + String.valueOf(params.build()));
 
         /* 创建请求头 */
         HttpHeaders headers = EasyHTTP.headers();
         headers.set("Accept", "application/json");
 
-        println("Headers built:\n" + String.valueOf(headers.build)());
+        println("Headers built:\n" + String.valueOf(headers.build()));
         println("");
     }
 
@@ -179,14 +179,14 @@ public class EasyHTTPDemo {
         response.getHeaders().set("Server", "nginx");
 
         /* 检查响应 */
-        println("Status Code: " + String.valueOf(response.getStatusCode)());
-        println("Status Text: " + String.valueOf(response.getStatusText)());
-        println("Is Success: " + String.valueOf(response.isSuccess)());
-        println("Is JSON: " + String.valueOf(response.isJson)());
+        println("Status Code: " + String.valueOf(response.getStatusCode()));
+        println("Status Text: " + String.valueOf(response.getStatusText()));
+        println("Is Success: " + String.valueOf(response.isSuccess()));
+        println("Is JSON: " + String.valueOf(response.isJson()));
         print("Response Time: ");
         print(response.getResponseTime());
         println("ms");
-        println("Body: " + String.valueOf(response.getBody)());
+        println("Body: " + String.valueOf(response.getBody()));
 
         /* 测试错误响应 */
         HttpResponse errorResponse = new HttpResponse();
@@ -194,8 +194,8 @@ public class EasyHTTPDemo {
         errorResponse.setStatusText("Not Found");
 
         println("\nError Response:");
-        println("Status Code: " + String.valueOf(errorResponse.getStatusCode)());
-        println("Is Success: " + String.valueOf(errorResponse.isSuccess)());
+        println("Status Code: " + String.valueOf(errorResponse.getStatusCode()));
+        println("Is Success: " + String.valueOf(errorResponse.isSuccess()));
         println("");
     }
 
