@@ -1,0 +1,33 @@
+#include <std/arraylist.cay>
+#include <c/stdio.cay>
+
+using std::ArrayList;
+
+public int main() {
+    // 3D: 2x3x4 filled with 7
+    ArrayList<ArrayList<ArrayList<int>>> cube = ArrayList<int>::filled3D(2, 3, 4, 7);
+
+    // Verify dimensions
+    println("cube depth = " + String.valueOf(cube.size()));
+    println("layer rows = " + String.valueOf(cube.get(0).size()));
+    println("row cols   = " + String.valueOf(cube.get(0).get(0).size()));
+
+    // Verify initial value
+    println("cube[0][0][0] = " + String.valueOf(cube.get(0).get(0).get(0)));
+    println("cube[1][2][3] = " + String.valueOf(cube.get(1).get(2).get(3)));
+
+    // Modify and verify independence
+    cube.get(1).get(2).set(3, 99);
+    println("cube[0][2][3] = " + String.valueOf(cube.get(0).get(2).get(3)));
+    println("cube[1][2][3] = " + String.valueOf(cube.get(1).get(2).get(3)));
+
+    // Verify 2D factory still works
+    ArrayList<ArrayList<int>> matrix = ArrayList<int>::filled2D(2, 3, 5);
+    println("matrix[0][0] = " + String.valueOf(matrix.get(0).get(0)));
+    matrix.get(0).set(0, 42);
+    println("matrix[1][0] = " + String.valueOf(matrix.get(1).get(0)));
+    println("matrix[0][0] = " + String.valueOf(matrix.get(0).get(0)));
+
+    println("std::ArrayList filled3D tests passed");
+    return 0;
+}

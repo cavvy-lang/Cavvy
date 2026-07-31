@@ -123,3 +123,27 @@ fn test_std_arraylist_filled() {
         "test_std_arraylist_filled",
     );
 }
+
+#[test]
+fn test_std_arraylist_filled3d() {
+    let output = compile_and_run_eol("examples/test_std_arraylist_filled3d.cay")
+        .expect("test_std_arraylist_filled3d.cay should compile and run");
+
+    assert_output_contains(
+        &output,
+        &[
+            "cube depth = 2",
+            "layer rows = 3",
+            "row cols   = 4",
+            "cube[0][0][0] = 7",
+            "cube[1][2][3] = 7",
+            "cube[0][2][3] = 7",
+            "cube[1][2][3] = 99",
+            "matrix[0][0] = 5",
+            "matrix[1][0] = 5",
+            "matrix[0][0] = 42",
+            "std::ArrayList filled3D tests passed",
+        ],
+        "test_std_arraylist_filled3d",
+    );
+}
