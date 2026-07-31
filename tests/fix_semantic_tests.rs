@@ -47,6 +47,19 @@ fn test_array_init_mixed_element_types_error() {
     );
 }
 
+/// 泛型类默认类型参数必须参与构造函数实参类型检查
+#[test]
+fn test_arraylist_default_type_arg_mismatch_error() {
+    let _guard = TEST_LOCK.lock().unwrap();
+    let error = compile_eol_expect_error("examples/errors/fix_semantic_arraylist_default_type_arg.cay")
+        .expect("ArrayList<ArrayList<int>>(int, ArrayList<int>) should fail to compile");
+    assert!(
+        error.contains("GlobalAlloc") && error.contains("std::ArrayList<int>"),
+        "Should report default type parameter mismatch, got: {}",
+        error
+    );
+}
+
 /// 正向：null 可赋给任何引用类型、可与引用类型比较；合法比较与数组初始化不受影响
 #[test]
 fn test_null_assignment_and_comparisons_ok() {

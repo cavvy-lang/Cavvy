@@ -4,9 +4,98 @@ use super::super::analyzer::SemanticAnalyzer;
 use super::helpers::semantic_error_at_loc;
 use crate::ast::*;
 use crate::miette_diagnostic::{ErrorCodes, semantic_error_with_file};
-use crate::types::Type;
+use crate::types::{ParameterInfo, Type};
+use std::collections::{HashMap, HashSet};
+
+/// 检查类型中是否包含指定的泛型参数名集合中的任意一个。
+fn type_contains_generic_params(ty: &Type, names: &HashSet<String>) -> bool {
+    match ty {
+        Type::GenericParam(name) => names.contains(name),
+        Type::Array(inner) | Type::Pointer(inner) => type_contains_generic_params(inner, names),
+        Type::Generic(_, args) => {
+            args.iter().any(|a| type_contains_generic_params(a, names))
+        }
+        Type::Function(ft) => {
+            type_contains_generic_params(&ft.return_type, names)
+                || ft.params
+                    .iter()
+                    .any(|p| type_contains_generic_params(p, names))
+        }
+        _ => false,
+    }
+}
 
 impl SemanticAnalyzer {
+    /// 判断使用默认类型参数的构造函数是否发生“致命”错配：
+    /// 实参 arity 与某个使用默认类型参数的构造函数相同，且在该构造函数中
+    /// 某个直接使用默认类型参数的位置，实参是一个泛型类型实例（Type::Generic），
+    /// 却与替换后的默认类型不兼容。这通常意味着调用者把本应用于默认类型参数
+    /// 的位置传成了其他泛型类型实参，必须报错而不是回退到其他构造函数。
+    fn is_default_param_fatal_mismatch(
+        &mut self,
+        constructor: &crate::types::ConstructorInfo,
+        substituted_params: &[ParameterInfo],
+        args: &[Expr],
+        defaulted_param_names: &HashSet<String>,
+    ) -> bool {
+        if substituted_params.len() != args.len() {
+            return false;
+        }
+        for ((original, substituted), arg) in constructor
+            .params
+            .iter()
+            .zip(substituted_params.iter())
+            .zip(args.iter())
+        {
+            if let Type::GenericParam(name) = &original.param_type {
+                if defaulted_param_names.contains(name) {
+                    let arg_type = self.infer_expr_type_collect_errors(arg);
+                    if !self.types_compatible(&arg_type, &substituted.param_type)
+                        && matches!(arg_type, Type::Generic(_, _))
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    /// 根据类/struct 的类型形参与调用处提供的类型实参，替换构造函数形参中的泛型参数。
+    /// 未显式提供的类型实参使用类型形参的默认值填充。
+    fn substitute_constructor_params(
+        &self,
+        constructor: &crate::types::ConstructorInfo,
+        type_params: &[crate::types::TypeParamInfo],
+        type_args: &[Type],
+    ) -> Vec<ParameterInfo> {
+        let mut complete_args: Vec<Type> = type_args.to_vec();
+        for (idx, param) in type_params.iter().enumerate() {
+            if complete_args.get(idx).is_none() {
+                complete_args.push(
+                    param
+                        .default_type
+                        .clone()
+                        .unwrap_or(Type::GenericParam(param.name.clone())),
+                );
+            }
+        }
+        let mapping: HashMap<String, Type> = type_params
+            .iter()
+            .zip(complete_args.iter())
+            .map(|(p, t)| (p.name.clone(), t.clone()))
+            .collect();
+        constructor
+            .params
+            .iter()
+            .map(|p| ParameterInfo {
+                name: p.name.clone(),
+                param_type: crate::types::substitute_type_params(&p.param_type, &mapping),
+                is_varargs: p.is_varargs,
+            })
+            .collect()
+    }
+
     /// 推断 new 表达式类型
     pub(crate) fn infer_new_type(
         &mut self,
@@ -55,12 +144,41 @@ impl SemanticAnalyzer {
                     ));
                 }
             } else {
+                // 收集被默认填充的泛型形参名（用户未显式提供的类型实参）。
+                // 这些默认类型参数必须参与构造函数重载解析：如果存在使用它们的
+                // 构造函数且实参 arity 匹配，即使类型不匹配，也不得默默回退到
+                // 使用其他类型参数的构造函数，否则会把 allocator 等默认参数错配
+                // 解释为其他泛型参数，导致运行时错误（如 #issue-vec-sigsegv）。
+                let defaulted_param_names: HashSet<String> = class_info.type_params
+                    [parsed_type_args.len()..]
+                    .iter()
+                    .filter_map(|p| p.default_type.as_ref().map(|_| p.name.clone()))
+                    .collect();
+
                 let mut matched_constructor = None;
                 let mut mismatch_detail = None;
+                let mut has_arity_match_error = false;
+                let mut default_param_fatal_mismatch: Option<String> = None;
+
+                // 第一遍：优先匹配使用默认类型参数的构造函数。
                 for constructor in &class_info.constructors {
+                    let uses_defaulted_param = constructor
+                        .params
+                        .iter()
+                        .any(|p| type_contains_generic_params(&p.param_type, &defaulted_param_names));
+                    if !uses_defaulted_param {
+                        continue;
+                    }
+
+                    let substituted_params = self.substitute_constructor_params(
+                        constructor,
+                        &class_info.type_params,
+                        &parsed_type_args,
+                    );
+                    let arity_matches = substituted_params.len() == new_expr.args.len();
                     match self.check_arguments_compatible(
                         &new_expr.args,
-                        &constructor.params,
+                        &substituted_params,
                         new_expr.loc.line,
                         new_expr.loc.column,
                     ) {
@@ -69,11 +187,78 @@ impl SemanticAnalyzer {
                             break;
                         }
                         Err(msg) => {
-                            if mismatch_detail.is_none() {
+                            if arity_matches {
+                                if default_param_fatal_mismatch.is_none()
+                                    && self.is_default_param_fatal_mismatch(
+                                        constructor,
+                                        &substituted_params,
+                                        &new_expr.args,
+                                        &defaulted_param_names,
+                                    )
+                                {
+                                    default_param_fatal_mismatch = Some(msg.clone());
+                                }
+                                if !has_arity_match_error {
+                                    mismatch_detail = Some(msg);
+                                    has_arity_match_error = true;
+                                }
+                            } else if mismatch_detail.is_none() && !has_arity_match_error {
                                 mismatch_detail = Some(msg);
                             }
                         }
                     }
+                }
+
+                // 第二遍：只有默认类型参数构造函数没有发生致命错配时，
+                // 才回退到普通构造函数。
+                if matched_constructor.is_none() && default_param_fatal_mismatch.is_none() {
+                    for constructor in &class_info.constructors {
+                        let uses_defaulted_param = constructor
+                            .params
+                            .iter()
+                            .any(|p| type_contains_generic_params(&p.param_type, &defaulted_param_names));
+                        if uses_defaulted_param {
+                            continue;
+                        }
+
+                        let substituted_params = self.substitute_constructor_params(
+                            constructor,
+                            &class_info.type_params,
+                            &parsed_type_args,
+                        );
+                        let arity_matches = substituted_params.len() == new_expr.args.len();
+                        match self.check_arguments_compatible(
+                            &new_expr.args,
+                            &substituted_params,
+                            new_expr.loc.line,
+                            new_expr.loc.column,
+                        ) {
+                            Ok(()) => {
+                                matched_constructor = Some(constructor.clone());
+                                break;
+                            }
+                            Err(msg) => {
+                                if arity_matches {
+                                    if !has_arity_match_error {
+                                        mismatch_detail = Some(msg);
+                                        has_arity_match_error = true;
+                                    }
+                                } else if mismatch_detail.is_none() && !has_arity_match_error {
+                                    mismatch_detail = Some(msg);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if let Some(msg) = default_param_fatal_mismatch {
+                    return Err(semantic_error_at_loc(
+                        &new_expr.loc,
+                        format!(
+                            "Constructor '{}' cannot be applied to given types: {}",
+                            base_class_name, msg
+                        ),
+                    ));
                 }
 
                 let Some(constructor) = matched_constructor else {
@@ -147,12 +332,35 @@ impl SemanticAnalyzer {
                     ));
                 }
             } else {
+                let defaulted_param_names: HashSet<String> = struct_info.type_params
+                    [parsed_type_args.len()..]
+                    .iter()
+                    .filter_map(|p| p.default_type.as_ref().map(|_| p.name.clone()))
+                    .collect();
+
                 let mut matched_constructor = None;
                 let mut mismatch_detail = None;
+                let mut has_arity_match_error = false;
+                let mut default_param_fatal_mismatch: Option<String> = None;
+
                 for constructor in &struct_info.constructors {
+                    let uses_defaulted_param = constructor
+                        .params
+                        .iter()
+                        .any(|p| type_contains_generic_params(&p.param_type, &defaulted_param_names));
+                    if !uses_defaulted_param {
+                        continue;
+                    }
+
+                    let substituted_params = self.substitute_constructor_params(
+                        constructor,
+                        &struct_info.type_params,
+                        &parsed_type_args,
+                    );
+                    let arity_matches = substituted_params.len() == new_expr.args.len();
                     match self.check_arguments_compatible(
                         &new_expr.args,
-                        &constructor.params,
+                        &substituted_params,
                         new_expr.loc.line,
                         new_expr.loc.column,
                     ) {
@@ -161,11 +369,76 @@ impl SemanticAnalyzer {
                             break;
                         }
                         Err(msg) => {
-                            if mismatch_detail.is_none() {
+                            if arity_matches {
+                                if default_param_fatal_mismatch.is_none()
+                                    && self.is_default_param_fatal_mismatch(
+                                        constructor,
+                                        &substituted_params,
+                                        &new_expr.args,
+                                        &defaulted_param_names,
+                                    )
+                                {
+                                    default_param_fatal_mismatch = Some(msg.clone());
+                                }
+                                if !has_arity_match_error {
+                                    mismatch_detail = Some(msg);
+                                    has_arity_match_error = true;
+                                }
+                            } else if mismatch_detail.is_none() && !has_arity_match_error {
                                 mismatch_detail = Some(msg);
                             }
                         }
                     }
+                }
+
+                if matched_constructor.is_none() && default_param_fatal_mismatch.is_none() {
+                    for constructor in &struct_info.constructors {
+                        let uses_defaulted_param = constructor
+                            .params
+                            .iter()
+                            .any(|p| type_contains_generic_params(&p.param_type, &defaulted_param_names));
+                        if uses_defaulted_param {
+                            continue;
+                        }
+
+                        let substituted_params = self.substitute_constructor_params(
+                            constructor,
+                            &struct_info.type_params,
+                            &parsed_type_args,
+                        );
+                        let arity_matches = substituted_params.len() == new_expr.args.len();
+                        match self.check_arguments_compatible(
+                            &new_expr.args,
+                            &substituted_params,
+                            new_expr.loc.line,
+                            new_expr.loc.column,
+                        ) {
+                            Ok(()) => {
+                                matched_constructor = Some(constructor.clone());
+                                break;
+                            }
+                            Err(msg) => {
+                                if arity_matches {
+                                    if !has_arity_match_error {
+                                        mismatch_detail = Some(msg);
+                                        has_arity_match_error = true;
+                                    }
+                                } else if mismatch_detail.is_none() && !has_arity_match_error {
+                                    mismatch_detail = Some(msg);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if let Some(msg) = default_param_fatal_mismatch {
+                    return Err(semantic_error_at_loc(
+                        &new_expr.loc,
+                        format!(
+                            "Constructor '{}' cannot be applied to given types: {}",
+                            base_class_name, msg
+                        ),
+                    ));
                 }
 
                 let Some(constructor) = matched_constructor else {

@@ -1,0 +1,8 @@
+#include <std/arraylist.cay>
+
+int main() {
+    // ArrayList<T, A=GlobalAlloc> 的第二个类型参数默认是 GlobalAlloc。
+    // 传入 ArrayList<int> 作为第二个实参会触发类型不匹配错误。
+    std::ArrayList<std::ArrayList<int>> a = new std::ArrayList<std::ArrayList<int>>(10, std::ArrayList<int>(10));
+    return 0;
+}

@@ -90,3 +90,20 @@ fn test_std_arraylist_nested() {
         "test_std_arraylist_nested",
     );
 }
+
+#[test]
+fn test_std_arraylist_allocator_constructor() {
+    let output = compile_and_run_eol("examples/test_std_arraylist_allocator.cay")
+        .expect("test_std_arraylist_allocator.cay should compile and run");
+
+    assert_output_contains(
+        &output,
+        &[
+            "matrix.size() = 1",
+            "matrix.get(0).size() = 3",
+            "matrix.get(0).get(2) = 3",
+            "std::ArrayList allocator constructor tests passed",
+        ],
+        "test_std_arraylist_allocator_constructor",
+    );
+}

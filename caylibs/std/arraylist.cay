@@ -109,6 +109,24 @@ public class ArrayList<T, A: Allocator = GlobalAlloc> implements Iterable<T> {
     }
 
     /**
+     * 指定初始容量和初始值
+     * @param initialCapacity 初始容量
+     * @param initialValue 初始值
+     */
+    public ArrayList(int initialCapacity, T initialValue) {
+        if (initialCapacity < 1) {
+            initialCapacity = 1;
+        }
+        this.allocator = new A();
+        this.buffer = 0;
+        this.allocate(initialCapacity);
+        this.size = 0;
+        for (int i = 0; i < initialCapacity; i = i + 1) {
+            this.data[i] = initialValue;
+        }
+    }
+
+    /**
      * 析构函数：释放 backing buffer。注意只释放内部数组内存，
      * 不逐个调用 T 的析构函数（当前语言无泛型元素析构机制）。
      */

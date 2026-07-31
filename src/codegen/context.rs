@@ -2030,12 +2030,21 @@ impl IRGenerator {
             if !needs_substitution {
                 return params.iter().map(|p| p.param_type.clone()).collect();
             }
-            // 优先使用类名中的显式类型实参；若类名不含泛型参数，则回退到当前
-            // generic_type_args 上下文（泛型方法体内 new 的情况）。
-            let resolved_args: Vec<crate::types::Type> = if !parsed_type_args.is_empty()
-                && parsed_type_args.len() == type_params.len()
-            {
-                parsed_type_args.clone()
+            // 优先使用类名中的显式类型实参；若数量不足，用类型形参的默认值填充；
+            // 若类名不含泛型参数，则回退到当前 generic_type_args 上下文
+            //（泛型方法体内 new 的情况）。
+            let resolved_args: Vec<crate::types::Type> = if !parsed_type_args.is_empty() {
+                let mut resolved = parsed_type_args.clone();
+                for (idx, param) in type_params.iter().enumerate() {
+                    if resolved.get(idx).is_none() {
+                        if let Some(default) = &param.default_type {
+                            resolved.push(default.clone());
+                        } else {
+                            resolved.push(crate::types::Type::GenericParam(param.name.clone()));
+                        }
+                    }
+                }
+                resolved
             } else {
                 type_params
                     .iter()

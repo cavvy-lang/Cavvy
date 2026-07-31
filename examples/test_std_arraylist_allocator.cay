@@ -1,0 +1,21 @@
+#include <std/arraylist.cay>
+#include <c/stdio.cay>
+
+using std::ArrayList;
+
+public int main() {
+    // 测试显式提供默认类型参数 A = GlobalAlloc 的构造函数路径
+    ArrayList<ArrayList<int>> matrix = new ArrayList<ArrayList<int>>(10, std::GlobalAlloc.getInstance());
+
+    ArrayList<int> row = new ArrayList<int>();
+    row.add(1);
+    row.add(2);
+    row.add(3);
+    matrix.add(row);
+
+    println("matrix.size() = " + String.valueOf(matrix.size()));
+    println("matrix.get(0).size() = " + String.valueOf(matrix.get(0).size()));
+    println("matrix.get(0).get(2) = " + String.valueOf(matrix.get(0).get(2)));
+    println("std::ArrayList allocator constructor tests passed");
+    return 0;
+}
