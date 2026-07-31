@@ -406,6 +406,8 @@ pub struct TokenWithLocation {
     pub source_line: Option<usize>,
     /// 该token在源代码中的原始文本（用于代码风格检查等）
     pub lexeme: String,
+    /// 该token在预处理后的源代码中的字节范围（用于跳过__ir块等场景）
+    pub span: std::ops::Range<usize>,
 }
 
 impl TokenWithLocation {
@@ -416,6 +418,7 @@ impl TokenWithLocation {
         file: Option<String>,
         line: Option<usize>,
         lexeme: impl Into<String>,
+        span: std::ops::Range<usize>,
     ) -> Self {
         Self {
             token,
@@ -423,6 +426,7 @@ impl TokenWithLocation {
             source_file: file,
             source_line: line,
             lexeme: lexeme.into(),
+            span,
         }
     }
 
@@ -575,6 +579,12 @@ impl<'a> Lexer<'a> {
                 None => continue,
             };
             if token.lexeme != a && token.lexeme != b {
+                continue;
+            }
+
+            // __ir 块内直接嵌入 LLVM IR，其类型关键字（如 i64）属于 IR 语法，
+            // 不应参与 Cavvy 类型别名的风格一致性检查。
+            if self.is_inside_inline_ir_block(token.span.start) {
                 continue;
             }
 
@@ -779,6 +789,7 @@ impl<'a> Lexer<'a> {
                         source_file,
                         source_line,
                         lexeme: self.source[span.clone()].to_string(),
+                        span: span.clone(),
                     });
                 }
                 Err(kind) => {
@@ -918,6 +929,7 @@ impl<'a> Lexer<'a> {
                     source_file,
                     source_line,
                     lexeme: self.source[span.clone()].to_string(),
+                    span: span.clone(),
                 }))
             }
             Some(Err(_)) => {
@@ -1694,6 +1706,7 @@ i32 b;"#;
                 source_file: Some("a.cay".to_string()),
                 source_line: Some(1),
                 lexeme: "pub".to_string(),
+                span: 0..3,
             },
             TokenWithLocation {
                 token: Token::Public,
@@ -1701,12 +1714,31 @@ i32 b;"#;
                 source_file: Some("b.cay".to_string()),
                 source_line: Some(1),
                 lexeme: "public".to_string(),
+                span: 0..6,
             },
         ];
         let mut lexer = Lexer::new("");
         lexer.check_alias_style_lints(&tokens);
         let warnings = lexer.take_warnings();
         assert!(warnings.is_empty(), "不同文件之间的别名差异不应产生警告");
+    }
+
+    #[test]
+    fn test_alias_style_lint_ignores_inline_ir_block() {
+        // __ir 块内使用 i64 属于 LLVM IR 语法，不应与 Cavvy 层的 long 拼写产生混用警告
+        let source = r#"long x;
+__ir {
+    %p = call i8* @malloc(i64 %size)
+    %v = ptrtoint i8* %p to i64
+}"#;
+        let mut lexer = Lexer::new(source);
+        let _tokens = lexer.tokenize().unwrap();
+        let warnings = lexer.take_warnings();
+        assert!(
+            warnings.is_empty(),
+            "__ir 块内的 i64 不应触发 long/i64 混用警告，但得到: {:?}",
+            warnings
+        );
     }
 
     #[test]

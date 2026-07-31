@@ -104,14 +104,13 @@ impl IRGenerator {
             return self.generate_struct_new_expression(new_expr);
         }
 
-        // 如果类是命名空间限定的，解析到TypeRegistry中获取规范名称
-        let registry_name = if base_class_name.contains("::") {
-            if let Some(ref registry) = self.type_registry {
-                if let Some(class_info) = registry.get_class(&base_class_name) {
-                    class_info.name.clone()
-                } else {
-                    base_class_name.clone()
-                }
+        // 解析类的规范（限定）名称，用于布局、type_id、vtable 和构造函数查找。
+        // 即使是非限定名（如命名空间 std 内的 ArrayListIterator），也通过
+        // TypeRegistry 找到其完整限定名，确保后续生成的符号与单态化特化版本
+        // 完全一致。
+        let registry_name = if let Some(ref registry) = self.type_registry {
+            if let Some(class_info) = registry.get_class(&base_class_name) {
+                class_info.name.clone()
             } else {
                 base_class_name.clone()
             }
@@ -130,7 +129,9 @@ impl IRGenerator {
         let is_same_class_factory = {
             let current_base = self.current_class.split('<').next().unwrap_or("");
             let registry_base = registry_name.split('<').next().unwrap_or("");
-            current_base == registry_base || current_base.ends_with(&format!("::{}", registry_base))
+            let current_simple = current_base.rsplit("::").next().unwrap_or(current_base);
+            let registry_simple = registry_base.rsplit("::").next().unwrap_or(registry_base);
+            current_simple == registry_simple
         };
         if is_stack_only && !is_same_class_factory {
             return Err(codegen_error_at(
@@ -235,9 +236,11 @@ impl IRGenerator {
 
         // 计算用于代码生成的规范类名：若已解析出具体类型参数，则使用特化名
         // （如 Box<int>），使构造函数名、vtable 与已生成的特化版本保持一致。
+        // 使用 registry_name（已解析的限定名）作为基础，保证命名空间内的类
+        //（如 std::ArrayListIterator<T>）生成的符号与特化定义匹配。
         let canonical_name = if let Some(ref args) = concrete_type_args {
             let args_str: Vec<String> = args.iter().map(|t| t.display_name()).collect();
-            format!("{}<{ }>", base_class_name, args_str.join(", "))
+            format!("{}<{ }>", registry_name, args_str.join(", "))
         } else {
             class_name.clone()
         };

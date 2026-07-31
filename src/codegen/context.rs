@@ -317,6 +317,9 @@ pub struct IRGenerator {
     pub var_cay_types: HashMap<String, crate::types::Type>, // 变量名到Cavvy类型的映射
     pub var_class_map: HashMap<String, String>,
     pub loop_stack: Vec<LoopContext>,
+    /// 当前正在生成的 foreach 循环元素变量名栈。
+    /// 这些变量是对可迭代对象元素的借用，不应在作用域退出时调用析构函数。
+    pub foreach_element_vars: Vec<String>,
     pub target_triple: String,
     pub static_fields: Vec<StaticFieldInfo>,
     pub static_field_map: HashMap<String, StaticFieldInfo>,
@@ -451,6 +454,7 @@ impl IRGenerator {
             var_cay_types: HashMap::new(),
             var_class_map: HashMap::new(),
             loop_stack: Vec::new(),
+            foreach_element_vars: Vec::new(),
             target_triple,
             static_fields: Vec::new(),
             static_field_map: HashMap::new(),

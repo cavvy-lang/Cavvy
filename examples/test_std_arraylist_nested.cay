@@ -1,0 +1,36 @@
+#include <std/arraylist.cay>
+#include <c/stdio.cay>
+
+using std::ArrayList;
+
+public int main() {
+    ArrayList<ArrayList<int>> matrix = new ArrayList<ArrayList<int>>();
+
+    ArrayList<int> row0 = new ArrayList<int>();
+    row0.add(1);
+    row0.add(2);
+    row0.add(3);
+    matrix.add(row0);
+
+    ArrayList<int> row1 = new ArrayList<int>();
+    row1.add(4);
+    row1.add(5);
+    row1.add(6);
+    matrix.add(row1);
+
+    int sum = 0;
+    for (ArrayList<int> row : matrix) {
+        for (int cell : row) {
+            sum = sum + cell;
+        }
+    }
+    println("nested sum = " + String.valueOf(sum));
+
+    int rows = matrix.size();
+    int cols = matrix.get(0).size();
+    println("rows = " + String.valueOf(rows));
+    println("cols = " + String.valueOf(cols));
+    println("matrix[1][2] = " + String.valueOf(matrix.get(1).get(2)));
+    println("std::ArrayList nested tests passed");
+    return 0;
+}

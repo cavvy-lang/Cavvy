@@ -72,3 +72,21 @@ fn test_std_arraylist_arena_allocator() {
         "test_std_arraylist_arena",
     );
 }
+
+#[test]
+fn test_std_arraylist_nested() {
+    let output = compile_and_run_eol("examples/test_std_arraylist_nested.cay")
+        .expect("test_std_arraylist_nested.cay should compile and run");
+
+    assert_output_contains(
+        &output,
+        &[
+            "nested sum = 21",
+            "rows = 2",
+            "cols = 3",
+            "matrix[1][2] = 6",
+            "std::ArrayList nested tests passed",
+        ],
+        "test_std_arraylist_nested",
+    );
+}

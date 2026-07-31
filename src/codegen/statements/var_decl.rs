@@ -627,7 +627,18 @@ impl IRGenerator {
         // ROADMAP 5.3.x 自动 RAII：若局部变量类型是带析构函数的类，
         // 登记为析构候选，作用域退出时由 generate_block 自动调用 __dtor。
         // （参数与 this 不走此路径——它们由 declare_var_with_flag 登记，is_parameter=true）
-        self.register_dtor_candidate_if_applicable(&var.name, &llvm_name, &actual_type);
+        // foreach 循环元素变量是对可迭代对象元素的借用，不拥有对象所有权，
+        // 因此跳过析构，避免在遍历类对象时重复释放底层资源。
+        let is_foreach_borrow = self
+            .foreach_element_vars
+            .last()
+            .map(|v| v == &var.name)
+            .unwrap_or(false);
+        if is_foreach_borrow {
+            self.foreach_element_vars.pop();
+        } else {
+            self.register_dtor_candidate_if_applicable(&var.name, &llvm_name, &actual_type);
+        }
 
         if let Some(init) = var.initializer.as_ref() {
             // 特殊处理数组初始化，传递目标类型信息

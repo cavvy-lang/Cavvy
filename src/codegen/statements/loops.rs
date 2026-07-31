@@ -295,6 +295,18 @@ impl IRGenerator {
             loc: loc.clone(),
         });
 
-        self.generate_statement(&desugared)
+        // foreach 元素变量是借用，标记以跳过后续 VarDecl 的析构登记。
+        self.foreach_element_vars.push(for_each.var_name.clone());
+        let result = self.generate_statement(&desugared);
+        // 如果循环体中未生成对应变量（如空体或提前返回），确保清理标记。
+        if self
+            .foreach_element_vars
+            .last()
+            .map(|v| v == &for_each.var_name)
+            .unwrap_or(false)
+        {
+            self.foreach_element_vars.pop();
+        }
+        result
     }
 }
