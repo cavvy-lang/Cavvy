@@ -620,20 +620,13 @@ impl SpecializationCollector {
         const MAX_ITERATIONS: usize = 32;
         for _ in 0..MAX_ITERATIONS {
             let before = self.total_instance_count();
-            let all_instances = self.instances.clone();
 
             for (class, ns) in &generic_classes {
-                let class_key = if ns.is_empty() {
-                    class.name.clone()
-                } else {
-                    format!("{}::{}", ns.join("::"), class.name)
-                };
-
-                let instances = all_instances
-                    .get(&class_key)
-                    .or_else(|| all_instances.get(&class.name))
-                    .cloned()
-                    .unwrap_or_default();
+                // 合并以 "std::ArrayList" 与裸名 "ArrayList" 两种 key 收集到的实例。
+                // 源码中可能混用命名空间全名与裸名（如类体内部使用 ArrayList<T>，
+                // 用户代码使用 std::ArrayList<T>），合并后确保所有实例的方法体都被
+                // 扫描到，避免深层嵌套泛型的依赖特化遗漏。
+                let instances = self.instances_for_generic_class(&class.name, ns);
 
                 if instances.is_empty() {
                     continue;
@@ -673,7 +666,6 @@ impl SpecializationCollector {
                                 ClassMember::Destructor(_) => "<dtor>".to_string(),
                                 _ => "<init>".to_string(),
                             };
-                            eprintln!("[DEP] class={} instance={} method={}", class.name, instance.specialized_name(), method_name);
                             self.collect_dependency_from_block(body, &mapping, ns);
                         }
                     }
@@ -686,17 +678,7 @@ impl SpecializationCollector {
 
             // 泛型 struct 的依赖特化：方法体中引用的泛型类型需按实例替换。
             for (struct_decl, ns) in &generic_structs {
-                let struct_key = if ns.is_empty() {
-                    struct_decl.name.clone()
-                } else {
-                    format!("{}::{}", ns.join("::"), struct_decl.name)
-                };
-
-                let instances = all_instances
-                    .get(&struct_key)
-                    .or_else(|| all_instances.get(&struct_decl.name))
-                    .cloned()
-                    .unwrap_or_default();
+                let instances = self.instances_for_generic_class(&struct_decl.name, ns);
 
                 if instances.is_empty() {
                     continue;
@@ -741,12 +723,24 @@ impl SpecializationCollector {
             }
         }
 
-        eprintln!("[SPECIALIZATIONS]");
-        for (k, v) in &self.instances {
-            for inst in v {
-                eprintln!("  {} -> {}", k, inst.specialized_name());
-            }
+    }
+
+    /// 返回某个泛型基类（含命名空间前缀与裸名两种 key）对应的所有特化实例。
+    fn instances_for_generic_class(&self, class_name: &str, ns: &[String]) -> Vec<SpecializationInstance> {
+        let class_key = if ns.is_empty() {
+            class_name.to_string()
+        } else {
+            format!("{}::{}", ns.join("::"), class_name)
+        };
+
+        let mut result = Vec::new();
+        if let Some(set) = self.instances.get(&class_key) {
+            result.extend(set.iter().cloned());
         }
+        if let Some(set) = self.instances.get(class_name) {
+            result.extend(set.iter().cloned());
+        }
+        result
     }
 
     fn collect_type_with_ns(&mut self, ty: &Type, ns: &[String]) {
@@ -850,7 +844,6 @@ impl SpecializationCollector {
         match expr {
             Expr::New(new_expr) => {
                 let substituted = substitute_type_args_in_class_name(&new_expr.class_name, mapping);
-                eprintln!("[NEW-DEP] orig={} substituted={}", new_expr.class_name, substituted);
                 self.collect_generic_class_name_with_ns(&substituted, ns);
                 for arg in &new_expr.args {
                     self.collect_dependency_from_expr(arg, mapping, ns);
@@ -928,9 +921,7 @@ impl SpecializationCollector {
                         .map(|a| self.nesting_depth(base, a))
                         .max()
                         .unwrap_or(0);
-                    eprintln!("[LIMIT] base={} class_name={} depth={} max={}", base, class_name, depth, self.dep_max_depth);
                     if depth > self.dep_max_depth {
-                        eprintln!("[LIMIT] SKIPPED {}", class_name);
                         return;
                     }
                 }
