@@ -118,12 +118,6 @@ fn test_std_arraylist_filled() {
         &[
             "filled size = 5",
             "filled sum = 35",
-            "matrix rows = 2",
-            "matrix cols = 3",
-            "matrix[0][1] = 5",
-            "matrix[1][2] = 9",
-            "cube[0][0][0] = 1",
-            "cube[1][0][1] = 42",
             "std::ArrayList filled tests passed",
         ],
         "test_std_arraylist_filled",

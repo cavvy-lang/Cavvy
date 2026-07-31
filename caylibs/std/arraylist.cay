@@ -109,8 +109,10 @@ public class ArrayList<T, A: Allocator = GlobalAlloc> implements Iterable<T> {
     }
 
     /**
-     * 静态工厂：创建包含 count 个 value 副本的 ArrayList。
-     * 用法：ArrayList<int>::filled(10, 0)
+     * 静态工厂：创建包含 count 个 value 的一维 ArrayList。
+     *
+     * 注意：对对象类型元素，该方法执行浅拷贝（保存同一个对象指针），
+     * 因此推荐仅用于原始类型（int/long/double/bool 等）。
      */
     public static ArrayList<T> filled(int count, T value) {
         ArrayList<T> list = new ArrayList<T>();
@@ -121,8 +123,11 @@ public class ArrayList<T, A: Allocator = GlobalAlloc> implements Iterable<T> {
     }
 
     /**
-     * 析构函数：释放 backing buffer。注意只释放内部数组内存，
-     * 不逐个调用 T 的析构函数（当前语言无泛型元素析构机制）。
+     * 析构函数：释放 backing buffer。
+     *
+     * 注意：当前实现不会递归析构元素对象。存储在 ArrayList 中的对象
+     * 指针由调用方负责生命周期管理；把局部对象 add 进列表后，若该局部
+     * 变量离开作用域，会触发对象析构，造成悬垂指针。
      */
     ~ArrayList() {
         if (this.buffer != 0) {
