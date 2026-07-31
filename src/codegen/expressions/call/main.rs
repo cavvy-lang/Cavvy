@@ -630,6 +630,28 @@ impl IRGenerator {
             arg_results.push(self.generate_expression(arg)?);
         }
 
+        // ROADMAP 5.3.x 自动 RAII：ArrayList.add 视为所有权转移。
+        // 若实参是带析构函数的局部对象变量，将其从当前作用域析构候选中移除，
+        // 避免容器析构元素时再次析构该局部变量（double-free）。
+        if method_name == "add" {
+            let base_class = class_name
+                .find('<')
+                .map_or(class_name.as_str(), |pos| &class_name[..pos]);
+            if base_class == "ArrayList" || base_class == "std::ArrayList" {
+                for arg in actual_args {
+                    if let Expr::Identifier(ident) = arg {
+                        let var_name = &ident.name;
+                        if let Some(var_type) = self.get_variable_type(var_name) {
+                            if self.type_has_destructor(&var_type).is_some() {
+                                self.scope_manager
+                                    .remove_dtor_candidate_by_var_name(var_name);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // 处理可变参数：将多余参数打包成数组
         let (processed_args, has_varargs_array) = if is_varargs_method {
             let packed = self.pack_varargs_args(&class_name, &method_name, &arg_results)?;
