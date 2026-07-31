@@ -242,27 +242,42 @@ impl IRGenerator {
                         }
                     }
                     // 首先检查是否是已知的类名（静态方法调用）
-                    if registry.class_exists(obj_name_str) {
+                    // 支持带泛型实参的类名，如 std::ArrayList<int>::filled。
+                    let (base_class_name, explicit_type_args) = if let Some(lt_pos) = obj_name_str.find('<') {
+                        let gt_pos = obj_name_str.rfind('>').unwrap_or(obj_name_str.len());
+                        let base = obj_name_str[..lt_pos].to_string();
+                        let args_str = &obj_name_str[lt_pos + 1..gt_pos];
+                        let args = crate::codegen::specialization::split_top_level_type_args(args_str)
+                            .iter()
+                            .map(|s| crate::codegen::specialization::parse_type_str(s.trim()))
+                            .collect::<Vec<_>>();
+                        (base, Some(args))
+                    } else {
+                        (obj_name_str.to_string(), None)
+                    };
+
+                    if registry.class_exists(&base_class_name) {
                         // 类名.方法名() 形式，如 Vector2.right() 或 Container.make(42)
                         let found = if let Some(types) = arg_types_slice {
-                            registry.find_method(obj_name_str, &member.member, types)
+                            registry.find_method(&base_class_name, &member.member, types)
                         } else {
                             None
                         }
-                        .or_else(|| registry.get_method(obj_name_str, &member.member));
+                        .or_else(|| registry.get_method(&base_class_name, &member.member));
                         if let Some(method_info) = found {
-                            // 对泛型静态工厂方法，尝试从调用实参推断类型参数。
+                            // 对泛型静态工厂方法，尝试从调用实参或显式泛型实参推断类型参数。
                             // 例如 Container.make(42) 推断出 T = int，使返回类型
                             // 变为 Container<int> 而非 Container<GenericParam("T")>。
-                            if let Some(class_info) = registry.get_class(obj_name_str) {
+                            if let Some(class_info) = registry.get_class(&base_class_name) {
                                 if !class_info.type_params.is_empty() {
-                                    if let Some(inferred) = self
-                                        .infer_type_args_from_call_args_codegen(
+                                    let inferred_args = explicit_type_args.clone().or_else(|| {
+                                        self.infer_type_args_from_call_args_codegen(
                                             &method_info.params,
                                             &call.args,
                                             &class_info.type_params,
                                         )
-                                    {
+                                    });
+                                    if let Some(inferred) = inferred_args {
                                         let mapping: std::collections::HashMap<String, Type> =
                                             class_info
                                                 .type_params

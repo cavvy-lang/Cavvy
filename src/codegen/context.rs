@@ -1389,6 +1389,8 @@ impl IRGenerator {
     }
 
     /// 5.3.0: 检查标识符是否是命名空间式静态类方法调用目标
+    ///
+    /// 支持带泛型实参的类前缀，如 `std::ArrayList<int>::filled`。
     pub(crate) fn is_static_method_call_target(&self, name: &str) -> bool {
         if !name.contains("::") {
             return false;
@@ -1412,7 +1414,12 @@ impl IRGenerator {
         let Some(registry) = self.type_registry.as_ref() else {
             return false;
         };
-        let Some(class_info) = registry.get_class(class_prefix) else {
+        // 去除类前缀中的泛型实参（如 `std::ArrayList<int>` -> `std::ArrayList`）
+        // 以便在类型注册表查找基础类。
+        let base_class_name = class_prefix
+            .find('<')
+            .map_or(class_prefix, |pos| &class_prefix[..pos]);
+        let Some(class_info) = registry.get_class(base_class_name) else {
             return false;
         };
         class_info
@@ -1435,6 +1442,7 @@ impl IRGenerator {
     /// 5.3.0: 推断命名空间式静态方法调用的返回类型
     ///
     /// 在可能的情况下根据实参类型选择最匹配的重载。
+    /// 支持带泛型实参的类前缀，如 `std::ArrayList<int>::filled`。
     pub(crate) fn infer_static_method_call_return_type(
         &self,
         name: &str,
@@ -1442,7 +1450,22 @@ impl IRGenerator {
     ) -> Option<crate::types::Type> {
         let (class_prefix, method_name) = self.try_resolve_static_method_call(name)?;
         let registry = self.type_registry.as_ref()?;
-        let class_info = registry.get_class(&class_prefix)?;
+
+        // 拆分基础类名与泛型实参。
+        let (base_class_name, type_args) = if let Some(lt_pos) = class_prefix.find('<') {
+            let gt_pos = class_prefix.rfind('>').unwrap_or(class_prefix.len());
+            let base = class_prefix[..lt_pos].to_string();
+            let args_str = &class_prefix[lt_pos + 1..gt_pos];
+            let args = crate::codegen::specialization::split_top_level_type_args(args_str)
+                .iter()
+                .map(|s| crate::codegen::specialization::parse_type_str(s.trim()))
+                .collect::<Vec<_>>();
+            (base, args)
+        } else {
+            (class_prefix, Vec::new())
+        };
+
+        let class_info = registry.get_class(&base_class_name)?;
         let methods = class_info.methods.get(&method_name)?;
         let static_methods: Vec<_> = methods.iter().filter(|m| m.is_static).collect();
         if static_methods.is_empty() {
@@ -1463,14 +1486,29 @@ impl IRGenerator {
 
         let method_info = if resolved {
             registry
-                .find_method(&class_prefix, &method_name, &arg_types)
+                .find_method(&base_class_name, &method_name, &arg_types)
                 .filter(|m| m.is_static)
                 .or_else(|| static_methods.first().copied())
         } else {
             static_methods.first().copied()
         }?;
 
-        Some(method_info.return_type.clone())
+        // 若调用处提供了泛型实参，将返回类型中的泛型形参替换为实参。
+        // 例如 `std::ArrayList<int>::filled` 的返回类型从 `ArrayList<T>`
+        // 变为 `ArrayList<int>`，使 `let cube = ...` 能正确推断变量类型。
+        if type_args.is_empty() || class_info.type_params.is_empty() {
+            return Some(method_info.return_type.clone());
+        }
+        let mapping: std::collections::HashMap<String, crate::types::Type> = class_info
+            .type_params
+            .iter()
+            .zip(type_args.iter())
+            .map(|(p, t)| (p.name.clone(), t.clone()))
+            .collect();
+        Some(crate::types::substitute_type_params(
+            &method_info.return_type,
+            &mapping,
+        ))
     }
 
     /// 将 LLVM 类型字符串映射到 Cavvy 类型
