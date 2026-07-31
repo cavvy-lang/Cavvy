@@ -107,3 +107,25 @@ fn test_std_arraylist_allocator_constructor() {
         "test_std_arraylist_allocator_constructor",
     );
 }
+
+#[test]
+fn test_std_arraylist_filled() {
+    let output = compile_and_run_eol("examples/test_std_arraylist_filled.cay")
+        .expect("test_std_arraylist_filled.cay should compile and run");
+
+    assert_output_contains(
+        &output,
+        &[
+            "filled size = 5",
+            "filled sum = 35",
+            "matrix rows = 2",
+            "matrix cols = 3",
+            "matrix[0][1] = 5",
+            "matrix[1][2] = 9",
+            "cube[0][0][0] = 1",
+            "cube[1][0][1] = 42",
+            "std::ArrayList filled tests passed",
+        ],
+        "test_std_arraylist_filled",
+    );
+}

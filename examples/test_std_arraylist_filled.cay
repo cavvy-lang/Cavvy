@@ -1,0 +1,47 @@
+#include <std/arraylist.cay>
+#include <c/stdio.cay>
+
+using std::ArrayList;
+
+public int main() {
+    // 一维：filled(5, 7) -> [7,7,7,7,7]
+    ArrayList<int> ones = ArrayList<int>::filled(5, 7);
+    println("filled size = " + String.valueOf(ones.size()));
+
+    int sum = 0;
+    for (int i = 0; i < ones.size(); i = i + 1) {
+        sum = sum + ones.get(i);
+    }
+    println("filled sum = " + String.valueOf(sum));
+
+    // 二维：2x3 全 0
+    ArrayList<ArrayList<int>> matrix =
+        ArrayList<ArrayList<int>>::filled(
+            2,
+            ArrayList<int>::filled(3, 0)
+        );
+
+    matrix.get(0).set(1, 5);
+    matrix.get(1).set(2, 9);
+    println("matrix rows = " + String.valueOf(matrix.size()));
+    println("matrix cols = " + String.valueOf(matrix.get(0).size()));
+    println("matrix[0][1] = " + String.valueOf(matrix.get(0).get(1)));
+    println("matrix[1][2] = " + String.valueOf(matrix.get(1).get(2)));
+
+    // 三维：2x2x2 全 1，再改一个值验证是独立副本
+    ArrayList<ArrayList<ArrayList<int>>> cube =
+        ArrayList<ArrayList<ArrayList<int>>>::filled(
+            2,
+            ArrayList<ArrayList<int>>::filled(
+                2,
+                ArrayList<int>::filled(2, 1)
+            )
+        );
+
+    cube.get(1).get(0).set(1, 42);
+    println("cube[0][0][0] = " + String.valueOf(cube.get(0).get(0).get(0)));
+    println("cube[1][0][1] = " + String.valueOf(cube.get(1).get(0).get(1)));
+
+    println("std::ArrayList filled tests passed");
+    return 0;
+}

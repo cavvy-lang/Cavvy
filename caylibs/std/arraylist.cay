@@ -109,21 +109,15 @@ public class ArrayList<T, A: Allocator = GlobalAlloc> implements Iterable<T> {
     }
 
     /**
-     * 指定初始容量和初始值
-     * @param initialCapacity 初始容量
-     * @param initialValue 初始值
+     * 静态工厂：创建包含 count 个 value 副本的 ArrayList。
+     * 用法：ArrayList<int>::filled(10, 0)
      */
-    public ArrayList(int initialCapacity, T initialValue) {
-        if (initialCapacity < 1) {
-            initialCapacity = 1;
+    public static ArrayList<T> filled(int count, T value) {
+        ArrayList<T> list = new ArrayList<T>();
+        for (int i = 0; i < count; i = i + 1) {
+            list.add(value);
         }
-        this.allocator = new A();
-        this.buffer = 0;
-        this.allocate(initialCapacity);
-        this.size = 0;
-        for (int i = 0; i < initialCapacity; i = i + 1) {
-            this.data[i] = initialValue;
-        }
+        return list;
     }
 
     /**
