@@ -1,7 +1,38 @@
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
+use crate::codegen::specialization::MAX_SELF_NESTING_DEPTH;
 use crate::miette_diagnostic::{CayResult, ErrorCodes, SourceLocation, codegen_error_at};
 use crate::types::Type;
+
+/// 计算类型 `ty` 中类 `base` 的最大自嵌套深度。
+/// 例如 `ArrayList<int>` 深度为 1，`ArrayList<ArrayList<int>>` 深度为 2。
+fn nesting_depth(ty: &Type, base: &str) -> usize {
+    match ty {
+        Type::Generic(name, args) => {
+            let candidate = name.split("::").last().unwrap_or(name);
+            let inner_max = args
+                .iter()
+                .map(|a| nesting_depth(a, base))
+                .max()
+                .unwrap_or(0);
+            if candidate == base {
+                1 + inner_max
+            } else {
+                inner_max
+            }
+        }
+        Type::Array(inner) | Type::Pointer(inner) => nesting_depth(inner, base),
+        Type::Function(ft) => std::cmp::max(
+            nesting_depth(&ft.return_type, base),
+            ft.params
+                .iter()
+                .map(|p| nesting_depth(p, base))
+                .max()
+                .unwrap_or(0),
+        ),
+        _ => 0,
+    }
+}
 
 /// ROADMAP 5.3.x 智能指针种类，用于 `__dtor` 注入分发。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1180,7 +1211,12 @@ impl IRGenerator {
                 // 生成特化版本的 vtable
                 self.generate_vtable_global(&specialized_name)?;
 
-                // 为特化版本生成方法
+                // 为特化版本生成方法。
+                // 若方法返回类型（替换后）会引用超出 MAX_SELF_NESTING_DEPTH 的同类自嵌套
+                // 特化，则跳过该方法体生成。这防止了如 ArrayList<ArrayList<int>>::filled3D
+                // 的方法体引用未收集的 ArrayList<ArrayList<ArrayList<ArrayList<int>>>>>
+                // 等深层特化，避免 IR 链接阶段出现未定义 vtable/构造函数。
+                let base_class_simple = simple_class_name(&base_qname).to_string();
                 for member in &class.members {
                     match member {
                         ClassMember::Method(method) => {
@@ -1207,6 +1243,14 @@ impl IRGenerator {
                                         is_varargs: p.is_varargs,
                                     })
                                     .collect();
+
+                                // 抑制会引用未收集深层特化的方法体生成。
+                                if nesting_depth(&specialized_method.return_type, &base_class_simple)
+                                    > MAX_SELF_NESTING_DEPTH
+                                {
+                                    continue;
+                                }
+
                                 self.generate_method(&specialized_name, &specialized_method)?;
                             }
                         }
@@ -2761,6 +2805,10 @@ impl IRGenerator {
         self.emit_line(&format!("  store i8* %this, i8** %{}", this_llvm_name));
         self.var_types.insert("this".to_string(), "i8*".to_string());
 
+        // ROADMAP 5.3.x 自动 RAII：对 ArrayList<T> 在调用用户析构体之前
+        // 先析构其中拥有的元素，避免嵌套容器内存泄漏。
+        self.emit_arraylist_dtor_injection(class_name)?;
+
         self.generate_block(&dtor.body)?;
 
         // 退出函数作用域（与构造函数 enter_scope/exit_scope 对称）
@@ -2840,6 +2888,188 @@ impl IRGenerator {
                 self.emit_optional_drop_injection(class_name, &t_type)?;
             }
         }
+
+        Ok(())
+    }
+
+    /// 为 `ArrayList<T, A>` 特化析构函数注入元素析构逻辑。
+    ///
+    /// 在调用用户编写的析构体之前执行：遍历 `this.data[0..this.size)`，对其中
+    /// 每个元素，若元素类型 `T` 带析构函数，则调用其 `__dtor`。这样嵌套
+    /// `ArrayList` 的析构会递归释放内层对象，避免内存泄漏。
+    ///
+    /// 安全性前提：调用方已经把 add 进 ArrayList 的局部对象变量从当前作用域
+    /// 析构候选中移除（见 `codegen/expressions/call/main.rs` 中的 add 调用处理），
+    /// 否则会出现 double-free。
+    fn emit_arraylist_dtor_injection(&mut self, class_name: &str) -> CayResult<()> {
+        // 仅对 ArrayList 特化生效。
+        let base_name = if let Some(pos) = class_name.find('<') {
+            &class_name[..pos]
+        } else {
+            return Ok(());
+        };
+        if base_name != "ArrayList" && base_name != "std::ArrayList" {
+            return Ok(());
+        }
+
+        if self.current_block_terminated() {
+            return Ok(());
+        }
+
+        let t_type = self
+            .generic_type_args
+            .get("T")
+            .cloned()
+            .unwrap_or(crate::types::Type::Void);
+        if t_type == crate::types::Type::Void {
+            return Ok(());
+        }
+
+        // 只有 T 带析构函数时才需要注入；原始类型直接跳过。
+        let Some(t_class) = self.type_has_destructor(&t_type) else {
+            return Ok(());
+        };
+
+        let dtor_fn = self.mangle_itanium_method(&t_class, "D1", &[], false, true);
+
+        let data_offset = self.get_field_offset(class_name, "data")?;
+        let size_offset = self.get_field_offset(class_name, "size")?;
+
+        // 加载 this.size
+        let size_gep = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = getelementptr i8, i8* %this, i64 {}",
+            size_gep, size_offset
+        ));
+        let size_ptr = self.new_temp();
+        self.emit_line(&format!("  {} = bitcast i8* {} to i32*", size_ptr, size_gep));
+        let size_val = self.new_temp();
+        self.emit_line(&format!("  {} = load i32, i32* {}", size_val, size_ptr));
+
+        // 加载 this.data（T[] 的 i8* 数组头指针）
+        let data_gep = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = getelementptr i8, i8* %this, i64 {}",
+            data_gep, data_offset
+        ));
+        let data_ptr_slot = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = bitcast i8* {} to i8**",
+            data_ptr_slot, data_gep
+        ));
+        let data_ptr = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = load i8*, i8** {}",
+            data_ptr, data_ptr_slot
+        ));
+
+        // data 为 null 则跳过。
+        let is_null = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = icmp eq i8* {}, null",
+            is_null, data_ptr
+        ));
+        let skip_label = self.new_label("arraylist.dtor.skip");
+        let loop_header_label = self.new_label("arraylist.dtor.loop.header");
+        self.emit_line(&format!(
+            "  br i1 {}, label %{}, label %{}",
+            is_null, skip_label, loop_header_label
+        ));
+        self.emit_line(&format!("{}:", skip_label));
+        let end_label = self.new_label("arraylist.dtor.end");
+        self.emit_line(&format!("  br label %{}", end_label));
+
+        // 循环：for (int i = 0; i < size; i++)
+        self.emit_line(&format!("{}:", loop_header_label));
+        let counter_ptr = self.new_temp();
+        self.emit_line(&format!("  {} = alloca i32", counter_ptr));
+        self.emit_line(&format!("  store i32 0, i32* {}", counter_ptr));
+        let loop_check_label = self.new_label("arraylist.dtor.loop.check");
+        let loop_body_label = self.new_label("arraylist.dtor.loop.body");
+        self.emit_line(&format!("  br label %{}", loop_check_label));
+
+        self.emit_line(&format!("{}:", loop_check_label));
+        let i_val = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = load i32, i32* {}",
+            i_val, counter_ptr
+        ));
+        let cmp = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = icmp slt i32 {}, {}",
+            cmp, i_val, size_val
+        ));
+        self.emit_line(&format!(
+            "  br i1 {}, label %{}, label %{}",
+            cmp, loop_body_label, end_label
+        ));
+
+        self.emit_line(&format!("{}:", loop_body_label));
+        // ArrayList 的 `data` 字段存储的是数组元素首地址（已跳过 [i32 length,
+        // i32 padding] 头），因此直接使用 data_ptr 作为元素基址即可。
+        let data_start = data_ptr;
+        // offset = i * sizeof(T)。T 带析构函数时必为对象/指针类型，槽位 8 字节。
+        let elem_size = t_type.size_in_bytes().max(1) as i64;
+        let i64_val = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = sext i32 {} to i64",
+            i64_val, i_val
+        ));
+        let byte_offset = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = mul i64 {}, {}",
+            byte_offset, i64_val, elem_size
+        ));
+        let elem_slot = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = getelementptr i8, i8* {}, i64 {}",
+            elem_slot, data_start, byte_offset
+        ));
+        let elem_ptr_slot = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = bitcast i8* {} to i8**",
+            elem_ptr_slot, elem_slot
+        ));
+        let elem_obj = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = load i8*, i8** {}",
+            elem_obj, elem_ptr_slot
+        ));
+
+        // 元素指针为 null 则跳过。
+        let elem_null = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = icmp eq i8* {}, null",
+            elem_null, elem_obj
+        ));
+        let elem_skip_label = self.new_label("arraylist.dtor.elem.skip");
+        let elem_done_label = self.new_label("arraylist.dtor.elem.done");
+        self.emit_line(&format!(
+            "  br i1 {}, label %{}, label %{}",
+            elem_null, elem_skip_label, elem_done_label
+        ));
+        self.emit_line(&format!("{}:", elem_skip_label));
+        self.emit_line(&format!("  br label %{}", elem_done_label));
+
+        self.emit_line(&format!("{}:", elem_done_label));
+        self.emit_line(&format!(
+            "  call void @{}(i8* {})",
+            dtor_fn, elem_obj
+        ));
+
+        // i++
+        let next_i = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = add i32 {}, 1",
+            next_i, i_val
+        ));
+        self.emit_line(&format!(
+            "  store i32 {}, i32* {}",
+            next_i, counter_ptr
+        ));
+        self.emit_line(&format!("  br label %{}", loop_check_label));
+
+        self.emit_line(&format!("{}:", end_label));
 
         Ok(())
     }
@@ -3290,7 +3520,7 @@ impl IRGenerator {
     /// 注意：必须使用 display_name()（与 SpecializationInstance::specialized_name 一致），
     /// 不能用 Display/to_string()——后者把 String 渲染为 "string"，
     /// 会生成如 MutexGuard<string> 的错误析构函数名。
-    fn type_has_destructor(
+    pub(crate) fn type_has_destructor(
         &self,
         ty: &Type,
     ) -> Option<String> {

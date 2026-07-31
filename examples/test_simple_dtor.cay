@@ -1,0 +1,12 @@
+#include <std/arraylist.cay>
+#include <c/stdio.cay>
+
+using std::ArrayList;
+
+public int main() {
+    ArrayList<int> row = new ArrayList<int>();
+    row.add(1);
+    row.add(2);
+    println("row[0] = " + String.valueOf(row.get(0)));
+    return 0;
+}

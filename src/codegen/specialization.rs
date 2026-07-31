@@ -7,6 +7,12 @@ use crate::ast::*;
 use crate::types::Type;
 use std::collections::{HashMap, HashSet};
 
+/// 同类自嵌套全局深度上限。泛型类方法体中出现 `ArrayList<ArrayList<T>>`
+/// 时，允许生成比当前实例更深一层的依赖，但不无限展开更深的自嵌套。
+/// 该常量同时用于特化收集器与代码生成器，确保二者对“需要生成哪些特化”
+/// 的认知一致。
+pub(crate) const MAX_SELF_NESTING_DEPTH: usize = 4;
+
 /// 泛型特化实例：类名 + 类型参数列表
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SpecializationInstance {
@@ -134,6 +140,12 @@ pub struct SpecializationCollector {
     /// 用于跳过尚未替换的泛型实例（如泛型类体内的 `new Other<T>()`），
     /// 这些实例会在 `collect_dependency_specializations` 中被替换为具体类型后再收集。
     type_param_scope: std::collections::HashSet<String>,
+    /// 依赖特化收集阶段：当前正在处理的泛型类基础名。
+    /// 用于抑制同类自嵌套导致的无限展开（如 ArrayList<T> 的方法体中出现
+    /// ArrayList<ArrayList<T>> 会不断生成更深的 ArrayList<...> 特化）。
+    dep_class_base: Option<String>,
+    /// 依赖特化收集阶段：当前类实例允许的最大自嵌套深度。
+    dep_max_depth: usize,
 }
 
 impl SpecializationCollector {
@@ -637,8 +649,14 @@ impl SpecializationCollector {
                     })
                     .collect();
 
+                let class_base_name = class.name.split("::").last().unwrap_or(&class.name).to_string();
+
+                self.dep_class_base = Some(class_base_name.clone());
+                self.dep_max_depth = MAX_SELF_NESTING_DEPTH;
+
                 for instance in instances {
                     let mapping = instance.type_param_mapping(&type_param_infos);
+
                     for member in &class.members {
                         let body_opt = match member {
                             ClassMember::Method(method) => method.body.as_ref(),
@@ -649,10 +667,21 @@ impl SpecializationCollector {
                             _ => None,
                         };
                         if let Some(body) = body_opt {
+                            let method_name = match member {
+                                ClassMember::Method(m) => m.name.clone(),
+                                ClassMember::Constructor(_) => "<ctor>".to_string(),
+                                ClassMember::Destructor(_) => "<dtor>".to_string(),
+                                _ => "<init>".to_string(),
+                            };
+                            eprintln!("[DEP] class={} instance={} method={}", class.name, instance.specialized_name(), method_name);
                             self.collect_dependency_from_block(body, &mapping, ns);
                         }
                     }
+
                 }
+
+                self.dep_class_base = None;
+                self.dep_max_depth = 0;
             }
 
             // 泛型 struct 的依赖特化：方法体中引用的泛型类型需按实例替换。
@@ -683,6 +712,10 @@ impl SpecializationCollector {
                     })
                     .collect();
 
+                let struct_base_name = struct_decl.name.split("::").last().unwrap_or(&struct_decl.name).to_string();
+                self.dep_class_base = Some(struct_base_name.clone());
+                self.dep_max_depth = MAX_SELF_NESTING_DEPTH;
+
                 for instance in instances {
                     let mapping = instance.type_param_mapping(&type_param_infos);
                     for method in &struct_decl.methods {
@@ -697,11 +730,21 @@ impl SpecializationCollector {
                         }
                     }
                 }
+
+                self.dep_class_base = None;
+                self.dep_max_depth = 0;
             }
 
             // 本轮未产生新实例则已到达定点，停止迭代。
             if self.total_instance_count() == before {
                 break;
+            }
+        }
+
+        eprintln!("[SPECIALIZATIONS]");
+        for (k, v) in &self.instances {
+            for inst in v {
+                eprintln!("  {} -> {}", k, inst.specialized_name());
             }
         }
     }
@@ -807,6 +850,7 @@ impl SpecializationCollector {
         match expr {
             Expr::New(new_expr) => {
                 let substituted = substitute_type_args_in_class_name(&new_expr.class_name, mapping);
+                eprintln!("[NEW-DEP] orig={} substituted={}", new_expr.class_name, substituted);
                 self.collect_generic_class_name_with_ns(&substituted, ns);
                 for arg in &new_expr.args {
                     self.collect_dependency_from_expr(arg, mapping, ns);
@@ -864,10 +908,70 @@ impl SpecializationCollector {
     }
 
     fn collect_generic_class_name_with_ns(&mut self, class_name: &str, ns: &[String]) {
+        // 依赖特化阶段：抑制同类自嵌套超过当前实例深度，避免泛型类方法体中
+        // 出现 `ArrayList<ArrayList<T>>` 时无限生成更深的特化实例。
+        if let Some(ref base) = self.dep_class_base {
+            if let Some(lt_pos) = class_name.find('<') {
+                let gt_pos = class_name.rfind('>').unwrap_or(class_name.len());
+                let candidate_base = class_name[..lt_pos]
+                    .split("::")
+                    .last()
+                    .unwrap_or(&class_name[..lt_pos]);
+                if candidate_base == base {
+                    let args_str = &class_name[lt_pos + 1..gt_pos];
+                    let args: Vec<Type> = split_top_level_type_args(args_str)
+                        .iter()
+                        .map(|s| parse_type_str(s.trim()))
+                        .collect();
+                    let depth = 1 + args
+                        .iter()
+                        .map(|a| self.nesting_depth(base, a))
+                        .max()
+                        .unwrap_or(0);
+                    eprintln!("[LIMIT] base={} class_name={} depth={} max={}", base, class_name, depth, self.dep_max_depth);
+                    if depth > self.dep_max_depth {
+                        eprintln!("[LIMIT] SKIPPED {}", class_name);
+                        return;
+                    }
+                }
+            }
+        }
+
         let old_ns = self.current_namespace.clone();
         self.current_namespace = ns.to_vec();
         self.collect_generic_class_name(class_name);
         self.current_namespace = old_ns;
+    }
+
+    /// 计算类型 `ty` 中类 `base` 的最大自嵌套深度。
+    ///
+    /// 例如 `ArrayList<int>` 深度为 1，`ArrayList<ArrayList<int>>` 深度为 2。
+    fn nesting_depth(&self, base: &str, ty: &Type) -> usize {
+        match ty {
+            Type::Generic(name, args) => {
+                let candidate = name.split("::").last().unwrap_or(name);
+                let inner_max = args
+                    .iter()
+                    .map(|a| self.nesting_depth(base, a))
+                    .max()
+                    .unwrap_or(0);
+                if candidate == base {
+                    1 + inner_max
+                } else {
+                    inner_max
+                }
+            }
+            Type::Array(inner) | Type::Pointer(inner) => self.nesting_depth(base, inner),
+            Type::Function(ft) => std::cmp::max(
+                self.nesting_depth(base, &ft.return_type),
+                ft.params
+                    .iter()
+                    .map(|p| self.nesting_depth(base, p))
+                    .max()
+                    .unwrap_or(0),
+            ),
+            _ => 0,
+        }
     }
 
     /// 获取所有特化实例的列表
