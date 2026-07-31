@@ -8,7 +8,7 @@ use super::function::{IrFunction, IrLinkage};
 use super::module::IrModule;
 use super::types::IrType;
 use super::value::{IrInstruction, IrTerminator};
-use crate::miette_diagnostic::CayResult;
+use crate::miette_diagnostic::{CayResult, ErrorCodes, SourceLocation, codegen_error_at};
 
 /// LLVM IR 文本后端
 pub struct LlvmBackend {
@@ -238,10 +238,12 @@ impl LlvmBackend {
             IrLinkage::Private => "private ",
             // Declare 已在上方提前返回；到达此处说明分支逻辑被破坏，明确报错而非 panic
             IrLinkage::Declare => {
-                return Err(crate::miette_diagnostic::codegen_error(
-                    crate::miette_diagnostic::ErrorCodes::CODEGEN_INVALID_OPERATION,
-                    0,
-                    0,
+                let loc = func.source_loc.clone().unwrap_or_else(|| {
+                    SourceLocation::new(None, 1, 1)
+                });
+                return Err(codegen_error_at(
+                    ErrorCodes::CODEGEN_INVALID_OPERATION,
+                    loc,
                     format!(
                         "内部错误：函数 '{}' 为 Declare 链接类型，不应进入函数体发射路径",
                         func.name

@@ -5,6 +5,7 @@
 use super::block::IrBasicBlock;
 use super::types::IrType;
 use super::value::IrValue;
+use crate::miette_diagnostic::SourceLocation;
 use serde::Serialize;
 
 /// 函数链接类型
@@ -55,6 +56,8 @@ pub struct IrFunction {
     pub local_count: u32,
     /// 临时寄存器计数器
     pub temp_counter: u32,
+    /// 对应的源位置（如有）
+    pub source_loc: Option<SourceLocation>,
 }
 
 impl IrFunction {
@@ -70,6 +73,7 @@ impl IrFunction {
             calling_convention: None,
             local_count: 0,
             temp_counter: 0,
+            source_loc: None,
         }
     }
 
@@ -85,7 +89,14 @@ impl IrFunction {
             calling_convention: None,
             local_count: 0,
             temp_counter: 0,
+            source_loc: None,
         }
+    }
+
+    /// 绑定源位置
+    pub fn with_source_loc(mut self, loc: SourceLocation) -> Self {
+        self.source_loc = Some(loc);
+        self
     }
 
     /// 获取入口基本块

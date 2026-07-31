@@ -365,7 +365,9 @@ impl IrBuilder {
             })
             .collect();
 
-        self.current_function = Some(IrFunction::new(fn_name, return_type, params));
+        self.current_function = Some(
+            IrFunction::new(fn_name, return_type, params).with_source_loc(func.loc.clone()),
+        );
         self.current_class = String::new();
         self.scope_manager.reset();
         self.loop_stack.clear();
@@ -472,7 +474,9 @@ impl IrBuilder {
             });
         }
 
-        self.current_function = Some(IrFunction::new(fn_name, return_type, params));
+        self.current_function = Some(
+            IrFunction::new(fn_name, return_type, params).with_source_loc(method.loc.clone()),
+        );
         // 上一行刚设置 current_function；若未来重构破坏该不变量，明确报错而非 panic
         if let Some(func_ir) = self.current_function.as_mut() {
             func_ir.is_static = is_static;
@@ -560,7 +564,9 @@ impl IrBuilder {
             });
         }
 
-        self.current_function = Some(IrFunction::new(fn_name, IrType::Void, params));
+        self.current_function = Some(
+            IrFunction::new(fn_name, IrType::Void, params).with_source_loc(ctor.loc.clone()),
+        );
         self.scope_manager.reset();
         self.loop_stack.clear();
         self.temp_counter = 0;
@@ -783,7 +789,11 @@ impl IrBuilder {
     fn build_static_init(&mut self, class_name: &str, block: &Block) -> CayResult<()> {
         let fn_name = format!("{}.__static_init", class_name);
 
-        self.current_function = Some(IrFunction::new(fn_name, IrType::Void, Vec::new()));
+        self.current_function = Some(
+            IrFunction::new(fn_name, IrType::Void, Vec::new()).with_source_loc(
+                SourceLocation::default(),
+            ),
+        );
         self.scope_manager.reset();
         self.loop_stack.clear();
         self.temp_counter = 0;

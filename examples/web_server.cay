@@ -214,7 +214,7 @@ public class CavvyWebServer {
             
             /* 发送响应 */
             client.send(responseStr);
-            println("[响应] 200 OK (" + String.valueOf(responseStr.length)() + " bytes)");
+            println("[响应] 200 OK (" + String.valueOf(responseStr.length()) + " bytes)");
         }
         
         /* 关闭客户端连接 */

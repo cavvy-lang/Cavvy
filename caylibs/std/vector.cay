@@ -10,6 +10,16 @@
 
 #include <std/iterator.cay>
 
+#warning STANDARD LIBRARY WARNING
+#warning ------------------------
+#warning <std/vector.cay> is old implementation of std::vector<T>
+#warning use <std/arraylist.cay> and std::ArrayList<T,A> instead
+#warning 
+#warning 标准库警告
+#warning ------------------------
+#warning <std/vector.cay> 是 std::vector<T> 的旧实现
+#warning 请改用 <std/arraylist.cay> 和 std::ArrayList<T,A>
+
 namespace std {
 
 /**

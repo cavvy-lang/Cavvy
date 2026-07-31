@@ -35,8 +35,7 @@
 
 use crate::ast::InlineIrStmt;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::CayResult;
-use crate::miette_diagnostic::ErrorCodes;
+use crate::miette_diagnostic::{CayResult, ErrorCodes, codegen_error_at};
 use crate::types::Type;
 use std::collections::HashMap;
 
@@ -91,7 +90,7 @@ impl InlineIrBridge {
         inline_ir: &InlineIrStmt,
     ) -> CayResult<InlineIrResult> {
         // 1. 收集当前作用域的可用变量
-        let available_vars = self.collect_scope_variables(codegen)?;
+        let available_vars = self.collect_scope_variables(codegen, inline_ir)?;
 
         // 2. 准备IR Builder的输入
         let ir_inputs: Vec<(String, crate::ir::value::IrValue)> = available_vars
@@ -178,6 +177,7 @@ impl InlineIrBridge {
     fn collect_scope_variables(
         &self,
         codegen: &IRGenerator,
+        inline_ir: &InlineIrStmt,
     ) -> CayResult<Vec<(String, String, Type)>> {
         let mut vars = Vec::new();
         let class_name = codegen.get_current_class();
@@ -189,13 +189,13 @@ impl InlineIrBridge {
                 Some(ty) => ty,
                 // this 的类型就是当前类（作用域变量表里有 this，但类型注册表不记录它）
                 None if name == "this" && !class_name.is_empty() => {
-                    Type::Object(class_name.clone())
+                    Type::Object(class_name.to_string())
                 }
                 None => {
-                    return Err(crate::miette_diagnostic::codegen_error(
+                    let loc = inline_ir.loc.clone();
+                    return Err(codegen_error_at(
                         ErrorCodes::CODEGEN_SYMBOL_NOT_FOUND,
-                        0,
-                        0,
+                        loc,
                         format!("内联 IR 桥接：找不到变量 '{}' 的类型信息", name),
                     ));
                 }

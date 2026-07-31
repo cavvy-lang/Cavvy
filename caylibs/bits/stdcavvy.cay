@@ -1,0 +1,36 @@
+// bits/stdcavvy.cay
+
+// C FFI
+#include <std/ffi.cay>
+
+// MSTD
+#include <std/algorithm.cay>
+#include <std/arraylist.cay>
+#include <std/hashmap.cay>
+#include <std/hashset.cay>
+#include <std/numeric.cay>
+#include <std/vector.cay>
+
+// GSTD
+#include <Allocator.cay>
+#include <Atomic.cay>
+#include <EasyHTTP.cay>
+#include <Error.cay>
+#include <File.cay>
+#include <IOPlus.cay>
+#include <Math.cay>
+#include <Mmap.cay>
+#include <Mutex.cay>
+#include <Network.cay>
+#include <Optional.cay>
+#include <Result.cay>
+#include <SmartPtr.cay>
+#include <StringBuilder.cay>
+#include <StringPlus.cay>
+#include <Thread.cay>
+
+// SYS
+#include <sys/sys.cay>
+
+// CAVVY RUNTIME OPS
+#include <cay/string_ops.cay>

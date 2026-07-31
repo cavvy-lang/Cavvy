@@ -1,7 +1,6 @@
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
-use crate::miette_diagnostic::CayResult;
-use crate::miette_diagnostic::ErrorCodes;
+use crate::miette_diagnostic::{CayResult, ErrorCodes, SourceLocation, codegen_error_at};
 use crate::types::Type;
 
 /// ROADMAP 5.3.x 智能指针种类，用于 `__dtor` 注入分发。
@@ -2697,10 +2696,13 @@ impl IRGenerator {
         }
         // 布局查找失败必须硬报错：若静默按偏移 0 生成代码，
         // 会产生读写 this+0 的错误机器码
-        Err(crate::miette_diagnostic::codegen_error(
+        Err(codegen_error_at(
             ErrorCodes::CODEGEN_SYMBOL_NOT_FOUND,
-            0,
-            0,
+            SourceLocation::new(
+                Some(self.source_file.clone()),
+                self.source_line.max(1),
+                self.source_column.max(1),
+            ),
             format!(
                 "找不到类 '{}' 中字段 '{}' 的布局信息，无法生成字段访问代码",
                 class_name, field_name
