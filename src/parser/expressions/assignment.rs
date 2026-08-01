@@ -32,7 +32,18 @@ pub fn parse_assignment(parser: &mut Parser) -> CayResult<Expr> {
 }
 
 /// 解析三元运算符表达式: condition ? true_expr : false_expr
+///
+/// 所有表达式递归循环（括号嵌套、调用参数、数组元素、赋值/三元右递归等）
+/// 都会经过本层，因此在这里做递归深度计数，防止病态嵌套输入导致栈溢出。
 fn parse_ternary(parser: &mut Parser) -> CayResult<Expr> {
+    parser.enter_expr_recursion()?;
+    let result = parse_ternary_inner(parser);
+    parser.leave_expr_recursion();
+    result
+}
+
+/// 解析三元运算符表达式（内部实现）
+fn parse_ternary_inner(parser: &mut Parser) -> CayResult<Expr> {
     let loc = parser.current_loc();
     let condition = parse_or(parser)?;
 

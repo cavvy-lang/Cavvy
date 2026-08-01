@@ -9,7 +9,18 @@ use crate::ast::*;
 use crate::miette_diagnostic::CayResult;
 
 /// 解析一元表达式（包括类型转换）
+///
+/// 一元运算符链（`-----x`、`(int)(int)x` 等）在本层直接自递归，
+/// 因此这里同样做递归深度计数，防止病态嵌套输入导致栈溢出。
 pub fn parse_unary(parser: &mut Parser) -> CayResult<Expr> {
+    parser.enter_expr_recursion()?;
+    let result = parse_unary_inner(parser);
+    parser.leave_expr_recursion();
+    result
+}
+
+/// 解析一元表达式（内部实现）
+fn parse_unary_inner(parser: &mut Parser) -> CayResult<Expr> {
     let loc = parser.current_loc();
 
     if parser.match_token(&crate::lexer::Token::Minus) {

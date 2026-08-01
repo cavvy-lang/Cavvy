@@ -1759,6 +1759,12 @@ impl TypeRegistry {
 
     /// 检查两个类型是否兼容（考虑命名空间前缀）
     /// 例如 Object("JsonValue") 和 Object("json::JsonValue") 被认为是兼容的
+    ///
+    /// # 参数顺序
+    /// `types_compatible_with_namespace(param_type, arg_type)`：形参（目标）类型在前、
+    /// 实参（来源）类型在后。与统一规则源 `types_compatible(from, to)` 的顺序相反。
+    /// 本函数只做结构/命名空间层面的判定，数值提升与 FFI 互通规则在
+    /// `types_compatible` 中，需要完整规则时请走 `types_compatible`。
     pub fn types_compatible_with_namespace(&self, param_type: &Type, arg_type: &Type) -> bool {
         if param_type == arg_type {
             return true;
@@ -1811,6 +1817,374 @@ impl TypeRegistry {
                         .all(|(p, a)| self.types_compatible_with_namespace(p, a))
             }
             _ => false,
+        }
+    }
+
+    /// 检查类型兼容性（全编译器唯一的规则源）
+    ///
+    /// 验证源类型是否可以赋值给目标类型。
+    /// 对于引用类型（Object），检查继承关系：子类可以赋值给父类。
+    ///
+    /// # 参数顺序
+    /// `types_compatible(from, to)`：源类型在前、目标类型在后，
+    /// 语义为「from 是否可以赋值/隐式转换为 to」。
+    /// 注意与 `types_compatible_with_namespace(param, arg)` 的
+    /// （形参, 实参）顺序相反，调用处换算为 (to, from)。
+    ///
+    /// 其它入口（SemanticAnalyzer::types_compatible、is_valid_cast、
+    /// types_match_with_namespace）均为本函数的薄封装，不再各自维护规则表。
+    pub fn types_compatible(&self, from: &Type, to: &Type) -> bool {
+        if from == to {
+            return true;
+        }
+
+        // 泛型参数类型可以匹配任何类型
+        if matches!(to, Type::GenericParam(_)) {
+            return true;
+        }
+
+        // null 字面量（内部标记类型）可以赋值给任何引用类型（包括 String 和指针），
+        // 但不能赋值给值类型（int/bool/struct 等）。
+        // 注意：真正的 Object 实例不再享受此待遇，Object 实例赋给 String/无关类会报错。
+        if from.is_null_literal() {
+            return to.is_reference_type() || matches!(to, Type::Pointer(_));
+        }
+
+        if self.types_compatible_with_namespace(to, from) {
+            return true;
+        }
+
+        // 基本类型之间的兼容
+        match (from, to) {
+            (Type::Int32, Type::Int64) => true,
+            (Type::Int32, Type::Float32) => true,
+            (Type::Int32, Type::Float64) => true,
+            (Type::Int64, Type::Float64) => true,
+            (Type::Float32, Type::Float64) => true,
+            (Type::Float64, Type::Float32) => true, // 允许double到float转换（可能有精度损失）
+            // 泛型类型兼容性：Type::Generic 和 Type::Object 之间的兼容
+            (Type::Generic(from_name, _), Type::Object(to_name)) => {
+                // 解析泛型类名: "Optional<T>" -> "Optional"
+                let from_base = if let Some(pos) = from_name.find('<') {
+                    &from_name[..pos]
+                } else {
+                    from_name.as_str()
+                };
+                let to_base = if let Some(pos) = to_name.find('<') {
+                    &to_name[..pos]
+                } else {
+                    to_name.as_str()
+                };
+                // 如果基础类名相同，认为是兼容的（泛型类型擦除）
+                if from_base == to_base {
+                    return true;
+                }
+                // 否则检查继承关系：from_name 是否是 to_name 的子类
+                self.is_subtype_of(from_name, to_name)
+            }
+            (Type::Object(from_name), Type::Generic(to_name, _)) => {
+                // Object 与 Generic 混合时，提取基础名后检查子类型关系。
+                // 例如 Object("ArrayListIterator<T>") 可赋值给 Generic("Iterator", [T])。
+                let from_base = if let Some(pos) = from_name.find('<') {
+                    &from_name[..pos]
+                } else {
+                    from_name.as_str()
+                };
+                let to_base = if let Some(pos) = to_name.find('<') {
+                    &to_name[..pos]
+                } else {
+                    to_name.as_str()
+                };
+                if from_base == to_base {
+                    return true;
+                }
+                self.is_subtype_of(from_base, to_base)
+            }
+            (Type::Generic(from_name, _), Type::Generic(to_name, _)) => {
+                // 两个泛型类型：检查基础类名是否相同
+                if from_name == to_name {
+                    return true;
+                }
+                self.is_subtype_of(from_name, to_name)
+            }
+            (Type::Object(from_name), Type::Object(to_name)) => {
+                // 解析泛型类名: "Optional<T>" -> "Optional"
+                let from_base = if let Some(pos) = from_name.find('<') {
+                    &from_name[..pos]
+                } else {
+                    from_name.as_str()
+                };
+                let to_base = if let Some(pos) = to_name.find('<') {
+                    &to_name[..pos]
+                } else {
+                    to_name.as_str()
+                };
+                // 如果基础类名相同，认为是兼容的（泛型类型擦除）
+                if from_base == to_base {
+                    return true;
+                }
+                // 检查两个类名是否指向同一个类（处理命名空间前缀）
+                // 例如 "JsonValue" 和 "json::JsonValue"
+                if self.is_same_class(from_base, to_base) {
+                    return true;
+                }
+                // 否则检查继承关系：from_name 是否是 to_name 的子类
+                self.is_subtype_of(from_name, to_name)
+            }
+            // char 可以赋值给 int (ASCII 码值)
+            (Type::Char, Type::Int32) => true,
+            (Type::Char, Type::Int64) => true,
+            // 数组类型：检查元素类型兼容性
+            (Type::Array(from_elem), Type::Array(to_elem)) => {
+                self.types_compatible(from_elem, to_elem)
+            }
+            // FFI 类型与基本类型之间的兼容
+            // c_int <-> int
+            (Type::CInt, Type::Int32) | (Type::Int32, Type::CInt) => true,
+            // c_uint <-> int
+            (Type::CUInt, Type::Int32) | (Type::Int32, Type::CUInt) => true,
+            // c_long <-> long 和 int
+            (Type::CLong, Type::Int64) | (Type::Int64, Type::CLong) => true,
+            (Type::CLong, Type::Int32) | (Type::Int32, Type::CLong) => true,
+            // c_ulong <-> long/int/c_long
+            (Type::CULong, Type::Int64) | (Type::Int64, Type::CULong) => true,
+            (Type::CULong, Type::Int32) | (Type::Int32, Type::CULong) => true,
+            (Type::CULong, Type::CLong) | (Type::CLong, Type::CULong) => true,
+            // c_short <-> int
+            (Type::CShort, Type::Int32) | (Type::Int32, Type::CShort) => true,
+            // c_char <-> int 或 char
+            (Type::CChar, Type::Int32) | (Type::Int32, Type::CChar) => true,
+            (Type::CChar, Type::Char) | (Type::Char, Type::CChar) => true,
+            // c_float <-> float
+            (Type::CFloat, Type::Float32) | (Type::Float32, Type::CFloat) => true,
+            // c_double <-> double
+            (Type::CDouble, Type::Float64) | (Type::Float64, Type::CDouble) => true,
+            // size_t/ssize_t <-> long 和 int
+            (Type::SizeT, Type::Int64) | (Type::Int64, Type::SizeT) => true,
+            (Type::SizeT, Type::Int32) | (Type::Int32, Type::SizeT) => true,
+            (Type::SSizeT, Type::Int64) | (Type::Int64, Type::SSizeT) => true,
+            (Type::SSizeT, Type::Int32) | (Type::Int32, Type::SSizeT) => true,
+            // uintptr_t/intptr_t <-> long 和 int
+            (Type::UIntPtr, Type::Int64) | (Type::Int64, Type::UIntPtr) => true,
+            (Type::UIntPtr, Type::Int32) | (Type::Int32, Type::UIntPtr) => true,
+            (Type::IntPtr, Type::Int64) | (Type::Int64, Type::IntPtr) => true,
+            (Type::IntPtr, Type::Int32) | (Type::Int32, Type::IntPtr) => true,
+            // ptr (void*) <-> uintptr_t/intptr_t
+            (Type::Pointer(_), Type::UIntPtr) | (Type::UIntPtr, Type::Pointer(_)) => true,
+            (Type::Pointer(_), Type::IntPtr) | (Type::IntPtr, Type::Pointer(_)) => true,
+            // c_bool <-> bool 和 int
+            (Type::CBool, Type::Bool) | (Type::Bool, Type::CBool) => true,
+            (Type::CBool, Type::Int32) | (Type::Int32, Type::CBool) => true,
+            // String -> c_string (c_char*) 自动转换
+            (Type::String, Type::Pointer(to_inner)) => {
+                if matches!(to_inner.as_ref(), Type::CChar) {
+                    return true;
+                }
+                false
+            }
+            // 指针类型与 long/int 之间的兼容（用于 FFI）
+            (Type::Pointer(_), Type::Int64) | (Type::Int64, Type::Pointer(_)) => true,
+            (Type::Pointer(_), Type::Int32) | (Type::Int32, Type::Pointer(_)) => true,
+            // FFI 整数类型 <-> 指针 (用于 c_long/c_ulong 等作为指针值的场景)
+            (Type::Pointer(_), Type::CLong) | (Type::CLong, Type::Pointer(_)) => true,
+            (Type::Pointer(_), Type::CULong) | (Type::CULong, Type::Pointer(_)) => true,
+            (Type::Pointer(_), Type::CInt) | (Type::CInt, Type::Pointer(_)) => true,
+            (Type::Pointer(_), Type::CUInt) | (Type::CUInt, Type::Pointer(_)) => true,
+            // ptr (void*) 可以转换为任何其他指针类型（C 语言规则）
+            (Type::Pointer(from_inner), Type::Pointer(_)) => {
+                if matches!(from_inner.as_ref(), Type::CVoid) {
+                    return true;
+                }
+                false
+            }
+            // 数组类型可以退化为指针类型（数组作为参数传递时退化为指针）
+            (Type::Array(_), Type::Pointer(_)) => true,
+            // FFI 类型之间的兼容
+            (Type::CInt, Type::CLong) | (Type::CLong, Type::CInt) => true,
+            (Type::CInt, Type::CShort) | (Type::CShort, Type::CInt) => true,
+            (Type::CInt, Type::CChar) | (Type::CChar, Type::CInt) => true,
+            (Type::CFloat, Type::CDouble) | (Type::CDouble, Type::CFloat) => true,
+            (Type::SizeT, Type::UIntPtr) | (Type::UIntPtr, Type::SizeT) => true,
+            (Type::SSizeT, Type::IntPtr) | (Type::IntPtr, Type::SSizeT) => true,
+            (Type::UIntPtr, Type::IntPtr) | (Type::IntPtr, Type::UIntPtr) => true,
+            // 函数类型兼容性：函数指针可以赋值给兼容的函数指针类型
+            // 顶层函数可以赋值给函数指针类型（当参数和返回类型匹配时）
+            (Type::Function(from_fn), Type::Function(to_fn)) => {
+                // 检查返回类型是否兼容
+                let ret_compatible =
+                    self.types_compatible(&from_fn.return_type, &to_fn.return_type);
+                // 检查参数数量是否相同
+                let params_count_match = from_fn.params.len() == to_fn.params.len();
+                // 检查每个参数类型是否兼容（允许协变/逆变）
+                let params_compatible =
+                    if params_count_match {
+                        from_fn.params.iter().zip(to_fn.params.iter()).all(
+                            |(from_param, to_param)| {
+                                self.types_compatible(from_param, to_param)
+                                    || self.types_compatible(to_param, from_param)
+                            },
+                        )
+                    } else {
+                        false
+                    };
+                ret_compatible && params_count_match && params_compatible
+            }
+            _ => {
+                // 兜底：检查接口子类型关系。例如实现类 ArrayListIterator<T>
+                // 可以赋值给接口类型 Iterator<T>。
+                if let (Some(from_name), Some(to_name)) = (type_base_name(from), type_base_name(to))
+                {
+                    if self.interface_exists(&to_name) && self.is_subtype_of(&from_name, &to_name)
+                    {
+                        return true;
+                    }
+                }
+                false
+            }
+        }
+    }
+
+    /// 检查 subtype 是否是 supertype 的子类型
+    ///
+    /// 通过递归遍历继承层次结构来确定类型兼容性。
+    /// 子类可以赋值给父类（里氏替换原则）。
+    ///
+    /// # Arguments
+    /// * `subtype` - 待检查的子类型名称
+    /// * `supertype` - 目标父类型名称
+    ///
+    /// # Returns
+    /// 如果 subtype 是 supertype 的子类型则返回 true
+    ///
+    /// # Algorithm
+    /// 时间复杂度: O(h)，其中 h 是继承链的高度
+    /// 空间复杂度: O(1)，迭代实现避免递归栈溢出
+    fn is_subtype_of(&self, subtype: &str, supertype: &str) -> bool {
+        // 相同类型必然是子类型
+        if subtype == supertype {
+            return true;
+        }
+
+        // 特殊处理：所有类都是 Object 的子类型
+        if supertype == "Object" {
+            // 检查 subtype 是否是一个有效的类名（不是内置类型别名）
+            return self.class_exists(subtype) || subtype == "String" || subtype == "Function";
+        }
+
+        // 检查 subtype 是否实现了 supertype 接口
+        if self.interface_exists(supertype) {
+            if let Some(class_info) = self.get_class(subtype) {
+                if class_info
+                    .interfaces
+                    .iter()
+                    .any(|i| interface_bare_name(i) == supertype)
+                {
+                    return true;
+                }
+            }
+        }
+
+        // 迭代遍历继承链
+        let mut current = subtype.to_string();
+        let mut visited = std::collections::HashSet::new();
+
+        loop {
+            // 防止循环继承导致的无限循环
+            if !visited.insert(current.clone()) {
+                return false; // 检测到循环继承
+            }
+
+            if let Some(class_info) = self.get_class(&current) {
+                // 检查当前类是否实现了目标接口
+                if self.interface_exists(supertype) {
+                    if class_info
+                        .interfaces
+                        .iter()
+                        .any(|i| interface_bare_name(i) == supertype)
+                    {
+                        return true;
+                    }
+                }
+                match &class_info.parent {
+                    Some(parent) => {
+                        if parent == supertype {
+                            return true;
+                        }
+                        current = parent.clone();
+                    }
+                    None => return false, // 到达继承链顶端
+                }
+            } else {
+                // 如果不是类，检查内置类型关系
+                // String 是 Object 的子类型，但其他内置类型不是
+                return (subtype == "String" || subtype == "Function") && supertype == "Object";
+            }
+        }
+    }
+
+    /// 检查两个类名是否指向同一个类
+    ///
+    /// 处理命名空间前缀的情况，例如 "JsonValue" 和 "json::JsonValue"
+    /// 如果两个类名都能解析到同一个类定义，则返回 true
+    ///
+    /// # Arguments
+    /// * `name1` - 第一个类名（可能带命名空间前缀）
+    /// * `name2` - 第二个类名（可能带命名空间前缀）
+    ///
+    /// # Returns
+    /// 如果两个类名指向同一个类则返回 true
+    fn is_same_class(&self, name1: &str, name2: &str) -> bool {
+        // 如果完全相同，直接返回 true
+        if name1 == name2 {
+            return true;
+        }
+
+        // 提取简单类名（去掉命名空间前缀）
+        let simple1 = name1
+            .rfind("::")
+            .map(|pos| &name1[pos + 2..])
+            .unwrap_or(name1);
+        let simple2 = name2
+            .rfind("::")
+            .map(|pos| &name2[pos + 2..])
+            .unwrap_or(name2);
+
+        // 如果简单类名不同，直接返回 false
+        if simple1 != simple2 {
+            return false;
+        }
+
+        // 尝试直接查找两个类名（不依赖 current_namespace）
+        let class1 = self.classes.get(name1);
+        let class2 = self.classes.get(name2);
+
+        match (class1, class2) {
+            (Some(c1), Some(c2)) => {
+                // 两个类都找到了，检查它们是否是同一个类（通过名称比较）
+                c1.name == c2.name
+            }
+            (Some(c1), None) => {
+                // 只有 name1 找到了，检查 name2 是否是 name1 的简单名形式
+                // 例如 name1="json::JsonValue", name2="JsonValue"
+                c1.name
+                    .rfind("::")
+                    .map(|pos| &c1.name[pos + 2..])
+                    .unwrap_or(&c1.name)
+                    == simple2
+            }
+            (None, Some(c2)) => {
+                // 只有 name2 找到了，检查 name1 是否是 name2 的简单名形式
+                c2.name
+                    .rfind("::")
+                    .map(|pos| &c2.name[pos + 2..])
+                    .unwrap_or(&c2.name)
+                    == simple1
+            }
+            (None, None) => {
+                // 两个都没直接找到，说明这两个类名可能都不存在
+                // 这种情况下不能假设它们是同一个类
+                false
+            }
         }
     }
 
@@ -1975,42 +2349,22 @@ impl TypeRegistry {
         }
     }
 
+    /// 方法重载匹配用的兼容判定（薄入口，非独立规则表）
+    ///
+    /// # 参数顺序
+    /// `types_match_with_namespace(param_type, arg_type)`：形参类型在前、实参类型在后。
+    /// 委托统一规则源 `types_compatible(from, to)` 时换算为
+    /// (from = arg_type, to = param_type)，请勿传反。
     fn types_match_with_namespace(&self, param_type: &Type, arg_type: &Type) -> bool {
-        if self.types_match_exact_with_namespace(param_type, arg_type) {
+        // 统一规则源：实参类型可以赋值给形参类型即可匹配
+        if self.types_compatible(arg_type, param_type) {
             return true;
         }
 
+        // 方法匹配特有的附加规则（不属于通用赋值兼容）：
         match (param_type, arg_type) {
-            (Type::Int64, Type::Int32) => true,
-            (Type::Float32, Type::Int32) => true,
-            (Type::Float64, Type::Int32) => true,
-            (Type::Float64, Type::Int64) => true,
-            (Type::Float64, Type::Float32) => true,
-            (Type::Float32, Type::Float64) => true,
-            (Type::CInt, Type::Int32) | (Type::Int32, Type::CInt) => true,
-            (Type::CUInt, Type::Int32) | (Type::Int32, Type::CUInt) => true,
-            (Type::CLong, Type::Int64) | (Type::Int64, Type::CLong) => true,
-            (Type::CShort, Type::Int32) | (Type::Int32, Type::CShort) => true,
-            (Type::CChar, Type::Int32) | (Type::Int32, Type::CChar) => true,
-            (Type::CChar, Type::Char) | (Type::Char, Type::CChar) => true,
-            (Type::CFloat, Type::Float32) | (Type::Float32, Type::CFloat) => true,
-            (Type::CDouble, Type::Float64) | (Type::Float64, Type::CDouble) => true,
-            (Type::CBool, Type::Bool) | (Type::Bool, Type::CBool) => true,
-            (Type::SizeT, Type::Int64) | (Type::Int64, Type::SizeT) => true,
-            (Type::SizeT, Type::Int32) | (Type::Int32, Type::SizeT) => true,
-            (Type::SSizeT, Type::Int64) | (Type::Int64, Type::SSizeT) => true,
-            (Type::SSizeT, Type::Int32) | (Type::Int32, Type::SSizeT) => true,
+            // Object 实例（多为 null 占位类型）可以传给任意指针形参
             (Type::Pointer(_), Type::Object(obj_name)) if obj_name == "Object" => true,
-            (Type::Pointer(_), Type::Array(_)) => true,
-            (Type::Function(expected), Type::Function(actual)) => {
-                expected.params.len() == actual.params.len()
-                    && self.types_match_with_namespace(&expected.return_type, &actual.return_type)
-                    && expected
-                        .params
-                        .iter()
-                        .zip(actual.params.iter())
-                        .all(|(e, a)| self.types_match_with_namespace(e, a))
-            }
             _ => false,
         }
     }
@@ -2193,5 +2547,24 @@ impl InterfaceInfo {
 
     pub fn add_method(&mut self, method: MethodInfo) {
         self.methods.insert(method.name.clone(), method);
+    }
+}
+
+
+/// 从接口类型中提取基础接口名（如 Iterator<T> -> Iterator）。
+fn interface_bare_name(interface_type: &Type) -> &str {
+    match interface_type {
+        Type::Object(name) | Type::Generic(name, _) => name.split('<').next().unwrap_or(name),
+        _ => "",
+    }
+}
+
+/// 从引用类型中提取基础类型名（如 Iterator<T> -> Iterator）。
+fn type_base_name(ty: &Type) -> Option<String> {
+    match ty {
+        Type::Object(name) | Type::Generic(name, _) => {
+            name.split('<').next().map(|s| s.to_string())
+        }
+        _ => None,
     }
 }

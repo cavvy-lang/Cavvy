@@ -14,6 +14,14 @@ pub struct SemanticErrorInfo {
     pub file: Option<String>, // 错误所在的文件路径
 }
 
+/// 表达式类型推断的递归深度上限
+///
+/// 病态嵌套表达式会让 `infer_expr_type_internal` 递归过深导致栈溢出。
+/// 超过该深度时返回语义错误而不是继续递归。
+/// 解析器自身的表达式深度上限更严格，正常能通过解析的代码不会触到该上限；
+/// 这里的保护是纵深防御（例如以编程方式构造的深层 AST）。
+pub(crate) const MAX_INFER_EXPR_DEPTH: usize = 256;
+
 /// 语义分析器
 pub struct SemanticAnalyzer {
     pub(super) program: Option<std::rc::Rc<Program>>, // 保存 AST 以供类型推断使用
@@ -25,6 +33,8 @@ pub struct SemanticAnalyzer {
     pub(super) current_method_is_constructor: bool, // 当前是否是构造函数
     pub(super) errors: Vec<SemanticErrorInfo>,
     pub(super) current_file: Option<String>, // 当前正在分析的文件路径
+    /// 表达式类型推断的当前递归深度（防止病态嵌套表达式导致栈溢出）
+    pub(super) infer_expr_depth: usize,
     /// 源映射表：输出行号 -> (原始文件, 原始行号)
     /// 用于根据AST中的原始行号反查对应的源文件
     pub(super) source_map: Option<std::collections::HashMap<usize, (String, usize)>>,
@@ -54,6 +64,7 @@ impl SemanticAnalyzer {
             current_method_is_constructor: false,
             errors: Vec::new(),
             current_file: None,
+            infer_expr_depth: 0,
             source_map: None,
             features,
             current_class_type_params: Vec::new(),

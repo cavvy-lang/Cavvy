@@ -27,7 +27,33 @@ impl SemanticAnalyzer {
     }
 
     /// 推断表达式类型（内部实现）
+    ///
+    /// 表达式树的所有递归推断都经过本入口，因此在这里做递归深度计数：
+    /// 病态嵌套表达式（如上万层括号）超过上限时返回语义错误而不是栈溢出。
+    /// 正常路径只有一次 usize 自增与比较，开销可忽略。
     pub(crate) fn infer_expr_type_internal(
+        &mut self,
+        expr: &Expr,
+    ) -> crate::miette_diagnostic::CayResult<Type> {
+        if self.infer_expr_depth >= super::super::analyzer::MAX_INFER_EXPR_DEPTH {
+            let loc = self.get_expr_source_location(expr);
+            return Err(semantic_error_at_loc(
+                &loc,
+                format!(
+                    "expression nesting too deep (exceeded {} levels); \
+                     split the expression into smaller statements",
+                    super::super::analyzer::MAX_INFER_EXPR_DEPTH
+                ),
+            ));
+        }
+        self.infer_expr_depth += 1;
+        let result = self.infer_expr_type_inner(expr);
+        self.infer_expr_depth -= 1;
+        result
+    }
+
+    /// 推断表达式类型（内部实现的主体）
+    pub(crate) fn infer_expr_type_inner(
         &mut self,
         expr: &Expr,
     ) -> crate::miette_diagnostic::CayResult<Type> {

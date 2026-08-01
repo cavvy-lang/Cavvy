@@ -13,6 +13,14 @@ use crate::ast::Program;
 use crate::lexer::TokenWithLocation;
 use crate::miette_diagnostic::CayResult;
 
+/// 表达式递归深度上限
+///
+/// 病态嵌套输入（如上万层括号 `((((...))))` 或超长一元运算符链）会让递归下降
+/// 解析器栈溢出直接崩溃。超过该深度时返回解析错误而不是继续递归。
+/// 注意：每层表达式嵌套会在赋值/三元层和一元层各计数一次，
+/// 因此实际上限约为 128 层括号嵌套，正常代码远低于此。
+const MAX_EXPR_DEPTH: usize = 256;
+
 /// 语法分析器
 pub struct Parser {
     /// 令牌流
@@ -23,6 +31,8 @@ pub struct Parser {
     source: Option<String>,
     /// 类型别名映射: 别名名称 -> 目标类型
     type_aliases: std::collections::HashMap<String, crate::types::Type>,
+    /// 当前表达式解析递归深度（防止病态嵌套输入导致栈溢出）
+    expr_depth: usize,
 }
 
 impl Parser {
@@ -33,6 +43,7 @@ impl Parser {
             pos: 0,
             source: None,
             type_aliases: std::collections::HashMap::new(),
+            expr_depth: 0,
         }
     }
 
@@ -43,12 +54,34 @@ impl Parser {
             pos: 0,
             source: Some(source),
             type_aliases: std::collections::HashMap::new(),
+            expr_depth: 0,
         }
     }
 
     /// 获取源代码
     pub fn source(&self) -> Option<&str> {
         self.source.as_deref()
+    }
+
+    /// 进入一层表达式递归解析
+    ///
+    /// 在表达式递归下降的关键入口（赋值/三元层、一元层）调用，
+    /// 超过深度上限时返回带位置和建议的解析错误，避免栈溢出。
+    /// 正常路径只有一次 usize 自增与比较，开销可忽略。
+    fn enter_expr_recursion(&mut self) -> CayResult<()> {
+        if self.expr_depth >= MAX_EXPR_DEPTH {
+            return Err(self.error(&format!(
+                "表达式嵌套过深（超过 {} 层）\n提示: 请将表达式拆分为多条语句，或减少括号、一元运算符的嵌套层数",
+                MAX_EXPR_DEPTH
+            )));
+        }
+        self.expr_depth += 1;
+        Ok(())
+    }
+
+    /// 离开一层表达式递归解析（与 enter_expr_recursion 配对调用）
+    fn leave_expr_recursion(&mut self) {
+        self.expr_depth -= 1;
     }
 
     /// 解析整个程序
@@ -1284,3 +1317,4 @@ pub fn parse_with_source(tokens: Vec<TokenWithLocation>, source: String) -> CayR
     let mut parser = Parser::with_source(tokens, source);
     parser.parse()
 }
+

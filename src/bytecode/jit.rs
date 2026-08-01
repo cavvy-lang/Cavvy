@@ -163,6 +163,45 @@ impl<'a> InstructionContext<'a> {
     fn set_local(&mut self, index: u16, name: String) {
         self.local_vars.insert(index, name);
     }
+
+    /// 生成二元运算 IR 片段：弹出两个操作数，生成 `op ty left, right` 并压回结果。
+    /// 操作数不足时与原实现一致：不产出任何 IR。
+    fn emit_binary_op(&mut self, llvm_op: &str, ty: &str) -> String {
+        let mut ir = String::new();
+        if let (Some(right), Some(left)) = (self.pop(), self.pop()) {
+            let temp = self.next_temp();
+            ir.push_str(&format!("  {} = {} {} {}, {}\n", temp, llvm_op, ty, left, right));
+            self.push(temp);
+        }
+        ir
+    }
+
+    /// 生成一元取负 IR 片段：弹出栈顶值，生成 `sub ty 0, val` 并压回结果。
+    /// 操作数不足时与原实现一致：不产出任何 IR。
+    fn emit_neg(&mut self, ty: &str) -> String {
+        let mut ir = String::new();
+        if let Some(val) = self.pop() {
+            let temp = self.next_temp();
+            ir.push_str(&format!("  {} = sub {} 0, {}\n", temp, ty, val));
+            self.push(temp);
+        }
+        ir
+    }
+
+    /// 生成类型转换 IR 片段：弹出栈顶值，生成 `op from_ty val to to_ty` 并压回结果。
+    /// 操作数不足时与原实现一致：不产出任何 IR。
+    fn emit_conversion(&mut self, llvm_op: &str, from_ty: &str, to_ty: &str) -> String {
+        let mut ir = String::new();
+        if let Some(val) = self.pop() {
+            let temp = self.next_temp();
+            ir.push_str(&format!(
+                "  {} = {} {} {} to {}\n",
+                temp, llvm_op, from_ty, val, to_ty
+            ));
+            self.push(temp);
+        }
+        ir
+    }
 }
 
 impl JitCompiler {
@@ -819,206 +858,59 @@ declare void @cavvy_array_set(i8*, i32, i8*)
             }
 
             // ==================== 算术运算指令 ====================
-            Opcode::Iadd => {
-                if let (Some(right), Some(left)) = (ctx.pop(), ctx.pop()) {
-                    let temp = ctx.next_temp();
-                    ir.push_str(&format!("  {} = add i32 {}, {}\n", temp, left, right));
-                    ctx.push(temp);
-                }
-            }
+            // 同构的二元运算统一走 emit_binary_op，每个 opcode 只保留
+            // 差异参数（LLVM 指令名、操作数类型）
+            Opcode::Iadd => ir.push_str(&ctx.emit_binary_op("add", "i32")),
 
-            Opcode::Ladd => {
-                if let (Some(right), Some(left)) = (ctx.pop(), ctx.pop()) {
-                    let temp = ctx.next_temp();
-                    ir.push_str(&format!("  {} = add i64 {}, {}\n", temp, left, right));
-                    ctx.push(temp);
-                }
-            }
+            Opcode::Ladd => ir.push_str(&ctx.emit_binary_op("add", "i64")),
 
-            Opcode::Fadd => {
-                if let (Some(right), Some(left)) = (ctx.pop(), ctx.pop()) {
-                    let temp = ctx.next_temp();
-                    ir.push_str(&format!("  {} = fadd float {}, {}\n", temp, left, right));
-                    ctx.push(temp);
-                }
-            }
+            Opcode::Fadd => ir.push_str(&ctx.emit_binary_op("fadd", "float")),
 
-            Opcode::Dadd => {
-                if let (Some(right), Some(left)) = (ctx.pop(), ctx.pop()) {
-                    let temp = ctx.next_temp();
-                    ir.push_str(&format!("  {} = fadd double {}, {}\n", temp, left, right));
-                    ctx.push(temp);
-                }
-            }
+            Opcode::Dadd => ir.push_str(&ctx.emit_binary_op("fadd", "double")),
 
-            Opcode::Isub => {
-                if let (Some(right), Some(left)) = (ctx.pop(), ctx.pop()) {
-                    let temp = ctx.next_temp();
-                    ir.push_str(&format!("  {} = sub i32 {}, {}\n", temp, left, right));
-                    ctx.push(temp);
-                }
-            }
+            Opcode::Isub => ir.push_str(&ctx.emit_binary_op("sub", "i32")),
 
-            Opcode::Lsub => {
-                if let (Some(right), Some(left)) = (ctx.pop(), ctx.pop()) {
-                    let temp = ctx.next_temp();
-                    ir.push_str(&format!("  {} = sub i64 {}, {}\n", temp, left, right));
-                    ctx.push(temp);
-                }
-            }
+            Opcode::Lsub => ir.push_str(&ctx.emit_binary_op("sub", "i64")),
 
-            Opcode::Fsub => {
-                if let (Some(right), Some(left)) = (ctx.pop(), ctx.pop()) {
-                    let temp = ctx.next_temp();
-                    ir.push_str(&format!("  {} = fsub float {}, {}\n", temp, left, right));
-                    ctx.push(temp);
-                }
-            }
+            Opcode::Fsub => ir.push_str(&ctx.emit_binary_op("fsub", "float")),
 
-            Opcode::Dsub => {
-                if let (Some(right), Some(left)) = (ctx.pop(), ctx.pop()) {
-                    let temp = ctx.next_temp();
-                    ir.push_str(&format!("  {} = fsub double {}, {}\n", temp, left, right));
-                    ctx.push(temp);
-                }
-            }
+            Opcode::Dsub => ir.push_str(&ctx.emit_binary_op("fsub", "double")),
 
-            Opcode::Imul => {
-                if let (Some(right), Some(left)) = (ctx.pop(), ctx.pop()) {
-                    let temp = ctx.next_temp();
-                    ir.push_str(&format!("  {} = mul i32 {}, {}\n", temp, left, right));
-                    ctx.push(temp);
-                }
-            }
+            Opcode::Imul => ir.push_str(&ctx.emit_binary_op("mul", "i32")),
 
-            Opcode::Lmul => {
-                if let (Some(right), Some(left)) = (ctx.pop(), ctx.pop()) {
-                    let temp = ctx.next_temp();
-                    ir.push_str(&format!("  {} = mul i64 {}, {}\n", temp, left, right));
-                    ctx.push(temp);
-                }
-            }
+            Opcode::Lmul => ir.push_str(&ctx.emit_binary_op("mul", "i64")),
 
-            Opcode::Fmul => {
-                if let (Some(right), Some(left)) = (ctx.pop(), ctx.pop()) {
-                    let temp = ctx.next_temp();
-                    ir.push_str(&format!("  {} = fmul float {}, {}\n", temp, left, right));
-                    ctx.push(temp);
-                }
-            }
+            Opcode::Fmul => ir.push_str(&ctx.emit_binary_op("fmul", "float")),
 
-            Opcode::Dmul => {
-                if let (Some(right), Some(left)) = (ctx.pop(), ctx.pop()) {
-                    let temp = ctx.next_temp();
-                    ir.push_str(&format!("  {} = fmul double {}, {}\n", temp, left, right));
-                    ctx.push(temp);
-                }
-            }
+            Opcode::Dmul => ir.push_str(&ctx.emit_binary_op("fmul", "double")),
 
-            Opcode::Idiv => {
-                if let (Some(right), Some(left)) = (ctx.pop(), ctx.pop()) {
-                    let temp = ctx.next_temp();
-                    ir.push_str(&format!("  {} = sdiv i32 {}, {}\n", temp, left, right));
-                    ctx.push(temp);
-                }
-            }
+            Opcode::Idiv => ir.push_str(&ctx.emit_binary_op("sdiv", "i32")),
 
-            Opcode::Ldiv => {
-                if let (Some(right), Some(left)) = (ctx.pop(), ctx.pop()) {
-                    let temp = ctx.next_temp();
-                    ir.push_str(&format!("  {} = sdiv i64 {}, {}\n", temp, left, right));
-                    ctx.push(temp);
-                }
-            }
+            Opcode::Ldiv => ir.push_str(&ctx.emit_binary_op("sdiv", "i64")),
 
-            Opcode::Fdiv => {
-                if let (Some(right), Some(left)) = (ctx.pop(), ctx.pop()) {
-                    let temp = ctx.next_temp();
-                    ir.push_str(&format!("  {} = fdiv float {}, {}\n", temp, left, right));
-                    ctx.push(temp);
-                }
-            }
+            Opcode::Fdiv => ir.push_str(&ctx.emit_binary_op("fdiv", "float")),
 
-            Opcode::Ddiv => {
-                if let (Some(right), Some(left)) = (ctx.pop(), ctx.pop()) {
-                    let temp = ctx.next_temp();
-                    ir.push_str(&format!("  {} = fdiv double {}, {}\n", temp, left, right));
-                    ctx.push(temp);
-                }
-            }
+            Opcode::Ddiv => ir.push_str(&ctx.emit_binary_op("fdiv", "double")),
 
-            Opcode::Irem => {
-                if let (Some(right), Some(left)) = (ctx.pop(), ctx.pop()) {
-                    let temp = ctx.next_temp();
-                    ir.push_str(&format!("  {} = srem i32 {}, {}\n", temp, left, right));
-                    ctx.push(temp);
-                }
-            }
+            Opcode::Irem => ir.push_str(&ctx.emit_binary_op("srem", "i32")),
 
-            Opcode::Lrem => {
-                if let (Some(right), Some(left)) = (ctx.pop(), ctx.pop()) {
-                    let temp = ctx.next_temp();
-                    ir.push_str(&format!("  {} = srem i64 {}, {}\n", temp, left, right));
-                    ctx.push(temp);
-                }
-            }
+            Opcode::Lrem => ir.push_str(&ctx.emit_binary_op("srem", "i64")),
 
-            Opcode::Ineg => {
-                if let Some(val) = ctx.pop() {
-                    let temp = ctx.next_temp();
-                    ir.push_str(&format!("  {} = sub i32 0, {}\n", temp, val));
-                    ctx.push(temp);
-                }
-            }
+            Opcode::Ineg => ir.push_str(&ctx.emit_neg("i32")),
 
-            Opcode::Lneg => {
-                if let Some(val) = ctx.pop() {
-                    let temp = ctx.next_temp();
-                    ir.push_str(&format!("  {} = sub i64 0, {}\n", temp, val));
-                    ctx.push(temp);
-                }
-            }
+            Opcode::Lneg => ir.push_str(&ctx.emit_neg("i64")),
 
             // ==================== 位运算指令 ====================
-            Opcode::Ishl => {
-                if let (Some(shift), Some(val)) = (ctx.pop(), ctx.pop()) {
-                    let temp = ctx.next_temp();
-                    ir.push_str(&format!("  {} = shl i32 {}, {}\n", temp, val, shift));
-                    ctx.push(temp);
-                }
-            }
+            // 与算术运算同构，同样走 emit_binary_op
+            Opcode::Ishl => ir.push_str(&ctx.emit_binary_op("shl", "i32")),
 
-            Opcode::Ishr => {
-                if let (Some(shift), Some(val)) = (ctx.pop(), ctx.pop()) {
-                    let temp = ctx.next_temp();
-                    ir.push_str(&format!("  {} = ashr i32 {}, {}\n", temp, val, shift));
-                    ctx.push(temp);
-                }
-            }
+            Opcode::Ishr => ir.push_str(&ctx.emit_binary_op("ashr", "i32")),
 
-            Opcode::Iand => {
-                if let (Some(right), Some(left)) = (ctx.pop(), ctx.pop()) {
-                    let temp = ctx.next_temp();
-                    ir.push_str(&format!("  {} = and i32 {}, {}\n", temp, left, right));
-                    ctx.push(temp);
-                }
-            }
+            Opcode::Iand => ir.push_str(&ctx.emit_binary_op("and", "i32")),
 
-            Opcode::Ior => {
-                if let (Some(right), Some(left)) = (ctx.pop(), ctx.pop()) {
-                    let temp = ctx.next_temp();
-                    ir.push_str(&format!("  {} = or i32 {}, {}\n", temp, left, right));
-                    ctx.push(temp);
-                }
-            }
+            Opcode::Ior => ir.push_str(&ctx.emit_binary_op("or", "i32")),
 
-            Opcode::Ixor => {
-                if let (Some(right), Some(left)) = (ctx.pop(), ctx.pop()) {
-                    let temp = ctx.next_temp();
-                    ir.push_str(&format!("  {} = xor i32 {}, {}\n", temp, left, right));
-                    ctx.push(temp);
-                }
-            }
+            Opcode::Ixor => ir.push_str(&ctx.emit_binary_op("xor", "i32")),
 
             // ==================== 比较指令 ====================
             Opcode::IfIcmpeq
@@ -1176,53 +1068,19 @@ declare void @cavvy_array_set(i8*, i32, i8*)
             }
 
             // ==================== 类型转换指令 ====================
-            Opcode::I2l => {
-                if let Some(val) = ctx.pop() {
-                    let temp = ctx.next_temp();
-                    ir.push_str(&format!("  {} = sext i32 {} to i64\n", temp, val));
-                    ctx.push(temp);
-                }
-            }
+            // 同构的类型转换统一走 emit_conversion，每个 opcode 只保留
+            // 差异参数（LLVM 指令名、源类型、目标类型）
+            Opcode::I2l => ir.push_str(&ctx.emit_conversion("sext", "i32", "i64")),
 
-            Opcode::I2f => {
-                if let Some(val) = ctx.pop() {
-                    let temp = ctx.next_temp();
-                    ir.push_str(&format!("  {} = sitofp i32 {} to float\n", temp, val));
-                    ctx.push(temp);
-                }
-            }
+            Opcode::I2f => ir.push_str(&ctx.emit_conversion("sitofp", "i32", "float")),
 
-            Opcode::I2d => {
-                if let Some(val) = ctx.pop() {
-                    let temp = ctx.next_temp();
-                    ir.push_str(&format!("  {} = sitofp i32 {} to double\n", temp, val));
-                    ctx.push(temp);
-                }
-            }
+            Opcode::I2d => ir.push_str(&ctx.emit_conversion("sitofp", "i32", "double")),
 
-            Opcode::L2i => {
-                if let Some(val) = ctx.pop() {
-                    let temp = ctx.next_temp();
-                    ir.push_str(&format!("  {} = trunc i64 {} to i32\n", temp, val));
-                    ctx.push(temp);
-                }
-            }
+            Opcode::L2i => ir.push_str(&ctx.emit_conversion("trunc", "i64", "i32")),
 
-            Opcode::F2i => {
-                if let Some(val) = ctx.pop() {
-                    let temp = ctx.next_temp();
-                    ir.push_str(&format!("  {} = fptosi float {} to i32\n", temp, val));
-                    ctx.push(temp);
-                }
-            }
+            Opcode::F2i => ir.push_str(&ctx.emit_conversion("fptosi", "float", "i32")),
 
-            Opcode::D2i => {
-                if let Some(val) = ctx.pop() {
-                    let temp = ctx.next_temp();
-                    ir.push_str(&format!("  {} = fptosi double {} to i32\n", temp, val));
-                    ctx.push(temp);
-                }
-            }
+            Opcode::D2i => ir.push_str(&ctx.emit_conversion("fptosi", "double", "i32")),
 
             // ==================== 数组操作指令 ====================
             Opcode::Arraylength => {

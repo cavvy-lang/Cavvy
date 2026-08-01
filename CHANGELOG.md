@@ -7,6 +7,25 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **健壮性**：parser 表达式解析与 semantic 表达式类型推断增加递归深度上限
+  （256 层，全语料实测最大深度仅 11），病态嵌套输入得到诊断错误而非栈溢出崩溃。
+- **类型系统**：三套类型兼容判定（`types_compatible`、`is_valid_cast`、
+  `types_match_with_namespace`）统一为单一规则源加三个薄入口，消除了 FFI 类型
+  覆盖不一致、void* 方向、数组元素提升等十余处规则矛盾；各入口文档明确参数
+  顺序约定（from/to 与 param/arg）。
+- **可维护性**：`generate_call_expression`（938 行/16 层嵌套）拆分为分发入口加
+  三个辅助模块；`infer_call_type`（696 行）按五阶段拆分为 13 个私有方法；
+  `jit.rs` 的 31 个同构 opcode 块表驱动化（生成 IR 逐字节一致，有 diff 证据）。
+  以上均为纯行为保持重构。
+- **字节码子系统降级为实验性**：字节码混淆器（混淆为假功能且控制流混淆会改变
+  程序语义）、`cay-run --obfuscate/--bytecode`（产出空程序）、JIT（生成非法
+  LLVM IR）现在全部明确报错而非静默产出错误程序；`cay-bcgen` 对 break/continue
+  生成真实跳转，未定义变量、不支持构造全部硬报错。
+- **核心原则确立**：编译器/工具宁可 noisy 报错，不可 silently wrong。
+  静默回退默认值、`let _ =` 吞错、`_ => {}` 丢弃构造均视为缺陷。
+
 ### Fixed
 
 - **构建**：`.verinfo` 为空或缺失 `[CAYC] version` 时 `build.rs` 回退到 `CARGO_PKG_VERSION`
@@ -44,15 +63,6 @@
   `cay-run` 被信号杀死时返回 128+signal；RCPL 修复 Ctrl-D 忙等死循环；
   工具链查找改为捆绑 LLVM 优先、PATH 兜底（hermetic）；删除永不编译的
   `src/main.rs`，`cay-pre` 接入 Cargo 构建。
-
-### Changed
-
-- **字节码子系统降级为实验性**：字节码混淆器（混淆为假功能且控制流混淆会改变
-  程序语义）、`cay-run --obfuscate/--bytecode`（产出空程序）、JIT（生成非法
-  LLVM IR）现在全部明确报错而非静默产出错误程序；`cay-bcgen` 对 break/continue
-  生成真实跳转，未定义变量、不支持构造全部硬报错。
-- **核心原则确立**：编译器/工具宁可 noisy 报错，不可 silently wrong。
-  静默回退默认值、`let _ =` 吞错、`_ => {}` 丢弃构造均视为缺陷。
 
 ## [6.1.0] - 2026-07-14
 

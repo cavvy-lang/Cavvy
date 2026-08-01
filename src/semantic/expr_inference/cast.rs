@@ -50,34 +50,40 @@ impl SemanticAnalyzer {
         }
     }
 
-    /// 检查类型转换是否合法
+    /// 检查类型转换是否合法（薄入口，非独立规则表）
     ///
     /// # Arguments
     /// * `from` - 源类型
     /// * `to` - 目标类型
+    ///
+    /// # 参数顺序
+    /// `is_valid_cast(from, to)`：源类型在前、目标类型在后，
+    /// 与统一规则源 `types_compatible(from, to)` 一致。
+    ///
+    /// 先复用统一兼容规则（赋值兼容的转换必然可以作为显式转换），
+    /// 再叠加仅显式转换允许的附加规则：缩窄数值转换、数值/char/bool 转 string、
+    /// String 与 c_char*/c_char 双向互转、向下转型（父类 -> 子类）、
+    /// 以及赋值兼容中未覆盖的 FFI 互转（如 c_int <-> long、c_float <-> double）。
     ///
     /// # Returns
     /// 如果转换合法返回 true
     fn is_valid_cast(&self, from: &Type, to: &Type) -> bool {
         use crate::types::Type;
 
-        match (from, to) {
-            // 相同类型
-            (a, b) if a == b => true,
+        // 统一规则源：赋值兼容的类型对必然允许显式转换
+        // （含相同类型、数值提升链、FFI 整型互通、null -> 引用/指针、
+        // 继承/实现方向、void* 与任意指针双向、指针与整数互转等）
+        if self.types_compatible(from, to) {
+            return true;
+        }
 
-            // 数值类型之间的转换（所有组合都允许，可能精度损失）
-            (Type::Int32, Type::Int64)
-            | (Type::Int32, Type::Float32)
-            | (Type::Int32, Type::Float64)
-            | (Type::Int64, Type::Int32)
-            | (Type::Int64, Type::Float32)
-            | (Type::Int64, Type::Float64)
-            | (Type::Float32, Type::Int32)
-            | (Type::Float32, Type::Int64)
-            | (Type::Float32, Type::Float64)
-            | (Type::Float64, Type::Int32)
-            | (Type::Float64, Type::Int64)
-            | (Type::Float64, Type::Float32) => true,
+        // 以下为仅显式转换允许的附加规则（统一规则未覆盖的部分）
+        match (from, to) {
+            // 数值类型之间的缩窄转换（提升链方向已由统一规则覆盖）
+            (
+                Type::Int32 | Type::Int64 | Type::Float32 | Type::Float64,
+                Type::Int32 | Type::Int64 | Type::Float32 | Type::Float64,
+            ) => true,
 
             // char 与数值类型之间的转换
             (Type::Char, Type::Int32)
@@ -96,98 +102,32 @@ impl SemanticAnalyzer {
             | (Type::Bool, Type::String) => true,
 
             // String 与 c_string (c_char*) 之间的转换（两者在底层都是 i8*）
+            // （String -> c_char* 方向已由统一规则覆盖，这里补反向和 c_char 标量形式）
             (Type::String, Type::CChar) | (Type::CChar, Type::String) => true,
-            // String 与 c_char* (Pointer(CChar)) 之间的转换
-            (Type::String, Type::Pointer(inner)) if matches!(inner.as_ref(), Type::CChar) => true,
             (Type::Pointer(inner), Type::String) if matches!(inner.as_ref(), Type::CChar) => true,
 
-            // c_void* 与任意指针类型之间的转换（C风格）
-            (Type::Pointer(from_inner), Type::Pointer(to_inner))
-                if matches!(from_inner.as_ref(), Type::CVoid)
-                    || matches!(to_inner.as_ref(), Type::CVoid) =>
-            {
-                true
-            }
-
-            // FFI 类型与基本类型之间的转换
-            // c_int <-> int
-            (Type::CInt, Type::Int32) | (Type::Int32, Type::CInt) => true,
-            // c_long <-> long
-            (Type::CLong, Type::Int64) | (Type::Int64, Type::CLong) => true,
-            // c_short <-> int (16位到32位)
-            (Type::CShort, Type::Int32) | (Type::Int32, Type::CShort) => true,
-            // c_char/c_uchar <-> int
-            (Type::CChar, Type::Int32) | (Type::Int32, Type::CChar) => true,
+            // 统一规则未覆盖的 FFI 互转（仅显式转换允许；与基本类型互通部分已由统一规则覆盖）
+            // c_uchar <-> int
             (Type::CUChar, Type::Int32) | (Type::Int32, Type::CUChar) => true,
-            (Type::CChar, Type::Char) | (Type::Char, Type::CChar) => true,
             // c_ushort <-> int
             (Type::CUShort, Type::Int32) | (Type::Int32, Type::CUShort) => true,
-            // c_uint <-> int/long
-            (Type::CUInt, Type::Int32) | (Type::Int32, Type::CUInt) => true,
+            // c_int/c_uint <-> long
             (Type::CInt, Type::Int64) | (Type::Int64, Type::CInt) => true,
             (Type::CUInt, Type::Int64) | (Type::Int64, Type::CUInt) => true,
-            // c_long <-> int/long
-            (Type::CLong, Type::Int32) | (Type::Int32, Type::CLong) => true,
-            (Type::CLong, Type::Int64) | (Type::Int64, Type::CLong) => true,
-            // c_ulong <-> int/long/c_long
-            (Type::CULong, Type::Int32) | (Type::Int32, Type::CULong) => true,
-            (Type::CULong, Type::Int64) | (Type::Int64, Type::CULong) => true,
-            (Type::CULong, Type::CLong) | (Type::CLong, Type::CULong) => true,
+            // c_ulong <-> c_uint
             (Type::CULong, Type::CUInt) | (Type::CUInt, Type::CULong) => true,
-            // c_float <-> float/double
-            (Type::CFloat, Type::Float32) | (Type::Float32, Type::CFloat) => true,
+            // c_float <-> double
             (Type::CFloat, Type::Float64) | (Type::Float64, Type::CFloat) => true,
-            // c_double <-> float/double
-            (Type::CDouble, Type::Float64) | (Type::Float64, Type::CDouble) => true,
+            // c_double <-> float
             (Type::CDouble, Type::Float32) | (Type::Float32, Type::CDouble) => true,
-            // size_t/ssize_t <-> long 和 int
-            (Type::SizeT, Type::Int64) | (Type::Int64, Type::SizeT) => true,
-            (Type::SizeT, Type::Int32) | (Type::Int32, Type::SizeT) => true,
-            (Type::SSizeT, Type::Int64) | (Type::Int64, Type::SSizeT) => true,
-            (Type::SSizeT, Type::Int32) | (Type::Int32, Type::SSizeT) => true,
-            // uintptr_t/intptr_t <-> long 和 int
-            (Type::UIntPtr, Type::Int64) | (Type::Int64, Type::UIntPtr) => true,
-            (Type::UIntPtr, Type::Int32) | (Type::Int32, Type::UIntPtr) => true,
-            (Type::IntPtr, Type::Int64) | (Type::Int64, Type::IntPtr) => true,
-            (Type::IntPtr, Type::Int32) | (Type::Int32, Type::IntPtr) => true,
-            // ptr <-> uintptr_t/intptr_t (指针与整数类型转换)
-            (Type::Pointer(_), Type::UIntPtr) | (Type::UIntPtr, Type::Pointer(_)) => true,
-            (Type::Pointer(_), Type::IntPtr) | (Type::IntPtr, Type::Pointer(_)) => true,
-            // ptr <-> long/int (指针与基本整数类型转换，用于 FFI 中 & 和 c_str 等返回 IntPtr 的场景)
-            (Type::Pointer(_), Type::Int64) | (Type::Int64, Type::Pointer(_)) => true,
-            (Type::Pointer(_), Type::Int32) | (Type::Int32, Type::Pointer(_)) => true,
-            // FFI 整数类型 <-> 指针 (用于 c_long/c_ulong 等作为指针值的场景)
-            (Type::Pointer(_), Type::CLong) | (Type::CLong, Type::Pointer(_)) => true,
-            (Type::Pointer(_), Type::CULong) | (Type::CULong, Type::Pointer(_)) => true,
-            (Type::Pointer(_), Type::CInt) | (Type::CInt, Type::Pointer(_)) => true,
-            (Type::Pointer(_), Type::CUInt) | (Type::CUInt, Type::Pointer(_)) => true,
-            // c_bool <-> bool 和 int
-            (Type::CBool, Type::Bool) | (Type::Bool, Type::CBool) => true,
-            (Type::CBool, Type::Int32) | (Type::Int32, Type::CBool) => true,
-
-            // FFI 类型之间的转换
-            (Type::CInt, Type::CLong) | (Type::CLong, Type::CInt) => true,
-            (Type::CInt, Type::CShort) | (Type::CShort, Type::CInt) => true,
-            (Type::CInt, Type::CChar) | (Type::CChar, Type::CInt) => true,
-            (Type::CFloat, Type::CDouble) | (Type::CDouble, Type::CFloat) => true,
-            (Type::SizeT, Type::UIntPtr) | (Type::UIntPtr, Type::SizeT) => true,
-            (Type::SSizeT, Type::IntPtr) | (Type::IntPtr, Type::SSizeT) => true,
-            (Type::UIntPtr, Type::IntPtr) | (Type::IntPtr, Type::UIntPtr) => true,
 
             // 引用类型之间的转换：需要继承关系
             (Type::Object(from_name), Type::Object(to_name)) => {
-                // null 字面量可以转换为任何引用类型
-                if from_name == crate::types::NULL_TYPE_NAME {
-                    return true;
-                }
-                // 检查是否存在继承关系（双向）
+                // 向上转型和 null 字面量已由统一规则覆盖，这里补向下转型（双向检查）
                 self.is_related_type(from_name, to_name)
             }
 
-            // null 字面量可以转换为指针类型
-            (from, Type::Pointer(_)) if from.is_null_literal() => true,
-
-            // 数组类型之间的转换：元素类型兼容
+            // 数组类型之间的转换：元素类型兼容（递归走显式转换规则，允许元素缩窄）
             (Type::Array(from_elem), Type::Array(to_elem)) => {
                 self.is_valid_cast(from_elem, to_elem)
             }
