@@ -187,9 +187,13 @@ impl AuditLogger {
             if line.is_empty() {
                 continue;
             }
-            let entry: AuditLogEntry = serde_json::from_str(line)
-                .with_context(|| format!("解析日志条目失败: {}", line))?;
-            entries.push(entry);
+            // 每行可能包含一个或多个拼接的 JSON 对象（兼容历史/损坏日志）
+            let stream = serde_json::Deserializer::from_str(line).into_iter::<AuditLogEntry>();
+            for result in stream {
+                let entry = result
+                    .with_context(|| format!("解析日志条目失败: {}", line))?;
+                entries.push(entry);
+            }
         }
 
         Ok(entries)
@@ -410,6 +414,30 @@ mod tests {
         let logger = AuditLogger::with_path(log_path);
         let entries = logger.read_all().unwrap();
         assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn test_logger_read_concatenated_objects_on_one_line() {
+        // 模拟损坏/历史日志：同一行包含多个 JSON 对象
+        let temp = TempDir::new().unwrap();
+        let log_path = temp.path().join("test.log");
+        let logger = AuditLogger::with_path(log_path.clone());
+
+        let entry1 = AuditLogEntry::new(SecurityEventType::SecureSourceInstall, "install")
+            .with_package("fp1", "pkg", "1.0.0");
+        let entry2 = AuditLogEntry::new(SecurityEventType::WarningDisplayed, "warn");
+        let line1 = serde_json::to_string(&entry1).unwrap();
+        let line2 = serde_json::to_string(&entry2).unwrap();
+
+        std::fs::write(&log_path, format!("{}{}\n", line1, line2)).unwrap();
+
+        let entries = logger.read_all().unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(
+            entries[0].event_type,
+            SecurityEventType::SecureSourceInstall
+        );
+        assert_eq!(entries[1].event_type, SecurityEventType::WarningDisplayed);
     }
 
     #[test]

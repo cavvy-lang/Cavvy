@@ -39,6 +39,7 @@ fn print_usage() {
     println!("  ffi <名称> <库>   添加 FFI 库配置");
     println!("  verify <包名>     验证包的安全证书和完整性");
     println!("  trust <公钥B64>   添加可信公钥到配置");
+    println!("  sync-root-key     从官方源同步根公钥到 cavly.toml");
     println!("  audit-log         显示安全审计日志");
     println!("  help              显示此帮助信息");
     println!();
@@ -108,6 +109,7 @@ fn main() {
         "ffi" => cmd_ffi(&args),
         "verify" => cmd_verify(&args),
         "trust" => cmd_trust(&args),
+        "sync-root-key" => cmd_sync_root_key(),
         "audit-log" => cmd_audit_log(),
         "help" | "-h" | "--help" => {
             print_usage();
@@ -633,6 +635,55 @@ fn cmd_trust(args: &[String]) -> Result<()> {
     logger.log_silent(
         &AuditLogEntry::new(SecurityEventType::UserConfirmed, "cmd_trust")
             .with_details(&format!("添加可信公钥，指纹: {}", fingerprint)),
+    );
+
+    Ok(())
+}
+
+/// 从官方源同步根公钥到项目配置
+///
+/// 按优先级尝试官方首选源、GitHub Pages 镜像、GitHub raw 备用，
+/// 成功后写入 cavly.toml 的 [security] root_public_key。
+///
+/// # 复杂度
+/// - 时间: O(1) 网络（最多 3 次请求）
+/// - 空间: O(1)
+fn cmd_sync_root_key() -> Result<()> {
+    use cavvy::cavly::registry::sync_root_public_key;
+    use cavvy::cavly::security::compute_key_fingerprint;
+
+    let current_dir = env::current_dir()?;
+    let project_root = cavvy::cavly::find_project_root(&current_dir)
+        .ok_or_else(|| anyhow::anyhow!("当前目录不是 Cavly 项目（找不到 cavly.toml）"))?;
+
+    let config_path = project_root.join("cavly.toml");
+    let mut config = cavvy::cavly::config::CavlyConfig::from_file(&config_path)?;
+
+    let public_key_b64 = sync_root_public_key(30)?;
+
+    config.security.root_public_key = Some(public_key_b64.clone());
+    config.to_file(&config_path)?;
+
+    // 计算并显示指纹
+    let pk = cavvy::cavly::security::Ed25519PublicKey::from_base64("root", &public_key_b64)?;
+    let fingerprint = compute_key_fingerprint(&pk.bytes);
+    println!("已保存官方根公钥到 cavly.toml");
+    println!("  指纹: {}", fingerprint);
+
+    // 审计日志
+    let logger = match AuditLogger::new() {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!(
+                "警告: 审计日志初始化失败 ({})，将回退到系统临时目录记录日志",
+                e
+            );
+            AuditLogger::default()
+        }
+    };
+    logger.log_silent(
+        &AuditLogEntry::new(SecurityEventType::KeyRotated, "cmd_sync_root_key")
+            .with_details(&format!("同步官方根公钥，指纹: {}", fingerprint)),
     );
 
     Ok(())

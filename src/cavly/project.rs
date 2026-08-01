@@ -440,7 +440,6 @@ public class BuildScript {
     /// - 空间: O(m)
     pub fn add_registry_dependency(path: &Path, name: &str, version: &str) -> Result<()> {
         use crate::cavly::config::Dependency;
-        use crate::cavly::registry::SecureRegistry;
 
         let config_path = path.join(CONFIG_FILE);
         let mut config = CavlyConfig::from_file(&config_path)?;
@@ -452,7 +451,10 @@ public class BuildScript {
 
         println!("正在从安全源查找包 '{}'...", name);
 
-        let registry = SecureRegistry::new().with_context(|| "创建安全注册表客户端失败")?;
+        let mut registry_config = crate::cavly::registry::RegistryConfig::default();
+        registry_config.root_public_key = config.security.root_public_key.clone();
+        let registry = crate::cavly::registry::SecureRegistry::with_config(registry_config)
+            .with_context(|| "创建安全注册表客户端失败")?;
 
         let pkg = registry
             .find_package(name)
@@ -717,7 +719,6 @@ public class BuildScript {
     pub fn install_dependencies(path: &Path, verbose: bool) -> Result<()> {
         use crate::cavly::audit::{AuditLogEntry, AuditLogger, SecurityEventType};
         use crate::cavly::config::{Dependency, DetailedDependency};
-        use crate::cavly::registry::SecureRegistry;
 
         let config_path = path.join(CONFIG_FILE);
         let config = CavlyConfig::from_file(&config_path)?;
@@ -815,9 +816,13 @@ public class BuildScript {
         version: &str,
         verbose: bool,
     ) -> Result<()> {
-        use crate::cavly::registry::SecureRegistry;
+        let config_path = path.join(CONFIG_FILE);
+        let config = CavlyConfig::from_file(&config_path)?;
 
-        let registry = SecureRegistry::new().with_context(|| "创建安全注册表客户端失败")?;
+        let mut registry_config = crate::cavly::registry::RegistryConfig::default();
+        registry_config.root_public_key = config.security.root_public_key.clone();
+        let registry = crate::cavly::registry::SecureRegistry::with_config(registry_config)
+            .with_context(|| "创建安全注册表客户端失败")?;
 
         let pkg = registry
             .find_package(name)

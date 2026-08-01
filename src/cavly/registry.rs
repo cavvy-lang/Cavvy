@@ -23,6 +23,15 @@ const CAYPAK_INDEX_URL: &str = "https://caypak.ethernos.net/index.json";
 /// 官方安全证书服务器基础地址
 const CAYCERT_BASE_URL: &str = "https://caycert.ethernos.net";
 
+/// 官方根公钥分发地址（按优先级排序）
+///
+/// 1. 首选官方域名
+/// 2. GitHub Pages 镜像
+/// 3. GitHub raw 直链备用
+pub const ROOT_KEY_URL_PRIMARY: &str = "https://cavvy-root-public-key.ethernos.net/public.pub";
+pub const ROOT_KEY_URL_SECONDARY: &str = "https://cavvy-lang.github.io/EthernosRootPublicKey/public.pub";
+pub const ROOT_KEY_URL_BACKUP: &str = "https://raw.githubusercontent.com/cavvy-lang/EthernosRootPublicKey/refs/heads/main/public.pub";
+
 /// 安全注册表客户端配置
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RegistryConfig {
@@ -321,19 +330,23 @@ impl SecureRegistry {
         let url = format!("{}/archive/refs/tags/v{}.tar.gz", repo, pkg.latest_version);
         let dest = dest_dir.join(format!("{}-{}.tar.gz", pkg.name, pkg.latest_version));
 
-        match http_get(&url, self.config.timeout_secs) {
+        println!("  开始下载包文件...");
+        match http_get_with_progress(&url, self.config.timeout_secs) {
             Ok(data) => {
                 std::fs::write(&dest, &data)
                     .with_context(|| format!("写入包文件失败: {}", dest.display()))?;
+                println!("  下载完成: {} ({} 字节)", dest.display(), data.len());
                 return Ok(dest);
             }
             Err(e1) => {
                 // 策略2: 不带 refs/tags/ 前缀（兼容旧格式）
                 let url_alt = format!("{}/archive/v{}.tar.gz", repo, pkg.latest_version);
-                match http_get(&url_alt, self.config.timeout_secs) {
+                println!("  策略1失败，尝试策略2...");
+                match http_get_with_progress(&url_alt, self.config.timeout_secs) {
                     Ok(data) => {
                         std::fs::write(&dest, &data)
                             .with_context(|| format!("写入包文件失败: {}", dest.display()))?;
+                        println!("  下载完成: {} ({} 字节)", dest.display(), data.len());
                         return Ok(dest);
                     }
                     Err(e2) => {
@@ -555,6 +568,151 @@ pub(crate) fn http_get(url: &str, timeout_secs: u64) -> Result<Vec<u8>> {
     )
 }
 
+/// HTTP GET 请求并显示下载进度条
+///
+/// 优先使用系统 curl 的 `--progress-bar`，将进度实时输出到 stderr。
+/// 下载内容写入临时文件后读入内存，避免进度信息与二进制数据混杂。
+/// curl 不可用时静默回退到 `http_get`。
+///
+/// # 复杂度
+/// - 时间: O(n) 网络 + O(n) IO
+/// - 空间: O(n)
+pub(crate) fn http_get_with_progress(url: &str, timeout_secs: u64) -> Result<Vec<u8>> {
+    validate_url(url)?;
+
+    // 使用临时文件接收下载内容，进度条由 curl 直接输出到 stderr
+    let temp_file = tempfile::Builder::new()
+        .prefix("cavvy_http_progress_")
+        .suffix(".tmp")
+        .tempfile()
+        .context("创建临时文件失败")?;
+    let temp_path = temp_file.path().to_path_buf();
+
+    // curl: --progress-bar 提供原生进度条，-L 跟随重定向，--fail 对 HTTP 错误码返回非零
+    let status = std::process::Command::new("curl")
+        .args(&[
+            "-L",
+            "--fail",
+            "--progress-bar",
+            "--max-time",
+            &timeout_secs.to_string(),
+            "--connect-timeout",
+            "10",
+            "-o",
+            &temp_path.to_string_lossy(),
+            url,
+        ])
+        .status();
+
+    if let Ok(status) = status {
+        if status.success() {
+            let data = std::fs::read(&temp_path)
+                .with_context(|| format!("读取临时下载文件失败: {}", temp_path.display()))?;
+            if !data.is_empty() {
+                return Ok(data);
+            }
+        }
+    }
+
+    // curl 不可用或失败时回退到无进度版本
+    http_get(url, timeout_secs)
+}
+
+/// 从官方分发点同步根公钥
+///
+/// 按优先级依次尝试：首选域名 → GitHub Pages → GitHub raw 备用。
+/// 返回经过去空白处理的 Base64 编码公钥字符串，并验证其为 32 字节 Ed25519 公钥。
+///
+/// # 复杂度
+/// - 时间: O(1) 网络（最多 3 次请求）
+/// - 空间: O(1)
+pub fn sync_root_public_key(timeout_secs: u64) -> Result<String> {
+    sync_root_public_key_from_urls(
+        &[
+            ROOT_KEY_URL_PRIMARY,
+            ROOT_KEY_URL_SECONDARY,
+            ROOT_KEY_URL_BACKUP,
+        ],
+        timeout_secs,
+    )
+}
+
+/// 从给定 URL 列表同步根公钥（可测试）
+///
+/// 按数组顺序尝试每个 URL，返回第一个验证通过的 Ed25519 公钥。
+/// 成功时会打印来源信息到 stdout。
+/// 从响应内容中提取公钥字符串
+///
+/// 支持两种格式：
+/// 1. 纯文本 Base64 编码的 32 字节 Ed25519 公钥
+/// 2. JSON 对象，包含 `public_key` 字段（如 EthernosRootPublicKey 仓库当前格式）
+fn extract_root_public_key(text: &str) -> Result<String> {
+    use super::security::Ed25519PublicKey;
+
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        bail!("响应内容为空");
+    }
+
+    // 尝试作为 JSON 解析，提取 public_key 字段
+    if trimmed.starts_with('{') {
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) {
+            if let Some(pk) = value.get("public_key").and_then(|v| v.as_str()) {
+                let pk = pk.trim();
+                Ed25519PublicKey::from_base64("sync-root", pk)
+                    .with_context(|| "JSON 中的 public_key 不是有效 Ed25519 公钥")?;
+                return Ok(pk.to_string());
+            }
+        }
+    }
+
+    // 否则按纯 Base64 处理
+    Ed25519PublicKey::from_base64("sync-root", trimmed)
+        .with_context(|| "内容不是有效 Ed25519 公钥")?;
+    Ok(trimmed.to_string())
+}
+
+pub fn sync_root_public_key_from_urls(urls: &[&str], timeout_secs: u64) -> Result<String> {
+    use super::security::compute_key_fingerprint;
+
+    let mut last_error = None;
+
+    for url in urls {
+        match http_get(url, timeout_secs) {
+            Ok(data) => {
+                let text = String::from_utf8_lossy(&data).to_string();
+                match extract_root_public_key(&text) {
+                    Ok(public_key_b64) => {
+                        let pk = super::security::Ed25519PublicKey::from_base64("sync-root", &public_key_b64)
+                            .expect("extract_root_public_key 已验证公钥格式");
+                        let fingerprint = compute_key_fingerprint(&pk.bytes);
+                        if *url == ROOT_KEY_URL_PRIMARY {
+                            println!("已同步官方根公钥（首选源）");
+                        } else {
+                            println!("已同步官方根公钥（回退源: {}）", url);
+                        }
+                        println!("  指纹: {}", fingerprint);
+                        return Ok(public_key_b64);
+                    }
+                    Err(e) => {
+                        last_error = Some(format!("{} 内容解析失败: {}", url, e));
+                        continue;
+                    }
+                }
+            }
+            Err(e) => {
+                last_error = Some(format!("{} 获取失败: {}", url, e));
+                continue;
+            }
+        }
+    }
+
+    bail!(
+        "无法从任何源同步根公钥。最后错误: {}",
+        last_error.unwrap_or_else(|| "未知".to_string())
+    )
+}
+
 /// 默认缓存目录: ~/.cavvy/cache/registry
 pub(crate) fn default_cache_dir() -> Result<PathBuf> {
     let home = std::env::var("USERPROFILE")
@@ -582,6 +740,7 @@ pub(crate) fn default_cache_dir() -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{Read, Write};
     use tempfile::TempDir;
 
     #[test]
@@ -687,5 +846,117 @@ mod tests {
         // 控制字符/空白拒绝（防止命令注入）
         assert!(validate_url("https://example.com/x\ny").is_err());
         assert!(validate_url("https://example.com/x y").is_err());
+    }
+
+    #[test]
+    fn test_root_key_url_constants() {
+        assert_eq!(
+            ROOT_KEY_URL_PRIMARY,
+            "https://cavvy-root-public-key.ethernos.net/public.pub"
+        );
+        assert_eq!(
+            ROOT_KEY_URL_SECONDARY,
+            "https://cavvy-lang.github.io/EthernosRootPublicKey/public.pub"
+        );
+        assert_eq!(
+            ROOT_KEY_URL_BACKUP,
+            "https://raw.githubusercontent.com/cavvy-lang/EthernosRootPublicKey/refs/heads/main/public.pub"
+        );
+    }
+
+    #[test]
+    fn test_sync_root_public_key_from_urls_all_fail() {
+        // 使用不可能成功的地址，验证会按顺序尝试后失败
+        let result = sync_root_public_key_from_urls(
+            &["http://localhost:59998/public.pub", "http://localhost:59997/public.pub"],
+            1,
+        );
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("无法从任何源同步根公钥"));
+    }
+
+    #[test]
+    fn test_sync_root_public_key_from_urls_success_plain() {
+        // 32 个零字节的 base64
+        let valid_key = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+        let body = format!("{}\n\n", valid_key);
+
+        // 启动一个最小 HTTP 服务器，只响应一次请求
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = stream.read(&mut buf);
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            let _ = stream.write_all(response.as_bytes());
+        });
+
+        let url = format!("http://127.0.0.1:{}/public.pub", port);
+        let result = sync_root_public_key_from_urls(&[&url], 5);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), valid_key);
+    }
+
+    #[test]
+    fn test_sync_root_public_key_from_urls_success_json() {
+        // 32 个零字节的 base64
+        let valid_key = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+        let body = format!(
+            r#"{{"version":1,"date":"2026-08-01","key_id":"test","algorithm":"Ed25519","public_key":"{}"}}"#,
+            valid_key
+        );
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = stream.read(&mut buf);
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            let _ = stream.write_all(response.as_bytes());
+        });
+
+        let url = format!("http://127.0.0.1:{}/public.pub", port);
+        let result = sync_root_public_key_from_urls(&[&url], 5);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), valid_key);
+    }
+
+    #[test]
+    fn test_sync_root_public_key_from_urls_invalid_content() {
+        // 启动一个最小 HTTP 服务器返回无效内容
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = stream.read(&mut buf);
+            let body = "not-a-valid-key";
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            let _ = stream.write_all(response.as_bytes());
+        });
+
+        let url = format!("http://127.0.0.1:{}/public.pub", port);
+        let result = sync_root_public_key_from_urls(&[&url], 5);
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("无法从任何源同步根公钥"));
     }
 }

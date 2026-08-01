@@ -42,6 +42,8 @@ pub struct WorkspaceResolver {
     audit_logger: AuditLogger,
     /// 是否允许降级
     allow_downgrade: bool,
+    /// 官方根公钥（Base64）
+    root_public_key: Option<String>,
 }
 
 impl WorkspaceResolver {
@@ -58,6 +60,7 @@ impl WorkspaceResolver {
             security_level: SecurityLevel::Standard,
             audit_logger: AuditLogger::default(),
             allow_downgrade: false,
+            root_public_key: None,
         }
     }
 
@@ -78,6 +81,7 @@ impl WorkspaceResolver {
             security_level: config.security.level,
             audit_logger,
             allow_downgrade: config.security.allow_downgrade,
+            root_public_key: config.security.root_public_key.clone(),
         }
     }
 
@@ -431,6 +435,7 @@ impl WorkspaceResolver {
         if let Ok(cache_dir) = super::registry::default_cache_dir() {
             registry_config.cache_dir = cache_dir;
         }
+        registry_config.root_public_key = self.root_public_key.clone();
 
         let registry = SecureRegistry::with_config(registry_config)?
             .offline(true)
