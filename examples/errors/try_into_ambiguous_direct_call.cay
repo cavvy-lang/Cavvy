@@ -1,0 +1,31 @@
+// 负例：多 Into 实例化的 into() 重载集合不能直接被普通调用
+// （无法按返回类型分派，报歧义错误；应由 ? 运算符静态分派间接调用）
+
+#include <Result.cay>
+#include <Error.cay>
+#include <Into.cay>
+
+using std::Result;
+using std::IOError;
+using std::IOErrorKind;
+using std::ParseError;
+
+public class DualError implements Into<IOError>, Into<ParseError> {
+    public DualError() {
+    }
+
+    public IOError into() {
+        return new IOError(IOErrorKind.InvalidInput, "x");
+    }
+
+    public ParseError into() {
+        return new ParseError(1, 1, "s", "x");
+    }
+}
+
+public int main() {
+    DualError e = new DualError();
+    IOError io = e.into();
+    println(io.message());
+    return 0;
+}

@@ -1,0 +1,66 @@
+// ? 运算符多 Into 实例化测试 (ROADMAP 6.2)
+// 一个类可同时实现 Into<A> 与 Into<B>（仅返回类型不同的 into() 重载集合），
+// ? 按目标错误类型静态分派到正确的 into()；普通直接调用 e.into() 报歧义错误。
+
+#include <Result.cay>
+#include <Error.cay>
+#include <Into.cay>
+
+using std::Result;
+using std::IOError;
+using std::IOErrorKind;
+using std::ParseError;
+
+public class DualError implements Into<IOError>, Into<ParseError> {
+    private String msg;
+
+    public DualError(String msg) {
+        this.msg = msg;
+    }
+
+    public IOError into() {
+        return new IOError(IOErrorKind.InvalidInput, this.msg);
+    }
+
+    public ParseError into() {
+        return new ParseError(7, 3, "src", this.msg);
+    }
+}
+
+public class TestTryIntoMulti {
+    public static Result<int, DualError> fail() {
+        return Result<int, DualError>.err(new DualError("dual failure"));
+    }
+
+    public static Result<int, IOError> asIo() {
+        int v = fail()?;
+        return Result<int, IOError>.ok(v);
+    }
+
+    public static Result<int, ParseError> asParse() {
+        int v = fail()?;
+        return Result<int, ParseError>.ok(v);
+    }
+}
+
+public int main() {
+    Result<int, IOError> r1 = TestTryIntoMulti::asIo();
+    if (r1.isErr()) {
+        IOError e = r1.unwrapErr();
+        print("io=");
+        println(e.message());
+        println(e.kind() == IOErrorKind.InvalidInput);
+    }
+
+    Result<int, ParseError> r2 = TestTryIntoMulti::asParse();
+    if (r2.isErr()) {
+        ParseError e = r2.unwrapErr();
+        print("parse=");
+        println(e.message());
+        println(e.line());
+        println(e.column());
+    }
+
+    println("done");
+    return 0;
+}

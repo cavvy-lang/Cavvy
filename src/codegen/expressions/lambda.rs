@@ -175,8 +175,18 @@ impl IRGenerator {
         self.lambda_counter += 1;
         let lambda_name = format!("__lambda_{}_{}", current_class, lambda_idx);
 
+        // 调用点期望的 fn 类型（实例泛型方法单态化计划提供）。
+        // 有期望类型时按期望签名发射：未标注形参取期望形参类型（而非缺省 i64），
+        // 返回类型取期望返回类型——否则调用方按特化签名调用此 lambda 时
+        // 签名不匹配（如期望 double(i32) 却生成 i32(i64)），产生未定义行为。
+        let expected_fn = self.pending_lambda_expected_fn.take();
+
         // 推断返回类型
-        let return_type = self.infer_lambda_return_type(lambda)?;
+        let return_type = if let Some(ref ft) = expected_fn {
+            (*ft.return_type).clone()
+        } else {
+            self.infer_lambda_return_type(lambda)?
+        };
         let llvm_return_type = self.type_to_llvm(&return_type);
 
         // 收集闭包捕获的外部变量
@@ -197,8 +207,12 @@ impl IRGenerator {
         let mut param_names = Vec::new();
 
         for (i, param) in lambda.params.iter().enumerate() {
-            let param_type = param
+            // 未标注形参：优先取期望 fn 类型的形参类型，其次缺省 i64
+            let resolved_cay_type = param
                 .param_type
+                .clone()
+                .or_else(|| expected_fn.as_ref().and_then(|ft| ft.params.get(i).cloned()));
+            let param_type = resolved_cay_type
                 .as_ref()
                 .map(|t| self.type_to_llvm(t))
                 .unwrap_or_else(|| "i64".to_string());
@@ -207,7 +221,7 @@ impl IRGenerator {
                 param.name.clone(),
                 param_type,
                 format!("%param{}", i),
-                param.param_type.clone(),
+                resolved_cay_type,
             ));
         }
 
@@ -532,6 +546,7 @@ impl IRGenerator {
                 }
             }
             Expr::Unary(unary) => self.infer_expr_type(&unary.operand),
+            Expr::Cast(cast) => Ok(cast.target_type.clone()),
             Expr::Call(call) => {
                 // 尝试从类型注册表获取方法返回类型
                 if let Some(ref registry) = self.type_registry {

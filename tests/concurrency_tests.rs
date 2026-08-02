@@ -75,6 +75,39 @@ fn test_mutex_and_rwlock() {
     );
 }
 
+/// RwLock 多线程竞争：1 写 + 3 读，最终值与读计数必须精确
+#[test]
+fn test_rwlock_contention() {
+    let _lock = common::TEST_LOCK.lock().unwrap();
+    let output = compile_and_run_eol("examples/test_rwlock_contention.cay")
+        .expect("test_rwlock_contention should compile and run");
+    assert_output_contains(
+        &output,
+        &[
+            "2000", // 写线程递增 2000 次
+            "1500", // 3 读线程 × 500 次
+            "done",
+        ],
+        "test_rwlock_contention",
+    );
+}
+
+// ==================== detach / 线程命名 ====================
+
+/// detach() 后台运行 + ThreadBuilder.name() 命名效果（Linux/macOS 读回验证）
+#[test]
+fn test_thread_detach_and_naming() {
+    let _lock = common::TEST_LOCK.lock().unwrap();
+    let output = compile_and_run_eol("examples/test_thread_detach.cay")
+        .expect("test_thread_detach should compile and run");
+    let mut expected = vec!["1", "detached", "done"];
+    // 线程名读回验证仅在 pthread 平台启用（示例内 #ifndef _WIN32 守卫）
+    if !cfg!(target_os = "windows") {
+        expected.push("true");
+    }
+    assert_output_contains(&output, &expected, "test_thread_detach");
+}
+
 // ==================== 编译器回归：静态方法引用改编名 ====================
 
 /// 回归：`ClassName::staticMethod` 作为 extern 函数指针参数时，

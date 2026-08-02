@@ -457,7 +457,8 @@ fn test_mmap_empty_file() {
 
 using std::File;
 using std::Mmap;
-using std::MmapResult;
+using std::Result;
+using std::IOError;
 using std::MmapSlice;
 
 public class MmapEmptyTest {
@@ -465,7 +466,7 @@ public class MmapEmptyTest {
         String path = "test_mmap_empty.txt";
         File.writeAllText(path, "");
 
-        MmapResult<Mmap> result = Mmap.mapReadOnly(path);
+        Result<Mmap, IOError> result = Mmap.mapReadOnly(path);
         if (result.isErr()) {
             println("mapReadOnly on empty file failed");
             File.delete(path);

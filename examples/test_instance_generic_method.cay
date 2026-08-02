@@ -1,0 +1,66 @@
+// 实例泛型方法（方法级类型参数）单态化测试。
+// map<U> 的类型参数 U 在调用点从 lambda 实参推断，
+// 每个 (类类型实参, 方法类型实参) 组合生成独立的单态化函数。
+class Result<T, E> {
+    private T value;
+    private E error;
+
+    public Result(T v, E e) {
+        this.value = v;
+        this.error = e;
+    }
+
+    public T getValue() {
+        return this.value;
+    }
+
+    public E getError() {
+        return this.error;
+    }
+
+    public Result<U, E> map<U>(fn(T) -> U mapper) {
+        return new Result<U, E>(mapper(this.value), this.error);
+    }
+
+    // 值类型 U 直接作为返回值（不经对象包装），验证 U=int/U=double 时不退化为 i8*。
+    public U mapValue<U>(fn(T) -> U mapper) {
+        return mapper(this.value);
+    }
+
+    // 第二个类类型参数位置上的方法级泛型：Result<T, E> -> Result<T, U>
+    public Result<T, U> mapErr<U>(fn(E) -> U mapper) {
+        return new Result<T, U>(this.value, mapper(this.error));
+    }
+}
+
+public fn main() {
+    Result<int, String> r = new Result<int, String>(41, "none");
+
+    // U = long（从 lambda 返回类型推断）
+    Result<long, String> r2 = r.map((x) -> (long)x);
+    println(r2.getValue());
+
+    // U = String
+    Result<String, String> r3 = r.map((x) -> "ok");
+    println(r3.getValue());
+
+    // U = int（值类型，不能擦除为 i8*）
+    int iv = r.mapValue((x) -> x * 2);
+    println(iv);
+
+    // U = double（值类型）
+    double dv = r.mapValue((x) -> (double)x + 0.5);
+    println(dv);
+
+    // 错误通道保持不变
+    println(r2.getError());
+
+    // mapErr：替换第二个类类型参数（U = int，值类型）
+    Result<int, int> r4 = r.mapErr((e) -> 42);
+    println(r4.getValue());
+    println(r4.getError());
+
+    // 已知限制：链式调用 r.map(f).getValue() 不支持——外层接收者类型中的
+    // 方法级类型参数 U 无法解析，编译器会报代码生成错误（而非生成错误代码）。
+    // 请先赋给带显式类型的中间变量（如上所示）。
+}

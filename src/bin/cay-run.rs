@@ -27,6 +27,7 @@ struct RunOptions {
     use_embedded_llc: bool,      // --use-embedded-llc: 使用内嵌 llc
     include_paths: Vec<String>,  // -I: 额外包含路径（供 #include/#include_c 搜索）
     detect_cycles: bool,         // --detect-cycles: 启用 Rc 循环引用检测
+    no_panic: bool,              // --no-panic: panic()/abort() 转为编译错误
 }
 
 impl Default for RunOptions {
@@ -47,6 +48,7 @@ impl Default for RunOptions {
             use_embedded_llc: false,
             include_paths: Vec::new(),
             detect_cycles: false,
+            no_panic: false,
         }
     }
 }
@@ -146,6 +148,9 @@ fn parse_args(args: &[String]) -> Result<(RunOptions, String), String> {
                 }
                 "--detect-cycles" => {
                     options.detect_cycles = true;
+                }
+                "--no-panic" => {
+                    options.no_panic = true;
                 }
                 "--obfuscate" => {
                     options.obfuscate = true;
@@ -305,6 +310,7 @@ fn compile_cay_to_ir(source_path: &str, options: &RunOptions) -> Result<String, 
         include_paths: options.include_paths.clone(),
         test_mode: false,
         detect_cycles: options.detect_cycles,
+        no_panic: options.no_panic,
     };
 
     let compiler = Compiler::with_options(compiler_options);

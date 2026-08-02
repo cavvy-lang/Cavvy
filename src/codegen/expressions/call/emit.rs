@@ -7,6 +7,7 @@ use crate::ast::*;
 use crate::codegen::context::IRGenerator;
 use crate::miette_diagnostic::{CayResult, ErrorCodes, codegen_error_at};
 use crate::semantic::resolve_call_args;
+use crate::types::Type;
 
 impl IRGenerator {
     /// 检查是否有命名参数需要重排；有则按形参顺序重排并返回 Some，
@@ -42,17 +43,29 @@ impl IRGenerator {
 
     /// 生成实参表达式代码，处理 ArrayList.add 的 RAII 所有权转移，
     /// 并将可变参数打包成数组。返回 (处理后的参数, 是否创建了可变参数数组)。
+    /// `expected_param_types` 为单态化计划的具体形参类型（实例泛型方法），
+    /// 用于以期望签名发射 lambda 实参。
     pub(crate) fn generate_and_pack_args(
         &mut self,
         class_name: &str,
         method_name: &str,
         actual_args: &[Expr],
         is_varargs_method: bool,
+        expected_param_types: Option<&[Type]>,
     ) -> CayResult<(Vec<String>, bool)> {
         // 生成参数表达式
         let mut arg_results = Vec::new();
-        for arg in actual_args {
+        for (idx, arg) in actual_args.iter().enumerate() {
+            // lambda 实参：若该位置有形参 fn 类型，以其期望签名发射 lambda
+            if let Expr::Lambda(_) = arg {
+                if let Some(Type::Function(ft)) =
+                    expected_param_types.and_then(|types| types.get(idx))
+                {
+                    self.pending_lambda_expected_fn = Some((**ft).clone());
+                }
+            }
             arg_results.push(self.generate_expression(arg)?);
+            self.pending_lambda_expected_fn = None;
         }
 
         // ROADMAP 5.3.x 自动 RAII：ArrayList.add 视为所有权转移。
@@ -247,13 +260,32 @@ impl IRGenerator {
     ) -> String {
         let is_private = self.is_private_method(class_name, method_name);
         let is_interface_dispatch = !is_static_call && self.is_interface_type(class_name);
+        // 接口动态分派需要传入接口的类型实参，以便区分同一泛型接口的不同实例化
+        // （如 Into<IOError>::into 与 Into<ParseError>::into 应命中不同 vtable 槽位）。
+        let interface_type_args: Vec<crate::types::Type> = if is_interface_dispatch {
+            parse_interface_type_args(class_name)
+        } else {
+            Vec::new()
+        };
         let has_dispatch_slot = if is_interface_dispatch {
-            self.interface_has_vtable_slot(class_name, method_name, param_types)
+            self.interface_has_vtable_slot_with_type_args(
+                class_name,
+                method_name,
+                param_types,
+                &interface_type_args,
+            )
         } else {
             self.class_has_vtable(class_name)
         };
-        let needs_vtable_dispatch =
-            is_instance_method && resolved_this_val.is_some() && has_dispatch_slot && !is_private;
+        // 带方法级类型参数的泛型方法不入 vtable：其单态化副本按调用点命名，
+        // 必须直接调用，不能走 vtable 槽位间接分派。
+        let is_method_level_generic =
+            self.method_has_method_level_type_params(class_name, method_name);
+        let needs_vtable_dispatch = is_instance_method
+            && resolved_this_val.is_some()
+            && has_dispatch_slot
+            && !is_private
+            && !is_method_level_generic;
 
         if needs_vtable_dispatch {
             self.emit_vtable_dispatch_call(
@@ -266,6 +298,7 @@ impl IRGenerator {
                 ret_type,
                 llvm_ret_type,
                 final_args,
+                &interface_type_args,
             )
         } else {
             // 直接调用
@@ -303,6 +336,7 @@ impl IRGenerator {
         ret_type: &crate::types::Type,
         llvm_ret_type: &str,
         final_args: &[String],
+        interface_type_args: &[crate::types::Type],
     ) -> String {
         // 计算 vtable 指针位置（this + 8）
         let vtable_ptr_temp = self.new_temp();
@@ -319,7 +353,14 @@ impl IRGenerator {
         ));
 
         let slot = if is_interface_dispatch {
-            self.get_interface_vtable_slot(class_name, method_name, param_types)
+            // 接口分派：传入类型实参以区分泛型接口的不同实例化
+            // （如 Into<IOError>::into 与 Into<ParseError>::into）
+            self.get_interface_vtable_slot_with_type_args(
+                class_name,
+                method_name,
+                param_types,
+                interface_type_args,
+            )
         } else {
             self.get_vtable_slot(class_name, method_name, param_types)
         };
@@ -376,4 +417,29 @@ impl IRGenerator {
             format!("{} {}", llvm_ret_type, temp)
         }
     }
+}
+
+/// 从接口名中解析出泛型类型实参。
+///
+/// 接口分派调用点的 `class_name` 形如 `Into<IOError>` 或 `std::Into<IOError>`，
+/// 这里提取尖括号内的类型实参列表，作为 vtable 槽位查找的输入，
+/// 让同一泛型接口的不同实例化命中各自的独立槽位。
+///
+/// 不含尖括号的接口名（如 `Iterator`）返回空向量，保持非泛型接口既有行为。
+fn parse_interface_type_args(class_name: &str) -> Vec<Type> {
+    let Some(pos) = class_name.find('<') else {
+        return Vec::new();
+    };
+    let end = class_name.rfind('>').unwrap_or(class_name.len());
+    if end <= pos + 1 {
+        return Vec::new();
+    }
+    let args_str = &class_name[pos + 1..end];
+    if args_str.trim().is_empty() {
+        return Vec::new();
+    }
+    args_str
+        .split(',')
+        .map(|s| Type::Object(s.trim().to_string()))
+        .collect()
 }

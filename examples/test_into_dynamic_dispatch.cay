@@ -1,0 +1,54 @@
+// 多 Into 实例化的接口动态分派测试 (ROADMAP 6.2)
+//
+// 一个类同时实现 Into<IOError> 与 Into<ParseError>（仅返回类型不同的 into() 重载），
+// 通过接口引用调用 into() 时，vtable 必须按接口类型实参分派到正确的重载：
+//   Into<IOError>  ref.into() -> IOError  版本
+//   Into<ParseError> ref.into() -> ParseError 版本
+//
+// 此用例覆盖 vtable 槽位按泛型接口实例化独立分配 + 槽位填充按返回类型消歧。
+
+#include <Result.cay>
+#include <Error.cay>
+#include <Into.cay>
+
+using std::Result;
+using std::IOError;
+using std::IOErrorKind;
+using std::ParseError;
+
+public class DualError implements Into<IOError>, Into<ParseError> {
+    private String msg;
+
+    public DualError(String msg) {
+        this.msg = msg;
+    }
+
+    public IOError into() {
+        return new IOError(IOErrorKind.InvalidInput, this.msg);
+    }
+
+    public ParseError into() {
+        return new ParseError(7, 3, "src", this.msg);
+    }
+}
+
+public int main() {
+    DualError e = new DualError("dual failure");
+
+    // 通过 Into<IOError> 接口引用调用，期望命中 IOError 版本
+    Into<IOError> ioRef = e;
+    IOError io = ioRef.into();
+    print("io=");
+    println(io.message());
+
+    // 通过 Into<ParseError> 接口引用调用，期望命中 ParseError 版本
+    Into<ParseError> parseRef = e;
+    ParseError p = parseRef.into();
+    print("parse=");
+    println(p.message());
+    println(p.line());
+    println(p.column());
+
+    println("done");
+    return 0;
+}

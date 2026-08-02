@@ -1436,17 +1436,87 @@ impl TypeRegistry {
         format!("$iface${}${}", interface_name, method_sig)
     }
 
+    /// 构造带接口类型实参的 vtable 槽位键。
+    ///
+    /// 用于区分同一泛型接口的不同实例化（如 `Into<IOError>` 与 `Into<ParseError>`），
+    /// 它们各自提供一个仅返回类型不同的 `into()` 重载——vtable 必须为每个实例化
+    /// 分配独立槽位，否则动态分派只会命中其一。
+    ///
+    /// 当 `type_args` 为空时退化为 [`build_interface_vtable_key`] 的形式，保持
+    /// 非泛型接口的既有布局与 ABI 不变。
+    pub fn build_interface_vtable_key_with_type_args(
+        interface_name: &str,
+        type_args: &[Type],
+        method_sig: &str,
+    ) -> String {
+        if type_args.is_empty() {
+            Self::build_interface_vtable_key(interface_name, method_sig)
+        } else {
+            let args_str: Vec<String> = type_args.iter().map(|t| t.display_name()).collect();
+            // 用 `$` 作为分隔符（与既有键格式一致），格式：
+            //   $iface$Into<IOError>$into
+            // 去命名空间后的裸名也保留，便于 attach 阶段反查。
+            format!(
+                "$iface${}<{}>${}",
+                interface_name,
+                args_str.join(","),
+                method_sig
+            )
+        }
+    }
+
     pub fn interface_vtable_key_method_signature(slot_key: &str) -> Option<&str> {
         let rest = slot_key.strip_prefix("$iface$")?;
         let (_, method_sig) = rest.split_once('$')?;
         Some(method_sig)
     }
 
+    /// 解析接口 vtable 槽位键，提取基础接口名与类型实参列表。
+    ///
+    /// 槽位键格式（由 [`build_interface_vtable_key_with_type_args`] 构造）：
+    /// - 非泛型接口：`$iface$InterfaceName$method_sig`
+    /// - 泛型接口实例化：`$iface$InterfaceName<TypeArg1,TypeArg2>$method_sig`
+    ///
+    /// 返回 `(基础接口名, 类型实参列表)`。非泛型接口返回空向量。
+    /// 若键不是接口槽位键（不含 `$iface$` 前缀），返回 `None`。
+    ///
+    /// 时间复杂度 O(n)，n 为键长度；空间复杂度 O(k)，k 为类型实参数量。
+    pub fn parse_interface_slot_key_type_args(slot_key: &str) -> Option<(&str, Vec<Type>)> {
+        let rest = slot_key.strip_prefix("$iface$")?;
+        // 接口部分可能包含 `<...>`（其内可能有逗号），但类型名不含 `$`，
+        // 故按第一个 `$` 拆分即可分离接口部分与方法签名。
+        let (interface_part, _method_sig) = rest.split_once('$')?;
+
+        if let Some(pos) = interface_part.find('<') {
+            let interface_name = &interface_part[..pos];
+            let end = interface_part.rfind('>').unwrap_or(interface_part.len());
+            if end <= pos + 1 {
+                return Some((interface_name, Vec::new()));
+            }
+            let args_str = &interface_part[pos + 1..end];
+            let type_args: Vec<Type> = args_str
+                .split(',')
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .map(|s| Type::Object(s.to_string()))
+                .collect();
+            Some((interface_name, type_args))
+        } else {
+            Some((interface_part, Vec::new()))
+        }
+    }
+
+    /// 查找接口方法在 vtable 中的槽位编号。
+    ///
+    /// 当 `interface_type_args` 非空时，按泛型接口的特化实例查找独立槽位
+    /// （如 `Into<IOError>::into` 与 `Into<ParseError>::into` 各占一槽）；
+    /// 为空时退化为按裸接口名查找，保持非泛型接口的既有行为。
     pub fn get_interface_vtable_slot(
         &self,
         interface_name: &str,
         method_name: &str,
         arg_types: &[Type],
+        interface_type_args: &[Type],
     ) -> Option<usize> {
         // 接口 vtable 槽位注册时使用的是基础接口名（无泛型实参），
         // 调用处可能传入特化名如 Iterator<String>，需还原为基础名。
@@ -1456,8 +1526,24 @@ impl TypeRegistry {
             .unwrap_or(interface_name)
             .trim_end();
         let method_sig = Self::build_method_signature_from_types(method_name, arg_types);
-        let key = Self::build_interface_vtable_key(base_interface_name, &method_sig);
-        self.interface_vtable_slots.get(&key).copied()
+        let key = if interface_type_args.is_empty() {
+            Self::build_interface_vtable_key(base_interface_name, &method_sig)
+        } else {
+            Self::build_interface_vtable_key_with_type_args(
+                base_interface_name,
+                interface_type_args,
+                &method_sig,
+            )
+        };
+        // 先按特化键查找；若失败，回退到裸键查找（兼容未特化的注册路径）
+        if let Some(slot) = self.interface_vtable_slots.get(&key).copied() {
+            return Some(slot);
+        }
+        if !interface_type_args.is_empty() {
+            let fallback_key = Self::build_interface_vtable_key(base_interface_name, &method_sig);
+            return self.interface_vtable_slots.get(&fallback_key).copied();
+        }
+        None
     }
 
     /// 注册 struct（值类型）

@@ -42,6 +42,8 @@ pub struct CompilerOptions {
     pub test_mode: bool,
     /// 启用 Rc<T> 循环引用运行时检测（--detect-cycles）。
     pub detect_cycles: bool,
+    /// --no-panic：将 panic()/abort() 调用转为编译错误（适用于嵌入式等不允许 panic 的环境）。
+    pub no_panic: bool,
 }
 
 impl Default for CompilerOptions {
@@ -57,6 +59,7 @@ impl Default for CompilerOptions {
             include_paths: Vec::new(),
             test_mode: false,
             detect_cycles: false,
+            no_panic: false,
         }
     }
 }

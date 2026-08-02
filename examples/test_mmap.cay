@@ -8,8 +8,9 @@
 using std::File;
 using std::Mmap;
 using std::MmapSlice;
-using std::MmapResult;
-using std::MmapError;
+using std::Result;
+using std::IOError;
+using std::IOErrorKind;
 
 public class TestMmap {
 
@@ -24,9 +25,9 @@ public class TestMmap {
         }
 
         // 2. 测试只读映射
-        MmapResult<Mmap> roResult = Mmap.mapReadOnly(path);
+        Result<Mmap, IOError> roResult = Mmap.mapReadOnly(path);
         if (roResult.isErr()) {
-            println("mapReadOnly failed with error: " + String.valueOf(roResult.getError()));
+            println("mapReadOnly failed with error: " + roResult.unwrapErr().message());
             File.delete(path);
             return 1;
         }
@@ -85,9 +86,9 @@ public class TestMmap {
         // 6. 测试读写映射
         String rwPath = "test_mmap_rw.txt";
         long rwSize = 16L;
-        MmapResult<Mmap> rwResult = Mmap.mapReadWrite(rwPath, rwSize);
+        Result<Mmap, IOError> rwResult = Mmap.mapReadWrite(rwPath, rwSize);
         if (rwResult.isErr()) {
-            println("mapReadWrite failed with error: " + String.valueOf(rwResult.getError()));
+            println("mapReadWrite failed with error: " + rwResult.unwrapErr().message());
             File.delete(path);
             File.delete(rwPath);
             return 1;
@@ -120,9 +121,15 @@ public class TestMmap {
         rwMmap.unmap();
 
         // 7. 测试无效路径
-        MmapResult<Mmap> badResult = Mmap.mapReadOnly("non_existent_file_for_mmap_test.xyz");
+        Result<Mmap, IOError> badResult = Mmap.mapReadOnly("non_existent_file_for_mmap_test.xyz");
         if (badResult.isOk()) {
             println("mapReadOnly on missing file should fail");
+            File.delete(path);
+            File.delete(rwPath);
+            return 1;
+        }
+        if (badResult.unwrapErr().kind() != IOErrorKind.NotFound) {
+            println("mapReadOnly on missing file should return NotFound kind");
             File.delete(path);
             File.delete(rwPath);
             return 1;
@@ -130,9 +137,16 @@ public class TestMmap {
         println("Invalid path handled correctly");
 
         // 8. 测试无效大小
-        MmapResult<Mmap> invalidSizeResult = Mmap.mapReadWrite("test_mmap_invalid.txt", 0L);
+        Result<Mmap, IOError> invalidSizeResult = Mmap.mapReadWrite("test_mmap_invalid.txt", 0L);
         if (invalidSizeResult.isOk()) {
             println("mapReadWrite with size 0 should fail");
+            File.delete(path);
+            File.delete(rwPath);
+            File.delete("test_mmap_invalid.txt");
+            return 1;
+        }
+        if (invalidSizeResult.unwrapErr().kind() != IOErrorKind.InvalidInput) {
+            println("mapReadWrite with size 0 should return InvalidInput kind");
             File.delete(path);
             File.delete(rwPath);
             File.delete("test_mmap_invalid.txt");
@@ -143,7 +157,7 @@ public class TestMmap {
         // 9. 测试空文件映射
         String emptyPath = "test_mmap_empty.txt";
         File.writeAllText(emptyPath, "");
-        MmapResult<Mmap> emptyResult = Mmap.mapReadOnly(emptyPath);
+        Result<Mmap, IOError> emptyResult = Mmap.mapReadOnly(emptyPath);
         if (emptyResult.isErr()) {
             println("mapReadOnly on empty file failed");
             File.delete(path);
@@ -166,7 +180,7 @@ public class TestMmap {
         // 10. 测试读写映射持久化（umap 后重新只读映射验证）
         String persistPath = "test_mmap_persist.txt";
         long persistSize = 8L;
-        MmapResult<Mmap> persistWriteResult = Mmap.mapReadWrite(persistPath, persistSize);
+        Result<Mmap, IOError> persistWriteResult = Mmap.mapReadWrite(persistPath, persistSize);
         if (persistWriteResult.isErr()) {
             println("mapReadWrite for persist test failed");
             File.delete(path);
@@ -181,7 +195,7 @@ public class TestMmap {
         persistWrite.sync();
         persistWrite.unmap();
 
-        MmapResult<Mmap> persistReadResult = Mmap.mapReadOnly(persistPath);
+        Result<Mmap, IOError> persistReadResult = Mmap.mapReadOnly(persistPath);
         if (persistReadResult.isErr()) {
             println("mapReadOnly for persist test failed");
             File.delete(path);
@@ -205,7 +219,7 @@ public class TestMmap {
         // 11. 压力测试：64KB 大文件顺序写入与回读
         String stressPath = "test_mmap_stress.txt";
         long stressSize = 65536L;
-        MmapResult<Mmap> stressWriteResult = Mmap.mapReadWrite(stressPath, stressSize);
+        Result<Mmap, IOError> stressWriteResult = Mmap.mapReadWrite(stressPath, stressSize);
         if (stressWriteResult.isErr()) {
             println("mapReadWrite for stress test failed");
             File.delete(path);
@@ -224,7 +238,7 @@ public class TestMmap {
         stressWrite.sync();
         stressWrite.unmap();
 
-        MmapResult<Mmap> stressReadResult = Mmap.mapReadOnly(stressPath);
+        Result<Mmap, IOError> stressReadResult = Mmap.mapReadOnly(stressPath);
         if (stressReadResult.isErr()) {
             println("mapReadOnly for stress test failed");
             File.delete(path);

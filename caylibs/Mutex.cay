@@ -140,11 +140,14 @@ public class Mutex<T> {
     public boolean __tryLockRaw() {
         c_int rc = 0;
 #ifdef _WIN32
+        // TryEnterCriticalSection 成功返回非零（与 pthread 相反）；
+        // 注意 CRITICAL_SECTION 可递归，同线程重复 tryLock 会成功（平台语义差，见 ROADMAP 6.2.x 注记）
         rc = TryEnterCriticalSection(this.lockCell);
+        return rc != 0;
 #else
         rc = pthread_mutex_trylock(this.lockCell);
-#endif
         return rc == 0;
+#endif
     }
 
     /** 内部：解锁 */
@@ -301,22 +304,26 @@ public class RwLock<T> {
     public boolean __tryReadLockRaw() {
         c_int rc = 0;
 #ifdef _WIN32
+        // TryAcquireSRWLockShared 成功返回非零（与 pthread 相反）
         rc = TryAcquireSRWLockShared(this.lockCell);
+        return rc != 0;
 #else
         rc = pthread_rwlock_tryrdlock(this.lockCell);
-#endif
         return rc == 0;
+#endif
     }
 
     /** 内部：尝试写加锁 */
     public boolean __tryWriteLockRaw() {
         c_int rc = 0;
 #ifdef _WIN32
+        // TryAcquireSRWLockExclusive 成功返回非零（与 pthread 相反）
         rc = TryAcquireSRWLockExclusive(this.lockCell);
+        return rc != 0;
 #else
         rc = pthread_rwlock_trywrlock(this.lockCell);
-#endif
         return rc == 0;
+#endif
     }
 
     /** 内部：读解锁 */

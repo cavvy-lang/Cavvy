@@ -1,13 +1,15 @@
 /**
  * Result<T, E> - 显式错误传播泛型容器
  *
- * 基于 ROADMAP 6.1.x 实现，零开销 tagged union 模式：
- * 无堆分配、无 RTTI、无栈回退。
+ * 基于 ROADMAP 6.1.x 实现。
+ * 注：ROADMAP 原设计为零堆分配 tagged union；受语言当前无 union 类型
+ * 限制，实现为普通堆分配 class（字段 { boolean, T, E }，O(1) 固定大小）。
  *
  * 用法示例:
  *   Result<int, String> r = Result<int, String>.ok(42);
  *   if (r.isOk()) { int v = r.unwrap(); }
  *   int v = r.unwrapOr(0);
+ *   Result<long, String> r2 = r.map((int x) -> (long)x);
  *
  * 版本: 6.1.0
  */
@@ -75,10 +77,13 @@ public class Result<T, E> {
     }
 
     /**
-     * 获取成功值（不安全，需先确认 isOk()）
+     * 获取成功值；Err 时 panic
      * 时间复杂度: O(1)
      */
     public T unwrap() {
+        if (!this.isOk) {
+            panic("called unwrap() on an Err Result");
+        }
         return this.value;
     }
 
@@ -94,10 +99,24 @@ public class Result<T, E> {
     }
 
     /**
-     * 获取错误值（不安全，需先确认 isErr()）
+     * 获取成功值，失败时调用 handler 从错误计算出返回值
+     * 时间复杂度: O(1)
+     */
+    public T unwrapOrElse(fn(E) -> T handler) {
+        if (this.isOk) {
+            return this.value;
+        }
+        return handler(this.error);
+    }
+
+    /**
+     * 获取错误值；Ok 时 panic
      * 时间复杂度: O(1)
      */
     public E unwrapErr() {
+        if (this.isOk) {
+            panic("called unwrapErr() on an Ok Result");
+        }
         return this.error;
     }
 
@@ -111,6 +130,64 @@ public class Result<T, E> {
         }
         panic(message);
         return this.value;
+    }
+
+    /**
+     * 映射成功值：Ok(v) -> Ok(mapper(v))，Err 原样传播
+     * （实例泛型方法：U 在调用点从 lambda 推断）
+     */
+    public Result<U, E> map<U>(fn(T) -> U mapper) {
+        if (this.isOk) {
+            return Result<U, E>.ok(mapper(this.value));
+        }
+        return Result<U, E>.err(this.error);
+    }
+
+    /**
+     * 映射错误值：Err(e) -> Err(mapper(e))，Ok 原样传播
+     */
+    public Result<T, F> mapErr<F>(fn(E) -> F mapper) {
+        if (this.isOk) {
+            return Result<T, F>.ok(this.value);
+        }
+        return Result<T, F>.err(mapper(this.error));
+    }
+
+    /**
+     * 链式接续：Ok(v) -> handler(v)，Err 原样传播
+     */
+    public Result<U, E> andThen<U>(fn(T) -> Result<U, E> handler) {
+        if (this.isOk) {
+            return handler(this.value);
+        }
+        return Result<U, E>.err(this.error);
+    }
+
+    /**
+     * flatMap：andThen 的别名
+     */
+    public Result<U, E> flatMap<U>(fn(T) -> Result<U, E> mapper) {
+        return this.andThen(mapper);
+    }
+
+    /**
+     * 对成功值执行副作用后原样返回（用于调试/日志）
+     */
+    public Result<T, E> inspect(fn(T) -> void action) {
+        if (this.isOk) {
+            action(this.value);
+        }
+        return this;
+    }
+
+    /**
+     * 对错误值执行副作用后原样返回
+     */
+    public Result<T, E> inspectErr(fn(E) -> void action) {
+        if (!this.isOk) {
+            action(this.error);
+        }
+        return this;
     }
 
     /**

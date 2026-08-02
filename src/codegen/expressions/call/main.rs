@@ -85,12 +85,22 @@ impl IRGenerator {
         // 检查是否是可变参数方法
         let is_varargs_method = self.is_varargs_method(&class_name, &method_name);
 
+        // 方法级泛型（method<U>）实例方法调用：从实参推断方法级类型实参，
+        // 懒生成单态化副本，并以其特化函数名/具体签名发射调用（不擦除为 i8*）。
+        // 必须在生成实参之前计算：lambda 实参需按计划中的期望 fn 类型发射签名。
+        let method_generic_plan = if !is_static_call {
+            self.prepare_instance_generic_method_call(&class_name, &method_name, actual_args)
+        } else {
+            None
+        };
+
         // 生成参数表达式，处理 ArrayList.add 的 RAII 所有权转移与可变参数打包
         let (processed_args, has_varargs_array) = self.generate_and_pack_args(
             &class_name,
             &method_name,
             actual_args,
             is_varargs_method,
+            method_generic_plan.as_ref().map(|p| p.param_types.as_slice()),
         )?;
 
         // 检查是否是实例方法（需要传递 this）
@@ -123,32 +133,44 @@ impl IRGenerator {
         )?;
 
         // 获取方法的参数类型信息以进行必要的类型转换
-        let param_types = self.get_method_param_types(
-            &class_name,
-            &method_name,
-            &processed_args,
-            has_varargs_array,
-        );
+        let param_types = if let Some(plan) = &method_generic_plan {
+            plan.param_types.clone()
+        } else {
+            self.get_method_param_types(
+                &class_name,
+                &method_name,
+                &processed_args,
+                has_varargs_array,
+            )
+        };
 
         // 添加其他参数（根据需要进行类型转换）
         self.append_converted_args(&processed_args, &param_types, &mut final_args);
 
         // 生成函数名 - 使用类型注册表获取方法定义的参数类型
         // 注意：函数名不包含 this 参数，this 只在 IR 调用时传递
-        let fn_name = self.generate_function_name(
-            &class_name,
-            &method_name,
-            &processed_args,
-            has_varargs_array,
-        );
+        let fn_name = if let Some(plan) = &method_generic_plan {
+            plan.fn_name.clone()
+        } else {
+            self.generate_function_name(
+                &class_name,
+                &method_name,
+                &processed_args,
+                has_varargs_array,
+            )
+        };
 
         // 获取方法的返回类型
-        let ret_type = self.get_method_return_type(
-            &class_name,
-            &method_name,
-            &processed_args,
-            has_varargs_array,
-        );
+        let ret_type = if let Some(plan) = &method_generic_plan {
+            plan.ret_type.clone()
+        } else {
+            self.get_method_return_type(
+                &class_name,
+                &method_name,
+                &processed_args,
+                has_varargs_array,
+            )
+        };
         let llvm_ret_type = self.type_to_llvm(&ret_type);
 
         // 预先计算 this 指针值（用于 vtable 分派和直接调用都可能需要）

@@ -232,7 +232,15 @@ impl SpecializationCollector {
             match member {
                 ClassMember::Method(method) => {
                     if let Some(body) = &method.body {
+                        // 方法级类型参数（如 map<U> 的 U）加入类型参数作用域，
+                        // 避免收集 Result<U, E> 这类只有调用点才能具体化的实例。
+                        // 这些实例由代码生成阶段的懒单态化按需生成。
+                        let old_method_scope = self.type_param_scope.clone();
+                        for tp in &method.type_params {
+                            self.type_param_scope.insert(tp.name.clone());
+                        }
                         self.collect_from_block(body);
+                        self.type_param_scope = old_method_scope;
                     }
                 }
                 ClassMember::Constructor(ctor) => {
@@ -289,7 +297,13 @@ impl SpecializationCollector {
             }
             self.collect_type(&method.return_type);
             if let Some(body) = &method.body {
+                // 同类的泛型方法：方法级类型参数加入作用域，跳过未替换实例。
+                let old_method_scope = self.type_param_scope.clone();
+                for tp in &method.type_params {
+                    self.type_param_scope.insert(tp.name.clone());
+                }
                 self.collect_from_block(body);
+                self.type_param_scope = old_method_scope;
             }
         }
 
@@ -666,7 +680,18 @@ impl SpecializationCollector {
                                 ClassMember::Destructor(_) => "<dtor>".to_string(),
                                 _ => "<init>".to_string(),
                             };
+                            let _ = &method_name;
+                            // 方法级类型参数（如 map<U> 的 U）不在类实例映射中，
+                            // 加入作用域以跳过 Result<U, E> 等未替换实例——
+                            // 这些由代码生成阶段的懒单态化按需生成。
+                            let old_method_scope = self.type_param_scope.clone();
+                            if let ClassMember::Method(m) = member {
+                                for tp in &m.type_params {
+                                    self.type_param_scope.insert(tp.name.clone());
+                                }
+                            }
                             self.collect_dependency_from_block(body, &mapping, ns);
+                            self.type_param_scope = old_method_scope;
                         }
                     }
 
@@ -708,7 +733,13 @@ impl SpecializationCollector {
                         let substituted = crate::types::substitute_type_params(&method.return_type, &mapping);
                         self.collect_type_with_ns(&substituted, ns);
                         if let Some(body) = &method.body {
+                            // 方法级类型参数加入作用域，跳过未替换实例（同上）。
+                            let old_method_scope = self.type_param_scope.clone();
+                            for tp in &method.type_params {
+                                self.type_param_scope.insert(tp.name.clone());
+                            }
                             self.collect_dependency_from_block(body, &mapping, ns);
+                            self.type_param_scope = old_method_scope;
                         }
                     }
                 }

@@ -482,9 +482,31 @@ impl IRGenerator {
         method_name: &str,
         arg_types: &[crate::types::Type],
     ) -> bool {
+        self.interface_has_vtable_slot_with_type_args(
+            interface_name,
+            method_name,
+            arg_types,
+            &[],
+        )
+    }
+
+    /// 与 [`interface_has_vtable_slot`] 相同，但允许调用方传入接口的类型实参
+    /// 以便区分同一泛型接口的不同实例化（如 `Into<IOError>` 与 `Into<ParseError>`）。
+    pub fn interface_has_vtable_slot_with_type_args(
+        &self,
+        interface_name: &str,
+        method_name: &str,
+        arg_types: &[crate::types::Type],
+        interface_type_args: &[crate::types::Type],
+    ) -> bool {
         self.type_registry.as_ref().is_some_and(|registry| {
             registry
-                .get_interface_vtable_slot(interface_name, method_name, arg_types)
+                .get_interface_vtable_slot(
+                    interface_name,
+                    method_name,
+                    arg_types,
+                    interface_type_args,
+                )
                 .is_some()
         })
     }
@@ -523,10 +545,32 @@ impl IRGenerator {
         method_name: &str,
         arg_types: &[crate::types::Type],
     ) -> usize {
+        self.get_interface_vtable_slot_with_type_args(
+            interface_name,
+            method_name,
+            arg_types,
+            &[],
+        )
+    }
+
+    /// 与 [`get_interface_vtable_slot`] 相同，但允许调用方传入接口的类型实参
+    /// 以便区分同一泛型接口的不同实例化（如 `Into<IOError>` 与 `Into<ParseError>`）。
+    pub fn get_interface_vtable_slot_with_type_args(
+        &self,
+        interface_name: &str,
+        method_name: &str,
+        arg_types: &[crate::types::Type],
+        interface_type_args: &[crate::types::Type],
+    ) -> usize {
         self.type_registry
             .as_ref()
             .and_then(|registry| {
-                registry.get_interface_vtable_slot(interface_name, method_name, arg_types)
+                registry.get_interface_vtable_slot(
+                    interface_name,
+                    method_name,
+                    arg_types,
+                    interface_type_args,
+                )
             })
             .unwrap_or(0)
     }

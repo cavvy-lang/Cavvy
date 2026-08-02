@@ -8,18 +8,15 @@
  * - FileMode: 文件打开模式枚举
  * - SeekOrigin: 文件定位原点枚举
  * - FileUtils: 文件工具类
- * - FileError: 文件错误枚举
- * - FileResult<T>: 文件操作结果类型（泛型实现）
  *
  * 特性：
  * - 面向对象API设计
  * - 自动资源管理
- * - 完整的错误处理（Result<T, FileError>）
+ * - 完整的错误处理（Result<T, IOError>，见 Error.cay）
  * - 支持文本和二进制操作
  * - 流式读写支持
- * - 泛型支持（FileResult<T>）
  *
- * 版本: 0.6.0.0
+ * 版本: 6.1.0
  * 时间复杂度: 标注于各方法
  * 磁盘I/O: 所有读写操作涉及磁盘I/O
  * 更新日期: 2024
@@ -30,6 +27,8 @@
 
 #include <c/usual/memory.cay>
 #include <StringBuilder.cay>
+#include <Result.cay>
+#include <Error.cay>
 
 namespace std {
 
@@ -110,92 +109,6 @@ extern {
     // 文件状态检查（用于exists和size）
     c_int access(c_string pathname, c_int mode);
     c_int stat(c_string pathname, c_void* statbuf);
-}
-
-/* ============================================================================
- * 文件错误类型
- * ============================================================================ */
-
-/**
- * 文件操作错误类型 - 使用类常量模拟枚举
- * 提供结构化的错误信息
- */
-public class FileError {
-    public static final int None = 0;           // 无错误
-    public static final int NotFound = 1;       // 文件不存在
-    public static final int AccessDenied = 2;   // 权限不足
-    public static final int IoError = 3;        // I/O错误
-    public static final int InvalidMode = 4;    // 无效打开模式
-    public static final int SeekError = 5;      // 定位错误
-    public static final int AlreadyExists = 6;  // 文件已存在
-    public static final int TooLarge = 7;       // 文件过大
-    public static final int InvalidPath = 8;    // 无效路径
-    public static final int Unknown = 9;        // 未知错误
-    
-    private int value;
-    
-    private FileError(int value) {
-        this.value = value;
-    }
-    
-    public int getValue() {
-        return this.value;
-    }
-    
-    public static FileError fromInt(int value) {
-        return new FileError(value);
-    }
-}
-
-/**
- * 文件操作结果类型 - 泛型实现 FileResult<T>
- * 提供类型安全的文件操作结果封装
- * 时间复杂度: O(1) 所有操作
- * 空间复杂度: O(1) 固定大小
- */
-public class FileResult<T> {
-    private T value;
-    private int errorCode;
-    private bool isSuccess;
-    
-    private FileResult(T value) {
-        this.value = value;
-        this.errorCode = FileError.None;
-        this.isSuccess = true;
-    }
-    
-    private FileResult(int errorCode) {
-        this.errorCode = errorCode;
-        this.isSuccess = false;
-    }
-    
-    public static FileResult<T> ok(T value) {
-        return new FileResult<T>(value);
-    }
-    
-    public static FileResult<T> err(int errorCode) {
-        return new FileResult<T>(errorCode);
-    }
-    
-    public bool isOk() {
-        return this.isSuccess;
-    }
-    
-    public bool isErr() {
-        return !this.isSuccess;
-    }
-    
-    public T unwrap() {
-        return this.value;
-    }
-    
-    public int getErrorCode() {
-        return this.errorCode;
-    }
-    
-    public int getError() {
-        return this.errorCode;
-    }
 }
 
 /* ============================================================================
@@ -396,19 +309,19 @@ public class File {
     
     /**
      * 打开文件（返回Result的现代API）
-     * 使用泛型 FileResult<File> 提供类型安全
+     * 使用泛型 Result<File, IOError> 提供类型安全
      * @param path 文件路径
      * @param mode 打开模式
-     * @return FileResult<File>
+     * @return Result<File, IOError> 成功返回 File，失败返回 IOError(NotFound)
      * 时间复杂度: O(1)
      * 磁盘I/O: 打开文件涉及磁盘I/O
      */
-    public static FileResult<File> openResult(String path, FileMode mode) {
+    public static Result<File, IOError> openResult(String path, FileMode mode) {
         File file = new File();
         if (file.open(path, mode)) {
-            return FileResult<File>.ok(file);
+            return Result<File, IOError>.ok(file);
         } else {
-            return FileResult<File>.err(FileError.NotFound);
+            return Result<File, IOError>.err(new IOError(IOErrorKind.NotFound, 0, "failed to open file: " + path));
         }
     }
 
@@ -461,18 +374,14 @@ public class File {
     }
     
     /**
-     * 获取最后错误作为FileError
+     * 获取最后错误码（FILE_ERROR_* 常量，未知错误返回 9）
      */
     public int getLastFileError() {
-        switch (this.lastError) {
-            case FILE_ERROR_NONE: return FileError.None;
-            case FILE_ERROR_NOT_FOUND: return FileError.NotFound;
-            case FILE_ERROR_ACCESS_DENIED: return FileError.AccessDenied;
-            case FILE_ERROR_IO: return FileError.IoError;
-            case FILE_ERROR_INVALID_MODE: return FileError.InvalidMode;
-            case FILE_ERROR_SEEK: return FileError.SeekError;
-            default: return FileError.Unknown;
+        int e = this.lastError;
+        if (e >= FILE_ERROR_NONE && e <= FILE_ERROR_SEEK) {
+            return e;
         }
+        return 9;
     }
 
     public bool flush() {
@@ -744,22 +653,22 @@ public class File {
     
     /**
      * 检查文件是否存在（返回Result的现代API）
-     * 使用泛型 FileResult<boolean> 提供类型安全
+     * 使用泛型 Result<boolean, IOError> 提供类型安全
      * @param path 文件路径
-     * @return FileResult<boolean>
+     * @return Result<boolean, IOError> 失败时返回 IOError(InvalidInput)
      * 时间复杂度: O(1)
      * 磁盘I/O: 仅检查文件系统元数据
      */
-    public static FileResult<boolean> existsResult(String path) {
+    public static Result<boolean, IOError> existsResult(String path) {
         if (path == null || path.isEmpty()) {
-            return FileResult<boolean>.err(FileError.InvalidPath);
+            return Result<boolean, IOError>.err(new IOError(IOErrorKind.InvalidInput, 0, "invalid path"));
         }
-        
+
         c_int result = access(path.c_str(), 0);
         if (result == 0) {
-            return FileResult<boolean>.ok(true);
+            return Result<boolean, IOError>.ok(true);
         } else {
-            return FileResult<boolean>.ok(false);
+            return Result<boolean, IOError>.ok(false);
         }
     }
     

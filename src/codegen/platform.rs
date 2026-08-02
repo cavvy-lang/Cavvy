@@ -12,6 +12,8 @@ pub struct PlatformConfig {
     pub obfuscate: bool,
     /// 启用 Rc<T> 循环引用运行时检测（--detect-cycles）。
     pub detect_cycles: bool,
+    /// --no-panic：panic()/abort() 调用在代码生成阶段报编译错误。
+    pub no_panic: bool,
 }
 
 impl PlatformConfig {
@@ -24,6 +26,7 @@ impl PlatformConfig {
             undefines: Vec::new(),
             obfuscate: false,
             detect_cycles: false,
+            no_panic: false,
         }
     }
 

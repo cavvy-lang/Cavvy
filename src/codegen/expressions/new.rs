@@ -239,6 +239,10 @@ impl IRGenerator {
         // 使用 registry_name（已解析的限定名）作为基础，保证命名空间内的类
         //（如 std::ArrayListIterator<T>）生成的符号与特化定义匹配。
         let canonical_name = if let Some(ref args) = concrete_type_args {
+            // 懒生成该特化实例：方法级泛型的特化方法体（如 map<U> 体内的
+            // `new Result<U, E>()`）引用的特化无法被 AST 特化收集器预先收集，
+            // 在此按需生成。已生成的特化为廉价的哈希命中，直接返回。
+            self.ensure_generic_class_specialization_generated(&registry_name, args);
             let args_str: Vec<String> = args.iter().map(|t| t.display_name()).collect();
             format!("{}<{ }>", registry_name, args_str.join(", "))
         } else {

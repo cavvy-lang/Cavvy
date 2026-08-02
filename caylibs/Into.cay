@@ -1,0 +1,35 @@
+/**
+ * Into<T> - 类型转换接口 (ROADMAP 6.1.x 错误传播)
+ *
+ * `?` 运算符的错误转换机制：当表达式 `expr?` 的错误类型 E 与
+ * 当前函数返回类型 Result<T, E2> 的 E2 不一致时，若 E 实现了
+ * Into<E2>，编译器自动插入 e.into() 转换：
+ *
+ *   expr?  →  match expr {
+ *                ok(v)  => v,
+ *                err(e) => return Result::err(e.into())
+ *             }
+ *
+ * 一个类可同时实现多个 Into 实例化（Into<A> 与 Into<B> 各提供一个仅返回
+ * 类型不同的 into()）；`?` 运算符按目标错误类型静态分派到正确的 into()。
+ * 这些重载不能被普通调用直接命中（e.into() 报歧义错误），经接口引用的
+ * 动态分派只命中其一（vtable 槽位按裸方法名分配）。
+ *
+ * 版本: 6.2.0
+ */
+
+#ifndef CAY_INTO_H
+#define CAY_INTO_H
+
+namespace std {
+
+/**
+ * Into<T> - 转换为类型 T
+ */
+public interface Into<T> {
+    T into();
+}
+
+} // namespace std
+
+#endif // CAY_INTO_H

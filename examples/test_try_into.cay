@@ -1,0 +1,61 @@
+// ? 运算符错误类型转换测试 (ROADMAP 6.1.x)
+// err 分支自动插入 e.into()：E 实现 Into<E2> 时跨错误类型传播
+
+#include <Result.cay>
+#include <Error.cay>
+#include <Into.cay>
+
+using std::Result;
+using std::IOError;
+using std::IOErrorKind;
+
+// 自定义错误类型：实现 Into<IOError>
+public class ConfigError implements Into<IOError> {
+    private String msg;
+
+    public ConfigError(String msg) {
+        this.msg = msg;
+    }
+
+    public String message() {
+        return this.msg;
+    }
+
+    public IOError into() {
+        return new IOError(IOErrorKind.InvalidInput, this.msg);
+    }
+}
+
+public class TestTryInto {
+    public static Result<int, ConfigError> parsePort(boolean ok) {
+        if (ok) {
+            return Result<int, ConfigError>.ok(8080);
+        }
+        return Result<int, ConfigError>.err(new ConfigError("bad port"));
+    }
+
+    // E=ConfigError ≠ E2=IOError：? 自动调用 ConfigError.into()
+    public static Result<int, IOError> loadConfig(boolean ok) {
+        int port = parsePort(ok)?;
+        return Result<int, IOError>.ok(port);
+    }
+}
+
+public int main() {
+    Result<int, IOError> r1 = TestTryInto::loadConfig(true);
+    if (r1.isOk()) {
+        print("ok=");
+        println(r1.unwrap());
+    }
+
+    Result<int, IOError> r2 = TestTryInto::loadConfig(false);
+    if (r2.isErr()) {
+        IOError e = r2.unwrapErr();
+        print("err=");
+        println(e.message());
+        println(e.kind() == IOErrorKind.InvalidInput);
+    }
+
+    println("done");
+    return 0;
+}

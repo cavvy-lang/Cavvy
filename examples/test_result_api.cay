@@ -1,0 +1,53 @@
+// Result<T, E> 完整 API 测试 (ROADMAP 6.1.x)
+// 覆盖：unwrap/unwrapOr/unwrapOrElse/expect、map/mapErr/andThen/flatMap、
+// inspect/inspectErr，以及实例泛型方法的值类型 U 健全性
+#include <Result.cay>
+
+using std::Result;
+
+fn main() {
+    Result<int, String> ok = Result<int, String>.ok(42);
+    Result<int, String> err = Result<int, String>.err("boom");
+
+    // 1. 取值系列
+    println(ok.unwrap());                            // 42
+    println(err.unwrapOr(7));                        // 7
+    println(err.unwrapOrElse((String e) -> 9));      // 9
+    println(ok.expect("should not panic"));          // 42
+
+    // 2. map：U=long（64 位值类型）
+    Result<long, String> m = ok.map((int x) -> (long)(x + 1));
+    println(m.unwrap());                             // 43
+    Result<long, String> me = err.map((int x) -> (long)x);
+    println(me.isErr());                             // true
+
+    // 2b. map：U=int（32 位值类型，单态化健全性用例）
+    Result<long, String> big = Result<long, String>.ok(1000000);
+    Result<int, String> small = big.map((long x) -> (int)(x / 1000));
+    println(small.unwrap());                         // 1000
+
+    // 2c. map：U=String（引用类型）
+    Result<String, String> s = ok.map((int x) -> "str");
+    println(s.unwrap());                             // str
+
+    // 3. mapErr
+    Result<int, String> me2 = err.mapErr((String e) -> "mapped");
+    println(me2.unwrapErr());                        // mapped
+    Result<int, String> me3 = ok.mapErr((String e) -> "nope");
+    println(me3.unwrap());                           // 42
+
+    // 4. andThen / flatMap
+    Result<int, String> a = ok.andThen((int x) -> Result<int, String>.ok(x * 2));
+    println(a.unwrap());                             // 84
+    Result<int, String> f = ok.flatMap((int x) -> Result<int, String>.err("stop"));
+    println(f.unwrapErr());                          // stop
+    Result<int, String> a2 = err.andThen((int x) -> Result<int, String>.ok(x * 2));
+    println(a2.isErr());                             // true
+
+    // 5. inspect / inspectErr（副作用后原样返回）
+    Result<int, String> i1 = ok.inspect((int x) -> { println(x); });   // 42
+    println(i1.unwrap());                            // 42
+    err.inspectErr((String e) -> { println(e); });   // boom
+
+    println("done");
+}

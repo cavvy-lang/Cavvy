@@ -232,29 +232,28 @@ class Main {
 
 ### 错误处理
 
+错误处理统一使用 `std::Result<T, E>` 与 `std::IOError`（见 `caylibs/Result.cay` 与 `caylibs/Error.cay`）：
+
 ```cay,ignore
-public class FileError {
-    public static final int None = 0;
-    public static final int NotFound = 1;
-    public static final int AccessDenied = 2;
-    public static final int IoError = 3;
-    public static final int InvalidMode = 4;
-    public static final int SeekError = 5;
-    public static final int AlreadyExists = 6;
-    public static final int TooLarge = 7;
-    public static final int InvalidPath = 8;
-    public static final int Unknown = 9;
+public enum IOErrorKind {
+    NotFound,
+    PermissionDenied,
+    UnexpectedEof,
+    InvalidInput,
+    Other
 }
 
-public class FileResult<T> {
-    public static FileResult<T> ok(T value);
-    public static FileResult<T> err(int errorCode);
-    public bool isOk();
-    public bool isErr();
-    public T unwrap();
-    public int getErrorCode();
+public class IOError implements Error {
+    public IOError(IOErrorKind kind, int rawOsError, String msg);
+    public IOError(IOErrorKind kind, String msg);
+    public IOErrorKind kind();
+    public int rawOsError();
+    public String message();
+    public Optional<Error> cause();
 }
 ```
+
+bool 风格 API 的最后错误码仍以 `FILE_ERROR_*` 整数常量返回（`getLastError()` / `getLastFileError()`）。
 
 ### 文件模式
 
@@ -290,7 +289,7 @@ public class File {
     
     // 打开/关闭
     public bool open(String path, FileMode mode);      // O(1) 打开文件
-    public static FileResult<File> openResult(String path, FileMode mode);
+    public static Result<File, IOError> openResult(String path, FileMode mode);
     public bool close();                               // O(1) 关闭文件
     public bool isOpened();                            // O(1) 检查是否打开
     
@@ -325,14 +324,11 @@ public class File {
     
     // 静态工具方法
     public static bool exists(String path);            // O(1) 文件是否存在
-    public static FileResult<bool> existsResult(String path);
+    public static Result<boolean, IOError> existsResult(String path);
     public static bool delete(String path);            // O(1) 删除文件
     public static bool rename(String oldPath, String newPath); // O(1) 重命名
     public static bool copy(String srcPath, String dstPath, bool overwrite);
-    public static FileResult<long> getSize(String path);
-    public static FileResult<String> readAllText(String path);
-    public static FileResult<bool> writeAllText(String path, String content);
-    public static FileResult<bool> appendAllText(String path, String content);
+    public static long getSize(String path);
 }
 ```
 
@@ -895,6 +891,62 @@ class Main {
 
 ---
 
+## Result 与错误处理 (6.1.0 / 6.2.0 补完)
+
+**文件**: `caylibs/Result.cay`、`caylibs/Error.cay`、`caylibs/Into.cay`
+
+显式错误传播容器。`unwrap`/`unwrapErr`/`expect` 在状态不符时 panic；
+`map` 家族为实例泛型方法（新类型参数在调用点从 lambda 推断并单态化），
+支持链式调用（`r.map(f).map(g).getValue()`）与 `auto` 推断；lambda 参数
+类型按期望的 `fn` 签名自动确定，块体 lambda（`{ ... }`）不参与方法级类型实参推断。
+
+```cay,ignore
+public class Result<T, E> {
+    // 构造 (O(1))
+    public static Result<T, E> ok(T value);
+    public static Result<T, E> err(E error);
+
+    // 检查 (O(1))
+    public boolean isOk();
+    public boolean isErr();
+
+    // 取值 (O(1))，状态不符时 panic
+    public T unwrap();
+    public T unwrapOr(T defaultValue);
+    public T unwrapOrElse(fn(E) -> T handler);
+    public T expect(String message);
+    public E unwrapErr();
+
+    // 转换（实例泛型方法）
+    public Result<U, E> map<U>(fn(T) -> U mapper);
+    public Result<T, F> mapErr<F>(fn(E) -> F mapper);
+    public Result<U, E> andThen<U>(fn(T) -> Result<U, E> handler);
+    public Result<U, E> flatMap<U>(fn(T) -> Result<U, E> mapper);
+
+    // 副作用
+    public Result<T, E> inspect(fn(T) -> void action);
+    public Result<T, E> inspectErr(fn(E) -> void action);
+}
+
+// 错误层级
+public interface Error { String message(); Optional<Error> cause(); }
+public enum IOErrorKind { NotFound, PermissionDenied, UnexpectedEof, InvalidInput, Other }
+public class IOError implements Error { /* kind()/rawOsError()/message()/cause() */ }
+public class ParseError implements Error { /* line()/column()/sourceSnippet() */ }
+
+// ? 运算符错误转换
+public interface Into<T> { T into(); }
+```
+
+`?` 传播时，表达式错误类型 E 与函数返回错误类型 E2 不同且 E 实现 `Into<E2>` 的，
+自动插入 `e.into()` 转换。一个类可同时实现多个 `Into` 实例化
+（`Into<A>` 与 `Into<B>` 各提供一个仅返回类型不同的 `into()`），`?` 按目标
+错误类型静态分派到正确的 `into()`；这些重载不能被普通调用直接命中
+（`e.into()` 报歧义错误），经接口引用的动态分派也只命中其中之一
+（vtable 槽位按裸方法名分配）。
+
+---
+
 ## 增强 I/O 工具
 
 **文件**: `caylibs/IOPlus.cay`
@@ -1138,6 +1190,7 @@ extern {
 | `Mmap` / `MmapSlice` | 5.4.0 | 跨平台内存映射和零拷贝切片 |
 | `Result<T,E>` | 6.1.0 | 显式成功/错误分支和错误传播 |
 | `Error` / `IOError` / `ParseError` | 6.1.0 | 统一错误类型层级 |
+| `Into<T>` | 6.2.0 | `?` 运算符的错误类型自动转换（6.2.0 起 `File`/`Mmap` 返回 `Result<_, IOError>`） |
 
 详细 API 以 `caylibs/` 源码为准；版本演进和示例见[版本演进总览](release/version-history-5.2-to-6.1.md)。
 

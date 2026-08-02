@@ -28,7 +28,6 @@
 #include <IOPlus.cay>
 
 using std::File;
-using std::FileError;
 using std::FileMode;
 using std::StringBuilder;
 using std::IOPlus;

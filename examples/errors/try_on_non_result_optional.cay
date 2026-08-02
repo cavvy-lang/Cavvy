@@ -1,0 +1,14 @@
+// 错误用例：? 运算符只能用于 Result<T, E> 或 Optional<T>
+// 在普通整数上使用 ? 必须报语义错误
+
+public class TestTryOnNonResult {
+    public static int helper() {
+        return 42;
+    }
+}
+
+public int main() {
+    int v = TestTryOnNonResult::helper()?;
+    println(v);
+    return 0;
+}

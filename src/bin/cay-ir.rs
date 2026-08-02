@@ -50,6 +50,7 @@ struct CompileOptions {
     obfuscate: bool,            // --obfuscate 混淆 IR 代码
     include_paths: Vec<String>, // -I:XX 包含路径
     detect_cycles: bool,        // --detect-cycles 启用 Rc 循环引用检测
+    no_panic: bool,             // --no-panic panic()/abort() 转为编译错误
 }
 
 impl Default for CompileOptions {
@@ -67,6 +68,7 @@ impl Default for CompileOptions {
             undefines: Vec::new(),
             obfuscate: false,
             detect_cycles: false,
+            no_panic: false,
         }
     }
 }
@@ -144,6 +146,9 @@ fn parse_args(args: &[String]) -> Result<(CompileOptions, String, String), Strin
             }
             "--detect-cycles" => {
                 options.detect_cycles = true;
+            }
+            "--no-panic" => {
+                options.no_panic = true;
             }
             "-o" => {
                 if i + 1 < args.len() {
@@ -311,6 +316,7 @@ fn main() {
         include_paths: Vec::new(),
         test_mode: false,
         detect_cycles: options.detect_cycles,
+        no_panic: options.no_panic,
     };
 
     // 编译 Cavvy → IR

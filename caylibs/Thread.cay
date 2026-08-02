@@ -28,6 +28,10 @@
 #define CAY_THREAD_H
 
 #include "Result.cay"
+#include "Error.cay"
+
+using std::Optional;
+using std::Error;
 
 extern {
     c_void* malloc(size_t size);
@@ -42,6 +46,9 @@ extern {
     void Sleep(c_ulong millis);
     c_ulong GetCurrentThreadId();
     c_int SwitchToThread();
+    c_ulong GetLastError();
+    c_int MultiByteToWideChar(c_uint cp, c_ulong flags, c_char* src, c_int srclen, c_void* dst, c_int dstlen);
+    c_long SetThreadDescription(c_void* hThread, c_void* lpThreadDescription);
 }
 #else
 extern {
@@ -54,7 +61,11 @@ extern {
     c_int pthread_attr_init(c_void* attr);
     c_int pthread_attr_setstacksize(c_void* attr, size_t stacksize);
     c_int pthread_attr_destroy(c_void* attr);
-#ifndef __APPLE__
+    c_char* strcpy(c_char* dst, c_char* src);
+#ifdef __APPLE__
+    // macOS 单参数版本：只能命名当前线程（trampoline 内调用，符合用法）
+    c_int pthread_setname_np(c_char* name);
+#else
     c_int pthread_setname_np(c_void* thread, c_char* name);
 #endif
 }
@@ -62,11 +73,8 @@ extern {
 
 /**
  * ThreadError - 线程操作错误
- *
- * 注：未实现 std::Error 接口——Error.cay 当前无法编译（嵌套 enum 不支持），
- * 待其修复后可改为 implements Error。
  */
-public class ThreadError {
+public class ThreadError implements Error {
     private String msg;
     private int code;
 
@@ -79,9 +87,13 @@ public class ThreadError {
         return this.msg;
     }
 
-    /** 原始 OS 错误码（pthread_create 返回值 / GetLastError，未实现时为 0） */
+    /** 原始 OS 错误码（pthread_create 返回值 / GetLastError） */
     public int rawCode() {
         return this.code;
+    }
+
+    public Optional<Error> cause() {
+        return Optional<Error>.empty();
     }
 }
 
@@ -99,14 +111,39 @@ public class Thread {
     }
 
     /**
-     * C 回调入口（内部）。arg 是闭包结构体指针，直接 store 到 fn 变量后调用。
+     * C 回调入口（内部）。
+     * Windows：arg 是闭包结构体指针，直接 store 到 fn 变量后调用。
+     * pthread 平台：arg 为 { i8* closure, i8* name } 打包结构，
+     * 在线程内命名（消除外部命名竞态；macOS 只能命名当前线程），
+     * 随后释放打包结构与名字副本。
      * __ir 中参数名绑定到原始值（而非 alloca），局部变量绑定到 alloca。
      */
     public static c_void* __cay_thread_trampoline(c_void* arg) {
         auto entry = () -> {};
+#ifdef _WIN32
         __ir {
             store i8* %arg, i8** %entry
         }
+#else
+        c_void* tname = null;
+        __ir {
+            %cp = bitcast i8* %arg to i8**
+            %clo = load i8*, i8** %cp
+            store i8* %clo, i8** %entry
+            %np = getelementptr i8*, i8** %cp, i64 1
+            %nm = load i8*, i8** %np
+            store i8* %nm, i8** %tname
+        }
+        if (tname != null) {
+#ifdef __APPLE__
+            pthread_setname_np(tname);
+#else
+            pthread_setname_np(pthread_self(), tname);
+#endif
+            free(tname);
+        }
+        free(arg);
+#endif
         entry();
         return null;
     }
@@ -144,7 +181,7 @@ public class Thread {
         if (h == null) {
             free(cell);
             free(tidCell);
-            return std::Result<Thread, ThreadError>.err(new ThreadError("CreateThread failed", 0));
+            return std::Result<Thread, ThreadError>.err(new ThreadError("CreateThread failed", (int)GetLastError()));
         }
         // cell 存储 HANDLE 值本身
         __ir {
@@ -153,7 +190,23 @@ public class Thread {
             store i8* %hv, i8** %c
         }
         free(tidCell);
-        // Windows 上线程命名需要 SetThreadDescription（Win10+），暂不实现
+        if (name != null) {
+            // Windows 线程命名：SetThreadDescription（Win10+）需要 PCWSTR，
+            // 先用 MultiByteToWideChar（CP_UTF8=65001）转宽字符
+            c_int wlen = MultiByteToWideChar(65001, 0, name.c_str(), -1, null, 0);
+            if (wlen > 0) {
+                c_void* wbuf = malloc(wlen * 2);
+                MultiByteToWideChar(65001, 0, name.c_str(), -1, wbuf, wlen);
+                c_void* hv2 = null;
+                __ir {
+                    %c2 = load i8*, i8** %cell
+                    %t2 = load i8*, i8** %c2
+                    store i8* %t2, i8** %hv2
+                }
+                SetThreadDescription(hv2, wbuf);
+                free(wbuf);
+            }
+        }
 #else
         c_void* attr = null;
         if (stackSize > 0) {
@@ -161,7 +214,33 @@ public class Thread {
             pthread_attr_init(attr);
             pthread_attr_setstacksize(attr, stackSize);
         }
-        c_int rc = pthread_create(cell, attr, Thread::__cay_thread_trampoline, argp);
+        // 所有 pthread 平台统一：打包 {closure, name副本} 传入，
+        // 由 trampoline 在线程内命名——消除"创建后由调用方命名"的竞态
+        //（新线程可能在 setname 前就读取自身名字）。
+        c_void* packed = malloc(16);
+        c_void* namebuf = null;
+        if (name != null) {
+            String trimmed = name;
+            if (trimmed.length() > 15) {
+                // Linux 线程名上限 16 字节（含 NUL）；macOS 上限更大，取交集
+                trimmed = trimmed.substring(0, 15);
+            }
+            namebuf = malloc(trimmed.length() + 1);
+            strcpy(namebuf, trimmed.c_str());
+        }
+        __ir {
+            %pp = load i8*, i8** %packed
+            %pb = bitcast i8* %pp to i8**
+            store i8* %entry, i8** %pb
+            %nb = load i8*, i8** %namebuf
+            %npp = getelementptr i8*, i8** %pb, i64 1
+            store i8* %nb, i8** %npp
+        }
+        c_int rc = pthread_create(cell, attr, Thread::__cay_thread_trampoline, packed);
+        if (rc != 0) {
+            free(namebuf);
+            free(packed);
+        }
         if (attr != null) {
             pthread_attr_destroy(attr);
             free(attr);
@@ -170,22 +249,6 @@ public class Thread {
             free(cell);
             return std::Result<Thread, ThreadError>.err(new ThreadError("pthread_create failed", rc));
         }
-#ifndef __APPLE__
-        if (name != null) {
-            String trimmed = name;
-            if (trimmed.length() > 15) {
-                // Linux 线程名上限 16 字节（含 NUL）
-                trimmed = trimmed.substring(0, 15);
-            }
-            c_void* tv = null;
-            __ir {
-                %c = load i8*, i8** %cell
-                %t = load i8*, i8** %c
-                store i8* %t, i8** %tv
-            }
-            pthread_setname_np(tv, trimmed.c_str());
-        }
-#endif
 #endif
 
         Thread t = new Thread();

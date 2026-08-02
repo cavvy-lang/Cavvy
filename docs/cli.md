@@ -1,6 +1,6 @@
 # CLI 工具参考手册
 
-Cavvy 6.1.0 提供 16 个 CLI 入口；其中 `cay-setup` 是可独立构建和发布的工具链安装器，不依赖主编译器的 LLVM 构建环境。
+Cavvy 6.2.0 提供 16 个 CLI 入口；其中 `cay-setup` 是可独立构建和发布的工具链安装器，不依赖主编译器的 LLVM 构建环境。
 
 ---
 
@@ -58,31 +58,44 @@ cay-setup uninstall
 **将 `.cay` 源文件直接编译为可执行文件。**
 
 ```bash
-cayc <input.cay> [选项]
+cayc [选项] <input.cay> [output.exe]
 ```
 
 **选项**：
 
 | 选项 | 描述 |
 |---|---|
-| `-o <file>` | 指定输出文件路径 |
-| `-O0` / `-O1` / `-O2` / `-O3` | 优化级别（默认 `-O0`） |
-| `--emit-llvm` | 同时保留 `.ll` 文件 |
-| `--verbose` | 显示详细编译日志 |
-| `--stage <stage>` | 只运行到指定阶段 |
+| `-O0` / `-O1` / `-O2` / `-O3` / `-Os` / `-Oz` | 优化级别（默认 `-O2`） |
+| `--opt-ir` | 启用 IR 阶段优化（使用 LLVM 优化 IR） |
+| `--lto[=<type>]` | 链接时优化（`full` / `thin`） |
+| `-march=<arch>` / `-mtune=<cpu>` / `-mcpu=<cpu>` | 目标 CPU 架构与调优 |
+| `-msse=<ver>` / `-mavx=<ver>` / `--mneon` | SIMD 指令集（SSE / AVX / NEON） |
+| `-funroll-loops` / `-fvectorize` / `-fslp-vectorize` | 循环展开与自动向量化 |
+| `-fomit-frame-pointer` | 省略帧指针 |
+| `-fprofile-generate` / `-fprofile-use=<path>` / `-fcs-profile-generate` | PGO 性能分析优化 |
+| `-g` | 生成调试信息 |
+| `--keep-ir` | 同时保留 `.ll` 文件 |
+| `-I<path>` | 添加包含路径 |
+| `-L<path>` / `-l<lib>` | 库搜索路径 / 链接额外的库 |
+| `--ldflags <flags>` / `--cflags <flags>` | 传递额外的链接器 / 编译器标志 |
+| `--static` / `-fPIC` | 静态链接 / 位置无关代码 |
 | `--target <triple>` | 目标三元组 |
-| `--print-stages` | 打印编译流水线阶段并退出 |
-| `-I <dir>` | 添加包含路径 |
-| `-D <macro>` | 预定义宏 |
+| `--use-clang` / `--use-llc-lld` / `--use-embedded-llc` | 选择工具链（默认 llc+lld；embedded 为实验性） |
+| `--detect-cycles` | 启用 `Rc<T>` 循环引用运行时检测 |
+| `--no-panic` | 将 `panic()`/`abort()` 调用转为编译错误（嵌入式等场景，6.2.0 起） |
+| `-fno-exceptions` / `-fno-rtti` | 禁用异常处理 / 运行时类型信息 |
+| `-F<feature>` / `--feature=<feature>` | 启用语言特性（如 `top_level_function`） |
+| `-D<macro>[=<value>]` / `-U<macro>` | 预定义 / 取消预处理器宏 |
+| `-v` / `--version` | 显示版本号 |
 | `-h` / `--help` | 显示帮助 |
 
 **示例**：
 
 ```bash
 cayc hello.cay
-cayc hello.cay -o hello.exe
-cayc hello.cay --emit-llvm -O2
-cayc hello.cay -I ./include -D DEBUG
+cayc hello.cay hello.exe
+cayc --keep-ir -O2 hello.cay
+cayc -I./include -D DEBUG hello.cay
 ```
 
 ---
@@ -92,25 +105,31 @@ cayc hello.cay -I ./include -D DEBUG
 **从 `.cay` 源文件生成 LLVM IR 文本文件（`.ll`），不进行后续编译。**
 
 ```bash
-cay-ir <input.cay> [选项]
+cay-ir [选项] <input.cay> [output.ll]
 ```
 
 **选项**：
 
 | 选项 | 描述 |
 |---|---|
-| `-o <file>` | 输出 `.ll` 文件路径 |
-| `--stdout` | 输出到标准输出 |
-| `-O0` / `-O1` / `-O2` / `-O3` | 优化级别 |
-| `-I <dir>` | 添加包含路径 |
-| `--verbose` | 显示详细日志 |
+| `-O0` / `-O1` / `-O2` / `-O3` / `-Os` / `-Oz` | 优化级别（默认 `-O2`） |
+| `-g` | 生成 DWARF 调试信息 |
+| `--opt-ir` | 使用 LLVM 优化 IR |
+| `--emit-optimized` | 输出优化后的 IR（与 `--opt-ir` 一起使用） |
+| `--target <os>` | 目标操作系统（windows / linux / macos） |
+| `--obfuscate` | 混淆 IR 代码 |
+| `--detect-cycles` | 启用 `Rc<T>` 循环引用运行时检测 |
+| `-I<path>` | 添加包含路径 |
+| `-D<macro>[=<value>]` / `-U<macro>` | 预定义 / 取消预处理器宏 |
+| `-v` / `--version` | 显示版本号 |
+| `-h` / `--help` | 显示帮助 |
 
 **示例**：
 
 ```bash
-cay-ir input.cay -o output.ll
-cay-ir input.cay --stdout        # 直接查看生成的 IR
-cay-ir input.cay -O2 -o optimized.ll
+cay-ir input.cay                  # 生成 input.ll
+cay-ir input.cay output.ll        # 输出路径为位置参数
+cay-ir --opt-ir --emit-optimized -O3 input.cay
 ```
 
 ---
@@ -120,22 +139,33 @@ cay-ir input.cay -O2 -o optimized.ll
 **将 LLVM IR 文本文件编译为可执行文件。**
 
 ```bash
-ir2exe <input.ll> [选项]
+ir2exe [选项] <input.ll> [output.exe]
 ```
 
 **选项**：
 
 | 选项 | 描述 |
 |---|---|
-| `-o <file>` | 输出可执行文件路径 |
-| `-O0` / `-O1` / `-O2` / `-O3` | 优化级别 |
-| `--verbose` | 显示详细日志 |
+| `-O0` / `-O1` / `-O2` / `-O3` / `-Os` / `-Oz` | 优化级别（默认 `-O2`） |
+| `--lto[=<type>]` | 链接时优化（`full` / `thin`） |
+| `--march <arch>` / `--mtune <cpu>` / `--mcpu <cpu>` | 目标 CPU 架构与调优 |
+| `--msse <ver>` / `--mavx <ver>` / `--mneon` | SIMD 指令集（SSE / AVX / NEON） |
+| `--funroll-loops` / `--fvectorize` / `--fslp-vectorize` | 循环展开与自动向量化 |
+| `--fomit-frame-pointer` | 省略帧指针 |
+| `--pgo-gen` / `--pgo-use <path>` / `--pgo-cs` | PGO 性能分析优化 |
+| `-g` | 生成调试信息 |
+| `-L<path>` / `-l<lib>` | 库搜索路径 / 链接额外的库 |
+| `--ldflags <flags>` / `--cflags <flags>` | 传递额外的链接器 / 编译器标志 |
+| `--static` / `-fPIC` | 静态链接 / 位置无关代码 |
+| `--target <target>` | 指定目标平台 |
+| `-fno-exceptions` / `-fno-rtti` | 禁用异常处理 / 运行时类型信息 |
+| `--use-clang` / `--use-llc-lld` / `--use-embedded-llc` | 选择工具链（默认 llc+lld；embedded 为实验性） |
 
 **示例**：
 
 ```bash
-ir2exe output.ll -o program.exe
-ir2exe output.ll -O2 -o optimized.exe
+ir2exe output.ll program.exe
+ir2exe -O2 output.ll optimized.exe
 ```
 
 ---
@@ -145,15 +175,18 @@ ir2exe output.ll -O2 -o optimized.exe
 **仅执行编译流水线的前端（预处理 → 词法分析 → 解析 → 语义分析），不生成代码。用于快速验证源文件的正确性。**
 
 ```bash
-cay-check <input.cay> [选项]
+cay-check [选项] <input.cay>
 ```
 
 **选项**：
 
 | 选项 | 描述 |
 |---|---|
-| `-I <dir>` | 添加包含路径 |
-| `--verbose` | 显示详细日志 |
+| `--lex-only` | 只进行词法分析 |
+| `--parse-only` | 进行词法和语法分析（不进行语义分析） |
+| `--no-preprocess` | 跳过预处理阶段 |
+| `-v` / `--version` | 显示版本号 |
+| `-h` / `--help` | 显示帮助 |
 
 **退出码**：
 - `0` — 源文件正确
@@ -163,33 +196,42 @@ cay-check <input.cay> [选项]
 
 ```bash
 cay-check source.cay
-cay-check source.cay -I ./include
+cay-check --parse-only source.cay
 ```
 
 ---
 
 ## 5. cay-run — 编译并运行
 
-**编译源代码并直接运行生成的可执行文件。**
+**编译源代码并直接运行生成的可执行文件。也支持直接运行 `.caybc` 字节码和 `.ll` IR 文件。**
 
 ```bash
-cay-run <input.cay> [程序参数...]
+cay-run [选项] <文件>
 ```
 
 **选项**：
 
 | 选项 | 描述 |
 |---|---|
-| `-I <dir>` | 添加包含路径 |
-| `--verbose` | 显示详细日志 |
-
-所有非选项参数会传递给生成的可执行文件。
+| `-o <file>` | 指定输出可执行文件名 |
+| `--no-run` | 只编译不运行 |
+| `-O<level>` | 优化级别（0 / 1 / 2 / 3 / s / z） |
+| `-I<path>` | 添加包含路径 |
+| `-D<macro>[=<value>]` / `-U<macro>` | 预定义 / 取消预处理器宏 |
+| `-L<path>` / `-l<lib>` | 库搜索路径 / 链接指定库 |
+| `-F<feature>` | 启用语言特性（如 `-F=top_level_function`） |
+| `--obfuscate` / `--obfuscate-level <l>` | 混淆字节码（`light` / `normal` / `deep`，仅对 `.cay` 文件） |
+| `--detect-cycles` | 启用 `Rc<T>` 循环引用运行时检测 |
+| `--keep-temp` | 保留临时文件 |
+| `--use-embedded-llc` | 使用内嵌 llc 编译 IR（实验性） |
+| `-v` / `--verbose` | 显示详细编译信息 |
 
 **示例**：
 
 ```bash
 cay-run hello.cay
-cay-run program.cay arg1 arg2 arg3
+cay-run -O2 -o myapp hello.cay
+cay-run program.caybc
 ```
 
 ---
@@ -206,8 +248,9 @@ cay-rcpl [选项]
 
 | 选项 | 描述 |
 |---|---|
-| `-I <dir>` | 添加包含路径 |
-| `--verbose` | 显示详细日志 |
+| `--use-embedded-llc` | 使用内嵌 llc 编译 IR（实验性） |
+| `-v` / `--version` | 显示版本号 |
+| `-h` / `--help` | 显示帮助 |
 
 **支持的命令**：
 
@@ -218,47 +261,47 @@ cay-rcpl [选项]
 | 类/接口定义 | 实时定义新类型 |
 | 控制流语句 | 即时执行 |
 | `#include` | 导入文件 |
-| `:exit` / `:quit` | 退出 RCPL |
-| `:help` | 显示帮助 |
+| `:q` / `:quit` / `exit` | 退出 RCPL |
+| `:h` / `:help` | 显示帮助 |
+| `:c` / `:clear` | 清屏 |
 
 **示例**：
 
 ```
 > cay-rcpl
-Cavvy RCPL v6.1.0
+Cavvy RCPL v6.2.0
 > int x = 42
 > x * 2
 84
 > println("Hello from RCPL!")
 Hello from RCPL!
-> :exit
+> :quit
 ```
 
 ---
 
 ## 7. cay-bcgen — 字节码生成器
 
-**将 `.cay` 源文件编译为 CayBC 字节码。**
+**将 `.cay` 源文件编译为 CayBC 字节码。（实验性工具，可能包含严重错误和不稳定性。）**
 
 ```bash
-cay-bcgen <input.cay> [选项]
+cay-bcgen [选项] <input.cay>
 ```
 
 **选项**：
 
 | 选项 | 描述 |
 |---|---|
-| `-o <file>` | 输出 `.caybc` 文件路径 |
+| `-o <file>` | 输出 `.caybc` 文件路径（默认：输入文件名 `.caybc`） |
 | `--obfuscate` | 启用字节码混淆 |
-| `--obfuscation-level <0-3>` | 混淆级别 |
-| `-I <dir>` | 添加包含路径 |
-| `--verbose` | 显示详细日志 |
+| `--obfuscate-level <l>` | 混淆级别（`light` / `normal` / `deep`，默认 `normal`） |
+| `-v` / `--verbose` | 显示详细编译信息 |
 
 **示例**：
 
 ```bash
 cay-bcgen input.cay -o output.caybc
-cay-bcgen input.cay --obfuscate -o obfuscated.caybc
+cay-bcgen input.cay --obfuscate --obfuscate-level deep
 ```
 
 ---
@@ -324,9 +367,9 @@ cavly test
 
 ---
 
-## 10. cay-dt — 文档工具
+## 10. cay-dt — Token 查看工具
 
-**从源码注释生成文档。**
+**以可读形式显示源文件的词法分析结果（Token 流），用于调试词法分析器。**
 
 ```bash
 cay-dt <input.cay> [选项]
@@ -336,16 +379,18 @@ cay-dt <input.cay> [选项]
 
 | 选项 | 描述 |
 |---|---|
-| `-o <dir>` | 输出目录 |
-| `--format <fmt>` | 输出格式（html / markdown） |
-| `-I <dir>` | 添加包含路径 |
-| `--verbose` | 显示详细日志 |
+| `--json` | 以 JSON 格式输出 tokens |
+| `--no-color` | 禁用彩色输出 |
+| `--show-location` | 显示详细位置信息 |
+| `--no-preprocess` | 禁用预处理器 |
+| `-v` / `--version` | 显示版本号 |
+| `-h` / `--help` | 显示帮助 |
 
 ---
 
-## 11. cay-dp — 依赖分析工具
+## 11. cay-dp — Parser 查看工具
 
-**分析项目的依赖关系图。**
+**以可读形式显示源文件的语法分析结果（AST），用于调试语法分析器。**
 
 ```bash
 cay-dp <input.cay> [选项]
@@ -355,38 +400,38 @@ cay-dp <input.cay> [选项]
 
 | 选项 | 描述 |
 |---|---|
-| `--graph` | 输出 DOT 格式的依赖图 |
-| `--json` | 输出 JSON 格式 |
-| `-I <dir>` | 添加包含路径 |
-| `--verbose` | 显示详细日志 |
+| `--json` | 以 JSON 格式输出 AST |
+| `--no-color` | 禁用彩色输出 |
+| `--compact` | 紧凑输出模式 |
+| `--no-preprocess` | 禁用预处理器 |
+| `-v` / `--version` | 显示版本号 |
+| `-h` / `--help` | 显示帮助 |
 
 ---
 
 ## 12. cay-pre — 独立预处理器
 
-**仅执行预处理阶段，输出预处理后的源代码。**
+**仅执行预处理阶段，输出预处理后的源代码（默认输出到 stdout）。**
 
 ```bash
-cay-pre <input.cay> [选项]
+cay-pre [选项] <input.cay>
 ```
 
 **选项**：
 
 | 选项 | 描述 |
 |---|---|
-| `-o <file>` | 输出文件 |
-| `--stdout` | 输出到标准输出 |
-| `-I <dir>` | 添加包含路径 |
-| `-D <macro>` | 预定义宏 |
-| `--keep-comments` | 保留注释 |
-| `--verbose` | 显示详细信息 |
+| `-o <file>` | 输出文件（默认输出到 stdout） |
+| `-I<path>` | 添加包含路径 |
+| `--source-map` | 显示源映射信息 |
+| `-v` / `--verbose` | 显示详细处理信息 |
 
 **示例**：
 
 ```bash
 cay-pre input.cay -o output_preprocessed.cay
-cay-pre input.cay --stdout | grep "MAIN"
-cay-pre input.cay -D DEBUG -D VERSION=2
+cay-pre input.cay | grep "MAIN"
+cay-pre -I./caylibs input.cay
 ```
 
 ---

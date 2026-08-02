@@ -157,7 +157,8 @@ extern {
 
     // 程序控制
     void exit(c_int status);
-    void abort();
+    // abort 不再以 FFI 声明：6.1.0 起 abort(msg) 是语言内置函数（与 panic 同路径），
+    // 此处的 extern 声明会与内置生成的 declare void @abort() 重复定义（llc 报错）。
     // atexit 接受无参数无返回值的函数指针
     // c_int atexit(fn() -> void);  // 暂不支持此语法
     void _Exit(c_int status);

@@ -126,7 +126,16 @@ if (ok.isOk()) {
 int fallback = failed.unwrapOr(0);
 ```
 
-可用操作包括 `ok`、`err`、`isOk`、`isErr`、`unwrap`、`unwrapOr`、`unwrapErr` 和 `expect`。`expect`、`unwrap` 和 `unwrapErr` 不应替代可恢复错误分支。
+可用操作包括 `ok`、`err`、`isOk`、`isErr`、`unwrap`、`unwrapOr`、`unwrapOrElse`、`expect`、`unwrapErr`、`map`、`mapErr`、`andThen`、`flatMap`、`inspect`、`inspectErr`。`unwrap`/`unwrapErr`/`expect` 在状态不符时会 panic，不应替代可恢复错误分支。
+
+`map`/`mapErr`/`andThen`/`flatMap` 是实例泛型方法，新类型参数在调用点从 lambda 推断并单态化：
+
+```cay ignore
+Result<long, String> widened = ok.map((int x) -> (long)x);
+Result<int, String> doubled = ok.andThen((int x) -> Result<int, String>.ok(x * 2));
+```
+
+结果可以赋给显式标注类型的变量，也支持 `auto` 推断与 `r.map(f).map(g).getValue()` 链式调用；lambda 参数类型可省略（按期望的 `fn` 签名确定），但块体 lambda（`{ ... }`）不参与方法级类型实参推断。
 
 函数返回兼容的 `Result` 时，可以使用 `?` 传播错误：
 
@@ -137,6 +146,10 @@ public Result<int, String> readValue() {
     return Result<int, String>.ok(number + 1);
 }
 ```
+
+表达式的错误类型 `E` 与函数返回的错误类型 `E2` 不同时，若 `E` 实现了 `Into<E2>`（`caylibs/Into.cay`），`?` 会自动插入 `e.into()` 转换；否则编译报错。一个类可同时实现多个 `Into` 实例化（各提供一个仅返回类型不同的 `into()`），`?` 按目标错误类型静态分派；这些 `into()` 重载不能被普通调用直接命中（报歧义错误）。
+
+`panic("消息")` 打印消息后调用 `abort()` 终止程序；`-g` 编译时额外打印原生调用栈回溯。`--no-panic` 编译选项将 `panic`/`abort` 调用转为编译错误。
 
 ### 智能指针与 RAII（5.3.0）
 
@@ -155,7 +168,7 @@ Node owned = node.release();
 `Mmap` 支持 Windows 和 Linux 的只读/读写映射，`MmapSlice` 是零拷贝视图：
 
 ```cay ignore
-MmapResult<Mmap> result = Mmap.mapReadOnly("data.bin");
+Result<Mmap, IOError> result = Mmap.mapReadOnly("data.bin");
 if (result.isOk()) {
     Mmap mapped = result.unwrap();
     MmapSlice bytes = mapped.slice(0, mapped.size());

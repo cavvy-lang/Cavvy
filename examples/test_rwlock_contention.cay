@@ -1,0 +1,55 @@
+// RwLock 多线程竞争测试 (ROADMAP 6.2.x)
+// 1 写线程递增 2000 次，3 读线程并发读；最终值必须恰好 2000，
+// 读线程计数必须恰好 1500（任何读到负值/撕裂都会破坏计数断言）。
+#include <Thread.cay>
+#include <Mutex.cay>
+#include <Atomic.cay>
+
+fn main() {
+    RwLock<int> rw = RwLock<int>.create(0);
+    AtomicI32 reads = new AtomicI32(0);
+
+    Thread w = Thread.spawn(() -> {
+        for (int i = 0; i < 2000; i = i + 1) {
+            WriteGuard<int> g = rw.writeLock();
+            g.set(g.get() + 1);
+        }
+    }).unwrap();
+
+    Thread r1 = Thread.spawn(() -> {
+        for (int i = 0; i < 500; i = i + 1) {
+            ReadGuard<int> g = rw.readLock();
+            if (g.get() >= 0) {
+                reads.fetchAdd(1, MemoryOrder.Relaxed);
+            }
+        }
+    }).unwrap();
+    Thread r2 = Thread.spawn(() -> {
+        for (int i = 0; i < 500; i = i + 1) {
+            ReadGuard<int> g = rw.readLock();
+            if (g.get() >= 0) {
+                reads.fetchAdd(1, MemoryOrder.Relaxed);
+            }
+        }
+    }).unwrap();
+    Thread r3 = Thread.spawn(() -> {
+        for (int i = 0; i < 500; i = i + 1) {
+            ReadGuard<int> g = rw.readLock();
+            if (g.get() >= 0) {
+                reads.fetchAdd(1, MemoryOrder.Relaxed);
+            }
+        }
+    }).unwrap();
+
+    w.join();
+    r1.join();
+    r2.join();
+    r3.join();
+
+    {
+        ReadGuard<int> g = rw.readLock();
+        println(g.get());       // 2000
+    }
+    println(reads.get());       // 1500
+    println("done");
+}

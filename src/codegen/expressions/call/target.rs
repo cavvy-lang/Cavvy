@@ -336,6 +336,26 @@ impl IRGenerator {
                     ))
                 }
                 crate::types::Type::Generic(class_name, type_args) => {
+                    // 链式调用的接收者泛型实参必须在当前上下文中可解析为具体类型。
+                    // 典型反例：`r.map<U>(f).getValue()`——方法级类型参数 U 只在
+                    // 内层 map 调用点可推断，外层接收者类型 Result<U, E> 中的 U
+                    // 无法解析；若继续生成会把值类型返回值当 i8* 指针使用（运行时崩溃）。
+                    let type_args: Vec<crate::types::Type> = type_args
+                        .iter()
+                        .map(|t| self.resolve_type_arg_concrete(t))
+                        .collect();
+                    if type_args.iter().any(|t| !self.type_arg_is_concrete(t)) {
+                        return Err(codegen_error_at(
+                            ErrorCodes::CODEGEN_INVALID_OPERATION,
+                            member.loc.clone(),
+                            format!(
+                                "Cannot resolve generic type arguments of chained-call receiver '{}<...>' \
+                                 (chained calls on instance generic methods like obj.map<U>(f).then() are not supported; \
+                                 assign the intermediate result to a typed variable first)",
+                                class_name
+                            ),
+                        ));
+                    }
                     // 对于泛型类型（如 vector<Student>），处理其方法调用
                     // 建立类型参数映射，支持泛型特化
                     if let Some(ref registry) = self.type_registry {

@@ -81,6 +81,49 @@ impl<'a> ItaniumMangler<'a> {
         result
     }
 
+    /// 生成带方法级泛型类型实参的 mangled 名（Cavvy 扩展，无 C++ 对应物）。
+    ///
+    /// 方法级类型实参编码在方法名之后、嵌套包装闭合之前：
+    /// `Result<int, String>::map<long>(fn)` -> `_ZN6ResultIiPcE3mapIxEEPFvvE`
+    /// 调用点与定义点必须使用同一函数，保证名字一致。
+    pub fn mangle_method_with_type_args(
+        &mut self,
+        class_name: &str,
+        method_name: &str,
+        method_type_args: &[Type],
+        param_types: &[Type],
+    ) -> String {
+        let mut result = String::from("_Z");
+        let (ns, base, targs) = self.parse_class_name(class_name);
+        let class_need_n =
+            self.encode_nested_class(&mut result, &ns, &base, &targs, true);
+
+        result.push_str(&format!("{}{}", method_name.len(), method_name));
+        if !method_type_args.is_empty() {
+            result.push('I');
+            for arg in method_type_args {
+                result.push_str(&self.mangle_template_arg(arg));
+            }
+            result.push('E');
+        }
+
+        // 关闭方法名的 N...E 嵌套包装。
+        if class_need_n {
+            result.push('E');
+        }
+
+        // 参数类型
+        if param_types.is_empty() {
+            result.push('v');
+        } else {
+            for t in param_types {
+                result.push_str(&self.mangle_type(t));
+            }
+        }
+
+        result
+    }
+
     /// 将类类型编码为 Itanium 嵌套名主体（不含 `_Z` 前缀，不含指针 `P`）。
     ///
     /// 示例：

@@ -656,6 +656,12 @@ public static Result<UniquePtr<File>, IOError> openFile(String path) {
 
   - 底层实现：tagged union `{ tag: u8, value: union { T ok; E err; } }`
   - 零开销：无堆分配，无 RTTI，无栈回退
+  - **实现现状（6.2.0 补完，`caylibs/Result.cay`）**：
+    - API 已补全：`ok/err/isOk/isErr`、`unwrap/unwrapOr/unwrapOrElse/expect/unwrapErr`（unwrap 系失败即 panic）、`map/mapErr/andThen/flatMap`、`inspect/inspectErr`。
+    - `map` 家族为**实例泛型方法**（`map<U>(fn(T) -> U)`，U 在调用点从 lambda 推断并单态化）——编译器实例泛型方法支持为此新增（语义推断 + 方法级类型参数单态化，值类型 U 无 i8* 擦除）。
+    - 偏差 1：受语言无 union 限制，实现为普通堆分配 class（字段 `{boolean, T, E}`），非零堆分配 tagged union。
+    - 偏差 2（已知限制）：块体 lambda（`{ ... }`）不参与方法级类型实参推断（`map` 族请用表达式 lambda `(x) -> ...`）。
+    - 已修复（6.2.0）：`auto r2 = r.map(...)` 与链式 `r.map(f).map(g).getValue()` 均可用了（codegen 新增实例泛型方法返回类型的纯推断路径）；无类型 lambda 参数按调用点期望的 `fn` 签名确定类型（此前默认 `int` 且按自推断签名发射，类型不匹配时是未定义行为）。
 
   ```java
   public class Result<T, E> {
@@ -705,38 +711,31 @@ public static Result<UniquePtr<File>, IOError> openFile(String path) {
       return Result.ok(content);
   }
   ```
+
+  - **实现现状（6.2.0 补完）**：错误类型转换已实现——E ≠ E2 时若 E 实现 `Into<E2>`（`caylibs/Into.cay` 新接口），err 分支经 vtable 分派调用 `e.into()` 并构造新的 `Result<T2, E2>` 返回；E 与 E2 相同仍走零开销直返。
+    - 一个类可同时实现多个 `Into` 实例化（`Into<A>`/`Into<B>` 各提供一个仅返回类型不同的 `into()` 重载，语义层特批、符号加 `$ret$<返回类型>` 后缀消歧）；`?` 对这类重载集合按目标错误类型 E2 静态分派直接调用，绕过 vtable。
+    - 限制：多 `Into` 实例化的 `into()` 重载不能被普通调用直接命中（`e.into()` 报歧义错误），经接口引用的动态分派只命中其一（vtable 槽位按裸方法名分配）；`?` 只认 `Result`/`std::Result`（不支持 Optional 或自定义 Result-like 类型）。
 - [X] **错误类型层级** - `interface Error { string message(); }`，支持错误链（error chaining）
 
-  ```java
-  public interface Error {
-      String message();
-      Optional<Error> cause();              // 错误链
-  }
-
-  // 内置错误类型
-  public class IOError implements Error {
-      public enum Kind { NotFound, PermissionDenied, UnexpectedEof, /* ... */ }
-      public Kind kind();
-      public int rawOsError();              // 原始 errno / GetLastError
-  }
-
-  public class ParseError implements Error {
-      public int line();
-      public int column();
-      public String sourceSnippet();
-  }
-  ```
+  - **实现现状（6.2.0 补完，`caylibs/Error.cay`）**：`Error`/`IOError`/`ParseError` 已可编译可用（此前嵌套枚举导致整个文件无法编译）；`IOError.Kind` 按编译器现状提升为命名空间级枚举 `IOErrorKind`。`File.openResult/existsResult`、`Mmap.mapReadOnly/mapReadWrite` 已迁移到 `Result<_, IOError>`（`FileResult`/`MmapResult` 已删除），`ThreadError` 已实现 `Error`。错误链 `cause()` 目前各内置错误均返回 empty（预留）。
 - [X] **panic/abort** - 不可恢复错误，调用栈回退或立即终止（可选 unwind 实现）
 
   - `panic(String message)`：打印消息和调用栈，调用 `abort()`
   - Debug 模式展开栈帧以收集 backtrace；Release 模式直接 abort
   - 编译选项 `--no-panic` 将所有 panic 转为编译错误（适用于嵌入式环境）
+  - **实现现状（6.2.0 补完）**：
+    - `-g`（debug_info）下 abort 前打印原生回溯：Linux/macOS 用 glibc `backtrace`/`backtrace_symbols_fd` 输出到 stderr，Windows 用 `RtlCaptureStackBackTrace` 打印帧地址（不做符号化，避免 dbghelp 依赖）；无 `-g` 时保持原行为（`fprintf(stderr)` + `abort()`）。
+    - `--no-panic` 已实现（cayc/cay-run/cay-ir 均支持），`panic` 与 `abort` 同路径一并禁用。
+    - 顺带修复前置 bug：`-g` 下函数体内发射的 `declare`（extern 声明）被误加 `!dbg` 注解导致 llc 报错（此前 `-g` + panic 必现）。
+    - 偏差：不做栈回退（unwind），panic 即终止；debug/release 的区分用 `-g` 开关而非优化级别。
 
 *设计决策*：取消 Java 式异常，采用类似 Rust/Zig 的错误码机制，确保无运行时异常处理开销。
 
 #### 6.2.x 轻量级并发（1:1 线程模型）
 
 - [X] **OS 线程封装** - `Thread` 类，直接映射 pthread/Windows Thread（已实现：`caylibs/Thread.cay`，6.2.0）
+
+  - **6.2.0 注记**：Windows 线程命名已实现（`SetThreadDescription`）；pthread 平台命名移至 trampoline 内执行以消除竞态；`detach()` 已有端到端测试覆盖。
 
   ```java
   public class Thread {
@@ -792,6 +791,12 @@ public static Result<UniquePtr<File>, IOError> openFile(String path) {
   // 同样提供 AtomicI64, AtomicPtr<T>, AtomicBool
   ```
 - [X] **互斥锁** - `Mutex<T>`，封装 OS 层 mutex（futex 或 CriticalSection），非语言级 synchronized（已实现：`caylibs/Mutex.cay`，6.2.0。偏差：语言暂无 operator 重载，以 `guard.get()`/`guard.set(v)` 代替 `operator*`/`operator->`；读写锁 Guard 命名为 `ReadGuard<T>`/`WriteGuard<T>`）
+
+  - **6.2.0 修复注记**：
+    - 修复 Windows tryLock 系列返回值反转 bug：`TryEnterCriticalSection`/`TryAcquireSRWLock*` 成功返回**非零**，原实现按 `rc == 0` 判成功，Windows 上 tryLock 语义完全颠倒。
+    - 平台语义差（保留）：CRITICAL_SECTION 可递归，Windows 同线程 tryLock 会成功；Linux pthread 默认不可递归，同线程 tryLock 失败。
+    - Thread 命名竞态修复：pthread 平台（Linux/macOS）统一改为在 trampoline 内命名（打包 `{closure, name}` 传入），消除"新线程在 setname 前读取自身名字"的竞态；Windows 实现 `SetThreadDescription`（Win10+，经 MultiByteToWideChar 转宽字符）；Windows spawn 失败 `rawCode` 现在返回 `GetLastError()`。
+    - `ThreadError` 已实现 `Error` 接口。
 
   ```java
   public class Mutex<T> {

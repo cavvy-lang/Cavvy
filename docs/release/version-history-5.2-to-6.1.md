@@ -37,7 +37,7 @@ Box<int> box = Box<int>(value);
 
 ## 5.4.0：内存映射文件
 
-`Mmap.mapReadOnly(path)` 和 `Mmap.mapReadWrite(path, size)` 返回 `MmapResult<T>`。使用映射前必须检查 `isOk()`，完成后调用 `sync()`（写映射）和 `unmap()`。`MmapSlice` 只是底层映射的视图，解除映射后不可继续使用。
+`Mmap.mapReadOnly(path)` 和 `Mmap.mapReadWrite(path, size)` 返回 `MmapResult<T>`。使用映射前必须检查 `isOk()`，完成后调用 `sync()`（写映射）和 `unmap()`。`MmapSlice` 只是底层映射的视图，解除映射后不可继续使用。（6.2.0 起改为返回 `Result<Mmap, IOError>`，`MmapResult` 已删除。）
 
 ## 6.1.0：Result 错误传播
 

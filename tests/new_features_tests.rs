@@ -323,3 +323,25 @@ fn test_optional_full() {
         "test_optional",
     );
 }
+
+// ============================================================
+// 实例泛型方法（方法级类型参数 method<U>）单态化测试
+// ============================================================
+
+#[test]
+fn test_instance_generic_method() {
+    let output = compile_and_run_eol("examples/test_instance_generic_method.cay")
+        .expect("test_instance_generic_method.cay should compile and run");
+    assert_output_contains(
+        &output,
+        &[
+            "41",       // U=long: r2.getValue()
+            "ok",       // U=String: r3.getValue()
+            "82",       // U=int（值类型）: 41 * 2
+            "41.500000", // U=double（值类型）: 41 + 0.5
+            "none",     // 错误通道 E 保持不变
+            "42",       // mapErr: 第二个类类型参数被替换
+        ],
+        "test_instance_generic_method",
+    );
+}

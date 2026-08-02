@@ -1,0 +1,78 @@
+// ? 运算符支持 Optional<T> 测试 (ROADMAP 6.2.x)
+// expr? 在 Optional<T> 上展开为：
+//   - hasValue == true  → 提取 value (类型 T) 继续执行
+//   - hasValue == false → 提前返回 Optional<U>.empty() （U == T）
+
+#include <Optional.cay>
+
+using std::Optional;
+
+public class TestTryOptional {
+    // 包装一个可能为空的查找结果
+    public static Optional<int> find(boolean present) {
+        if (present) {
+            return Optional<int>.of(42);
+        }
+        return Optional<int>.empty();
+    }
+
+    // ? 在 Optional 上：hasValue 时提取 value，否则提前返回 empty Optional<int>
+    public static Optional<int> doubleIfPresent(boolean present) {
+        int v = find(present)?;
+        return Optional<int>.of(v * 2);
+    }
+
+    // 链式 ? 传播：内层返回空时外层立即传播空值
+    public static Optional<int> chained(boolean inner, boolean outer) {
+        int a = find(inner)?;
+        int b = find(outer)?;
+        return Optional<int>.of(a + b);
+    }
+}
+
+public int main() {
+    // 用例 1：有值时正常提取并继续
+    Optional<int> r1 = TestTryOptional::doubleIfPresent(true);
+    if (r1.isPresent()) {
+        print("present=");
+        println(r1.get());
+    } else {
+        println("present=empty");
+    }
+
+    // 用例 2：空值时提前返回 empty Optional
+    Optional<int> r2 = TestTryOptional::doubleIfPresent(false);
+    if (r2.isEmpty()) {
+        println("empty=propagated");
+    } else {
+        println("empty=unexpected");
+    }
+
+    // 用例 3：链式 ? 传播——内层为空时立即返回空
+    Optional<int> r3 = TestTryOptional::chained(false, true);
+    if (r3.isEmpty()) {
+        println("chain_inner_empty=propagated");
+    } else {
+        println("chain_inner_empty=unexpected");
+    }
+
+    // 用例 4：链式 ? 传播——外层为空时立即返回空
+    Optional<int> r4 = TestTryOptional::chained(true, false);
+    if (r4.isEmpty()) {
+        println("chain_outer_empty=propagated");
+    } else {
+        println("chain_outer_empty=unexpected");
+    }
+
+    // 用例 5：链式 ? 两侧都有值时正常计算
+    Optional<int> r5 = TestTryOptional::chained(true, true);
+    if (r5.isPresent()) {
+        print("chain_both=");
+        println(r5.get());
+    } else {
+        println("chain_both=unexpected");
+    }
+
+    println("done");
+    return 0;
+}

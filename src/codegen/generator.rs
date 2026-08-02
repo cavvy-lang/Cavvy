@@ -1,5 +1,5 @@
 use crate::ast::*;
-use crate::codegen::context::IRGenerator;
+use crate::codegen::context::{IRGenerator, ScopeManager};
 use crate::codegen::specialization::MAX_SELF_NESTING_DEPTH;
 use crate::miette_diagnostic::{CayResult, ErrorCodes, SourceLocation, codegen_error_at};
 use crate::types::Type;
@@ -1129,6 +1129,14 @@ impl IRGenerator {
             for member in &class.members {
                 match member {
                     ClassMember::Method(method) => {
+                        // 带方法级类型参数的实例方法不做类型擦除发射，
+                        // 在每个调用点按推断出的方法级类型实参懒单态化
+                        // （见 call/method_generic.rs）。
+                        if !method.type_params.is_empty()
+                            && !method.modifiers.contains(&Modifier::Static)
+                        {
+                            continue;
+                        }
                         // native/abstract 方法通过 generate_method 统一处理声明/跳过逻辑
                         self.generate_method(&qname, method)?;
                     }
@@ -1169,122 +1177,13 @@ impl IRGenerator {
                     instances.extend(extra.iter().cloned());
                 }
             }
-            let type_param_infos: Vec<crate::types::TypeParamInfo> = class
-                .type_params
-                .iter()
-                .map(|p| crate::types::TypeParamInfo {
-                    name: p.name.clone(),
-                    bound: p.bound.clone(),
-                    default_type: p.default_type.clone(),
-                })
-                .collect();
             for instance in instances {
-                let specialized_name = instance.specialized_name();
-                let llvm_specialized = instance.llvm_specialized_name();
-                let resolved_type_args = instance.resolve_type_args(&type_param_infos);
-
-                // 检查是否已生成过此特化版本
-                let spec_key = format!("{}", llvm_specialized);
-                if self.generated_specializations.contains(&spec_key) {
-                    continue;
-                }
-
-                // 检查是否有显式特化覆盖此类型组合
-                let type_args_str: Vec<String> = resolved_type_args
-                    .iter()
-                    .map(|t| format!("{}", t))
-                    .collect();
-                let explicit_key = type_args_str.join(", ");
-                if let Some(explicit_set) = self.explicit_specializations.get(&class.name) {
-                    if explicit_set.contains(&explicit_key) {
-                        // 跳过自动生成，由显式特化负责生成
-                        self.generated_specializations.insert(spec_key);
-                        continue;
-                    }
-                }
-                self.generated_specializations.insert(spec_key);
-
-                // 设置类型参数映射
-                let mapping = instance.type_param_mapping(&type_param_infos);
-                let old_mapping = std::mem::replace(&mut self.generic_type_args, mapping);
-
-                // 生成特化版本的 vtable
-                self.generate_vtable_global(&specialized_name)?;
-
-                // 为特化版本生成方法。
-                // 若方法返回类型（替换后）会引用超出 MAX_SELF_NESTING_DEPTH 的同类自嵌套
-                // 特化，则跳过该方法体生成。这防止了如 ArrayList<ArrayList<int>>::filled3D
-                // 的方法体引用未收集的 ArrayList<ArrayList<ArrayList<ArrayList<int>>>>>
-                // 等深层特化，避免 IR 链接阶段出现未定义 vtable/构造函数。
-                let base_class_simple = simple_class_name(&base_qname).to_string();
-                for member in &class.members {
-                    match member {
-                        ClassMember::Method(method) => {
-                            if !method.modifiers.contains(&Modifier::Native)
-                                && !method.modifiers.contains(&Modifier::Abstract)
-                            {
-                                // 创建特化版本的方法（替换参数和返回类型中的泛型参数）
-                                let mut specialized_method = method.clone();
-                                specialized_method.return_type = substitute_type_params(
-                                    &method.return_type,
-                                    &resolved_type_args,
-                                    &type_param_infos,
-                                );
-                                specialized_method.params = method
-                                    .params
-                                    .iter()
-                                    .map(|p| crate::types::ParameterInfo {
-                                        name: p.name.clone(),
-                                        param_type: substitute_type_params(
-                                            &p.param_type,
-                                            &resolved_type_args,
-                                            &type_param_infos,
-                                        ),
-                                        is_varargs: p.is_varargs,
-                                    })
-                                    .collect();
-
-                                // 抑制会引用未收集深层特化的方法体生成。
-                                if nesting_depth(&specialized_method.return_type, &base_class_simple)
-                                    > MAX_SELF_NESTING_DEPTH
-                                {
-                                    continue;
-                                }
-
-                                self.generate_method(&specialized_name, &specialized_method)?;
-                            }
-                        }
-                        ClassMember::Constructor(ctor) => {
-                            let mut specialized_ctor = ctor.clone();
-                            specialized_ctor.params = ctor
-                                .params
-                                .iter()
-                                .map(|p| crate::types::ParameterInfo {
-                                    name: p.name.clone(),
-                                    param_type: substitute_type_params(
-                                        &p.param_type,
-                                        &resolved_type_args,
-                                        &type_param_infos,
-                                    ),
-                                    is_varargs: p.is_varargs,
-                                })
-                                .collect();
-                            self.generate_constructor(&specialized_name, &specialized_ctor)?;
-                        }
-                        ClassMember::Destructor(dtor) => {
-                            self.generate_destructor(&specialized_name, dtor)?;
-                        }
-                        _ => {}
-                    }
-                }
-
-                // 如果没有显式构造函数，生成默认构造函数
-                if !has_explicit_ctor {
-                    self.generate_default_constructor(&specialized_name)?;
-                }
-
-                // 恢复类型参数映射
-                self.generic_type_args = old_mapping;
+                self.generate_class_specialization_instance(
+                    class,
+                    &base_qname,
+                    has_explicit_ctor,
+                    &instance,
+                )?;
             }
         }
 
@@ -1294,6 +1193,380 @@ impl IRGenerator {
         }
 
         Ok(())
+    }
+
+    /// 为泛型类的一个特化实例生成 vtable、方法、构造/析构函数。
+    ///
+    /// 既供 `generate_class` 的预收集特化循环使用，也供方法级泛型单态化
+    /// 在方法体中遇到「仅在方法级类型实参替换后才具体」的泛型实例化
+    /// （如 `map<U>` 体内的 `new Result<U, E>()`）时懒生成。
+    fn generate_class_specialization_instance(
+        &mut self,
+        class: &ClassDecl,
+        base_qname: &str,
+        has_explicit_ctor: bool,
+        instance: &crate::codegen::specialization::SpecializationInstance,
+    ) -> CayResult<()> {
+        let type_param_infos: Vec<crate::types::TypeParamInfo> = class
+            .type_params
+            .iter()
+            .map(|p| crate::types::TypeParamInfo {
+                name: p.name.clone(),
+                bound: p.bound.clone(),
+                default_type: p.default_type.clone(),
+            })
+            .collect();
+        let specialized_name = instance.specialized_name();
+        let llvm_specialized = instance.llvm_specialized_name();
+        let resolved_type_args = instance.resolve_type_args(&type_param_infos);
+
+        // 检查是否已生成过此特化版本
+        let spec_key = format!("{}", llvm_specialized);
+        if self.generated_specializations.contains(&spec_key) {
+            return Ok(());
+        }
+
+        // 检查是否有显式特化覆盖此类型组合
+        let type_args_str: Vec<String> = resolved_type_args
+            .iter()
+            .map(|t| format!("{}", t))
+            .collect();
+        let explicit_key = type_args_str.join(", ");
+        if let Some(explicit_set) = self.explicit_specializations.get(&class.name) {
+            if explicit_set.contains(&explicit_key) {
+                // 跳过自动生成，由显式特化负责生成
+                self.generated_specializations.insert(spec_key);
+                return Ok(());
+            }
+        }
+        self.generated_specializations.insert(spec_key);
+
+        // 设置类型参数映射
+        let mapping = instance.type_param_mapping(&type_param_infos);
+        let old_mapping = std::mem::replace(&mut self.generic_type_args, mapping);
+
+        // 生成特化版本的 vtable
+        self.generate_vtable_global(&specialized_name)?;
+
+        // 为特化版本生成方法。
+        // 若方法返回类型（替换后）会引用超出 MAX_SELF_NESTING_DEPTH 的同类自嵌套
+        // 特化，则跳过该方法体生成。这防止了如 ArrayList<ArrayList<int>>::filled3D
+        // 的方法体引用未收集的 ArrayList<ArrayList<ArrayList<ArrayList<int>>>>>
+        // 等深层特化，避免 IR 链接阶段出现未定义 vtable/构造函数。
+        let base_class_simple = simple_class_name(base_qname).to_string();
+        for member in &class.members {
+            match member {
+                ClassMember::Method(method) => {
+                    if !method.modifiers.contains(&Modifier::Native)
+                        && !method.modifiers.contains(&Modifier::Abstract)
+                    {
+                        // 带方法级类型参数的实例方法不做类型擦除发射：
+                        // 其方法级类型参数（如 U）在类级特化上下文中无法解析，
+                        // 擦除副本会导致闭包返回类型/字段布局不匹配。
+                        // 它们在每个调用点按推断出的方法级类型实参懒单态化
+                        // （见 call/method_generic.rs）。
+                        if !method.type_params.is_empty()
+                            && !method.modifiers.contains(&Modifier::Static)
+                        {
+                            continue;
+                        }
+                        // 创建特化版本的方法（替换参数和返回类型中的泛型参数）
+                        let mut specialized_method = method.clone();
+                        specialized_method.return_type = substitute_type_params(
+                            &method.return_type,
+                            &resolved_type_args,
+                            &type_param_infos,
+                        );
+                        specialized_method.params = method
+                            .params
+                            .iter()
+                            .map(|p| crate::types::ParameterInfo {
+                                name: p.name.clone(),
+                                param_type: substitute_type_params(
+                                    &p.param_type,
+                                    &resolved_type_args,
+                                    &type_param_infos,
+                                ),
+                                is_varargs: p.is_varargs,
+                            })
+                            .collect();
+
+                        // 抑制会引用未收集深层特化的方法体生成。
+                        if nesting_depth(&specialized_method.return_type, &base_class_simple)
+                            > MAX_SELF_NESTING_DEPTH
+                        {
+                            continue;
+                        }
+
+                        self.generate_method(&specialized_name, &specialized_method)?;
+                    }
+                }
+                ClassMember::Constructor(ctor) => {
+                    let mut specialized_ctor = ctor.clone();
+                    specialized_ctor.params = ctor
+                        .params
+                        .iter()
+                        .map(|p| crate::types::ParameterInfo {
+                            name: p.name.clone(),
+                            param_type: substitute_type_params(
+                                &p.param_type,
+                                &resolved_type_args,
+                                &type_param_infos,
+                            ),
+                            is_varargs: p.is_varargs,
+                        })
+                        .collect();
+                    self.generate_constructor(&specialized_name, &specialized_ctor)?;
+                }
+                ClassMember::Destructor(dtor) => {
+                    self.generate_destructor(&specialized_name, dtor)?;
+                }
+                _ => {}
+            }
+        }
+
+        // 如果没有显式构造函数，生成默认构造函数
+        if !has_explicit_ctor {
+            self.generate_default_constructor(&specialized_name)?;
+        }
+
+        // 恢复类型参数映射
+        self.generic_type_args = old_mapping;
+
+        Ok(())
+    }
+
+    /// 在隔离的代码缓冲区中执行懒单态化生成。
+    ///
+    /// 方法级泛型（`method<U>(...)`）的特化副本与其体内引用的泛型类特化
+    /// 都是在「某个函数体生成到一半」时被触发懒生成的。直接生成会把新的
+    /// `define` 交错进未完成的函数体。此处仿照 lambda 的做法：换出当前
+    /// 代码缓冲区与全部函数级状态，生成完毕恢复调用方状态，生成的函数定义
+    /// 推入 lambda_functions，在最终输出阶段统一追加到 IR 末尾。
+    pub(crate) fn with_deferred_codegen(&mut self, f: impl FnOnce(&mut Self)) {
+        let saved_code = std::mem::take(&mut self.code);
+        let saved_scope_manager =
+            std::mem::replace(&mut self.scope_manager, ScopeManager::new());
+        let saved_var_types = std::mem::take(&mut self.var_types);
+        let saved_var_cay_types = std::mem::take(&mut self.var_cay_types);
+        let saved_var_class_map = std::mem::take(&mut self.var_class_map);
+        let saved_loop_stack = std::mem::take(&mut self.loop_stack);
+        let saved_param_order = std::mem::take(&mut self.current_param_order);
+        let saved_generic_args = std::mem::take(&mut self.generic_type_args);
+        let saved_pending_expected = self.pending_new_expected_type.take();
+        let saved_temp_counter = self.temp_counter;
+        let saved_label_counter = self.label_counter;
+        let saved_indent = self.indent;
+        let saved_current_function = std::mem::take(&mut self.current_function);
+        let saved_current_class = std::mem::take(&mut self.current_class);
+        let saved_current_class_specialized = self.current_class_specialized.take();
+        let saved_current_return_type = std::mem::take(&mut self.current_return_type);
+        let saved_current_cay_return_type = self.current_function_cay_return_type.take();
+        let saved_namespace = self
+            .type_registry
+            .as_ref()
+            .map(|r| r.current_namespace.clone())
+            .unwrap_or_default();
+
+        f(self);
+
+        let mut generated = std::mem::take(&mut self.code);
+        self.code = saved_code;
+        self.scope_manager = saved_scope_manager;
+        self.var_types = saved_var_types;
+        self.var_cay_types = saved_var_cay_types;
+        self.var_class_map = saved_var_class_map;
+        self.loop_stack = saved_loop_stack;
+        self.current_param_order = saved_param_order;
+        self.generic_type_args = saved_generic_args;
+        self.pending_new_expected_type = saved_pending_expected;
+        self.temp_counter = saved_temp_counter;
+        self.label_counter = saved_label_counter;
+        self.indent = saved_indent;
+        self.current_function = saved_current_function;
+        self.current_class = saved_current_class;
+        self.current_class_specialized = saved_current_class_specialized;
+        self.current_return_type = saved_current_return_type;
+        self.current_function_cay_return_type = saved_current_cay_return_type;
+        if let Some(ref mut registry) = self.type_registry {
+            registry.current_namespace = saved_namespace;
+        }
+
+        // ensure_free_declared 通过扫描 self.code 去重，而懒生成发生在换出的
+        // 隔离缓冲区中，会把 declare 写进延迟片段，与主缓冲区中的声明重复
+        // （invalid redefinition of function 'free'）。此处把声明从延迟片段
+        // 剥除，恢复主缓冲区后统一走 ensure_free_declared 去重。
+        const FREE_DECL: &str = "declare void @free(i8*)\n";
+        let deferred_needs_free = generated.contains(FREE_DECL);
+        if deferred_needs_free {
+            generated = generated.replace(FREE_DECL, "");
+        }
+
+        if !generated.trim().is_empty() {
+            self.lambda_functions.push(generated);
+        }
+        if deferred_needs_free {
+            self.ensure_free_declared();
+        }
+    }
+
+    /// 懒生成泛型类的特化实例（vtable、方法、构造/析构函数），已生成则直接返回。
+    ///
+    /// 方法级泛型的特化方法体中可能出现「仅在方法级类型实参替换后才具体」的
+    /// 泛型实例化（如 `map<U>` 体内的 `new Result<U, E>()`），AST 特化收集器
+    /// 无法预先收集这些实例，故在代码生成到该 new 表达式时懒生成对应特化。
+    /// 实参未完全具体（仍含 GenericParam）或类 AST 不可用时静默跳过——
+    /// 此时与原行为一致（引用未生成符号）。
+    pub(crate) fn ensure_generic_class_specialization_generated(
+        &mut self,
+        base_class_name: &str,
+        type_args: &[crate::types::Type],
+    ) {
+        if type_args.is_empty() {
+            return;
+        }
+        // 全部实参解析为具体类型，否则无法单态化
+        let resolved: Vec<crate::types::Type> = type_args
+            .iter()
+            .map(|t| self.resolve_type_arg_concrete(t))
+            .collect();
+        if !resolved.iter().all(|t| self.type_arg_is_concrete(t)) {
+            return;
+        }
+
+        // 定位类 AST（classes_cache 以裸类名为键）
+        let bare = base_class_name.rsplit("::").next().unwrap_or(base_class_name);
+        let class_decl = self
+            .classes_cache
+            .get(base_class_name)
+            .or_else(|| self.classes_cache.get(bare))
+            .cloned();
+        let Some(class_decl) = class_decl else {
+            return;
+        };
+        if class_decl.type_params.is_empty() {
+            return;
+        }
+
+        // 特化收集器对同一实例存在两种记账形式：使用点直接收集的实例用裸名
+        //（namespace_path 为空，如 "HashMap<String, int>"），依赖收集的实例带
+        // 命名空间（如 "std::ArrayList<ArrayList<int>>"）。两种形式的
+        // specialized_name/llvm 名不同，布局键与去重键都必须两种形式都查。
+        let bare_instance = crate::codegen::specialization::SpecializationInstance {
+            base_class_name: class_decl.name.clone(),
+            namespace_path: Vec::new(),
+            type_args: resolved.clone(),
+        };
+        let ns_instance = crate::codegen::specialization::SpecializationInstance {
+            base_class_name: class_decl.name.clone(),
+            namespace_path: class_decl.namespace_path.clone(),
+            type_args: resolved,
+        };
+        let bare_llvm = bare_instance.llvm_specialized_name();
+        let ns_llvm = ns_instance.llvm_specialized_name();
+
+        // 任一形式已生成，直接返回
+        if self.generated_specializations.contains(&bare_llvm)
+            || self.generated_specializations.contains(&ns_llvm)
+        {
+            return;
+        }
+        // 任一形式已被收集器登记：预收集路径（generate_class）会负责生成，
+        // 此处不能重复生成——否则 vtable 符号与 generated_methods 记账互相干扰，
+        // 且懒生成上下文缺少对应布局时会产出截断的函数体。
+        let already_registered = self
+            .specializations
+            .values()
+            .flatten()
+            .any(|inst| inst.llvm_specialized_name() == bare_llvm || inst.llvm_specialized_name() == ns_llvm);
+        if already_registered {
+            return;
+        }
+
+        // 真正未被收集的实例（方法级泛型体内的实例化）：选择命名形式。
+        // 优先使用已有布局的形式；都没有布局时用限定名形式并现场计算布局，
+        // 否则特化构造函数中的 this.field 赋值会因布局缺失而失败。
+        let instance = if self
+            .class_layouts
+            .contains_key(&bare_instance.specialized_name())
+        {
+            bare_instance
+        } else {
+            ns_instance
+        };
+        let specialized_name = instance.specialized_name();
+        if !self.class_layouts.contains_key(&specialized_name) {
+            let type_param_infos: Vec<crate::types::TypeParamInfo> = class_decl
+                .type_params
+                .iter()
+                .map(|p| crate::types::TypeParamInfo {
+                    name: p.name.clone(),
+                    bound: p.bound.clone(),
+                    default_type: p.default_type.clone(),
+                })
+                .collect();
+            let instance_fields: Vec<_> = class_decl
+                .members
+                .iter()
+                .filter_map(|m| match m {
+                    ClassMember::Field(f) => Some(f.clone()),
+                    _ => None,
+                })
+                .collect();
+            let mapping = instance.type_param_mapping(&type_param_infos);
+            let old_mapping = std::mem::replace(&mut self.generic_type_args, mapping);
+            let resolved_type_args = instance.resolve_type_args(&type_param_infos);
+            let specialized_fields: Vec<_> = instance_fields
+                .iter()
+                .map(|f| {
+                    let mut field = f.clone();
+                    field.field_type = substitute_type_params(
+                        &field.field_type,
+                        &resolved_type_args,
+                        &type_param_infos,
+                    );
+                    field
+                })
+                .collect();
+            self.compute_class_layout(
+                &specialized_name,
+                &specialized_fields,
+                class_decl.parent.as_deref(),
+            );
+            self.generic_type_args = old_mapping;
+        }
+
+        // 登记到特化实例表，保持与预收集路径一致的记账
+        let base_qname = if class_decl.namespace_path.is_empty() {
+            class_decl.name.clone()
+        } else {
+            format!(
+                "{}::{}",
+                class_decl.namespace_path.join("::"),
+                class_decl.name
+            )
+        };
+        self.specializations
+            .entry(base_qname.clone())
+            .or_default()
+            .insert(instance.clone());
+
+        let has_explicit_ctor = class_decl
+            .members
+            .iter()
+            .any(|m| matches!(m, ClassMember::Constructor(_)));
+        let ns = class_decl.namespace_path.clone();
+        self.with_deferred_codegen(move |s| {
+            if let Some(ref mut registry) = s.type_registry {
+                registry.current_namespace = ns;
+            }
+            let _ = s.generate_class_specialization_instance(
+                &class_decl,
+                &base_qname,
+                has_explicit_ctor,
+                &instance,
+            );
+        });
     }
 
     /// 生成显式特化类
@@ -1883,6 +2156,13 @@ impl IRGenerator {
         sorted_slots.sort_by_key(|&(_, &slot)| slot);
 
         for (method_sig, slot) in &sorted_slots {
+            // 带方法级类型参数的实例泛型方法不发射类型擦除副本
+            // （它们在每个调用点单态化，见 call/method_generic.rs），
+            // 其 vtable 槽位保持 null；泛型方法的调用始终直接分派。
+            let slot_method_name = method_sig.split('(').next().unwrap_or(method_sig);
+            if self.method_has_method_level_type_params(class_name, slot_method_name) {
+                continue;
+            }
             // 查找方法的 LLVM 函数名
             // 需要在继承链中查找方法定义（使用方法签名支持重载）
             let fn_name_opt = self.find_method_in_hierarchy(class_name, method_sig);
@@ -1923,11 +2203,21 @@ impl IRGenerator {
     /// 使用方法签名（方法名+参数类型）作为键，支持重载方法
     /// 返回 (函数名, 返回类型, 参数类型列表)
     /// 跳过抽象方法（无实现），因为抽象方法没有对应的 LLVM 函数定义
+    ///
+    /// 当槽位键是泛型接口实例化（如 `$iface$Into<IOError>$into`）时，
+    /// 按接口类型实参推导出的期望返回类型消歧仅返回类型不同的重载集合
+    /// （如 `Into<IOError>::into` 与 `Into<ParseError>::into`），确保 vtable
+    /// 每个特化槽位填入正确的函数指针。
     fn find_method_in_hierarchy(
         &self,
         class_name: &str,
         method_sig: &str,
     ) -> Option<(String, crate::types::Type, Vec<crate::types::Type>)> {
+        // 解析接口槽位键，提取接口名与类型实参（用于消歧仅返回类型不同的重载）
+        let (interface_name, interface_type_args) =
+            crate::types::TypeRegistry::parse_interface_slot_key_type_args(method_sig)
+                .unwrap_or(("", Vec::new()));
+
         let method_sig =
             crate::types::TypeRegistry::interface_vtable_key_method_signature(method_sig)
                 .unwrap_or(method_sig);
@@ -1967,6 +2257,20 @@ impl IRGenerator {
             (method_sig, Vec::new())
         };
 
+        // 当槽位键带接口类型实参时，按接口定义推导期望返回类型。
+        // 例如 Into<T> 的 into() 返回 T，槽位键 $iface$Into<IOError>$into
+        // 期望返回类型为 IOError。用于从多个仅返回类型不同的 into() 重载中
+        // 选出与该接口实例化匹配的那个。
+        let expected_return_type: Option<crate::types::Type> = if !interface_type_args.is_empty() {
+            self.compute_expected_return_type_for_interface_slot(
+                interface_name,
+                &interface_type_args,
+                method_name,
+            )
+        } else {
+            None
+        };
+
         if let Some(ref registry) = self.type_registry {
             let mut current = class_name.to_string();
             loop {
@@ -2004,7 +2308,12 @@ impl IRGenerator {
                         };
 
                     if let Some(methods) = class_info.methods.get(method_name) {
-                        // 找到方法定义，需要匹配参数类型
+                        // 收集当前类中所有参数匹配的方法
+                        let mut matched: Vec<(
+                            String,
+                            crate::types::Type,
+                            Vec<crate::types::Type>,
+                        )> = Vec::new();
                         for method in methods {
                             // 跳过抽象方法（无实现）
                             if method.is_static || method.is_native || method.is_abstract {
@@ -2024,15 +2333,13 @@ impl IRGenerator {
                                 .map(|t| format!("{:?}", t))
                                 .collect();
 
-                            let matches = if param_types_str.is_empty() {
+                            let is_match = if param_types_str.is_empty() {
                                 method_param_types.is_empty()
                             } else {
                                 method_param_types == param_types_str
                             };
 
-                            if matches {
-                                // 匹配成功后，将方法参数类型替换为当前特化类的具体类型，
-                                // 用于生成正确的函数名和返回类型。
+                            if is_match {
                                 let substituted_param_types: Vec<crate::types::Type> =
                                     original_param_types
                                         .iter()
@@ -2043,20 +2350,47 @@ impl IRGenerator {
                                             )
                                         })
                                         .collect();
-                                let fn_name = self.mangle_itanium_method(
-                                    &current,
-                                    method_name,
-                                    &substituted_param_types,
-                                    false,
-                                    false,
-                                );
                                 let substituted_return_type =
                                     crate::types::substitute_type_params(
                                         &method.return_type,
                                         &type_arg_mapping,
                                     );
-                                return Some((fn_name, substituted_return_type, substituted_param_types));
+                                let fn_name = self.mangle_method_with_return_disambiguation(
+                                    &current,
+                                    method_name,
+                                    &substituted_param_types,
+                                    &substituted_return_type,
+                                    &method.loc,
+                                );
+                                matched.push((
+                                    fn_name,
+                                    substituted_return_type,
+                                    substituted_param_types,
+                                ));
                             }
+                        }
+
+                        // 若有期望返回类型且有多个匹配，按返回类型消歧
+                        if matched.len() > 1 {
+                            if let Some(ref expected) = expected_return_type {
+                                let chosen = matched.iter().find(|(_, ret, _)| {
+                                    if ret == expected {
+                                        return true;
+                                    }
+                                    let ret_name = ret.display_name();
+                                    let exp_name = expected.display_name();
+                                    ret_name == exp_name
+                                        || ret_name.rsplit("::").next().unwrap_or(&ret_name)
+                                            == exp_name.rsplit("::").next().unwrap_or(&exp_name)
+                                });
+                                if let Some(m) = chosen {
+                                    return Some(m.clone());
+                                }
+                            }
+                        }
+                        // 无需消歧或消歧失败时，返回首个匹配（保持既有行为）
+                        if let Some(m) = matched.into_iter().next() {
+                            return Some(m);
                         }
                     }
                     // 在父类中继续查找
@@ -2073,8 +2407,51 @@ impl IRGenerator {
         None
     }
 
+    /// 根据接口槽位键中的类型实参，推导接口方法的期望返回类型。
+    ///
+    /// 例如 `Into<T>` 的 `into()` 方法返回 `T`，当槽位键为
+    /// `$iface$Into<IOError>$into` 时，类型实参为 `[IOError]`，
+    /// 将接口类型参数 `T` 替换为 `IOError` 后，期望返回类型为 `IOError`。
+    fn compute_expected_return_type_for_interface_slot(
+        &self,
+        interface_name: &str,
+        interface_type_args: &[crate::types::Type],
+        method_name: &str,
+    ) -> Option<crate::types::Type> {
+        let registry = self.type_registry.as_ref()?;
+        let interface_info = registry.get_interface(interface_name).or_else(|| {
+            let bare = interface_name.rsplit("::").next().unwrap_or(interface_name);
+            registry.get_interface(bare)
+        })?;
+        let method = interface_info.methods.get(method_name)?;
+        let mapping: std::collections::HashMap<String, crate::types::Type> = interface_info
+            .type_params
+            .iter()
+            .zip(interface_type_args.iter())
+            .map(|(p, t)| (p.name.clone(), t.clone()))
+            .collect();
+        Some(crate::types::substitute_type_params(
+            &method.return_type,
+            &mapping,
+        ))
+    }
+
     fn generate_method(&mut self, class_name: &str, method: &MethodDecl) -> CayResult<()> {
         let fn_name = self.generate_method_name(class_name, method);
+        self.generate_method_with_name(class_name, method, fn_name)
+    }
+
+    /// 以显式指定的函数名生成方法体。
+    ///
+    /// 与 `generate_method` 的唯一差别是函数名由调用方给出而非从方法签名推导，
+    /// 供方法级泛型（`method<U>(...)`）的单态化副本使用——其名字中包含
+    /// 方法级类型实参（见 `mangle_method_with_type_args`）。
+    pub(crate) fn generate_method_with_name(
+        &mut self,
+        class_name: &str,
+        method: &MethodDecl,
+        fn_name: String,
+    ) -> CayResult<()> {
 
         // native 方法不生成实现体，但必须在 IR 中声明以便调用点引用
         if method.modifiers.contains(&Modifier::Native) {
@@ -2132,6 +2509,7 @@ impl IRGenerator {
             None
         };
         self.current_return_type = self.type_to_llvm(&method.return_type);
+        self.current_function_cay_return_type = Some(method.return_type.clone());
 
         self.temp_counter = 0;
         self.var_types.clear();
@@ -3802,6 +4180,7 @@ impl IRGenerator {
         self.current_function = fn_name.clone();
         self.current_class = String::new(); // 顶层函数没有类
         self.current_return_type = self.type_to_llvm(&func.return_type);
+        self.current_function_cay_return_type = Some(func.return_type.clone());
 
         self.temp_counter = 0;
         self.var_types.clear();

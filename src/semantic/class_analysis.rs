@@ -500,10 +500,25 @@ impl SemanticAnalyzer {
                         }
                     }
 
+                    // 预计算「仅返回类型不同的重载是否分别匹配类实现的泛型接口
+                    // 实例化」（get_class_mut 可变借用期间无法再调用 &self 辅助方法）
+                    let new_method_matches_interface =
+                        self.return_only_overload_implements_interfaces(class, &method_info);
+                    let existing_matches_interface: Vec<bool> = self
+                        .type_registry
+                        .get_class(&class_lookup_name)
+                        .and_then(|ci| ci.methods.get(&method_info.name))
+                        .map(|ms| {
+                            ms.iter()
+                                .map(|m| self.return_only_overload_implements_interfaces(class, m))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+
                     if let Some(class_info) = self.type_registry.get_class_mut(&class_lookup_name) {
                         // 检查是否存在签名完全相同的方法（重复定义）
                         if let Some(existing_methods) = class_info.methods.get(&method_info.name) {
-                            for existing in existing_methods {
+                            for (existing_idx, existing) in existing_methods.iter().enumerate() {
                                 if existing.params.len() == method_info.params.len() {
                                     let same_params =
                                         existing.params.iter().zip(method_info.params.iter()).all(
@@ -513,6 +528,21 @@ impl SemanticAnalyzer {
                                             },
                                         );
                                     if same_params {
+                                        // 仅返回类型不同的重载：当两个方法分别匹配
+                                        // 类所实现的泛型接口的不同实例化时允许
+                                        // （如 Into<IOError> 与 Into<ParseError>
+                                        // 各要求一个返回类型不同的 into()）。
+                                        let return_differs =
+                                            existing.return_type != method_info.return_type;
+                                        if return_differs
+                                            && new_method_matches_interface
+                                            && existing_matches_interface
+                                                .get(existing_idx)
+                                                .copied()
+                                                .unwrap_or(false)
+                                        {
+                                            continue;
+                                        }
                                         let first_loc = &existing.loc;
                                         let first_loc_str = if first_loc
                                             .file
@@ -749,6 +779,58 @@ impl SemanticAnalyzer {
             }
         }
 
+        false
+    }
+
+    /// 判断「仅返回类型不同」的重载方法是否实现了类的某个泛型接口实例化方法。
+    /// 仅当方法名+参数与接口方法（类型实参替换后）一致、且返回类型等于替换后的
+    /// 接口方法返回类型时成立——如 `IOError into()` 匹配 `Into<IOError>`，
+    /// `ParseError into()` 匹配 `Into<ParseError>`，二者可共存。
+    fn return_only_overload_implements_interfaces(
+        &self,
+        class: &crate::ast::ClassDecl,
+        method_info: &crate::types::MethodInfo,
+    ) -> bool {
+        for interface_type in &class.interfaces {
+            let interface_name = interface_type_name(interface_type);
+            let Some(interface_info) = self.type_registry.get_interface(&interface_name) else {
+                continue;
+            };
+            // 仅泛型接口的不同实例化能产生「同签名不同返回」的方法要求
+            if interface_info.type_params.is_empty() {
+                continue;
+            }
+            let type_args: Vec<crate::types::Type> = match interface_type {
+                crate::types::Type::Generic(_, args) => args
+                    .iter()
+                    .map(|a| self.replace_type_params(a, &class.type_params))
+                    .collect(),
+                _ => continue,
+            };
+            let Some(interface_method) = interface_info.methods.get(&method_info.name) else {
+                continue;
+            };
+            let substituted_return = substitute_interface_type(
+                &interface_method.return_type,
+                &interface_info.type_params,
+                &type_args,
+            );
+            let params_match = interface_method.params.len() == method_info.params.len()
+                && interface_method
+                    .params
+                    .iter()
+                    .zip(method_info.params.iter())
+                    .all(|(ip, mp)| {
+                        substitute_interface_type(
+                            &ip.param_type,
+                            &interface_info.type_params,
+                            &type_args,
+                        ) == mp.param_type
+                    });
+            if params_match && substituted_return == method_info.return_type {
+                return true;
+            }
+        }
         false
     }
 
@@ -1381,12 +1463,17 @@ impl SemanticAnalyzer {
 
     fn compute_interface_vtable_slots(&mut self, start_slot: usize) {
         let mut entries = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+
+        // Phase 1: 非泛型接口——保持原有行为：每个 (接口, 方法) 分配一个槽位。
+        // 泛型接口的「裸名」槽位也在此阶段登记，用作未特化查找路径的回退键，
+        // 但实际特化类会同时持有按类型实参区分的独立槽位（Phase 2）。
         let mut interface_names: Vec<String> =
             self.type_registry.interfaces.keys().cloned().collect();
         interface_names.sort();
 
-        for interface_name in interface_names {
-            if let Some(interface_info) = self.type_registry.get_interface(&interface_name) {
+        for interface_name in &interface_names {
+            if let Some(interface_info) = self.type_registry.get_interface(interface_name) {
                 let mut method_entries: Vec<(String, String)> = interface_info
                     .methods
                     .iter()
@@ -1404,13 +1491,84 @@ impl SemanticAnalyzer {
 
                 for (_, method_sig) in method_entries {
                     let key = crate::types::TypeRegistry::build_interface_vtable_key(
-                        &interface_name,
+                        interface_name,
                         &method_sig,
                     );
-                    entries.push(key);
+                    if seen.insert(key.clone()) {
+                        entries.push(key);
+                    }
                 }
             }
         }
+
+        // Phase 2: 泛型接口实例化——为每个被类实际实现的 (接口, 类型实参, 方法)
+        // 元组分配独立槽位。这一步让 `Into<IOError>::into` 与 `Into<ParseError>::into`
+        // 各占独立槽位，避免动态分派只命中其一的 bug。
+        // 对非泛型接口（type_args 为空），其槽位已在 Phase 1 登记，跳过。
+        //
+        // 仅当类型实参全部为具体类型时才分配独立槽位。
+        // 含类型参数的实例化（如 `Iterator<T>`，其中 `T` 是类的类型参数）的槽位键
+        // 与调用点（如 `Iterator<int>`）不匹配，会破坏 vtable 布局；这类接口使用
+        // Phase 1 的裸名槽位即可（attach 阶段与调用点都会回退到裸键）。
+        //
+        // 注意：解析器将接口类型实参 `T` 存储为 `Type::Object("T")` 而非
+        // `Type::GenericParam("T")`，故需同时检查两种形式，并回查类的
+        // `type_params` 以识别「名字与类类型参数同名」的 Object 实例。
+        let mut class_names: Vec<String> = self.type_registry.classes.keys().cloned().collect();
+        class_names.sort();
+
+        for class_name in &class_names {
+            if let Some(class_info) = self.type_registry.get_class(class_name) {
+                // 收集该类的类型参数名，用于识别 Object("T") 形式的类型参数
+                let class_type_param_names: std::collections::HashSet<&str> = class_info
+                    .type_params
+                    .iter()
+                    .map(|p| p.name.as_str())
+                    .collect();
+                for interface in &class_info.interfaces {
+                    let (interface_name, type_args) = match interface {
+                        crate::types::Type::Generic(name, args) if !args.is_empty() => {
+                            (name.clone(), args.clone())
+                        }
+                        _ => continue,
+                    };
+                    // 跳过含类型参数的实例化（如 Iterator<T>），仅处理具体类型实例化。
+                    // 同时识别 GenericParam 与 Object("T")（T 是类类型参数）两种形式。
+                    let is_type_param_instantiation = type_args.iter().any(|t| match t {
+                        crate::types::Type::GenericParam(_) => true,
+                        crate::types::Type::Object(name) => {
+                            class_type_param_names.contains(name.as_str())
+                        }
+                        _ => false,
+                    });
+                    if is_type_param_instantiation {
+                        continue;
+                    }
+                    if let Some(interface_info) =
+                        self.type_registry.get_interface(&interface_name)
+                    {
+                        for (method_name, method) in &interface_info.methods {
+                            let method_sig =
+                                crate::types::TypeRegistry::build_method_signature(
+                                    method_name,
+                                    &method.params,
+                                );
+                            let key = crate::types::TypeRegistry::build_interface_vtable_key_with_type_args(
+                                &interface_name,
+                                &type_args,
+                                &method_sig,
+                            );
+                            if seen.insert(key.clone()) {
+                                entries.push(key);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 排序确保 vtable 槽位分配在多次编译间一致
+        entries.sort();
 
         self.type_registry.interface_vtable_slots.clear();
         for (offset, key) in entries.into_iter().enumerate() {
@@ -1422,25 +1580,65 @@ impl SemanticAnalyzer {
 
     fn attach_interface_slots_to_class_vtables(&mut self, class_names: &[String]) {
         for class_name in class_names {
-            let interfaces = self.collect_all_interfaces_for_class(class_name);
+            let interfaces = self.collect_all_interface_types_for_class(class_name);
             if interfaces.is_empty() {
                 continue;
             }
 
             let mut additions = Vec::new();
-            for interface_name in interfaces {
-                if let Some(interface_info) = self.type_registry.get_interface(&interface_name) {
+            for interface in interfaces {
+                let (interface_name, type_args) = match &interface {
+                    crate::types::Type::Generic(name, args) => {
+                        (name.clone(), args.clone())
+                    }
+                    crate::types::Type::Object(name) => (name.clone(), Vec::new()),
+                    _ => continue,
+                };
+                if let Some(interface_info) =
+                    self.type_registry.get_interface(&interface_name)
+                {
                     for (method_name, method) in &interface_info.methods {
                         let method_sig = crate::types::TypeRegistry::build_method_signature(
                             method_name,
                             &method.params,
                         );
-                        let key = crate::types::TypeRegistry::build_interface_vtable_key(
-                            &interface_name,
-                            &method_sig,
-                        );
-                        if let Some(slot) = self.type_registry.interface_vtable_slots.get(&key) {
-                            additions.push((key, *slot));
+                        let key = if type_args.is_empty() {
+                            crate::types::TypeRegistry::build_interface_vtable_key(
+                                &interface_name,
+                                &method_sig,
+                            )
+                        } else {
+                            crate::types::TypeRegistry::build_interface_vtable_key_with_type_args(
+                                &interface_name,
+                                &type_args,
+                                &method_sig,
+                            )
+                        };
+                        // 先按特化键查找；若失败，回退到裸键查找
+                        // （兼容含类型参数的实例化，如 Iterator<T>，
+                        // 其特化键未在 Phase 2 分配，使用 Phase 1 裸名槽位）
+                        let slot = self
+                            .type_registry
+                            .interface_vtable_slots
+                            .get(&key)
+                            .copied()
+                            .or_else(|| {
+                                if !type_args.is_empty() {
+                                    let bare_key =
+                                        crate::types::TypeRegistry::build_interface_vtable_key(
+                                            &interface_name,
+                                            &method_sig,
+                                        );
+                                    self.type_registry
+                                        .interface_vtable_slots
+                                        .get(&bare_key)
+                                        .copied()
+                                } else {
+                                    None
+                                }
+                            });
+                        if let Some(slot) = slot {
+                            additions.push((key, slot));
                         }
                     }
                 }
@@ -1457,13 +1655,19 @@ impl SemanticAnalyzer {
         }
     }
 
-    fn collect_all_interfaces_for_class(&self, class_name: &str) -> Vec<String> {
-        let mut interfaces = std::collections::HashSet::new();
+    /// 收集类（沿父类链）实现的所有接口，保留泛型类型实参。
+    /// 与旧的 `collect_all_interfaces_for_class` 不同，这里返回 `Vec<Type>`
+    /// 而非 `Vec<String>`，使下游可以按 `Into<IOError>` 与 `Into<ParseError>`
+    /// 分别分配/查找 vtable 槽位。
+    fn collect_all_interface_types_for_class(&self, class_name: &str) -> Vec<crate::types::Type> {
+        let mut interfaces: Vec<crate::types::Type> = Vec::new();
         let mut current = class_name.to_string();
 
         while let Some(class_info) = self.type_registry.get_class(&current) {
             for interface in &class_info.interfaces {
-                interfaces.insert(interface_type_name(interface));
+                if !interfaces.iter().any(|existing| existing == interface) {
+                    interfaces.push(interface.clone());
+                }
             }
             if let Some(parent) = &class_info.parent {
                 current = parent.clone();
@@ -1472,9 +1676,9 @@ impl SemanticAnalyzer {
             }
         }
 
-        let mut result: Vec<String> = interfaces.into_iter().collect();
-        result.sort();
-        result
+        // 注：Type 未实现 Ord，故不排序；下游按接口名+类型实参查询 vtable 槽位，
+        // 顺序对最终槽位分配无影响（槽位编号由全局 interface_vtable_slots 表决定）。
+        interfaces
     }
 }
 

@@ -9,6 +9,7 @@ mod function_name;
 mod helpers;
 mod main;
 mod member_ptr;
+mod method_generic;
 mod resolution;
 mod special_calls;
 mod target;

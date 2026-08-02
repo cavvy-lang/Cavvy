@@ -330,6 +330,24 @@ impl IRGenerator {
                     }
                     .or_else(|| registry.get_method(&class_name, &member.member));
                     if let Some(method_info) = found {
+                        // 方法级泛型（method<U>）：方法级类型实参只在调用点可推断，
+                        // 用与发射路径一致的推断求出具体返回类型（支持 auto 与链式调用）。
+                        if !method_info.type_params.is_empty() {
+                            let specialized_class = if type_args.is_empty() {
+                                class_name.clone()
+                            } else {
+                                let args_str: Vec<String> =
+                                    type_args.iter().map(|t| t.display_name()).collect();
+                                format!("{}<{}>", class_name, args_str.join(", "))
+                            };
+                            if let Some(ret) = self.infer_instance_generic_method_return_type(
+                                &specialized_class,
+                                &member.member,
+                                &call.args,
+                            ) {
+                                return Some(ret);
+                            }
+                        }
                         // 如果返回类型是泛型参数，需要根据调用上下文替换为实际类型
                         return self.resolve_generic_return_type(
                             &method_info.return_type,
@@ -360,6 +378,23 @@ impl IRGenerator {
                         .or_else(|| registry.get_method(&class_name, &member.member));
 
                         if let Some(method_info) = found {
+                            // 方法级泛型（同上）
+                            if !method_info.type_params.is_empty() {
+                                let specialized_class = if type_args.is_empty() {
+                                    class_name.clone()
+                                } else {
+                                    let args_str: Vec<String> =
+                                        type_args.iter().map(|t| t.display_name()).collect();
+                                    format!("{}<{}>", class_name, args_str.join(", "))
+                                };
+                                if let Some(ret) = self.infer_instance_generic_method_return_type(
+                                    &specialized_class,
+                                    &member.member,
+                                    &call.args,
+                                ) {
+                                    return Some(ret);
+                                }
+                            }
                             // 如果返回类型是泛型参数，需要根据调用上下文替换为实际类型
                             return self.resolve_generic_return_type(
                                 &method_info.return_type,

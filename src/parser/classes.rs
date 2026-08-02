@@ -281,7 +281,9 @@ pub fn parse_class_member(parser: &mut Parser) -> CayResult<ClassMember> {
         let member_type = parse_type(parser)?;
         let member_name = parser.consume_identifier("期望成员名\n提示: 类型后应跟字段名或方法名，例如: int count; 或 int calculate() { ... }")?;
 
-        if parser.check(&Token::LParen) {
+        // 成员名后的 '<' 只能是方法级泛型参数（如 `Result<U, E> map<U>(...)`），
+        // 字段的泛型实参已在 parse_type 中随类型一起消耗。
+        if parser.check(&Token::LParen) || parser.check(&Token::Lt) {
             // 是方法
             parser.pos = checkpoint;
             Ok(ClassMember::Method(parse_method(parser)?))

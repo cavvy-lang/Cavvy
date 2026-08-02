@@ -1,0 +1,30 @@
+// 实例泛型方法的链式调用与 auto 推断测试。
+// 外层接收者类型 Result<U, E> 中的方法级类型参数 U 在内层调用点推断，
+// auto 变量与链式调用共用同一条具体类型结论。
+class Result<T, E> {
+    private T value;
+    private E error;
+    public Result(T v, E e) { this.value = v; this.error = e; }
+    public T getValue() { return this.value; }
+    public Result<U, E> map<U>(fn(T) -> U mapper) {
+        return new Result<U, E>(mapper(this.value), this.error);
+    }
+}
+public fn main() {
+    Result<int, String> r = new Result<int, String>(41, "none");
+
+    // 链式调用：外层 getValue 的接收者是 Result<long, String>
+    println(r.map((x) -> (long)x).getValue());
+
+    // 二级链式：map 的返回值再次调用泛型方法
+    println(r.map((x) -> (long)x).map((y) -> y + 1).getValue());
+
+    // auto 接收泛型方法结果，随后正常使用
+    auto r2 = r.map((x) -> x + 1);
+    println(r2.getValue());
+
+    // 值类型 U=double：lambda 必须按期望签名 double(int) 发射
+    println(r.map((x) -> (double)x).getValue());
+    auto d = r.map((x) -> (double)x).getValue();
+    println(d);
+}

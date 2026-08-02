@@ -192,11 +192,26 @@ impl IRGenerator {
     /// 6.1.0: 生成 panic/abort 调用代码
     ///
     /// 接受一个字符串参数作为错误消息，打印到 stderr 后调用 abort() 终止程序。
+    /// - `--no-panic` 编译选项：此处直接报编译错误（panic 与 abort 同路径，一并禁用）。
+    /// - `-g`（debug_info）下在 abort 前额外打印原生调用栈回溯：
+    ///   Linux/macOS 用 glibc `backtrace`/`backtrace_symbols_fd`（无需额外链接库），
+    ///   Windows 用 `RtlCaptureStackBackTrace` 打印帧地址（不做符号化，避免 dbghelp 依赖）。
     pub fn generate_panic_call(
         &mut self,
         args: &[Expr],
         loc: &crate::miette_diagnostic::SourceLocation,
     ) -> CayResult<String> {
+        // --no-panic：panic()/abort() 转为编译错误
+        if let Some(config) = self.get_platform_config() {
+            if config.no_panic {
+                return Err(codegen_error_at(
+                    ErrorCodes::CODEGEN_INVALID_OPERATION,
+                    loc.clone(),
+                    "panic()/abort() is disabled: compiled with --no-panic".to_string(),
+                ));
+            }
+        }
+
         if args.len() != 1 {
             return Err(codegen_error_at(
                 ErrorCodes::CODEGEN_INVALID_OPERATION,
@@ -257,10 +272,129 @@ impl IRGenerator {
             stderr_ptr, fmt_ptr, prefix_ptr, arg_val, newline_ptr
         ));
 
+        // Debug 模式（-g）：abort 前打印调用栈回溯（此刻栈帧仍完整）
+        if self.debug_info {
+            self.emit_panic_backtrace();
+        }
+
         // 调用 abort 终止程序
         self.emit_line("  call void @abort()");
 
         Ok("void".to_string())
+    }
+
+    /// Debug 模式 panic 回溯：在 panic 发射点内联调用平台回溯 API。
+    ///
+    /// Linux/macOS：glibc `backtrace` + `backtrace_symbols_fd`（直接写 fd 2，无需缓冲格式化）；
+    /// Windows：`RtlCaptureStackBackTrace` 收集帧地址后用 fprintf 循环打印（地址级，不符号化）。
+    fn emit_panic_backtrace(&mut self) {
+        const BT_DEPTH: usize = 64;
+
+        // 回溯标题
+        let header = "stack backtrace:\n";
+        let header_global = self.get_or_create_string_constant(header);
+        let header_len = header.len() + 1;
+        let header_ptr = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = getelementptr [{} x i8], [{} x i8]* {}, i64 0, i64 0",
+            header_ptr, header_len, header_len, header_global
+        ));
+        let stderr_for_header = self.emit_stderr_ptr();
+        self.emit_line(&format!(
+            "  call i32 (i8*, i8*, ...) @fprintf(i8* {}, i8* {})",
+            stderr_for_header, header_ptr
+        ));
+
+        // 帧缓冲
+        let buf = self.new_temp();
+        self.emit_line(&format!("  {} = alloca [{} x i8*]", buf, BT_DEPTH));
+        let buf_ptr = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = getelementptr [{} x i8*], [{} x i8*]* {}, i64 0, i64 0",
+            buf_ptr, BT_DEPTH, BT_DEPTH, buf
+        ));
+
+        if !self.is_windows_target() {
+            // Linux/macOS：glibc execinfo
+            if !self.is_extern_emitted("backtrace@i32") {
+                self.emit_raw("declare i32 @backtrace(i8**, i32)");
+                self.mark_extern_emitted("backtrace@i32".to_string());
+            }
+            if !self.is_extern_emitted("backtrace_symbols_fd@void") {
+                self.emit_raw("declare void @backtrace_symbols_fd(i8**, i32, i32)");
+                self.mark_extern_emitted("backtrace_symbols_fd@void".to_string());
+            }
+            let n = self.new_temp();
+            self.emit_line(&format!(
+                "  {} = call i32 @backtrace(i8** {}, i32 {})",
+                n, buf_ptr, BT_DEPTH
+            ));
+            // fd 2 = stderr
+            self.emit_line(&format!(
+                "  call void @backtrace_symbols_fd(i8** {}, i32 {}, i32 2)",
+                buf_ptr, n
+            ));
+        } else {
+            // Windows：kernel32 RtlCaptureStackBackTrace + 地址打印
+            if !self.is_extern_emitted("RtlCaptureStackBackTrace@i32") {
+                self.emit_raw("declare i32 @RtlCaptureStackBackTrace(i32, i32, i8**, i32*)");
+                self.mark_extern_emitted("RtlCaptureStackBackTrace@i32".to_string());
+            }
+            let n = self.new_temp();
+            self.emit_line(&format!(
+                "  {} = call i32 @RtlCaptureStackBackTrace(i32 0, i32 {}, i8** {}, i32* null)",
+                n, BT_DEPTH, buf_ptr
+            ));
+
+            // for (i = 0; i < n; i++) fprintf(stderr, "  #%d %p\n", i, frames[i])
+            let fmt = "  #%d %p\n";
+            let fmt_global = self.get_or_create_string_constant(fmt);
+            let fmt_len = fmt.len() + 1;
+            let fmt_ptr = self.new_temp();
+            self.emit_line(&format!(
+                "  {} = getelementptr [{} x i8], [{} x i8]* {}, i64 0, i64 0",
+                fmt_ptr, fmt_len, fmt_len, fmt_global
+            ));
+
+            let idx_var = self.new_temp();
+            self.emit_line(&format!("  {} = alloca i32", idx_var));
+            self.emit_line(&format!("  store i32 0, i32* {}", idx_var));
+
+            let cond_label = self.new_label("bt.cond");
+            let body_label = self.new_label("bt.body");
+            let done_label = self.new_label("bt.done");
+
+            self.emit_line(&format!("  br label %{}", cond_label));
+            self.emit_line(&format!("{}:", cond_label));
+            let i_val = self.new_temp();
+            self.emit_line(&format!("  {} = load i32, i32* {}", i_val, idx_var));
+            let cmp = self.new_temp();
+            self.emit_line(&format!("  {} = icmp slt i32 {}, {}", cmp, i_val, n));
+            self.emit_line(&format!(
+                "  br i1 {}, label %{}, label %{}",
+                cmp, body_label, done_label
+            ));
+            self.emit_line(&format!("{}:", body_label));
+            let idx64 = self.new_temp();
+            self.emit_line(&format!("  {} = sext i32 {} to i64", idx64, i_val));
+            let slot = self.new_temp();
+            self.emit_line(&format!(
+                "  {} = getelementptr [{} x i8*], [{} x i8*]* {}, i64 0, i64 {}",
+                slot, BT_DEPTH, BT_DEPTH, buf, idx64
+            ));
+            let addr = self.new_temp();
+            self.emit_line(&format!("  {} = load i8*, i8** {}", addr, slot));
+            let stderr_loop = self.emit_stderr_ptr();
+            self.emit_line(&format!(
+                "  call i32 (i8*, i8*, ...) @fprintf(i8* {}, i8* {}, i32 {}, i8* {})",
+                stderr_loop, fmt_ptr, i_val, addr
+            ));
+            let next = self.new_temp();
+            self.emit_line(&format!("  {} = add i32 {}, 1", next, i_val));
+            self.emit_line(&format!("  store i32 {}, i32* {}", next, idx_var));
+            self.emit_line(&format!("  br label %{}", cond_label));
+            self.emit_line(&format!("{}:", done_label));
+        }
     }
 
     /// 生成简单的单参数打印（保持向后兼容）

@@ -303,7 +303,7 @@ impl SemanticAnalyzer {
 
     /// 从调用实参推断泛型类型实参。
     /// 用于静态方法调用没有显式类型实参的场景，例如 `Container.make(42)` 推断出 `T = int`。
-    fn infer_type_args_from_arguments(
+    pub(crate) fn infer_type_args_from_arguments(
         &mut self,
         method_params: &[crate::types::ParameterInfo],
         call_args: &[Expr],

@@ -1,0 +1,68 @@
+// Thread detach 与 ThreadBuilder 命名效果测试 (ROADMAP 6.2.x)
+// 覆盖：detach() 后台运行、ThreadBuilder.name() 实际命名（Linux/macOS 读回验证）
+#include <Thread.cay>
+#include <Atomic.cay>
+
+#ifndef _WIN32
+extern {
+    c_int pthread_getname_np(c_void* thread, c_void* buf, size_t len);
+}
+#endif
+
+fn main() {
+    // 1. detach()：线程后台运行，不 join，轮询共享原子变量确认其完成
+    AtomicI32 flag = new AtomicI32(0);
+    Thread t = Thread.spawn(() -> {
+        Thread.sleep(30);
+        flag.store(1, MemoryOrder.SeqCst);
+    }).unwrap();
+    t.detach();
+
+    int spins = 0;
+    while (flag.get() == 0 && spins < 1000) {
+        Thread.sleep(5);
+        spins = spins + 1;
+    }
+    println(flag.get());        // 1：detach 的线程确实跑完了
+    println("detached");
+
+    // 2. ThreadBuilder.name() 命名效果读回验证（pthread_getname_np）
+#ifndef _WIN32
+    Thread named = Thread.builder()
+        .name("cay-worker")
+        .spawn(() -> {
+            c_void* buf = malloc(16);
+            if (pthread_getname_np(pthread_self(), buf, 16) == 0) {
+                // 逐字节校验 "cay-worker" 前 4 字节：c a y -
+                long b0 = 0;
+                long b1 = 0;
+                long b2 = 0;
+                long b3 = 0;
+                __ir {
+                    %p = load i8*, i8** %buf
+                    %c0 = load i8, i8* %p
+                    %e0 = zext i8 %c0 to i64
+                    store i64 %e0, i64* %b0
+                    %p1 = getelementptr i8, i8* %p, i64 1
+                    %c1 = load i8, i8* %p1
+                    %e1 = zext i8 %c1 to i64
+                    store i64 %e1, i64* %b1
+                    %p2 = getelementptr i8, i8* %p, i64 2
+                    %c2 = load i8, i8* %p2
+                    %e2 = zext i8 %c2 to i64
+                    store i64 %e2, i64* %b2
+                    %p3 = getelementptr i8, i8* %p, i64 3
+                    %c3 = load i8, i8* %p3
+                    %e3 = zext i8 %c3 to i64
+                    store i64 %e3, i64* %b3
+                }
+                println(b0 == 99 && b1 == 97 && b2 == 121 && b3 == 45);   // true
+            }
+            free(buf);
+        })
+        .unwrap();
+    named.join();
+#endif
+
+    println("done");
+}

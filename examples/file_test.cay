@@ -6,11 +6,12 @@
 #include <std/ffi.cay>
 #include <File.cay>
 using std::File;
-using std::FileError;
 using std::FileInfo;
 using std::FileMode;
 using std::FileReader;
-using std::FileResult;
+using std::Result;
+using std::IOError;
+using std::IOErrorKind;
 using std::FileUtils;
 using std::FileWriter;
 using std::SeekOrigin;
@@ -66,7 +67,7 @@ public class FileTest {
         
         // 再次读取验证
         String finalContent = File.readAllText(testPath);
-        println("最终内容长度: " + String.valueOf(finalContent.length)());
+        println("最终内容长度: " + String.valueOf(finalContent.length()));
         
         // 清理
         File.delete(testPath);
@@ -166,7 +167,7 @@ public class FileTest {
         // 使用 readToEnd
         FileReader reader2 = new FileReader(testPath);
         String allContent = reader2.readToEnd();
-        println("全部内容长度: " + String.valueOf(allContent.length)());
+        println("全部内容长度: " + String.valueOf(allContent.length()));
         reader2.close();
         
         // 清理
@@ -194,7 +195,7 @@ public class FileTest {
         println("复制结果: " + String.valueOf(copyResult));
         bool copyExists = File.exists(copyPath);
         String copyContent = File.readAllText(copyPath);
-        println("复制文件内容匹配: " + String.valueOf(copyContent.equals)(content));
+        println("复制文件内容匹配: " + String.valueOf(copyContent.equals(content)));
         
         // 移动文件
         bool moveResult = File.move(copyPath, movePath);
@@ -306,15 +307,16 @@ public class FileTest {
         int fileError = file.getLastFileError();
         println("错误码: " + String.valueOf(errorCode));
         println("FileError: " + String.valueOf(fileError));
-        
-        // 测试 FileResult
-        FileResult result = File.existsResult("examples/file_test.cay");
-        println("FileResult isOk: " + String.valueOf(result.isOk)());
-        println("FileResult unwrap: " + String.valueOf(result.unwrap)());
-        
-        FileResult badResult = File.existsResult("");
-        println("无效路径 FileResult isErr: " + String.valueOf(badResult.isErr)());
-        println("无效路径错误码: " + String.valueOf(badResult.getErrorCode)());
+
+        // 测试 Result<boolean, IOError>
+        Result<boolean, IOError> result = File.existsResult("examples/file_test.cay");
+        println("Result isOk: " + String.valueOf(result.isOk()));
+        println("Result unwrap: " + String.valueOf(result.unwrap()));
+
+        Result<boolean, IOError> badResult = File.existsResult("");
+        println("无效路径 Result isErr: " + String.valueOf(badResult.isErr()));
+        println("无效路径错误类型: " + badResult.unwrapErr().message());
+        println("无效路径 kind 为 InvalidInput: " + String.valueOf(badResult.unwrapErr().kind() == IOErrorKind.InvalidInput));
         
         return !openResult && errorCode == FILE_ERROR_NOT_FOUND;
     }

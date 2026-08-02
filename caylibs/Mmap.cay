@@ -4,17 +4,15 @@
  * 提供大文件零拷贝访问能力：
  * - Mmap: 文件内存映射主类
  * - MmapSlice: 映射区域的零拷贝切片视图
- * - MmapError: 内存映射错误类型常量
- * - MmapResult<T>: 类型安全的操作结果封装
  *
  * 特性：
  * - 跨平台实现（Windows: CreateFileMapping/MapViewOfFile, Linux: mmap）
  * - RAII 资源管理（finalize 自动解除映射并关闭文件句柄）
  * - 零拷贝切片视图（不复制底层数据）
- * - 完整的错误处理（MmapResult<T>）
+ * - 完整的错误处理（Result<Mmap, IOError>，见 Error.cay）
  *
  * 实现文件: caylibs/Mmap.cay
- * 版本: 0.5.4.0
+ * 版本: 6.1.0
  * 时间复杂度: 标注于各方法
  * 磁盘I/O: 所有映射/同步操作涉及磁盘I/O
  */
@@ -23,6 +21,8 @@
 #define CAY_MMAP_H
 
 #include <std/ffi.cay>
+#include <Result.cay>
+#include <Error.cay>
 #include <File.cay>
 
 namespace std {
@@ -104,89 +104,6 @@ extern {
 #endif
 
 /* ============================================================================
- * MmapError 与 MmapResult<T>
- * ============================================================================ */
-
-/**
- * 内存映射错误类型 - 使用类常量模拟枚举
- * 时间复杂度: O(1)
- * 空间复杂度: O(1)
- */
-public class MmapError {
-    public static final int None = 0;
-    public static final int NotFound = 1;
-    public static final int AccessDenied = 2;
-    public static final int IoError = 3;
-    public static final int InvalidSize = 4;
-    public static final int InvalidOffset = 5;
-    public static final int AlreadyMapped = 6;
-    public static final int NotMapped = 7;
-    public static final int Unsupported = 8;
-    public static final int Unknown = 9;
-
-    private int value;
-
-    private MmapError(int value) {
-        this.value = value;
-    }
-
-    public int getValue() {
-        return this.value;
-    }
-
-    public static MmapError fromInt(int value) {
-        return new MmapError(value);
-    }
-}
-
-/**
- * 内存映射结果类型 - 泛型实现 MmapResult<T>
- * 提供类型安全的操作结果封装
- * 时间复杂度: O(1) 所有操作
- * 空间复杂度: O(1) 固定大小
- */
-public class MmapResult<T> {
-    private T value;
-    private int errorCode;
-    private bool isSuccess;
-
-    private MmapResult(T value) {
-        this.value = value;
-        this.errorCode = MmapError.None;
-        this.isSuccess = true;
-    }
-
-    private MmapResult(int errorCode) {
-        this.errorCode = errorCode;
-        this.isSuccess = false;
-    }
-
-    public static MmapResult<T> ok(T value) {
-        return new MmapResult<T>(value);
-    }
-
-    public static MmapResult<T> err(int errorCode) {
-        return new MmapResult<T>(errorCode);
-    }
-
-    public bool isOk() {
-        return this.isSuccess;
-    }
-
-    public bool isErr() {
-        return !this.isSuccess;
-    }
-
-    public T unwrap() {
-        return this.value;
-    }
-
-    public int getError() {
-        return this.errorCode;
-    }
-}
-
-/* ============================================================================
  * Mmap 类 - 文件内存映射
  * ============================================================================ */
 
@@ -211,7 +128,7 @@ public class Mmap {
         this.data = 0L;
         this.size = 0L;
         this.mapped = false;
-        this.lastError = MmapError.None;
+        this.lastError = MMAP_ERROR_NONE;
 #ifdef _WIN32
         this.hFile = null;
         this.hMapping = null;
@@ -232,26 +149,26 @@ public class Mmap {
     /**
      * 创建只读内存映射
      * @param path 文件路径
-     * @return MmapResult<Mmap> 成功返回映射对象，失败返回错误码
+     * @return Result<Mmap, IOError> 成功返回映射对象，失败返回 IOError
      * 时间复杂度: O(1)（仅建立映射，不读取数据）
      * 磁盘I/O: 打开文件并查询大小
      */
-    public static MmapResult<Mmap> mapReadOnly(String path) {
+    public static Result<Mmap, IOError> mapReadOnly(String path) {
         if (path == null || path.isEmpty()) {
-            return MmapResult<Mmap>.err(MmapError.NotFound);
+            return Result<Mmap, IOError>.err(new IOError(IOErrorKind.NotFound, 0, "mmap: empty path"));
         }
 
         /* 使用 File.getSize 跨平台获取文件大小 */
         long fileSize = File.getSize(path);
         if (fileSize < 0) {
-            return MmapResult<Mmap>.err(MmapError.NotFound);
+            return Result<Mmap, IOError>.err(new IOError(IOErrorKind.NotFound, 0, "mmap: file not found: " + path));
         }
         if (fileSize == 0) {
             /* 空文件允许映射，返回大小为 0 的 Mmap */
             Mmap emptyMmap = new Mmap();
             emptyMmap.size = 0L;
             emptyMmap.mapped = true;
-            return MmapResult<Mmap>.ok(emptyMmap);
+            return Result<Mmap, IOError>.ok(emptyMmap);
         }
 
         Mmap mmap = new Mmap();
@@ -259,20 +176,20 @@ public class Mmap {
 #ifdef _WIN32
         c_void* hFile = CreateFileA(path.c_str(), (c_uint)MMAP_GENERIC_READ, (c_uint)MMAP_FILE_SHARE_READ, null, (c_uint)MMAP_OPEN_EXISTING, (c_uint)0, null);
         if (hFile == null || hFile == (c_void*)MMAP_INVALID_HANDLE) {
-            return MmapResult<Mmap>.err(MmapError.NotFound);
+            return Result<Mmap, IOError>.err(new IOError(IOErrorKind.NotFound, 0, "mmap: file not found: " + path));
         }
 
         c_void* hMapping = CreateFileMappingA(hFile, null, (c_uint)MMAP_PAGE_READONLY, (c_uint)0, (c_uint)0, null);
         if (hMapping == null) {
             CloseHandle(hFile);
-            return MmapResult<Mmap>.err(MmapError.IoError);
+            return Result<Mmap, IOError>.err(new IOError(IOErrorKind.Other, 0, "mmap: CreateFileMappingA failed: " + path));
         }
 
         c_void* view = MapViewOfFile(hMapping, (c_uint)MMAP_FILE_MAP_READ, (c_uint)0, (c_uint)0, (size_t)fileSize);
         if (view == null) {
             CloseHandle(hMapping);
             CloseHandle(hFile);
-            return MmapResult<Mmap>.err(MmapError.IoError);
+            return Result<Mmap, IOError>.err(new IOError(IOErrorKind.Other, 0, "mmap: MapViewOfFile failed: " + path));
         }
 
         mmap.hFile = hFile;
@@ -283,13 +200,13 @@ public class Mmap {
 #else
         c_int fd = open(path.c_str(), MMAP_O_RDONLY);
         if (fd < 0) {
-            return MmapResult<Mmap>.err(MmapError.NotFound);
+            return Result<Mmap, IOError>.err(new IOError(IOErrorKind.NotFound, 0, "mmap: file not found: " + path));
         }
 
         c_void* addr = mmap(null, (size_t)fileSize, MMAP_PROT_READ, MMAP_MAP_SHARED, fd, 0L);
         if ((long)addr == -1L) {
             close(fd);
-            return MmapResult<Mmap>.err(MmapError.IoError);
+            return Result<Mmap, IOError>.err(new IOError(IOErrorKind.Other, 0, "mmap: mmap failed: " + path));
         }
 
         mmap.fd = fd;
@@ -298,7 +215,7 @@ public class Mmap {
         mmap.mapped = true;
 #endif
 
-        return MmapResult<Mmap>.ok(mmap);
+        return Result<Mmap, IOError>.ok(mmap);
     }
 
     /**
@@ -306,16 +223,16 @@ public class Mmap {
      * 若文件不存在则创建，若已存在则截断至指定大小。
      * @param path 文件路径
      * @param size 映射大小（字节），必须大于 0
-     * @return MmapResult<Mmap> 成功返回映射对象，失败返回错误码
+     * @return Result<Mmap, IOError> 成功返回映射对象，失败返回 IOError
      * 时间复杂度: O(1)（仅建立映射）
      * 磁盘I/O: 创建/截断文件并建立映射
      */
-    public static MmapResult<Mmap> mapReadWrite(String path, long size) {
+    public static Result<Mmap, IOError> mapReadWrite(String path, long size) {
         if (path == null || path.isEmpty()) {
-            return MmapResult<Mmap>.err(MmapError.NotFound);
+            return Result<Mmap, IOError>.err(new IOError(IOErrorKind.NotFound, 0, "mmap: empty path"));
         }
         if (size <= 0L) {
-            return MmapResult<Mmap>.err(MmapError.InvalidSize);
+            return Result<Mmap, IOError>.err(new IOError(IOErrorKind.InvalidInput, 0, "mmap: invalid size"));
         }
 
         Mmap mmap = new Mmap();
@@ -325,7 +242,7 @@ public class Mmap {
                                       (c_uint)(MMAP_FILE_SHARE_READ | MMAP_FILE_SHARE_WRITE),
                                       null, (c_uint)MMAP_CREATE_ALWAYS, (c_uint)0, null);
         if (hFile == null || hFile == (c_void*)MMAP_INVALID_HANDLE) {
-            return MmapResult<Mmap>.err(MmapError.NotFound);
+            return Result<Mmap, IOError>.err(new IOError(IOErrorKind.NotFound, 0, "mmap: cannot create file: " + path));
         }
 
         c_uint sizeHigh = (c_uint)(size >> 32);
@@ -333,14 +250,14 @@ public class Mmap {
         c_void* hMapping = CreateFileMappingA(hFile, null, (c_uint)MMAP_PAGE_READWRITE, sizeHigh, sizeLow, null);
         if (hMapping == null) {
             CloseHandle(hFile);
-            return MmapResult<Mmap>.err(MmapError.IoError);
+            return Result<Mmap, IOError>.err(new IOError(IOErrorKind.Other, 0, "mmap: CreateFileMappingA failed: " + path));
         }
 
         c_void* view = MapViewOfFile(hMapping, (c_uint)MMAP_FILE_MAP_WRITE, (c_uint)0, (c_uint)0, (size_t)size);
         if (view == null) {
             CloseHandle(hMapping);
             CloseHandle(hFile);
-            return MmapResult<Mmap>.err(MmapError.IoError);
+            return Result<Mmap, IOError>.err(new IOError(IOErrorKind.Other, 0, "mmap: MapViewOfFile failed: " + path));
         }
 
         mmap.hFile = hFile;
@@ -352,7 +269,7 @@ public class Mmap {
         /* 权限 0644（十进制 420）：拥有者可读写，其他用户只读 */
         c_int fd = open(path.c_str(), MMAP_O_RDWR | MMAP_O_CREAT | MMAP_O_TRUNC, 420);
         if (fd < 0) {
-            return MmapResult<Mmap>.err(MmapError.NotFound);
+            return Result<Mmap, IOError>.err(new IOError(IOErrorKind.NotFound, 0, "mmap: cannot create file: " + path));
         }
 
         /* 显式设置文件权限，确保后续 fopen/只读映射可以打开 */
@@ -362,13 +279,13 @@ public class Mmap {
         c_long seekResult = lseek(fd, size - 1L, MMAP_SEEK_SET);
         if (seekResult < 0) {
             close(fd);
-            return MmapResult<Mmap>.err(MmapError.IoError);
+            return Result<Mmap, IOError>.err(new IOError(IOErrorKind.Other, 0, "mmap: lseek failed: " + path));
         }
         c_char zeroByte = (c_char)0;
         c_long writeResult = write(fd, &zeroByte, 1);
         if (writeResult != 1) {
             close(fd);
-            return MmapResult<Mmap>.err(MmapError.IoError);
+            return Result<Mmap, IOError>.err(new IOError(IOErrorKind.Other, 0, "mmap: write failed: " + path));
         }
         /* 重置文件偏移到开头，避免影响后续映射 */
         lseek(fd, 0L, MMAP_SEEK_SET);
@@ -376,7 +293,7 @@ public class Mmap {
         c_void* addr = mmap(null, (size_t)size, MMAP_PROT_READ | MMAP_PROT_WRITE, MMAP_MAP_SHARED, fd, 0L);
         if ((long)addr == -1L) {
             close(fd);
-            return MmapResult<Mmap>.err(MmapError.IoError);
+            return Result<Mmap, IOError>.err(new IOError(IOErrorKind.Other, 0, "mmap: mmap failed: " + path));
         }
 
         mmap.fd = fd;
@@ -385,7 +302,7 @@ public class Mmap {
         mmap.mapped = true;
 #endif
 
-        return MmapResult<Mmap>.ok(mmap);
+        return Result<Mmap, IOError>.ok(mmap);
     }
 
     /**
@@ -414,7 +331,7 @@ public class Mmap {
 
     /**
      * 获取最后错误码
-     * @return MmapError 常量
+     * @return MMAP_ERROR_* 常量
      */
     public int getLastError() {
         return this.lastError;
@@ -473,7 +390,7 @@ public class Mmap {
         this.data = 0L;
         this.size = 0L;
         this.mapped = false;
-        this.lastError = MmapError.None;
+        this.lastError = MMAP_ERROR_NONE;
     }
 
     /**

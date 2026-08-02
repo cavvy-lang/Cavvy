@@ -23,34 +23,40 @@ public interface Error {
 }
 
 /**
+ * IOErrorKind - IOError 的错误类别
+ *
+ * 注：ROADMAP 原设计为 IOError 的嵌套枚举 Kind，但编译器不支持
+ * 类内嵌套枚举（parse_class_member 无 enum 分支），故提升为命名空间级。
+ */
+public enum IOErrorKind {
+    NotFound,
+    PermissionDenied,
+    UnexpectedEof,
+    InvalidInput,
+    Other
+}
+
+/**
  * IOError - 文件/IO 操作错误
  */
 public class IOError implements Error {
-    public enum Kind {
-        NotFound,
-        PermissionDenied,
-        UnexpectedEof,
-        InvalidInput,
-        Other
-    }
-
-    private Kind kind;
+    private IOErrorKind kind;
     private int rawOsError;
     private String msg;
 
-    public IOError(Kind kind, int rawOsError, String msg) {
+    public IOError(IOErrorKind kind, int rawOsError, String msg) {
         this.kind = kind;
         this.rawOsError = rawOsError;
         this.msg = msg;
     }
 
-    public IOError(Kind kind, String msg) {
+    public IOError(IOErrorKind kind, String msg) {
         this.kind = kind;
         this.rawOsError = 0;
         this.msg = msg;
     }
 
-    public Kind kind() {
+    public IOErrorKind kind() {
         return this.kind;
     }
 

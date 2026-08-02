@@ -528,17 +528,204 @@ impl SemanticAnalyzer {
                 return Err(semantic_error_at_loc(&call.loc, msg));
             }
 
+            // 仅返回类型不同的重载集合（实现多个泛型接口实例化，如
+            // Into<IOError>/Into<ParseError> 各提供一个 into()）：普通调用
+            // 无法按返回类型分派，报歧义错误。`?` 运算符的 e.into() 转换
+            // 不经过此路径（codegen 按目标错误类型静态分派），不受影响。
+            if let Some(class_info) = self.type_registry.get_class(&owner_class) {
+                if let Some(overloads) = class_info.methods.get(&member.member) {
+                    let has_return_only_overload = overloads.iter().any(|m| {
+                        m.params.len() == params.len()
+                            && m
+                                .params
+                                .iter()
+                                .zip(params.iter())
+                                .all(|(a, b)| a.param_type == b.param_type)
+                            && m.return_type != return_type
+                    });
+                    if has_return_only_overload {
+                        return Err(semantic_error_at_loc(
+                            &call.loc,
+                            format!(
+                                "对方法 '{}' 的调用有歧义：类 '{}' 存在多个仅返回类型不同的重载（分别实现不同的泛型接口实例化）\n提示: 普通调用无法按返回类型分派；该方法应由 `?` 运算符的错误转换间接调用",
+                                member.member, owner_class
+                            ),
+                        ));
+                    }
+                }
+            }
+
             // 如果对象是泛型类型，替换返回类型中的泛型参数
             let final_return_type =
                 self.substitute_method_return_type(&return_type, &obj_type, &owner_class);
 
             Ok(Some(final_return_type))
+        } else if let Some(return_type) =
+            self.try_infer_instance_generic_method_call(member, call, &class_name, &obj_type)?
+        {
+            // 常规重载解析失败（声明形参中的方法级类型参数如 fn(T)->U 永远无法
+            // 与 lambda 实参的具体 fn(int)->long 匹配），尝试方法级泛型推断。
+            Ok(Some(return_type))
         } else {
             Err(semantic_error_at_loc(
                 &call.loc,
                 self.unknown_method_message(&member.member, &class_name),
             ))
         }
+    }
+
+    /// 尝试将成员调用解析为「带方法级类型参数的实例泛型方法」调用。
+    ///
+    /// 仅在常规非泛型重载解析失败后调用，因此永远不会遮蔽更匹配的非泛型重载。
+    /// 对同名且声明了方法级类型参数（`method<U>(...)`）的候选：
+    /// 1. 用接收者的类级类型实参替换签名中的类级类型参数；
+    /// 2. 从调用实参（如 lambda 的 fn(int)->long）推断方法级类型实参（U=long）；
+    /// 3. 用推断结果特化签名后做常规实参检查，返回特化后的返回类型。
+    ///
+    /// 返回 Ok(None) 表示没有可推断的泛型方法候选，由调用方报 unknown method。
+    fn try_infer_instance_generic_method_call(
+        &mut self,
+        member: &MemberAccessExpr,
+        call: &CallExpr,
+        class_name: &str,
+        obj_type: &Type,
+    ) -> crate::miette_diagnostic::CayResult<Option<Type>> {
+        // 收集类层次中同名且带方法级类型参数的实例方法候选
+        let mut candidates: Vec<(String, crate::types::MethodInfo, Vec<crate::types::TypeParamInfo>)> =
+            Vec::new();
+        let mut class_to_check = Some(class_name.to_string());
+        while let Some(name) = class_to_check {
+            let resolved = self
+                .type_registry
+                .get_class(&name)
+                .map(|c| c.name.clone())
+                .or_else(|| self.type_registry.find_qualified_class(&name));
+            let Some(resolved) = resolved else { break };
+            let Some(class_info) = self.type_registry.get_class(&resolved) else {
+                break;
+            };
+            if let Some(methods) = class_info.methods.get(&member.member) {
+                for method in methods {
+                    if !method.is_static && !method.type_params.is_empty() {
+                        candidates.push((
+                            class_info.name.clone(),
+                            method.clone(),
+                            class_info.type_params.clone(),
+                        ));
+                    }
+                }
+            }
+            class_to_check = class_info.parent.clone();
+        }
+        if candidates.is_empty() {
+            return Ok(None);
+        }
+
+        // 接收者的类级类型实参（如 Result<int, String> -> [int, String]）
+        let receiver_args = self.receiver_class_type_args(obj_type);
+
+        // 逐候选：先替换类级类型参数，再推断方法级类型实参并特化签名
+        let mut specialized_candidates = Vec::new();
+        for (owner_class, method_info, class_type_params) in &candidates {
+            let mut signature = method_info.clone();
+            if !class_type_params.is_empty() {
+                if let Some(args) = &receiver_args {
+                    signature.params = signature
+                        .params
+                        .iter()
+                        .map(|p| crate::types::ParameterInfo {
+                            name: p.name.clone(),
+                            param_type: self.substitute_type_params(
+                                &p.param_type,
+                                class_type_params,
+                                args,
+                            ),
+                            is_varargs: p.is_varargs,
+                        })
+                        .collect();
+                    signature.return_type = self.substitute_type_params(
+                        &signature.return_type,
+                        class_type_params,
+                        args,
+                    );
+                }
+            }
+            let Some(method_args) = self.infer_type_args_from_arguments(
+                &signature.params,
+                &call.args,
+                &method_info.type_params,
+            ) else {
+                continue;
+            };
+            let specialized = self.specialize_method_info(
+                &signature,
+                &method_info.type_params,
+                Some(&method_args),
+            );
+            specialized_candidates.push((owner_class.clone(), specialized));
+        }
+
+        // 精确匹配优先，其次兼容匹配（与静态路径的选择顺序一致）
+        let mut mismatch_detail = None;
+        for exact in [true, false] {
+            for (owner_class, method_info) in &specialized_candidates {
+                let matches = if exact {
+                    self.check_arguments_exact(&call.args, &method_info.params)
+                } else {
+                    match self.check_arguments_compatible(
+                        &call.args,
+                        &method_info.params,
+                        call.loc.line,
+                        call.loc.column,
+                    ) {
+                        Ok(()) => true,
+                        Err(msg) => {
+                            if mismatch_detail.is_none() {
+                                mismatch_detail = Some(msg);
+                            }
+                            false
+                        }
+                    }
+                };
+                if matches {
+                    super::helpers::check_member_access(
+                        &member.member,
+                        method_info.is_public,
+                        method_info.is_protected,
+                        method_info.is_private,
+                        &self.current_class,
+                        owner_class,
+                        &self.type_registry,
+                        &member.loc,
+                    )?;
+                    return Ok(Some(
+                        self.qualify_type_for_class(&method_info.return_type, owner_class),
+                    ));
+                }
+            }
+        }
+
+        // 存在泛型方法候选但实参不匹配：报参数不匹配而非 unknown method
+        if !specialized_candidates.is_empty() {
+            let detail = mismatch_detail.unwrap_or_else(|| "argument mismatch".to_string());
+            return Err(semantic_error_at_loc(
+                &call.loc,
+                format!(
+                    "Method '{}' in class '{}' cannot be applied to given types: {}",
+                    member.member, class_name, detail
+                ),
+            ));
+        }
+
+        // 存在泛型方法候选但方法级类型实参推断失败（如 r.map(42)）：
+        // 报推断失败，比 unknown method 更准确。
+        Err(semantic_error_at_loc(
+            &call.loc,
+            format!(
+                "Cannot infer type arguments for generic method '{}' in class '{}' from the given arguments",
+                member.member, class_name
+            ),
+        ))
     }
 
     /// 获取方法接收者的类名（支持 Type::Object 和 Type::Generic）
@@ -661,18 +848,12 @@ impl SemanticAnalyzer {
         }
     }
 
-    /// 如果对象是泛型类型，替换方法返回类型中的泛型参数。
+    /// 提取接收者表达式的类级类型实参。
     ///
     /// 支持 Type::Generic 和 Type::Object("Class<T>") 两种形式，
     /// 后者由 new Class<T>() 产生，需要解析字符串中的类型实参。
-    fn substitute_method_return_type(
-        &self,
-        return_type: &Type,
-        obj_type: &Type,
-        owner_class: &str,
-    ) -> Type {
-        let scoped_return_type = self.qualify_type_for_class(return_type, owner_class);
-        let obj_type_args: Option<Vec<Type>> = match obj_type {
+    pub(crate) fn receiver_class_type_args(&self, obj_type: &Type) -> Option<Vec<Type>> {
+        match obj_type {
             Type::Generic(_, type_args) => Some(type_args.clone()),
             Type::Object(class_name) => {
                 // 解析 "Container<int>" 中的类型参数
@@ -699,7 +880,21 @@ impl SemanticAnalyzer {
                 }
             }
             _ => None,
-        };
+        }
+    }
+
+    /// 如果对象是泛型类型，替换方法返回类型中的泛型参数。
+    ///
+    /// 支持 Type::Generic 和 Type::Object("Class<T>") 两种形式，
+    /// 后者由 new Class<T>() 产生，需要解析字符串中的类型实参。
+    fn substitute_method_return_type(
+        &self,
+        return_type: &Type,
+        obj_type: &Type,
+        owner_class: &str,
+    ) -> Type {
+        let scoped_return_type = self.qualify_type_for_class(return_type, owner_class);
+        let obj_type_args = self.receiver_class_type_args(obj_type);
         if let Some(type_args) = obj_type_args {
             if let Some(class_info) = self.type_registry.get_class(owner_class) {
                 self.substitute_type_params(

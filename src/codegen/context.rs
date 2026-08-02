@@ -313,6 +313,10 @@ pub struct IRGenerator {
     /// 此字段保留完整特化名，使 `this`/隐式字段访问能解析到已单态化的字段类型。
     pub current_class_specialized: Option<String>,
     pub current_return_type: String,
+    /// 当前函数的 Cay 语义返回类型（与 current_return_type 同步设置/恢复）。
+    /// codegen 需要语义类型而不仅是 LLVM 类型串时使用，
+    /// 目前用于 `?` 运算符的 Into 错误转换（需要返回类型的 E2）。
+    pub current_function_cay_return_type: Option<crate::types::Type>,
     pub var_types: HashMap<String, String>,
     pub var_cay_types: HashMap<String, crate::types::Type>, // 变量名到Cavvy类型的映射
     pub var_class_map: HashMap<String, String>,
@@ -326,6 +330,9 @@ pub struct IRGenerator {
     pub type_registry: Option<TypeRegistry>,
     pub scope_manager: ScopeManager,
     pub lambda_functions: Vec<String>,
+    /// 生成 lambda 实参时期望的 fn 类型（来自实例泛型方法单态化计划），
+    /// 用于以期望签名（而非自推断缺省）发射 lambda 函数。
+    pub pending_lambda_expected_fn: Option<crate::types::FunctionType>,
     pub code: String,
     pub method_declarations: Vec<String>,
     pub type_id_map: HashMap<String, TypeIdInfo>,
@@ -450,6 +457,7 @@ impl IRGenerator {
             current_class: String::new(),
             current_class_specialized: None,
             current_return_type: String::new(),
+            current_function_cay_return_type: None,
             var_types: HashMap::new(),
             var_cay_types: HashMap::new(),
             var_class_map: HashMap::new(),
@@ -461,6 +469,7 @@ impl IRGenerator {
             type_registry: None,
             scope_manager: ScopeManager::new(),
             lambda_functions: Vec::new(),
+            pending_lambda_expected_fn: None,
             code: String::new(),
             method_declarations: Vec::new(),
             type_id_map: HashMap::new(),
@@ -738,7 +747,12 @@ impl IRGenerator {
         } else if self.debug_info && !self.debug_scope_stack.is_empty() {
             // 为指令行附加 DILocation 节点引用
             let trimmed = line.trim();
-            if trimmed.is_empty() || trimmed.starts_with(';') || trimmed == "}" || trimmed.ends_with(':')
+            // declare 等顶层实体不能携带 !dbg 注解（函数体内发射 extern 声明时同样跳过）
+            if trimmed.is_empty()
+                || trimmed.starts_with(';')
+                || trimmed == "}"
+                || trimmed.ends_with(':')
+                || trimmed.starts_with("declare ")
             {
                 line.to_string()
             } else {
@@ -832,7 +846,12 @@ impl IRGenerator {
             }
         } else if self.debug_info && !self.debug_scope_stack.is_empty() {
             let trimmed = line.trim();
-            if trimmed.is_empty() || trimmed.starts_with(';') || trimmed == "}" || trimmed.ends_with(':')
+            // declare 等顶层实体不能携带 !dbg 注解（函数体内发射 extern 声明时同样跳过）
+            if trimmed.is_empty()
+                || trimmed.starts_with(';')
+                || trimmed == "}"
+                || trimmed.ends_with(':')
+                || trimmed.starts_with("declare ")
             {
                 line.to_string()
             } else {
@@ -1769,7 +1788,96 @@ impl IRGenerator {
             }
         }
 
-        self.mangle_itanium_method(class_name, &method.name, &param_types, false, false)
+        self.mangle_method_with_return_disambiguation(
+            class_name,
+            &method.name,
+            &param_types,
+            &method.return_type,
+            &method.loc,
+        )
+    }
+
+    /// 生成方法名，对「仅返回类型不同」的重载集合追加返回类型后缀消歧。
+    ///
+    /// 同一个类允许存在同名同参数、仅返回类型不同的方法（分别实现泛型接口的
+    /// 不同实例化，如 `Into<IOError>::into` 与 `Into<ParseError>::into`）。
+    /// Itanium 改编不包含返回类型，二者会得到相同符号，此处追加
+    /// `$ret$<返回类型>` 后缀区分。非重载方法保持原符号不变。
+    pub(crate) fn mangle_method_with_return_disambiguation(
+        &self,
+        class_name: &str,
+        method_name: &str,
+        param_types: &[crate::types::Type],
+        return_type: &crate::types::Type,
+        self_loc: &crate::miette_diagnostic::SourceLocation,
+    ) -> String {
+        let base = self.mangle_itanium_method(class_name, method_name, param_types, false, false);
+        if !self.method_has_return_only_overloads(
+            class_name,
+            method_name,
+            param_types,
+            return_type,
+            self_loc,
+        ) {
+            return base;
+        }
+        let suffix: String = return_type
+            .display_name()
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+            .collect();
+        format!("{}$ret${}", base, suffix)
+    }
+
+    /// 判断方法是否属于「同名同参数、仅返回类型不同」的重载集合。
+    ///
+    /// `self_loc` 是当前方法的声明位置：注册表中同一声明可能以不同返回类型
+    /// 表示出现（如旧式 `fn` 返回先注册为 `Auto`、特化时解析为 `Void`），
+    /// 只有「不同声明位置」的候选才算真正的重载。
+    pub(crate) fn method_has_return_only_overloads(
+        &self,
+        class_name: &str,
+        method_name: &str,
+        param_types: &[crate::types::Type],
+        return_type: &crate::types::Type,
+        self_loc: &crate::miette_diagnostic::SourceLocation,
+    ) -> bool {
+        let base_class_name = class_name.split('<').next().unwrap_or(class_name);
+        let Some(ref registry) = self.type_registry else {
+            return false;
+        };
+        let Some(class_info) = registry.get_class(base_class_name).or_else(|| {
+            let bare = base_class_name.rsplit("::").next().unwrap_or(base_class_name);
+            registry.get_class(bare)
+        }) else {
+            return false;
+        };
+        let Some(methods) = class_info.methods.get(method_name) else {
+            return false;
+        };
+        methods.iter().any(|m| {
+            // 同一声明（同位置）的不同类型表示不算重载
+            if m.loc.line == self_loc.line
+                && m.loc.column == self_loc.column
+                && m.loc.file == self_loc.file
+            {
+                return false;
+            }
+            // 注册表中保存的是未替换的泛型签名（GenericParam("T")），而传入的
+            // param_types/return_type 是特化后的具体类型。先按类名中的类型实参
+            // 替换注册表签名再比较，避免把「同一个方法」误判为返回类型重载。
+            let mapping = self.build_specialization_mapping(class_name, class_info);
+            let substituted_ret =
+                crate::types::substitute_type_params(&m.return_type, &mapping);
+            m.params.len() == param_types.len()
+                && m.params
+                    .iter()
+                    .zip(param_types.iter())
+                    .all(|(a, b)| {
+                        crate::types::substitute_type_params(&a.param_type, &mapping) == *b
+                    })
+                && substituted_ret != *return_type
+        })
     }
 
     /// 获取类的命名空间路径
@@ -2892,6 +3000,7 @@ impl IRGenerator {
             undefines: config.undefines.clone(),
             obfuscate: config.obfuscate,
             detect_cycles: config.detect_cycles,
+            no_panic: config.no_panic,
         };
         self.platform_config = Some(platform_config);
     }

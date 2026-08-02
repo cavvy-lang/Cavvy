@@ -1,0 +1,11 @@
+// Result unwrap/unwrapErr 的 panic 语义测试 (ROADMAP 6.1.x)
+// unwrap() 作用于 Err 必须 panic（期望运行时失败）
+#include <Result.cay>
+
+using std::Result;
+
+fn main() {
+    Result<int, String> err = Result<int, String>.err("boom");
+    println(err.unwrap());
+    println("unreachable");
+}
