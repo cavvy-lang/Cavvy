@@ -713,6 +713,15 @@ public static Result<UniquePtr<File>, IOError> openFile(String path) {
 
   - **实现现状（6.2.0 补完）**：错误类型转换已实现——E ≠ E2 时若 E 实现 `Into<E2>`（`caylibs/Into.cay` 新接口），err 分支经 vtable 分派调用 `e.into()` 并构造新的 `Result<T2, E2>` 返回；E 与 E2 相同仍走零开销直返。
     - 一个类可同时实现多个 `Into` 实例化（`Into<A>`/`Into<B>` 各提供一个仅返回类型不同的 `into()` 重载，语义层特批、符号加 `$ret$<返回类型>` 后缀消歧）；`?` 对这类重载集合按目标错误类型 E2 静态分派直接调用，绕过 vtable。
+- [X] **std::Try<T, E> 接口** - `?` 运算符通过标准库接口分派，任何实现 `std::Try<T, E>` 的类型（包括 `Result<T, E>`、`Optional<T, Object>` 及用户自定义类型）均可使用 `?` 进行错误传播，无需编译器硬编码。
+
+  - 接口定义：`caylibs/Try.cay`
+  - 实现文件：`caylibs/Result.cay`、`caylibs/Optional.cay`
+  - 测试文件：`examples/test_try_interface.cay`
+  - 实现要点：
+    - `isOk()` / `getValue()` / `getError()` 经操作数对象头 vtable 分派；
+    - `fromError(E)` 经函数返回类型 R 的 vtable 分派（`this` 约定为 `null`，实现不访问实例字段）；
+    - 同型快路径 `Self == R` 时零开销直接返回原操作数对象。
 - [X] **错误类型层级** - `interface Error { string message(); }`，支持错误链（error chaining）
 
   - **实现现状（6.2.0 补完，`caylibs/Error.cay`）**：`Error`/`IOError`/`ParseError` 已可编译可用（此前嵌套枚举导致整个文件无法编译）；`IOError.Kind` 按编译器现状提升为命名空间级枚举 `IOErrorKind`。`File.openResult/existsResult`、`Mmap.mapReadOnly/mapReadWrite` 已迁移到 `Result<_, IOError>`（`FileResult`/`MmapResult` 已删除），`ThreadError` 已实现 `Error`。错误链 `cause()` 目前各内置错误均返回 empty（预留）。

@@ -768,13 +768,13 @@ impl SemanticAnalyzer {
         }
     }
 
-    /// 6.1.0: 推断 ? 运算符表达式类型
+    /// 6.3.0: 推断 ? 运算符表达式类型
     ///
-    /// `expr?` 支持两种操作数类型：
-    /// - `Result<T, E>`：当前函数返回类型也必须为 `Result<T2, E2>`，要求 T==T2 且
-    ///   （E==E2 或 E 实现 `Into<E2>`，codegen 在 err 分支插入 `e.into()`）。
-    /// - `Optional<T>`：当前函数返回类型必须为 `Optional<U>`，要求 T==U；
-    ///   空值分支构造 `Optional<U>.empty()` 提前返回（U==T 已由 value 类型检查保证）。
+    /// `expr?` 通过 `std::Try<T, E>` 接口分派，不再硬编码到 Result/Optional。
+    /// 任何实现了 `Try<T, E>` 的类型均可作为操作数；当前函数返回类型必须也
+    /// 实现 `Try<T2, E2>`，且满足：
+    /// - T == T2（值类型严格匹配）
+    /// - E == E2 或 E 实现 `Into<E2>`（codegen 在 err 分支插入 `e.into()`）
     ///
     /// 推断结果类型为操作数中包裹的值类型（T）。
     pub(crate) fn infer_try_type(
@@ -785,72 +785,21 @@ impl SemanticAnalyzer {
 
         let expr_type = self.infer_expr_type_internal(&try_expr.expr)?;
 
-        // 解析基础类名与类型实参：支持 Type::Generic 与 Type::Object 两种表示，
-        // 同时支持裸名（如 "Result"/"Optional"）和限定名（如 "std::Result"）。
-        let (base_name, type_args) = match &expr_type {
-            Type::Generic(name, args) => (name.clone(), args.clone()),
-            Type::Object(name) => {
-                if let Some(pos) = name.find('<') {
-                    let base = name[..pos].to_string();
-                    let end = name.len().saturating_sub(1);
-                    let args_str = if end > pos + 1 {
-                        &name[pos + 1..end]
-                    } else {
-                        ""
-                    };
-                    let args: Vec<Type> = self
-                        .split_type_arguments(args_str)
-                        .iter()
-                        .map(|s| Type::Object(s.clone()))
-                        .collect();
-                    (base, args)
-                } else {
-                    (name.clone(), Vec::new())
-                }
+        // 操作数必须实现 std::Try<T, E>
+        let (value_type, error_type) = match self.resolve_try_type_args(&expr_type) {
+            Some(args) => args,
+            None => {
+                return Err(semantic_error_at_loc(
+                    &try_expr.loc,
+                    format!(
+                        "The '?' operator requires the operand to implement std::Try<T, E>, got {}",
+                        expr_type
+                    ),
+                ));
             }
-            _ => (String::new(), Vec::new()),
         };
 
-        let is_result = base_name == "Result" || base_name == "std::Result";
-        let is_optional = base_name == "Optional" || base_name == "std::Optional";
-
-        if !is_result && !is_optional {
-            return Err(semantic_error_at_loc(
-                &try_expr.loc,
-                format!(
-                    "The '?' operator can only be used on Result<T, E> or Optional<T>, got {}",
-                    expr_type
-                ),
-            ));
-        }
-
-        if is_result && type_args.len() != 2 {
-            return Err(semantic_error_at_loc(
-                &try_expr.loc,
-                format!(
-                    "Result<T, E> requires 2 type arguments, got {}",
-                    type_args.len()
-                ),
-            ));
-        }
-        if is_optional && type_args.len() != 1 {
-            return Err(semantic_error_at_loc(
-                &try_expr.loc,
-                format!(
-                    "Optional<T> requires 1 type argument, got {}",
-                    type_args.len()
-                ),
-            ));
-        }
-
-        let value_type = type_args[0].clone();
-        let error_type = if is_result {
-            Some(type_args[1].clone())
-        } else {
-            None
-        };
-
-        // 检查当前函数返回类型是否兼容
+        // 检查当前函数返回类型是否也实现 std::Try<T2, E2>
         let return_type = self.current_return_type.clone().ok_or_else(|| {
             semantic_error_at_loc(
                 &try_expr.loc,
@@ -858,62 +807,21 @@ impl SemanticAnalyzer {
             )
         })?;
 
-        let (ret_base, ret_args) = match &return_type {
-            Type::Generic(name, args) => (name.clone(), args.clone()),
-            Type::Object(name) => {
-                if let Some(pos) = name.find('<') {
-                    let base = name[..pos].to_string();
-                    let end = name.len().saturating_sub(1);
-                    let args_str = if end > pos + 1 {
-                        &name[pos + 1..end]
-                    } else {
-                        ""
-                    };
-                    let args: Vec<Type> = self
-                        .split_type_arguments(args_str)
-                        .iter()
-                        .map(|s| Type::Object(s.clone()))
-                        .collect();
-                    (base, args)
-                } else {
-                    (name.clone(), Vec::new())
-                }
+        let (ret_value_type, ret_error_type) = match self.resolve_try_type_args(&return_type) {
+            Some(args) => args,
+            None => {
+                return Err(semantic_error_at_loc(
+                    &try_expr.loc,
+                    format!(
+                        "The '?' operator requires the enclosing function's return type to implement std::Try<T, E>, got {}",
+                        return_type
+                    ),
+                ));
             }
-            _ => (String::new(), Vec::new()),
         };
 
-        let ret_is_result = ret_base == "Result" || ret_base == "std::Result";
-        let ret_is_optional = ret_base == "Optional" || ret_base == "std::Optional";
-
-        // 操作数类型与函数返回类型必须是同一种「结果/可选」类型。
-        if is_result
-            && (!ret_is_result || ret_args.len() != 2)
-        {
-            return Err(semantic_error_at_loc(
-                &try_expr.loc,
-                format!(
-                    "The '?' operator on Result<T, E> requires the enclosing function to return Result<T, E>, got {}",
-                    return_type
-                ),
-            ));
-        }
-        if is_optional
-            && (!ret_is_optional || ret_args.len() != 1)
-        {
-            return Err(semantic_error_at_loc(
-                &try_expr.loc,
-                format!(
-                    "The '?' operator on Optional<T> requires the enclosing function to return Optional<U>, got {}",
-                    return_type
-                ),
-            ));
-        }
-
-        let ret_value_type = ret_args[0].clone();
-
+        // T == T2：值类型必须严格相等。
         if ret_value_type != value_type {
-            // T ≠ T2/U：value 类型必须严格相等，与原 Result 路径行为对齐。
-            // 若未来放宽到 T: Into<U>，可在此处扩展（codegen 在 ok 分支插入 t.into()）。
             return Err(semantic_error_at_loc(
                 &try_expr.loc,
                 format!(
@@ -923,27 +831,149 @@ impl SemanticAnalyzer {
             ));
         }
 
-        // Result 路径：错误类型必须严格匹配或实现 Into<E2>。
-        if let Some(error_type) = error_type {
-            let ret_error_type = ret_args[1].clone();
-            if ret_error_type != error_type {
-                // E ≠ E2：E 实现 Into<E2> 时允许，codegen 在 err 分支插入 e.into()
-                // （ROADMAP 6.1.x：return Result::err(e.into())）
-                if !self.class_implements_into(&error_type, &ret_error_type) {
-                    return Err(semantic_error_at_loc(
-                        &try_expr.loc,
-                        format!(
-                            "The '?' operator error type {} does not match function return error type {}, and {} does not implement Into<{}>",
-                            error_type, ret_error_type, error_type, ret_error_type
-                        ),
-                    ));
-                }
+        // E == E2 或 E 实现 Into<E2>。
+        if ret_error_type != error_type {
+            if !self.class_implements_into(&error_type, &ret_error_type) {
+                return Err(semantic_error_at_loc(
+                    &try_expr.loc,
+                    format!(
+                        "The '?' operator error type {} does not match function return error type {}, and {} does not implement Into<{}>",
+                        error_type, ret_error_type, error_type, ret_error_type
+                    ),
+                ));
             }
         }
-        // Optional 路径：没有「错误类型」需要转换，空值分支直接构造
-        // Optional<U>.empty() 返回（U == T 已由上面的 value 类型检查保证）。
 
         Ok(value_type)
+    }
+
+    /// 解析类型是否实现了 `std::Try<T, E>` 接口，返回解析后的 (T, E)。
+    ///
+    /// 沿父类链查找接口实现。接口声明中的类型参数（如 `Try<T, E>` 中的 T、E）
+    /// 被替换为类实例化时的实际类型实参。例如 `Result<int, String>` 实现了
+    /// `Try<int, String>`，返回 `Some((int, String))`；`Optional<int>` 实现了
+    /// `Try<int, Object>`，返回 `Some((int, Object))`。
+    pub(crate) fn resolve_try_type_args(&self, ty: &Type) -> Option<(Type, Type)> {
+        use crate::types::Type;
+
+        // 提取类名与类的类型实参
+        let (class_name, class_type_args) = match ty {
+            Type::Generic(name, args) => (name.clone(), args.clone()),
+            Type::Object(name) => {
+                if let Some(pos) = name.find('<') {
+                    let base = name[..pos].to_string();
+                    let end = name.len().saturating_sub(1);
+                    let args_str = if end > pos + 1 {
+                        &name[pos + 1..end]
+                    } else {
+                        ""
+                    };
+                    let args: Vec<Type> = self
+                        .split_type_arguments(args_str)
+                        .iter()
+                        .map(|s| Type::Object(s.clone()))
+                        .collect();
+                    (base, args)
+                } else {
+                    (name.clone(), Vec::new())
+                }
+            }
+            _ => return None,
+        };
+
+        let mut current = Some(class_name);
+        let mut visited = std::collections::HashSet::new();
+        while let Some(name) = current {
+            if !visited.insert(name.clone()) {
+                break;
+            }
+            let class_info = match self.type_registry.get_class(&name) {
+                Some(info) => info,
+                None => {
+                    // 尝试去命名空间的裸名
+                    let bare = name.rsplit("::").next().unwrap_or(&name);
+                    match self.type_registry.get_class(bare) {
+                        Some(info) => info,
+                        None => return None,
+                    }
+                }
+            };
+
+            // 查找 Try 接口实现
+            for iface in &class_info.interfaces {
+                let bare = match iface {
+                    Type::Object(n) | Type::Generic(n, _) => n.split('<').next().unwrap_or(n),
+                    _ => continue,
+                };
+                if bare != "Try" && bare != "std::Try" {
+                    continue;
+                }
+                if let Type::Generic(_, iface_args) = iface {
+                    if iface_args.len() != 2 {
+                        continue;
+                    }
+                    // 将接口声明中的类型参数替换为类的实际类型实参。
+                    // 类的类型参数列表 class_info.type_params 与 class_type_args 对应。
+                    let resolved_t = self.substitute_class_type_params(
+                        &iface_args[0],
+                        &class_info.type_params,
+                        &class_type_args,
+                    );
+                    let resolved_e = self.substitute_class_type_params(
+                        &iface_args[1],
+                        &class_info.type_params,
+                        &class_type_args,
+                    );
+                    return Some((resolved_t, resolved_e));
+                }
+            }
+            current = class_info.parent.clone();
+        }
+        None
+    }
+
+    /// 将类型中的泛型参数替换为类实例化时的实际类型实参。
+    /// 例如：类 `Result<T, E>` 实例化为 `Result<int, String>` 时，
+    /// GenericParam("T") / Object("T") -> int，GenericParam("E") / Object("E") -> String。
+    ///
+    /// 注意：解析器将接口类型实参 `T` 存储为 `Type::Object("T")` 而非
+    /// `Type::GenericParam("T")`，故需同时检查两种形式，并回查类的
+    /// `type_params` 以识别「名字与类类型参数同名」的 Object 实例。
+    fn substitute_class_type_params(
+        &self,
+        ty: &Type,
+        type_params: &[crate::types::TypeParamInfo],
+        type_args: &[Type],
+    ) -> Type {
+        match ty {
+            Type::GenericParam(name) => {
+                if let Some(idx) = type_params.iter().position(|p| &p.name == name) {
+                    if idx < type_args.len() {
+                        return type_args[idx].clone();
+                    }
+                }
+                ty.clone()
+            }
+            Type::Object(name) => {
+                // 解析器将接口类型实参 `T` 存储为 `Type::Object("T")`；
+                // 若该名字与类的类型参数同名，替换为对应的实际类型实参。
+                if let Some(idx) = type_params.iter().position(|p| &p.name == name) {
+                    if idx < type_args.len() {
+                        return type_args[idx].clone();
+                    }
+                }
+                ty.clone()
+            }
+            Type::Generic(name, args) => Type::Generic(
+                name.clone(),
+                args.iter()
+                    .map(|a| self.substitute_class_type_params(a, type_params, type_args))
+                    .collect(),
+            ),
+            Type::Int32 | Type::Int64 | Type::Float32 | Type::Float64
+            | Type::Bool | Type::Char | Type::String | Type::Void => ty.clone(),
+            _ => ty.clone(),
+        }
     }
 
     /// 检查错误类型 `error_type` 是否实现了 `Into<target>`（沿父类链查找）。

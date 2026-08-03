@@ -1,0 +1,159 @@
+// 自定义 Try<T, E> 实现与 ? 运算符测试 (ROADMAP 6.3.x)
+//
+// 验证任何实现了 std::Try<T, E> 的类型（非 Result/Optional）均可使用 ? 运算符，
+// 就像实现 Iterator 即可用于 for 循环一样。
+//
+// 测试覆盖：
+//   1. 同型快路径：Loader<int> ? → Loader<int>（Self == R，直接返回操作数）
+//   2. fromError 分派：Loader<int> ? → Result<int, String>（Self != R，经返回类型
+//      vtable 调用 Try::fromError 构造失败值）
+//   3. 链式 ? 传播
+
+#include <Try.cay>
+#include <Result.cay>
+
+using std::Try;
+using std::Result;
+
+/**
+ * Loader<T> - 自定义 Try<T, String> 实现
+ *
+ * 成功状态携带 T 值，失败状态携带 String 错误消息。
+ * 不继承 Result/Optional，独立实现 Try 接口，验证 ? 运算符的接口分派。
+ *
+ * 时间复杂度: O(1) 所有操作
+ * 空间复杂度: O(1) 固定额外空间
+ */
+public class Loader<T> implements Try<T, String> {
+    private boolean success;
+    private T value;
+    private String error;
+
+    private Loader() {
+    }
+
+    public static Loader<T> ok(T value) {
+        Loader<T> l = new Loader<T>();
+        l.success = true;
+        l.value = value;
+        return l;
+    }
+
+    public static Loader<T> err(String error) {
+        Loader<T> l = new Loader<T>();
+        l.success = false;
+        l.error = error;
+        return l;
+    }
+
+    // ---- std::Try<T, String> 接口实现 ----
+
+    public bool isOk() {
+        return this.success;
+    }
+
+    public T getValue() {
+        return this.value;
+    }
+
+    public String getError() {
+        return this.error;
+    }
+
+    public Try<T, String> fromError(String error) {
+        return Loader<T>.err(error);
+    }
+}
+
+public class TestTryInterface {
+    // 返回 Loader<int> 的函数
+    public static Loader<int> parsePort(boolean ok) {
+        if (ok) {
+            return Loader<int>.ok(8080);
+        }
+        return Loader<int>.err("invalid port");
+    }
+
+    // 用例 1：同型快路径——Loader<int> ? → Loader<int>
+    // Self == R，err 分支直接返回操作数对象（零开销）
+    public static Loader<int> loadConfigLoader(boolean ok) {
+        int port = parsePort(ok)?;
+        return Loader<int>.ok(port);
+    }
+
+    // 用例 2：fromError 分派——Loader<int> ? → Result<int, String>
+    // Self != R（Loader ≠ Result），err 分支经 Result 的 vtable 调用
+    // Try::fromError(String) 构造 Result<int, String>.err(error) 返回
+    public static Result<int, String> loadConfigResult(boolean ok) {
+        int port = parsePort(ok)?;
+        return Result<int, String>.ok(port);
+    }
+
+    // 用例 3：链式 ? 传播——多个 ? 串联使用
+    public static Loader<int> chainedLoader(boolean first, boolean second) {
+        int a = parsePort(first)?;
+        int b = parsePort(second)?;
+        return Loader<int>.ok(a + b);
+    }
+}
+
+public int main() {
+    // 用例 1：成功路径——isOk() == true，getValue() 提取值
+    Loader<int> r1 = TestTryInterface::loadConfigLoader(true);
+    if (r1.isOk()) {
+        print("loader_ok=");
+        println(r1.getValue());
+    } else {
+        println("loader_ok=unexpected_err");
+    }
+
+    // 用例 1b：失败路径——isOk() == false，同型直返，getError() 提取错误
+    Loader<int> r2 = TestTryInterface::loadConfigLoader(false);
+    if (!r2.isOk()) {
+        print("loader_err=");
+        println(r2.getError());
+    } else {
+        println("loader_err=unexpected_ok");
+    }
+
+    // 用例 2：fromError 分派——成功路径
+    Result<int, String> r3 = TestTryInterface::loadConfigResult(true);
+    if (r3.isOk()) {
+        print("result_ok=");
+        println(r3.unwrap());
+    } else {
+        println("result_ok=unexpected_err");
+    }
+
+    // 用例 2b：fromError 分派——失败路径
+    // Loader<int> 的 getError() 经 vtable 返回 "invalid port"，
+    // 再经 Result<int, String> 的 fromError vtable 构造 Err 返回
+    Result<int, String> r4 = TestTryInterface::loadConfigResult(false);
+    if (r4.isErr()) {
+        print("result_err=");
+        println(r4.unwrapErr());
+    } else {
+        println("result_err=unexpected_ok");
+    }
+
+    // 用例 3：链式 ? 传播——两侧都成功
+    Loader<int> r5 = TestTryInterface::chainedLoader(true, true);
+    if (r5.isOk()) {
+        print("chain_both=");
+        println(r5.getValue());
+    } else {
+        println("chain_both=unexpected_err");
+    }
+
+    // 用例 3b：链式 ? 传播——第一个失败
+    Loader<int> r6 = TestTryInterface::chainedLoader(false, true);
+    if (!r6.isOk()) {
+        print("chain_first_err=");
+        println(r6.getError());
+    } else {
+        println("chain_first_err=unexpected_ok");
+    }
+
+    println("done");
+    return 0;
+}

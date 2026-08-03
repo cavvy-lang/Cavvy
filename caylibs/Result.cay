@@ -17,15 +17,19 @@
 #ifndef CAY_RESULT_H
 #define CAY_RESULT_H
 
+#include <Try.cay>
+
 namespace std {
 
 /**
  * Result<T, E> - 泛型结果类型
  *
+ * 实现 `std::Try<T, E>`：`?` 运算符经接口分派，不再硬编码到本类。
+ *
  * 时间复杂度: O(1) 所有操作
  * 空间复杂度: O(1) 固定额外空间 (boolean + T + E)
  */
-public class Result<T, E> {
+public class Result<T, E> implements Try<T, E> {
     private boolean isOk;
     private T value;
     private E error;
@@ -118,6 +122,39 @@ public class Result<T, E> {
             panic("called unwrapErr() on an Ok Result");
         }
         return this.error;
+    }
+
+    // ---- std::Try<T, E> 接口实现 ----
+
+    /**
+     * Try::isOk — 成功状态查询（已由既有 isOk() 满足，此处显式声明以满足
+     * 接口方法 `bool isOk()` 的返回类型 bool；既有方法返回 boolean，
+     * 二者在类型系统中同为 Type::Bool，接口检查通过）。
+     */
+
+    /**
+     * Try::getValue — 提取成功值（不检查状态；? 运算符在 isOk()==true 分支调用）。
+     * 时间复杂度: O(1)
+     */
+    public T getValue() {
+        return this.value;
+    }
+
+    /**
+     * Try::getError — 提取失败错误（不检查状态；? 运算符在 isOk()==false 分支调用）。
+     * 时间复杂度: O(1)
+     */
+    public E getError() {
+        return this.error;
+    }
+
+    /**
+     * Try::fromError — 工厂方法：从错误构造失败实例。
+     * 实现约定：不访问 this（? 编译器以 null 调用，经返回类型 vtable 分派）。
+     * 时间复杂度: O(1)
+     */
+    public Try<T, E> fromError(E error) {
+        return Result<T, E>.err(error);
     }
 
     /**

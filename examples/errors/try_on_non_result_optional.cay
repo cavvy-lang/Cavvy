@@ -1,4 +1,4 @@
-// 错误用例：? 运算符只能用于 Result<T, E> 或 Optional<T>
+// 错误用例：? 运算符只能用于实现了 std::Try<T, E> 的类型
 // 在普通整数上使用 ? 必须报语义错误
 
 public class TestTryOnNonResult {

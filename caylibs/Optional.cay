@@ -18,20 +18,25 @@
 #ifndef CAY_OPTIONAL_H
 #define CAY_OPTIONAL_H
 
+#include <Try.cay>
+
 namespace std {
 
 /**
  * Optional<T> - 泛型可选值容器
- * 
+ *
+ * 实现 `std::Try<T, Object>`：`?` 运算符经接口分派。
+ * 空值即失败状态，错误类型为 Object（恒为 null）。
+ *
  * 时间复杂度: O(1) 所有操作
  * 空间复杂度: O(1) 固定额外空间 (boolean + T)
- * 
+ *
  * 注意: 当前为泛型类声明，类型参数 T 在编译期通过单态化特化
  */
-public class Optional<T> {
+public class Optional<T> implements Try<T, Object> {
     private boolean hasValue;
     private T value;
-    
+
     /**
      * 创建一个包含值的 Optional
      * 时间复杂度: O(1)
@@ -43,7 +48,7 @@ public class Optional<T> {
         opt.value = value;
         return opt;
     }
-    
+
     /**
      * 创建一个空的 Optional
      * 时间复杂度: O(1)
@@ -54,7 +59,7 @@ public class Optional<T> {
         opt.hasValue = false;
         return opt;
     }
-    
+
     /**
      * 检查是否包含值
      * 时间复杂度: O(1)
@@ -62,7 +67,7 @@ public class Optional<T> {
     public boolean isPresent() {
         return hasValue;
     }
-    
+
     /**
      * 检查是否为空
      * 时间复杂度: O(1)
@@ -70,7 +75,7 @@ public class Optional<T> {
     public boolean isEmpty() {
         return !hasValue;
     }
-    
+
     /**
      * 获取值（不安全 - 需先检查 isPresent()）
      * 如果为空，行为未定义（release 模式跳过检查）
@@ -79,7 +84,7 @@ public class Optional<T> {
     public T get() {
         return value;
     }
-    
+
     /**
      * 安全取值：为空时返回默认值
      * 时间复杂度: O(1)
@@ -91,6 +96,44 @@ public class Optional<T> {
             return defaultValue;
         }
     }
+
+    // ---- std::Try<T, Object> 接口实现 ----
+
+    /**
+     * Try::isOk — 成功状态查询（Optional 语义：有值即成功）。
+     * 时间复杂度: O(1)
+     */
+    public bool isOk() {
+        return this.hasValue;
+    }
+
+    /**
+     * Try::getValue — 提取成功值（不检查状态；? 运算符在 isOk()==true 分支调用）。
+     * 时间复杂度: O(1)
+     */
+    public T getValue() {
+        return this.value;
+    }
+
+    /**
+     * Try::getError — 提取失败错误。
+     * Optional 无显式错误，空值时返回 null（Object）。
+     * 时间复杂度: O(1)
+     */
+    public Object getError() {
+        return null;
+    }
+
+    /**
+     * Try::fromError — 工厂方法：从错误构造失败实例。
+     * Optional 忽略 error 参数，直接返回 empty（无错误载体）。
+     * 实现约定：不访问 this（? 编译器以 null 调用，经返回类型 vtable 分派）。
+     * 时间复杂度: O(1)
+     */
+    public Try<T, Object> fromError(Object error) {
+        return Optional<T>.empty();
+    }
+
     /**
      * 析构函数：当 Optional 包含值时自动析构 value 字段。
      * 具体 T 的析构调用由编译器在特化 __dtor 中注入。

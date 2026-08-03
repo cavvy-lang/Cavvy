@@ -1,15 +1,36 @@
-//! 6.1.0: ? 运算符代码生成
+//! 6.3.0: ? 运算符代码生成（基于 std::Try<T, E> 接口分派）
 //!
-//! `expr?` 支持两种操作数类型：
-//! - `Result<T, E>`：
-//!   - isOk == true → 提取 value 继续
-//!   - isOk == false → 调用作用域析构后返回（携带原 Result 或构造 Result<T2, E2>）
-//! - `Optional<T>`：
-//!   - hasValue == true → 提取 value 继续
-//!   - hasValue == false → 调用作用域析构后返回新构造的 `Optional<U>.empty()`
-//!     （U == T，由语义阶段校验）
+//! `expr?` 通过 `std::Try<T, E>` 接口分派，不再硬编码到 Result/Optional。
+//! 任何实现了 `std::Try<T, E>` 的类型均可作为操作数——与实现 `Iterator`
+//! 即可用于 `for` 一致。
 //!
-//! 时间复杂度: O(1) IR 生成，运行时 O(1)
+//! 展开规则（操作数 `e : Self implements Try<T, E>`，
+//! 函数返回类型 `R implements Try<T2, E2>`，T == T2 且
+//! （E == E2 或 E 实现 `Into<E2>`））：
+//!
+//!   e?  =>
+//!     {
+//!       Self __t = e;
+//!       if (__t.isOk()) {
+//!         __t.getValue()              // 继续求值，类型 T
+//!       } else {
+//!         if (Self == R) {
+//!           return __t;               // 零开销快路径（同型直返）
+//!         }
+//!         E  __err = __t.getError();
+//!         E2 __e2 = __err.into();     // E == E2 时省略
+//!         return R.fromError(__e2);   // 经返回类型 vtable 分派，this = null
+//!       }
+//!     }
+//!
+//! vtable 分派细节：
+//! - isOk/getValue/getError：经操作数对象头 vtable 指针（offset 8）分派，
+//!   槽位按 `Try<T, E>` 实例化查找。
+//! - fromError：操作数在 err 分支不再持有同型实例；编译器直接访问返回类型 R
+//!   的 vtable 全局 `@R.vtable`，按 `Try<T2, E2>::fromError` 槽位分派，
+//!   this 传入 null（实现约定不访问 this）。
+//!
+//! 时间复杂度: O(1) IR 生成，运行时 O(1)（vtable 间接调用）
 //! 空间复杂度: O(1) 额外临时变量
 
 use crate::ast::TryExpr;
@@ -17,23 +38,15 @@ use crate::codegen::context::IRGenerator;
 use crate::miette_diagnostic::{CayResult, ErrorCodes, codegen_error_at};
 use crate::types::Type;
 
-/// `?` 运算符操作数的「结果/可选」类型分类。
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum TryKind {
-    Result,
-    Optional,
-}
+/// Try 接口的候选名称（带/不带命名空间前缀）。
+const TRY_INTERFACE_NAMES: [&str; 2] = ["std::Try", "Try"];
 
 impl IRGenerator {
-    /// 生成 ? 运算符表达式代码
+    /// 生成 ? 运算符表达式代码。
     ///
-    /// # Arguments
-    /// * `try_expr` - Try 表达式节点
-    ///
-    /// # Returns
-    /// 成功分支中提取的 value 的 "type value" 字符串
+    /// 返回成功分支中提取的 value 的 "type value" 字符串。
     pub fn generate_try_expression(&mut self, try_expr: &TryExpr) -> CayResult<String> {
-        // 1. 推断操作数的类型，并分类为 Result / Optional
+        // 1. 推断操作数类型并解析 Try<T, E>
         let expr_type = self
             .get_expression_type(&try_expr.expr)
             .ok_or_else(|| codegen_error_at(
@@ -42,87 +55,54 @@ impl IRGenerator {
                 "Cannot determine type for '?' operator".to_string(),
             ))?;
 
-        let (kind, type_args, class_layout_key) =
-            self.resolve_try_class_info(&expr_type, &try_expr.loc)?;
+        let (value_type, error_type) =
+            self.resolve_try_type_args_codegen(&expr_type, &try_expr.loc)?;
 
-        match kind {
-            TryKind::Result => self.emit_try_for_result(try_expr, type_args, class_layout_key),
-            TryKind::Optional => self.emit_try_for_optional(try_expr, type_args, class_layout_key),
-        }
-    }
-
-    /// `Result<T, E>` 路径：保持 6.1.0 既有的运行时展开语义。
-    fn emit_try_for_result(
-        &mut self,
-        try_expr: &TryExpr,
-        type_args: Vec<Type>,
-        class_layout_key: String,
-    ) -> CayResult<String> {
-        if type_args.len() != 2 {
-            return Err(codegen_error_at(
+        // 2. 取当前函数返回类型并解析 Try<T2, E2>
+        let return_type = self.current_function_cay_return_type.clone().ok_or_else(|| {
+            codegen_error_at(
                 ErrorCodes::CODEGEN_INVALID_OPERATION,
                 try_expr.loc.clone(),
-                format!("Result<T, E> requires 2 type arguments, got {}", type_args.len()),
-            ));
-        }
+                "The '?' operator can only be used inside a function with a return type".to_string(),
+            )
+        })?;
 
-        let value_type = type_args[0].clone();
-        let error_type = type_args[1].clone();
+        let (ret_value_type, ret_error_type) =
+            self.resolve_try_type_args_codegen(&return_type, &try_expr.loc)?;
 
-        // 函数返回的错误类型 E2（语义阶段已校验：E == E2 或 E 实现 Into<E2>）。
-        // 取不到返回类型时退化为 E2 == E（不转换，保持旧行为）。
-        let (ret_error_type, ret_layout_key) = match self.current_function_cay_return_type.clone() {
-            Some(rt) => match self.resolve_try_class_info(&rt, &try_expr.loc) {
-                Ok((TryKind::Result, args, key)) if args.len() == 2 => {
-                    (Some(args[1].clone()), Some(key))
-                }
-                _ => (None, None),
-            },
-            None => (None, None),
-        };
-        let needs_conversion = matches!(&ret_error_type, Some(e2) if *e2 != error_type);
+        // 3. 计算布局键（用于 vtable 全局名与类型等价比较）
+        let operand_layout_key = self.compute_try_layout_key(&expr_type);
+        let ret_layout_key = self.compute_try_layout_key(&return_type);
 
-        // 2. 生成操作数，得到 Result 对象指针 (i8*)
-        let result_value = self.generate_expression(&try_expr.expr)?;
-        let (result_llvm_type, result_ptr) = self.parse_typed_value(&result_value);
-        let result_ptr_i8 = if result_llvm_type == "i8*" {
-            result_ptr
+        // 4. 生成操作数，得到对象指针 (i8*)
+        let operand_value = self.generate_expression(&try_expr.expr)?;
+        let (operand_llvm_type, operand_ptr) = self.parse_typed_value(&operand_value);
+        let operand_i8 = if operand_llvm_type == "i8*" {
+            operand_ptr
         } else {
             let cast = self.new_temp();
             self.emit_line(&format!(
                 "  {} = bitcast {} {} to i8*",
-                cast, result_llvm_type, result_ptr
+                cast, operand_llvm_type, operand_ptr
             ));
             cast
         };
 
-        // 3. 加载 isOk 字段
-        let is_ok_field = self
-            .get_instance_field(&class_layout_key, "isOk")
-            .cloned()
-            .ok_or_else(|| codegen_error_at(
-                ErrorCodes::CODEGEN_INVALID_OPERATION,
-                try_expr.loc.clone(),
-                format!("Result class '{}' missing 'isOk' field", class_layout_key),
-            ))?;
+        // 5. 经操作数 vtable 分派 isOk()
+        let value_llvm = self.type_to_llvm(&value_type);
+        let error_llvm = self.type_to_llvm(&error_type);
+        let is_ok_result = self.emit_try_object_vtable_call(
+            &operand_i8,
+            "isOk",
+            &value_type,
+            &error_type,
+            "i1",
+            &try_expr.loc,
+        )?;
+        // is_ok_result 形如 "i1 %t1"；提取值部分用于 br 指令
+        let is_ok_val = self.parse_typed_value(&is_ok_result).1;
 
-        let is_ok_ptr_i8 = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = getelementptr i8, i8* {}, i64 {}",
-            is_ok_ptr_i8, result_ptr_i8, is_ok_field.offset
-        ));
-        let is_ok_ptr = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = bitcast i8* {} to i1*",
-            is_ok_ptr, is_ok_ptr_i8
-        ));
-        let is_ok_val = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = load i1, i1* {}, align {}",
-            is_ok_val, is_ok_ptr, self.get_type_align("i1")
-        ));
-
-        // 4. 分支：ok 继续，err 直接返回原 Result
+        // 6. 分支：ok 继续，err 处理后返回
         let ok_label = self.new_label("try.ok");
         let err_label = self.new_label("try.err");
         self.emit_line(&format!(
@@ -130,212 +110,90 @@ impl IRGenerator {
             is_ok_val, ok_label, err_label
         ));
 
-        // 错误分支：调用析构函数后返回
+        // 7. 错误分支：调用作用域析构后构造失败值返回
         self.emit_line(&format!("{}:", err_label));
         self.emit_all_scope_dtors();
-        if !needs_conversion {
-            // E == E2：直接返回原 Result 对象
-            self.emit_line(&format!("  ret i8* {}", result_ptr_i8));
-        } else {
-            // E ≠ E2：调用 e.into() 转换错误，重新构造 Result<T2, E2> 返回
-            // （ROADMAP 6.1.x：return Result::err(e.into())）
-            let e2_type = ret_error_type.clone().unwrap();
-            let ret_key = ret_layout_key.clone().unwrap();
-            let converted = self.emit_try_into_conversion(
-                &result_ptr_i8,
-                &class_layout_key,
+
+        let self_eq_ret = operand_layout_key == ret_layout_key;
+        let needs_conversion = error_type != ret_error_type;
+
+        if self_eq_ret {
+            // 零开销快路径：Self == R（同型），直接返回操作数对象。
+            // 此时 T == T2 且 E == E2，操作数本身就是合法的返回值。
+            self.emit_line(&format!("  ret i8* {}", operand_i8));
+        } else if !needs_conversion {
+            // E == E2 但 Self != R：getError() + fromError(E2)
+            let err_result = self.emit_try_object_vtable_call(
+                &operand_i8,
+                "getError",
+                &value_type,
                 &error_type,
-                &e2_type,
+                &error_llvm,
                 &try_expr.loc,
             )?;
-            let new_obj =
-                self.emit_try_construct_err_result(&ret_key, &converted, &try_expr.loc)?;
+            let new_obj = self.emit_try_from_error_call(
+                &ret_layout_key,
+                &ret_value_type,
+                &ret_error_type,
+                &err_result,
+                &try_expr.loc,
+            )?;
+            self.emit_line(&format!("  ret i8* {}", new_obj));
+        } else {
+            // E != E2：getError() + into() + fromError(E2)
+            let err_result = self.emit_try_object_vtable_call(
+                &operand_i8,
+                "getError",
+                &value_type,
+                &error_type,
+                &error_llvm,
+                &try_expr.loc,
+            )?;
+            let converted = self.emit_into_conversion_on_error(
+                &err_result,
+                &error_type,
+                &ret_error_type,
+                &try_expr.loc,
+            )?;
+            let new_obj = self.emit_try_from_error_call(
+                &ret_layout_key,
+                &ret_value_type,
+                &ret_error_type,
+                &converted,
+                &try_expr.loc,
+            )?;
             self.emit_line(&format!("  ret i8* {}", new_obj));
         }
 
-        // 成功分支：提取 value 字段
+        // 8. 成功分支：经操作数 vtable 分派 getValue()
         self.emit_line(&format!("{}:", ok_label));
-        let value_field = self
-            .get_instance_field(&class_layout_key, "value")
-            .cloned()
-            .ok_or_else(|| codegen_error_at(
-                ErrorCodes::CODEGEN_INVALID_OPERATION,
-                try_expr.loc.clone(),
-                format!("Result class '{}' missing 'value' field", class_layout_key),
-            ))?;
-
-        let value_ptr_i8 = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = getelementptr i8, i8* {}, i64 {}",
-            value_ptr_i8, result_ptr_i8, value_field.offset
-        ));
-        let value_ptr = self.new_temp();
-        let value_ptr_type = if value_field.llvm_type.ends_with('*') {
-            value_field.llvm_type.clone()
-        } else {
-            format!("{}*", value_field.llvm_type)
-        };
-        self.emit_line(&format!(
-            "  {} = bitcast i8* {} to {}",
-            value_ptr, value_ptr_i8, value_ptr_type
-        ));
-        let value_val = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = load {}, {} {}, align {}",
-            value_val,
-            value_field.llvm_type,
-            value_ptr_type,
-            value_ptr,
-            self.get_type_align(&value_field.llvm_type)
-        ));
-
-        // 返回 value，类型为 T
-        Ok(format!("{} {}", value_field.llvm_type, value_val))
+        let value_result = self.emit_try_object_vtable_call(
+            &operand_i8,
+            "getValue",
+            &value_type,
+            &error_type,
+            &value_llvm,
+            &try_expr.loc,
+        )?;
+        Ok(value_result)
     }
 
-    /// `Optional<T>` 路径：
-    /// - hasValue == true → 提取 value 字段（类型 T）
-    /// - hasValue == false → 构造 `Optional<U>.empty()` 返回（U == T）
-    fn emit_try_for_optional(
-        &mut self,
-        try_expr: &TryExpr,
-        type_args: Vec<Type>,
-        class_layout_key: String,
-    ) -> CayResult<String> {
-        if type_args.len() != 1 {
-            return Err(codegen_error_at(
-                ErrorCodes::CODEGEN_INVALID_OPERATION,
-                try_expr.loc.clone(),
-                format!("Optional<T> requires 1 type argument, got {}", type_args.len()),
-            ));
-        }
+    // ------------------------------------------------------------------
+    // Try<T, E> 类型解析（codegen 侧，与 semantic 侧 resolve_try_type_args 对齐）
+    // ------------------------------------------------------------------
 
-        let value_type = type_args[0].clone();
-
-        // 函数返回类型必须为 Optional<U>（语义阶段已校验 U == T）。
-        // 提前取好返回类型的 layout 键，用于空值分支构造 Optional<U>.empty()。
-        let ret_layout_key = match self.current_function_cay_return_type.clone() {
-            Some(rt) => match self.resolve_try_class_info(&rt, &try_expr.loc) {
-                Ok((TryKind::Optional, _, key)) => Some(key),
-                _ => None,
-            },
-            None => None,
-        };
-
-        // 2. 生成操作数，得到 Optional 对象指针 (i8*)
-        let opt_value = self.generate_expression(&try_expr.expr)?;
-        let (opt_llvm_type, opt_ptr) = self.parse_typed_value(&opt_value);
-        let opt_ptr_i8 = if opt_llvm_type == "i8*" {
-            opt_ptr
-        } else {
-            let cast = self.new_temp();
-            self.emit_line(&format!(
-                "  {} = bitcast {} {} to i8*",
-                cast, opt_llvm_type, opt_ptr
-            ));
-            cast
-        };
-
-        // 3. 加载 hasValue 字段
-        let has_value_field = self
-            .get_instance_field(&class_layout_key, "hasValue")
-            .cloned()
-            .ok_or_else(|| codegen_error_at(
-                ErrorCodes::CODEGEN_INVALID_OPERATION,
-                try_expr.loc.clone(),
-                format!("Optional class '{}' missing 'hasValue' field", class_layout_key),
-            ))?;
-
-        let has_value_ptr_i8 = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = getelementptr i8, i8* {}, i64 {}",
-            has_value_ptr_i8, opt_ptr_i8, has_value_field.offset
-        ));
-        let has_value_ptr = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = bitcast i8* {} to i1*",
-            has_value_ptr, has_value_ptr_i8
-        ));
-        let has_value_val = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = load i1, i1* {}, align {}",
-            has_value_val, has_value_ptr, self.get_type_align("i1")
-        ));
-
-        // 4. 分支：present 继续，empty 提前返回
-        let present_label = self.new_label("try.present");
-        let empty_label = self.new_label("try.empty");
-        self.emit_line(&format!(
-            "  br i1 {}, label %{}, label %{}",
-            has_value_val, present_label, empty_label
-        ));
-
-        // 空值分支：调用作用域析构后构造并返回 Optional<U>.empty()
-        self.emit_line(&format!("{}:", empty_label));
-        self.emit_all_scope_dtors();
-        let empty_obj = match ret_layout_key.clone() {
-            Some(ret_key) => {
-                self.emit_try_construct_empty_optional(&ret_key, &try_expr.loc)?
-            }
-            None => {
-                // 取不到返回类型 layout 时退化为复用操作数 layout
-                // （操作数已是 Optional<T>，与 Optional<U> 同构，因为 U == T）。
-                self.emit_try_construct_empty_optional(&class_layout_key, &try_expr.loc)?
-            }
-        };
-        self.emit_line(&format!("  ret i8* {}", empty_obj));
-
-        // 有值分支：提取 value 字段
-        self.emit_line(&format!("{}:", present_label));
-        let value_field = self
-            .get_instance_field(&class_layout_key, "value")
-            .cloned()
-            .ok_or_else(|| codegen_error_at(
-                ErrorCodes::CODEGEN_INVALID_OPERATION,
-                try_expr.loc.clone(),
-                format!("Optional class '{}' missing 'value' field", class_layout_key),
-            ))?;
-
-        let value_ptr_i8 = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = getelementptr i8, i8* {}, i64 {}",
-            value_ptr_i8, opt_ptr_i8, value_field.offset
-        ));
-        let value_ptr = self.new_temp();
-        let value_ptr_type = if value_field.llvm_type.ends_with('*') {
-            value_field.llvm_type.clone()
-        } else {
-            format!("{}*", value_field.llvm_type)
-        };
-        self.emit_line(&format!(
-            "  {} = bitcast i8* {} to {}",
-            value_ptr, value_ptr_i8, value_ptr_type
-        ));
-        let value_val = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = load {}, {} {}, align {}",
-            value_val,
-            value_field.llvm_type,
-            value_ptr_type,
-            value_ptr,
-            self.get_type_align(&value_field.llvm_type)
-        ));
-
-        // 返回 value，类型为 T
-        let _ = &value_type; // 仅用于语义校验上下文，IR 不需要
-        Ok(format!("{} {}", value_field.llvm_type, value_val))
-    }
-
-    /// 解析 ? 运算符操作数的「结果/可选」类型信息
+    /// 解析类型是否实现了 `std::Try<T, E>` 接口，返回解析后的 (T, E)。
     ///
-    /// 返回 `(kind, 类型参数列表, 用于 class_layouts 查找的特化类名)`。
-    /// kind 标识操作数是 Result 还是 Optional。
-    fn resolve_try_class_info(
+    /// 沿父类链查找接口实现。接口声明中的类型参数（如 `Try<T, E>` 中的 T、E）
+    /// 被替换为类实例化时的实际类型实参。例如 `Result<int, String>` 实现了
+    /// `Try<int, String>`，返回 `Some((int, String))`；`Optional<int>` 实现了
+    /// `Try<int, Object>`，返回 `Some((int, Object))`。
+    fn resolve_try_type_args_codegen(
         &self,
         ty: &Type,
         loc: &crate::miette_diagnostic::SourceLocation,
-    ) -> CayResult<(TryKind, Vec<Type>, String)> {
-        let (base_name, type_args) = match ty {
+    ) -> CayResult<(Type, Type)> {
+        let (class_name, class_type_args) = match ty {
             Type::Generic(name, args) => (name.clone(), args.clone()),
             Type::Object(name) => {
                 if let Some(pos) = name.find('<') {
@@ -363,97 +221,344 @@ impl IRGenerator {
                 return Err(codegen_error_at(
                     ErrorCodes::CODEGEN_INVALID_OPERATION,
                     loc.clone(),
-                    format!("'?' operator requires Result<T, E> or Optional<T>, got {}", ty),
+                    format!(
+                        "The '?' operator requires the operand to implement std::Try<T, E>, got {}",
+                        ty
+                    ),
                 ));
             }
         };
 
-        let is_result = base_name == "Result" || base_name == "std::Result";
-        let is_optional = base_name == "Optional" || base_name == "std::Optional";
+        let mut current = Some(class_name);
+        let mut visited = std::collections::HashSet::new();
+        while let Some(name) = current {
+            if !visited.insert(name.clone()) {
+                break;
+            }
+            let class_info = match self
+                .type_registry
+                .as_ref()
+                .and_then(|r| r.get_class(&name))
+            {
+                Some(info) => info,
+                None => {
+                    let bare = name.rsplit("::").next().unwrap_or(&name);
+                    match self
+                        .type_registry
+                        .as_ref()
+                        .and_then(|r| r.get_class(bare))
+                    {
+                        Some(info) => info,
+                        None => return Err(codegen_error_at(
+                            ErrorCodes::CODEGEN_INVALID_OPERATION,
+                            loc.clone(),
+                            format!(
+                                "The '?' operator requires the operand to implement std::Try<T, E>, got {}",
+                                ty
+                            ),
+                        )),
+                    }
+                }
+            };
 
-        if !is_result && !is_optional {
-            return Err(codegen_error_at(
-                ErrorCodes::CODEGEN_INVALID_OPERATION,
-                loc.clone(),
-                format!("'?' operator requires Result<T, E> or Optional<T>, got {}", ty),
-            ));
+            // 查找 Try 接口实现
+            for iface in &class_info.interfaces {
+                let bare = match iface {
+                    Type::Object(n) | Type::Generic(n, _) => {
+                        n.split('<').next().unwrap_or(n)
+                    }
+                    _ => continue,
+                };
+                if bare != "Try" && bare != "std::Try" {
+                    continue;
+                }
+                if let Type::Generic(_, iface_args) = iface {
+                    if iface_args.len() != 2 {
+                        continue;
+                    }
+                    let resolved_t = substitute_type_params_codegen(
+                        &iface_args[0],
+                        &class_info.type_params,
+                        &class_type_args,
+                    );
+                    let resolved_e = substitute_type_params_codegen(
+                        &iface_args[1],
+                        &class_info.type_params,
+                        &class_type_args,
+                    );
+                    return Ok((resolved_t, resolved_e));
+                }
+            }
+            current = class_info.parent.clone();
         }
 
-        let kind = if is_result { TryKind::Result } else { TryKind::Optional };
+        Err(codegen_error_at(
+            ErrorCodes::CODEGEN_INVALID_OPERATION,
+            loc.clone(),
+            format!(
+                "The '?' operator requires the operand to implement std::Try<T, E>, got {}",
+                ty
+            ),
+        ))
+    }
 
-        // 解析限定名，确保 class_layouts 键正确
+    /// 计算类型的布局键（用于 vtable 全局名查找与类型等价比较）。
+    ///
+    /// 键格式与 `class_layouts` 一致：`{qualified_base}<{args}>`，
+    /// 例如 `std::Result<int, String>`。
+    fn compute_try_layout_key(&self, ty: &Type) -> String {
+        let (base_name, type_args) = match ty {
+            Type::Generic(name, args) => (name.clone(), args.clone()),
+            Type::Object(name) => {
+                if let Some(pos) = name.find('<') {
+                    let base = name[..pos].to_string();
+                    let end = name.len().saturating_sub(1);
+                    let args_str = if end > pos + 1 {
+                        &name[pos + 1..end]
+                    } else {
+                        ""
+                    };
+                    let args: Vec<Type> = if args_str.is_empty() {
+                        Vec::new()
+                    } else {
+                        args_str
+                            .split(',')
+                            .map(|s| Type::Object(s.trim().to_string()))
+                            .collect()
+                    };
+                    (base, args)
+                } else {
+                    (name.clone(), Vec::new())
+                }
+            }
+            _ => return ty.display_name(),
+        };
+
         let qualified_base = if base_name.contains("::") {
-            base_name.clone()
+            base_name
         } else if let Some(ref registry) = self.type_registry {
             registry
                 .find_qualified_class(&base_name)
                 .unwrap_or(base_name.clone())
         } else {
-            base_name.clone()
+            base_name
         };
 
         let args_str: Vec<String> = type_args.iter().map(|t| t.display_name()).collect();
-        let layout_key = format!("{}<{ }>", qualified_base, args_str.join(", "));
-
-        Ok((kind, type_args, layout_key))
+        format!("{}<{ }>", qualified_base, args_str.join(", "))
     }
 
-    /// `?` 的 Into 错误转换：从操作数 Result 对象取出 error 字段，
-    /// 通过 vtable 分派调用 `e.into()`，返回 E2 的 "type value" 字符串。
+    // ------------------------------------------------------------------
+    // vtable 分派：对象头 vtable（isOk/getValue/getError）
+    // ------------------------------------------------------------------
+
+    /// 经对象头 vtable 分派 Try 接口的实例方法（isOk/getValue/getError）。
+    ///
+    /// 对象头布局：`[i32 type_id][i8* vtable_ptr][...fields]`，
+    /// vtable_ptr 位于 offset 8。
+    ///
+    /// 返回 "type value" 字符串（如 `"i1 %t1"` 或 `"i32 %t2"`）。
+    fn emit_try_object_vtable_call(
+        &mut self,
+        obj_i8: &str,
+        method_name: &str,
+        value_type: &Type,
+        error_type: &Type,
+        ret_llvm_type: &str,
+        loc: &crate::miette_diagnostic::SourceLocation,
+    ) -> CayResult<String> {
+        // 1. 加载对象头 vtable 指针 (offset 8)
+        let vtable_ptr_temp = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = getelementptr i8, i8* {}, i64 8",
+            vtable_ptr_temp, obj_i8
+        ));
+        let vtable_temp = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = load i8*, i8* {}",
+            vtable_temp, vtable_ptr_temp
+        ));
+        let vtable_array_temp = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = bitcast i8* {} to i8**",
+            vtable_array_temp, vtable_temp
+        ));
+
+        // 2. 查找 Try 接口方法槽位
+        let interface_type_args = vec![value_type.clone(), error_type.clone()];
+        let slot = self.find_try_vtable_slot(method_name, &interface_type_args, loc)?;
+
+        // 3. 加载函数指针
+        let slot_ptr_temp = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = getelementptr i8*, i8** {}, i64 {}",
+            slot_ptr_temp, vtable_array_temp, slot
+        ));
+        let fn_ptr_temp = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = load i8*, i8** {}",
+            fn_ptr_temp, slot_ptr_temp
+        ));
+
+        // 4. 转换为正确函数指针类型并间接调用
+        // isOk/getValue/getError 均无额外参数，仅 this (i8*)
+        let fn_type = format!("{} (i8*)*", ret_llvm_type);
+        let fn_cast_temp = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = bitcast i8* {} to {}",
+            fn_cast_temp, fn_ptr_temp, fn_type
+        ));
+
+        let result_temp = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = call {} {}(i8* {})",
+            result_temp, ret_llvm_type, fn_cast_temp, obj_i8
+        ));
+
+        Ok(format!("{} {}", ret_llvm_type, result_temp))
+    }
+
+    // ------------------------------------------------------------------
+    // vtable 分派：返回类型 vtable 全局（fromError）
+    // ------------------------------------------------------------------
+
+    /// 经返回类型 R 的 vtable 全局分派 `Try<T2, E2>::fromError(E2)`。
+    ///
+    /// 不持有 R 的实例；直接访问 vtable 全局 `@R.vtable` 取槽位函数指针。
+    /// this 传入 null（接口约定：fromError 不访问 this，视作静态工厂）。
+    ///
+    /// `err_result` 为错误值的 "type value" 字符串（如 `"i8* %err"`）。
+    /// 返回新构造对象的 i8* 值名（如 `"%obj"`）。
+    fn emit_try_from_error_call(
+        &mut self,
+        ret_layout_key: &str,
+        ret_value_type: &Type,
+        ret_error_type: &Type,
+        err_result: &str,
+        loc: &crate::miette_diagnostic::SourceLocation,
+    ) -> CayResult<String> {
+        // 1. 解析错误值并按需转换为 E2_llvm
+        let e2_llvm = self.type_to_llvm(ret_error_type);
+        let (err_llvm_type, err_val) = self.parse_typed_value(err_result);
+        let err_arg = if err_llvm_type == e2_llvm {
+            // 类型一致，直接使用
+            err_val
+        } else if err_llvm_type.ends_with('*') && e2_llvm.ends_with('*') {
+            // 均为指针类型，bitcast 转换
+            let cast = self.new_temp();
+            self.emit_line(&format!(
+                "  {} = bitcast {} {} to {}",
+                cast, err_llvm_type, err_val, e2_llvm
+            ));
+            cast
+        } else {
+            // 类型不兼容（理论不应发生：语义阶段已校验 E == E2 或 Into<E2>）
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
+                loc.clone(),
+                format!(
+                    "fromError argument type {} does not match expected {}",
+                    err_llvm_type, e2_llvm
+                ),
+            ));
+        };
+
+        // 2. 取返回类型 vtable 全局名
+        let registry_name = ret_layout_key
+            .split('<')
+            .next()
+            .unwrap_or(ret_layout_key)
+            .to_string();
+        let llvm_class = self.get_qualified_class_name(ret_layout_key);
+        let vtable_name = format!("{}.vtable", llvm_class);
+        let vtable_size = self
+            .type_registry
+            .as_ref()
+            .and_then(|r| r.get_class(&registry_name))
+            .and_then(|c| c.vtable_layout.as_ref())
+            .map(|v| v.size)
+            .unwrap_or(0);
+
+        if vtable_size == 0 {
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
+                loc.clone(),
+                format!(
+                    "Return type '{}' has no vtable layout; cannot dispatch Try::fromError",
+                    ret_layout_key
+                ),
+            ));
+        }
+
+        // 3. 查找 Try::fromError 槽位
+        let interface_type_args = vec![ret_value_type.clone(), ret_error_type.clone()];
+        let slot =
+            self.find_try_vtable_slot("fromError", &interface_type_args, loc)?;
+
+        // 4. 从 vtable 全局加载函数指针
+        let vtable_array_temp = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = bitcast [{} x i8*]* @{} to i8**",
+            vtable_array_temp, vtable_size, vtable_name
+        ));
+        let slot_ptr_temp = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = getelementptr i8*, i8** {}, i64 {}",
+            slot_ptr_temp, vtable_array_temp, slot
+        ));
+        let fn_ptr_temp = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = load i8*, i8** {}",
+            fn_ptr_temp, slot_ptr_temp
+        ));
+
+        // 5. 转换为正确函数指针类型并间接调用
+        // fromError 签名: Try<T, E> fromError(E error)
+        // LLVM 层面: i8* (i8* this, E2_llvm error)*
+        let fn_type = format!("i8* (i8*, {})*", e2_llvm);
+        let fn_cast_temp = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = bitcast i8* {} to {}",
+            fn_cast_temp, fn_ptr_temp, fn_type
+        ));
+
+        let result_temp = self.new_temp();
+        // this = null（接口约定：fromError 不访问 this）
+        self.emit_line(&format!(
+            "  {} = call i8* {}(i8* null, {} {})",
+            result_temp, fn_cast_temp, e2_llvm, err_arg
+        ));
+
+        Ok(result_temp)
+    }
+
+    // ------------------------------------------------------------------
+    // Into 转换：错误值 e.into() → E2
+    // ------------------------------------------------------------------
+
+    /// `?` 的 Into 错误转换：从 `getError()` 返回的错误值，通过 vtable 分派
+    /// 调用 `e.into()`，返回 E2 的 "type value" 字符串。
     ///
     /// 语义阶段已保证 E 实现 Into<E2>，vtable 槽位必然存在。
-    fn emit_try_into_conversion(
+    fn emit_into_conversion_on_error(
         &mut self,
-        result_ptr_i8: &str,
-        class_layout_key: &str,
+        err_result: &str,
         error_type: &Type,
         e2_type: &Type,
         loc: &crate::miette_diagnostic::SourceLocation,
     ) -> CayResult<String> {
-        // 1. 加载 error 字段（与 value 字段同构的布局访问）
-        let error_field = self
-            .get_instance_field(class_layout_key, "error")
-            .cloned()
-            .ok_or_else(|| codegen_error_at(
-                ErrorCodes::CODEGEN_INVALID_OPERATION,
-                loc.clone(),
-                format!("Result class '{}' missing 'error' field", class_layout_key),
-            ))?;
-
-        let err_ptr_i8 = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = getelementptr i8, i8* {}, i64 {}",
-            err_ptr_i8, result_ptr_i8, error_field.offset
-        ));
-        let err_ptr = self.new_temp();
-        let err_ptr_type = if error_field.llvm_type.ends_with('*') {
-            error_field.llvm_type.clone()
-        } else {
-            format!("{}*", error_field.llvm_type)
-        };
-        self.emit_line(&format!(
-            "  {} = bitcast i8* {} to {}",
-            err_ptr, err_ptr_i8, err_ptr_type
-        ));
-        let err_val = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = load {}, {} {}, align {}",
-            err_val,
-            error_field.llvm_type,
-            err_ptr_type,
-            err_ptr,
-            self.get_type_align(&error_field.llvm_type)
-        ));
+        // 1. 解析错误值
+        let (err_llvm_type, err_val) = self.parse_typed_value(err_result);
 
         // 2. 统一为 i8*（实现 Into 的错误类型惯例上是类；值类型无法在此出现，
         //    因为基础类型无法实现接口——语义阶段已拦截）
-        let err_i8 = if error_field.llvm_type == "i8*" {
+        let err_i8 = if err_llvm_type == "i8*" {
             err_val
-        } else if error_field.llvm_type.ends_with('*') {
+        } else if err_llvm_type.ends_with('*') {
             let cast = self.new_temp();
             self.emit_line(&format!(
                 "  {} = bitcast {} {} to i8*",
-                cast, error_field.llvm_type, err_val
+                cast, err_llvm_type, err_val
             ));
             cast
         } else {
@@ -461,8 +566,8 @@ impl IRGenerator {
                 ErrorCodes::CODEGEN_INVALID_OPERATION,
                 loc.clone(),
                 format!(
-                    "'?' Into conversion requires a class error type, got {}",
-                    error_type
+                    "'?' Into conversion requires a class error type, got {} ({})",
+                    error_type, err_llvm_type
                 ),
             ));
         };
@@ -483,7 +588,10 @@ impl IRGenerator {
             vtable_ptr_temp, err_i8
         ));
         let vtable_temp = self.new_temp();
-        self.emit_line(&format!("  {} = load i8*, i8* {}", vtable_temp, vtable_ptr_temp));
+        self.emit_line(&format!(
+            "  {} = load i8*, i8* {}",
+            vtable_temp, vtable_ptr_temp
+        ));
         let vtable_array_temp = self.new_temp();
         self.emit_line(&format!(
             "  {} = bitcast i8* {} to i8**",
@@ -523,7 +631,10 @@ impl IRGenerator {
             slot_ptr_temp, vtable_array_temp, slot
         ));
         let fn_ptr_temp = self.new_temp();
-        self.emit_line(&format!("  {} = load i8*, i8** {}", fn_ptr_temp, slot_ptr_temp));
+        self.emit_line(&format!(
+            "  {} = load i8*, i8** {}",
+            fn_ptr_temp, slot_ptr_temp
+        ));
 
         let e2_llvm = self.type_to_llvm(e2_type);
         let fn_cast_temp = self.new_temp();
@@ -611,208 +722,114 @@ impl IRGenerator {
         Ok(Some(format!("{} {}", e2_llvm, converted_temp)))
     }
 
-    /// `?` 的 Into 错误转换：手工构造 `Result<T2, E2>` 错误对象
-    /// （calloc + 对象头 + isOk=false + error 字段），返回 i8* 对象指针。
+    // ------------------------------------------------------------------
+    // Try vtable 槽位查找
+    // ------------------------------------------------------------------
+
+    /// 查找 Try 接口方法在 vtable 中的槽位编号。
     ///
-    /// Result<T2,E2> 作为当前函数返回类型必然已被特化收集，
-    /// 布局/vtable/方法均已生成，这里只按布局写字段。
-    fn emit_try_construct_err_result(
-        &mut self,
-        ret_layout_key: &str,
-        converted: &str,
+    /// `arg_types` 由接口声明中的方法形参类型决定（如 `fromError(E)` 的
+    /// `arg_types = [Type::GenericParam("E")]`），与槽位注册时的签名一致。
+    /// `interface_type_args` 为接口实例化的类型实参（如 `[T, E]`）。
+    fn find_try_vtable_slot(
+        &self,
+        method_name: &str,
+        interface_type_args: &[Type],
         loc: &crate::miette_diagnostic::SourceLocation,
-    ) -> CayResult<String> {
-        let (converted_ty, converted_val) = self.parse_typed_value(converted);
-        let registry_name = ret_layout_key
-            .split('<')
-            .next()
-            .unwrap_or(ret_layout_key)
-            .to_string();
-
-        // 1. 分配对象
-        let obj_size = self
-            .get_class_layout(ret_layout_key)
-            .map(|layout| layout.total_size as i64)
-            .unwrap_or(8);
-        let obj = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = call i8* @calloc(i64 1, i64 {})",
-            obj, obj_size
-        ));
-
-        // 2. 对象头：type_id (offset 0) + vtable 指针 (offset 8)
-        let type_id_value = self.get_type_id_value(&registry_name).unwrap_or(0);
-        let type_id_ptr = self.new_temp();
-        self.emit_line(&format!("  {} = bitcast i8* {} to i32*", type_id_ptr, obj));
-        self.emit_line(&format!(
-            "  store i32 {}, i32* {}",
-            type_id_value, type_id_ptr
-        ));
-
-        let llvm_class = self.get_qualified_class_name(ret_layout_key);
-        let vtable_name = format!("{}.vtable", llvm_class);
-        let vtable_size = self
+    ) -> CayResult<usize> {
+        // 从 Try 接口声明中取方法形参类型，确保与槽位注册时签名一致。
+        let arg_types: Vec<Type> = self
             .type_registry
             .as_ref()
-            .and_then(|r| r.get_class(&registry_name))
-            .and_then(|c| c.vtable_layout.as_ref())
-            .map(|v| v.size)
-            .unwrap_or(0);
-        let vtable_ptr_temp = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = getelementptr i8, i8* {}, i64 8",
-            vtable_ptr_temp, obj
-        ));
-        if vtable_size > 0 {
-            let vtable_global_temp = self.new_temp();
-            self.emit_line(&format!(
-                "  {} = bitcast [{} x i8*]* @{} to i8*",
-                vtable_global_temp, vtable_size, vtable_name
-            ));
-            self.emit_line(&format!(
-                "  store i8* {}, i8* {}",
-                vtable_global_temp, vtable_ptr_temp
-            ));
-        } else {
-            self.emit_line(&format!("  store i8* null, i8* {}", vtable_ptr_temp));
+            .and_then(|r| {
+                for name in &TRY_INTERFACE_NAMES {
+                    if let Some(iface) = r.get_interface(name) {
+                        if let Some(method) = iface.methods.get(method_name) {
+                            return Some(
+                                method
+                                    .params
+                                    .iter()
+                                    .map(|p| p.param_type.clone())
+                                    .collect(),
+                            );
+                        }
+                    }
+                }
+                None
+            })
+            .unwrap_or_default();
+
+        for interface_name in &TRY_INTERFACE_NAMES {
+            if self.interface_has_vtable_slot_with_type_args(
+                interface_name,
+                method_name,
+                &arg_types,
+                interface_type_args,
+            ) {
+                return Ok(self.get_interface_vtable_slot_with_type_args(
+                    interface_name,
+                    method_name,
+                    &arg_types,
+                    interface_type_args,
+                ));
+            }
         }
 
-        // 3. isOk = false
-        let is_ok_field = self
-            .get_instance_field(ret_layout_key, "isOk")
-            .cloned()
-            .ok_or_else(|| codegen_error_at(
-                ErrorCodes::CODEGEN_INVALID_OPERATION,
-                loc.clone(),
-                format!("Result class '{}' missing 'isOk' field", ret_layout_key),
-            ))?;
-        let is_ok_ptr_i8 = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = getelementptr i8, i8* {}, i64 {}",
-            is_ok_ptr_i8, obj, is_ok_field.offset
-        ));
-        let is_ok_ptr = self.new_temp();
-        self.emit_line(&format!("  {} = bitcast i8* {} to i1*", is_ok_ptr, is_ok_ptr_i8));
-        self.emit_line(&format!("  store i1 0, i1* {}", is_ok_ptr));
-
-        // 4. error = converted
-        let error_field = self
-            .get_instance_field(ret_layout_key, "error")
-            .cloned()
-            .ok_or_else(|| codegen_error_at(
-                ErrorCodes::CODEGEN_INVALID_OPERATION,
-                loc.clone(),
-                format!("Result class '{}' missing 'error' field", ret_layout_key),
-            ))?;
-        let err_ptr_i8 = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = getelementptr i8, i8* {}, i64 {}",
-            err_ptr_i8, obj, error_field.offset
-        ));
-        let err_ptr = self.new_temp();
-        let err_ptr_type = if converted_ty.ends_with('*') {
-            converted_ty.clone()
-        } else {
-            format!("{}*", converted_ty)
-        };
-        self.emit_line(&format!(
-            "  {} = bitcast i8* {} to {}",
-            err_ptr, err_ptr_i8, err_ptr_type
-        ));
-        self.emit_line(&format!(
-            "  store {} {}, {} {}",
-            converted_ty, converted_val, err_ptr_type, err_ptr
-        ));
-
-        Ok(obj)
+        Err(codegen_error_at(
+            ErrorCodes::CODEGEN_INVALID_OPERATION,
+            loc.clone(),
+            format!(
+                "Try::{} vtable slot not found (interface_type_args: {})",
+                method_name,
+                interface_type_args
+                    .iter()
+                    .map(|t| t.display_name())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        ))
     }
+}
 
-    /// `?` 的 Optional 路径：手工构造 `Optional<U>.empty()` 空对象
-    /// （calloc + 对象头 + hasValue=false），返回 i8* 对象指针。
-    ///
-    /// Optional<U> 作为当前函数返回类型必然已被特化收集，
-    /// 布局/vtable/方法均已生成；value 字段由 calloc 零初始化即可，
-    /// 不需要再写入（语义上 Optional.empty() 不携带值）。
-    fn emit_try_construct_empty_optional(
-        &mut self,
-        ret_layout_key: &str,
-        loc: &crate::miette_diagnostic::SourceLocation,
-    ) -> CayResult<String> {
-        let registry_name = ret_layout_key
-            .split('<')
-            .next()
-            .unwrap_or(ret_layout_key)
-            .to_string();
-
-        // 1. 分配对象
-        let obj_size = self
-            .get_class_layout(ret_layout_key)
-            .map(|layout| layout.total_size as i64)
-            .unwrap_or(8);
-        let obj = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = call i8* @calloc(i64 1, i64 {})",
-            obj, obj_size
-        ));
-
-        // 2. 对象头：type_id (offset 0) + vtable 指针 (offset 8)
-        let type_id_value = self.get_type_id_value(&registry_name).unwrap_or(0);
-        let type_id_ptr = self.new_temp();
-        self.emit_line(&format!("  {} = bitcast i8* {} to i32*", type_id_ptr, obj));
-        self.emit_line(&format!(
-            "  store i32 {}, i32* {}",
-            type_id_value, type_id_ptr
-        ));
-
-        let llvm_class = self.get_qualified_class_name(ret_layout_key);
-        let vtable_name = format!("{}.vtable", llvm_class);
-        let vtable_size = self
-            .type_registry
-            .as_ref()
-            .and_then(|r| r.get_class(&registry_name))
-            .and_then(|c| c.vtable_layout.as_ref())
-            .map(|v| v.size)
-            .unwrap_or(0);
-        let vtable_ptr_temp = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = getelementptr i8, i8* {}, i64 8",
-            vtable_ptr_temp, obj
-        ));
-        if vtable_size > 0 {
-            let vtable_global_temp = self.new_temp();
-            self.emit_line(&format!(
-                "  {} = bitcast [{} x i8*]* @{} to i8*",
-                vtable_global_temp, vtable_size, vtable_name
-            ));
-            self.emit_line(&format!(
-                "  store i8* {}, i8* {}",
-                vtable_global_temp, vtable_ptr_temp
-            ));
-        } else {
-            self.emit_line(&format!("  store i8* null, i8* {}", vtable_ptr_temp));
+/// 将类型中的泛型参数替换为类实例化时的实际类型实参。
+/// 例如：类 `Result<T, E>` 实例化为 `Result<int, String>` 时，
+/// GenericParam("T") / Object("T") -> int，GenericParam("E") / Object("E") -> String。
+///
+/// 注意：解析器将接口类型实参 `T` 存储为 `Type::Object("T")` 而非
+/// `Type::GenericParam("T")`，故需同时检查两种形式，并回查类的
+/// `type_params` 以识别「名字与类类型参数同名」的 Object 实例。
+fn substitute_type_params_codegen(
+    ty: &Type,
+    type_params: &[crate::types::TypeParamInfo],
+    type_args: &[Type],
+) -> Type {
+    match ty {
+        Type::GenericParam(name) => {
+            if let Some(idx) = type_params.iter().position(|p| &p.name == name) {
+                if idx < type_args.len() {
+                    return type_args[idx].clone();
+                }
+            }
+            ty.clone()
         }
-
-        // 3. hasValue = false（value 字段由 calloc 零初始化，不写入）
-        let has_value_field = self
-            .get_instance_field(ret_layout_key, "hasValue")
-            .cloned()
-            .ok_or_else(|| codegen_error_at(
-                ErrorCodes::CODEGEN_INVALID_OPERATION,
-                loc.clone(),
-                format!("Optional class '{}' missing 'hasValue' field", ret_layout_key),
-            ))?;
-        let has_value_ptr_i8 = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = getelementptr i8, i8* {}, i64 {}",
-            has_value_ptr_i8, obj, has_value_field.offset
-        ));
-        let has_value_ptr = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = bitcast i8* {} to i1*",
-            has_value_ptr, has_value_ptr_i8
-        ));
-        self.emit_line(&format!("  store i1 0, i1* {}", has_value_ptr));
-
-        Ok(obj)
+        Type::Object(name) => {
+            // 解析器将接口类型实参 `T` 存储为 `Type::Object("T")`；
+            // 若该名字与类的类型参数同名，替换为对应的实际类型实参。
+            if let Some(idx) = type_params.iter().position(|p| &p.name == name) {
+                if idx < type_args.len() {
+                    return type_args[idx].clone();
+                }
+            }
+            ty.clone()
+        }
+        Type::Generic(name, args) => Type::Generic(
+            name.clone(),
+            args.iter()
+                .map(|a| substitute_type_params_codegen(a, type_params, type_args))
+                .collect(),
+        ),
+        Type::Int32 | Type::Int64 | Type::Float32 | Type::Float64
+        | Type::Bool | Type::Char | Type::String | Type::Void => ty.clone(),
+        _ => ty.clone(),
     }
 }

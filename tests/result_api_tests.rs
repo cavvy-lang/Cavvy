@@ -112,15 +112,44 @@ fn test_try_operator_on_optional() {
     );
 }
 
-/// `?` 在非 Result/Optional 类型上必须报语义错误。
+/// `?` 在未实现 std::Try<T, E> 的类型上必须报语义错误。
 #[test]
 fn test_try_operator_on_non_result_optional_is_compile_error() {
     let error = compile_eol_expect_error("examples/errors/try_on_non_result_optional.cay")
         .expect("try_on_non_result_optional.cay should be a compile error");
     assert!(
-        error.contains("?") && (error.contains("Result") || error.contains("Optional")),
+        error.contains("?") && (error.contains("Try") || error.contains("Result") || error.contains("Optional")),
         "Expected '?' operator type error, got: {}",
         error
+    );
+}
+
+/// 自定义 Try<T, E> 实现与 ? 运算符测试 (ROADMAP 6.3.x)。
+///
+/// 验证任何实现了 std::Try<T, E> 的类型（非 Result/Optional）均可使用 ? 运算符，
+/// 就像实现 Iterator 即可用于 for 循环一样。
+///
+/// 覆盖路径：
+/// - 同型快路径：Loader<int> ? → Loader<int>（Self == R，直接返回操作数）
+/// - fromError 分派：Loader<int> ? → Result<int, String>（Self != R，经返回类型
+///   vtable 调用 Try::fromError 构造失败值）
+/// - 链式 ? 传播
+#[test]
+fn test_try_operator_on_custom_try_interface() {
+    let output = compile_and_run_eol("examples/test_try_interface.cay")
+        .expect("test_try_interface.cay should compile and run");
+    assert_output_contains(
+        &output,
+        &[
+            "loader_ok=8080",        // 成功路径：isOk()==true，getValue() 经 vtable 提取
+            "loader_err=invalid port", // 失败路径：同型直返，getError() 经 vtable 提取
+            "result_ok=8080",        // fromError 分派成功路径
+            "result_err=invalid port", // fromError 分派：Loader getError + Result fromError
+            "chain_both=16160",      // 链式 ? 两侧成功：8080+8080
+            "chain_first_err=invalid port", // 链式 ? 第一个失败：立即传播
+            "done",
+        ],
+        "test_try_interface",
     );
 }
 

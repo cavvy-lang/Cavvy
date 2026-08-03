@@ -1,0 +1,78 @@
+/**
+ * Try<T, E> - ? 运算符接口 (ROADMAP 6.3.x)
+ *
+ * `?` 运算符通过本接口分派，而非硬编码到 Result/Optional 符号。
+ * 任何实现了 `std::Try<T, E>` 的类型均可作为 `?` 的操作数与
+ * 当前函数的返回类型——与实现 `Iterator` 即可用于 `for` 一致。
+ *
+ * 接口契约：
+ *   - `isOk()`     返回是否处于成功状态（Ok/Some）。
+ *   - `getValue()` 提取成功值；仅在 `isOk() == true` 时语义合法。
+ *   - `getError()` 提取失败错误；仅在 `isOk() == false` 时语义合法。
+ *     无显式错误的结果类型（如 `Optional<T>`）以 `null` 返回。
+ *   - `fromError(E)` 工厂方法：从错误构造同型的失败实例。
+ *     实现不得访问 `this`（视作静态工厂）；编译器在 `?` 的失败分支
+ *     以返回类型的 vtable 调用本方法，`this` 传入 `null`。
+ *
+ * `?` 展开规则（操作数 `e : Self implements Try<T, E>`，
+ *   函数返回类型 `R implements Try<T2, E2>`，T == T2 且
+ *   （E == E2 或 E 实现 `Into<E2>`））：
+ *
+ *   e?  =>
+ *     {
+ *       Self __t = e;
+ *       if (__t.isOk()) {
+ *         __t.getValue()              // 继续求值，类型 T
+ *       } else {
+ *         E  __err = __t.getError();
+ *         E2 __e2 = __err.into();     // E == E2 时省略
+ *         return R.fromError(__e2);   // 经返回类型 vtable 分派
+ *       }
+ *     }
+ *
+ * 版本: 6.3.0
+ */
+
+#ifndef CAY_TRY_H
+#define CAY_TRY_H
+
+namespace std {
+
+/**
+ * Try<T, E> - ? 运算符分派接口
+ *
+ * 时间复杂度: O(1) 所有方法
+ * 空间复杂度: O(1) 固定额外空间
+ */
+public interface Try<T, E> {
+    /**
+     * 是否处于成功状态。
+     * 对 Result：isOk；对 Optional：hasValue。
+     */
+    bool isOk();
+
+    /**
+     * 提取成功值（仅在 isOk() == true 时合法）。
+     */
+    T getValue();
+
+    /**
+     * 提取失败错误（仅在 isOk() == false 时合法）。
+     * 无错误的结果类型（如 Optional<T>）返回 null。
+     */
+    E getError();
+
+    /**
+     * 工厂方法：从错误构造同型的失败实例。
+     *
+     * 实现约定：
+     * - 不得访问 `this`（编译器以 null 调用）。
+     * - Result<T, E> 实现：返回 Result<T, E>.err(error)。
+     * - Optional<T> 实现（E = Object）：忽略 error，返回 Optional<T>.empty()。
+     */
+    Try<T, E> fromError(E error);
+}
+
+} // namespace std
+
+#endif // CAY_TRY_H
