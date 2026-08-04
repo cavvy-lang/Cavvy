@@ -1,0 +1,31 @@
+/**
+ * impl 声明 - class 接口实现集成测试
+ *
+ * 测试内容:
+ * - 通过 impl Class for Interface 为 class 实现接口方法
+ * - 方法附加到 class 后可直接通过实例调用
+ */
+
+public interface Greetable {
+    public void greet(String name);
+}
+
+public class Greeter {
+}
+
+impl Greeter for Greetable {
+    public void greet(String name) {
+        println("Hello, " + name);
+    }
+}
+
+public class ImplInterfaceTest {
+    public static void main() {
+        println("=== impl interface 测试 ===");
+
+        Greeter g = new Greeter();
+        g.greet("Cavvy");
+
+        println("=== impl interface 测试通过 ===");
+    }
+}

@@ -163,6 +163,117 @@ impl IRGenerator {
             break;
         }
 
+        // enum 方法查找：class 查找失败后，检查是否是 enum 类型。
+        // enum 无继承，因此只需在基础类名对应的 EnumInfo 中查找方法。
+        if let Some(enum_info) = registry.get_enum_by_name(base_class_name) {
+            if let Some(methods) = enum_info.methods.get(method_name) {
+                let arg_count = processed_args.len();
+
+                // 将方法形参中的泛型参数替换为调用处类名中的具体类型实参
+                let (base, type_args) =
+                    crate::codegen::context::IRGenerator::parse_generic_args_from_name(class_name);
+                let _ = base;
+                let parsed_type_args: Vec<crate::types::Type> = type_args
+                    .iter()
+                    .map(|s| crate::codegen::context::IRGenerator::parse_simple_type_str(s))
+                    .collect();
+                let type_params: Vec<crate::types::TypeParamInfo> = enum_info.type_params.clone();
+                let resolved_args: Vec<crate::types::Type> = if !parsed_type_args.is_empty()
+                    && parsed_type_args.len() == type_params.len()
+                {
+                    parsed_type_args
+                } else {
+                    type_params
+                        .iter()
+                        .map(|p| {
+                            self.generic_type_args
+                                .get(&p.name)
+                                .cloned()
+                                .unwrap_or(crate::types::Type::GenericParam(p.name.clone()))
+                        })
+                        .collect()
+                };
+                let mapping: std::collections::HashMap<String, crate::types::Type> = type_params
+                    .iter()
+                    .zip(resolved_args.iter())
+                    .map(|(p, t)| (p.name.clone(), t.clone()))
+                    .collect();
+
+                let substitute_params = |params: &[crate::types::ParameterInfo]| {
+                    params
+                        .iter()
+                        .map(|p| crate::types::ParameterInfo {
+                            param_type: crate::types::substitute_type_params(
+                                &p.param_type,
+                                &mapping,
+                            ),
+                            ..p.clone()
+                        })
+                        .collect::<Vec<_>>()
+                };
+
+                // 第一遍：精确类型签名匹配
+                for method in methods.iter() {
+                    let substituted_params = substitute_params(&method.params);
+                    let param_count = substituted_params.len();
+                    let is_varargs = substituted_params.iter().any(|p| p.is_varargs);
+                    let fixed_count = substituted_params
+                        .iter()
+                        .position(|p| p.is_varargs)
+                        .unwrap_or(param_count);
+
+                    let sig_matches = if is_varargs {
+                        arg_count >= fixed_count
+                            && self.method_param_signatures_match(
+                                &substituted_params,
+                                &arg_types,
+                                has_varargs_array,
+                            )
+                    } else {
+                        param_count == arg_count
+                            && self.method_param_signatures_match(
+                                &substituted_params,
+                                &arg_types,
+                                has_varargs_array,
+                            )
+                    };
+
+                    if sig_matches {
+                        let mut resolved_method = method.clone();
+                        resolved_method.params = substituted_params;
+                        resolved_method.return_type =
+                            crate::types::substitute_type_params(&method.return_type, &mapping);
+                        return Some(resolved_method);
+                    }
+                }
+
+                // 第二遍：回退到参数数量匹配
+                for method in methods.iter() {
+                    let substituted_params = substitute_params(&method.params);
+                    let param_count = substituted_params.len();
+                    let is_varargs = substituted_params.iter().any(|p| p.is_varargs);
+                    let fixed_count = substituted_params
+                        .iter()
+                        .position(|p| p.is_varargs)
+                        .unwrap_or(param_count);
+
+                    if is_varargs && arg_count >= fixed_count {
+                        let mut resolved_method = method.clone();
+                        resolved_method.params = substituted_params;
+                        resolved_method.return_type =
+                            crate::types::substitute_type_params(&method.return_type, &mapping);
+                        return Some(resolved_method);
+                    } else if param_count == arg_count {
+                        let mut resolved_method = method.clone();
+                        resolved_method.params = substituted_params;
+                        resolved_method.return_type =
+                            crate::types::substitute_type_params(&method.return_type, &mapping);
+                        return Some(resolved_method);
+                    }
+                }
+            }
+        }
+
         // struct 方法查找：class 查找失败后，检查是否是 struct 类型。
         // struct 无继承，因此只需在基础类名对应的 StructInfo 中查找方法。
         if let Some(struct_info) = registry.get_struct(base_class_name) {

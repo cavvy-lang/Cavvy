@@ -5,6 +5,24 @@ use crate::ast::{ClassMember, Modifier, Program};
 use crate::miette_diagnostic::{CayResult, ErrorCodes, SourceLocation, semantic_error_with_file};
 use crate::types::{ClassInfo, FieldInfo, MethodInfo, ParameterInfo, Type};
 
+/// impl 声明可扩展的目标类型
+enum ImplTarget {
+    Class(usize),
+    Struct(usize),
+    Enum(usize),
+}
+
+/// 从类型使用中抽取基础类型名（去除泛型实参）。
+/// 例如 Object("Foo<int>") -> "Foo<int>", Generic("Foo", _) -> "Foo"。
+fn type_base_name(ty: &Type) -> String {
+    match ty {
+        Type::Generic(name, _) => name.clone(),
+        Type::Object(name) => name.clone(),
+        Type::Pointer(inner) => type_base_name(inner),
+        _ => ty.to_string(),
+    }
+}
+
 impl SemanticAnalyzer {
     /// 检查主类冲突
     /// 规则：
@@ -98,6 +116,158 @@ impl SemanticAnalyzer {
                 }
             }
         }
+    }
+
+    /// 处理 impl 声明：将 impl 块中的方法附加到目标类型，并记录接口实现关系。
+    ///
+    /// 必须在 collect_classes/collect_structs/collect_enums 之前调用，这样后续
+    /// 类型注册表收集阶段会把 impl 方法当作目标类型的普通方法一并注册。
+    pub fn process_impl_decls(&mut self, program: &mut Program) -> CayResult<()> {
+        for impl_decl in &program.impl_decls {
+            let target_name = type_base_name(&impl_decl.target_type);
+            let target_ns = &impl_decl.namespace_path;
+
+            // 尝试解析目标类型：先按限定名查找，再按 impl 所在命名空间查找
+            let target = if target_name.contains("::") {
+                self.find_decl_by_qualified_name(program, &target_name)
+            } else {
+                self.find_decl_by_simple_name(program, &target_name, target_ns)
+            };
+
+            let target = match target {
+                Some(t) => t,
+                None => {
+                    let (file, line) = self.resolve_file_and_line(impl_decl.loc.line);
+                    return Err(semantic_error_with_file(
+                        ErrorCodes::SEMANTIC_INVALID_OPERATION,
+                        file,
+                        line,
+                        impl_decl.loc.column,
+                        format!(
+                            "impl 声明的目标类型 '{}' 未定义",
+                            target_name
+                        ),
+                    ));
+                }
+            };
+
+            match target {
+                ImplTarget::Class(class_idx) => {
+                    let class = &mut program.classes[class_idx];
+                    for method in &impl_decl.methods {
+                        class.members.push(ClassMember::Method(method.clone()));
+                    }
+                    if let Some(ref interface_type) = impl_decl.interface_type {
+                        class.interfaces.push(interface_type.clone());
+                    }
+                }
+                ImplTarget::Struct(struct_idx) => {
+                    let struct_decl = &mut program.structs[struct_idx];
+                    for method in &impl_decl.methods {
+                        struct_decl.methods.push(method.clone());
+                    }
+                    if impl_decl.interface_type.is_some() {
+                        let (file, line) = self.resolve_file_and_line(impl_decl.loc.line);
+                        return Err(semantic_error_with_file(
+                            ErrorCodes::SEMANTIC_INVALID_OPERATION,
+                            file,
+                            line,
+                            impl_decl.loc.column,
+                            "struct 不支持接口实现".to_string(),
+                        ));
+                    }
+                }
+                ImplTarget::Enum(enum_idx) => {
+                    let enum_decl = &mut program.enums[enum_idx];
+                    for method in &impl_decl.methods {
+                        enum_decl.methods.push(method.clone());
+                    }
+                    if impl_decl.interface_type.is_some() {
+                        let (file, line) = self.resolve_file_and_line(impl_decl.loc.line);
+                        return Err(semantic_error_with_file(
+                            ErrorCodes::SEMANTIC_INVALID_OPERATION,
+                            file,
+                            line,
+                            impl_decl.loc.column,
+                            "enum 不支持接口实现".to_string(),
+                        ));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// 按限定名查找 class/struct/enum 索引
+    fn find_decl_by_qualified_name(
+        &self,
+        program: &Program,
+        qualified_name: &str,
+    ) -> Option<ImplTarget> {
+        for (idx, class) in program.classes.iter().enumerate() {
+            let class_qname = if class.namespace_path.is_empty() {
+                class.name.clone()
+            } else {
+                format!("{}::{}", class.namespace_path.join("::"), class.name)
+            };
+            if class_qname == qualified_name {
+                return Some(ImplTarget::Class(idx));
+            }
+        }
+        for (idx, s) in program.structs.iter().enumerate() {
+            let qname = if s.namespace_path.is_empty() {
+                s.name.clone()
+            } else {
+                format!("{}::{}", s.namespace_path.join("::"), s.name)
+            };
+            if qname == qualified_name {
+                return Some(ImplTarget::Struct(idx));
+            }
+        }
+        for (idx, e) in program.enums.iter().enumerate() {
+            let qname = if e.namespace_path.is_empty() {
+                e.name.clone()
+            } else {
+                format!("{}::{}", e.namespace_path.join("::"), e.name)
+            };
+            if qname == qualified_name {
+                return Some(ImplTarget::Enum(idx));
+            }
+        }
+        None
+    }
+
+    /// 按简单名查找 class/struct/enum 索引，优先匹配 impl 所在命名空间，其次全局。
+    fn find_decl_by_simple_name(
+        &self,
+        program: &Program,
+        simple_name: &str,
+        impl_ns: &[String],
+    ) -> Option<ImplTarget> {
+        // 优先：impl 所在命名空间内的同名类型
+        if !impl_ns.is_empty() {
+            let preferred = format!("{}::{}", impl_ns.join("::"), simple_name);
+            if let Some(t) = self.find_decl_by_qualified_name(program, &preferred) {
+                return Some(t);
+            }
+        }
+        // 其次：全局（无命名空间）同名类型
+        for (idx, class) in program.classes.iter().enumerate() {
+            if class.namespace_path.is_empty() && class.name == simple_name {
+                return Some(ImplTarget::Class(idx));
+            }
+        }
+        for (idx, s) in program.structs.iter().enumerate() {
+            if s.namespace_path.is_empty() && s.name == simple_name {
+                return Some(ImplTarget::Struct(idx));
+            }
+        }
+        for (idx, e) in program.enums.iter().enumerate() {
+            if e.namespace_path.is_empty() && e.name == simple_name {
+                return Some(ImplTarget::Enum(idx));
+            }
+        }
+        None
     }
 
     /// 收集类定义
@@ -1213,7 +1383,7 @@ impl SemanticAnalyzer {
                 })
                 .collect();
 
-            let enum_info = crate::types::EnumInfo {
+            let mut enum_info = crate::types::EnumInfo {
                 name: enum_decl.name.clone(),
                 type_params: enum_decl
                     .type_params
@@ -1231,6 +1401,53 @@ impl SemanticAnalyzer {
                     .iter()
                     .any(|m| matches!(m, Modifier::Public)),
             };
+
+            // 收集 enum 方法（可来自 impl 块）
+            for method in &enum_decl.methods {
+                let method_info = MethodInfo {
+                    name: method.name.clone(),
+                    class_name: enum_decl.name.clone(),
+                    type_params: Vec::new(),
+                    params: self
+                        .replace_params_type_params(&method.params, &enum_decl.type_params),
+                    return_type: self
+                        .replace_type_params(&method.return_type, &enum_decl.type_params),
+                    is_public: method
+                        .modifiers
+                        .iter()
+                        .any(|m| matches!(m, Modifier::Public)),
+                    is_private: method
+                        .modifiers
+                        .iter()
+                        .any(|m| matches!(m, Modifier::Private)),
+                    is_protected: method
+                        .modifiers
+                        .iter()
+                        .any(|m| matches!(m, Modifier::Protected)),
+                    is_static: method
+                        .modifiers
+                        .iter()
+                        .any(|m| matches!(m, Modifier::Static)),
+                    is_native: method
+                        .modifiers
+                        .iter()
+                        .any(|m| matches!(m, Modifier::Native)),
+                    is_abstract: false,
+                    is_override: false,
+                    is_final: method
+                        .modifiers
+                        .iter()
+                        .any(|m| matches!(m, Modifier::Final)),
+                    is_test: false,
+                    vtable_slot: None,
+                    loc: method.loc.clone(),
+                };
+                enum_info
+                    .methods
+                    .entry(method.name.clone())
+                    .or_insert_with(Vec::new)
+                    .push(method_info);
+            }
 
             let (file, line) = self.resolve_file_and_line(enum_decl.loc.line);
             self.type_registry

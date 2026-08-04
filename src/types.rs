@@ -1829,6 +1829,14 @@ impl TypeRegistry {
                 return Some(method);
             }
         }
+        // 检查 enum 方法
+        if let Some(enum_info) = self.get_enum_by_name(base_class_name) {
+            if let Some(method) =
+                self.find_matching_enum_method(enum_info, method_name, arg_types)
+            {
+                return Some(method);
+            }
+        }
         None
     }
 
@@ -2291,6 +2299,16 @@ impl TypeRegistry {
         arg_types: &[Type],
     ) -> Option<&'a MethodInfo> {
         let methods = struct_info.methods.get(method_name)?;
+        self.find_matching_method_in_list(methods, arg_types)
+    }
+
+    fn find_matching_enum_method<'a>(
+        &self,
+        enum_info: &'a EnumInfo,
+        method_name: &str,
+        arg_types: &[Type],
+    ) -> Option<&'a MethodInfo> {
+        let methods = enum_info.methods.get(method_name)?;
         self.find_matching_method_in_list(methods, arg_types)
     }
 

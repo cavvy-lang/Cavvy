@@ -1175,6 +1175,7 @@ pub fn parse_enum(parser: &mut Parser) -> CayResult<EnumDecl> {
         modifiers,
         type_params,
         variants,
+        methods: Vec::new(),
         namespace_path: Vec::new(),
         loc,
     })
@@ -1265,4 +1266,48 @@ pub fn parse_generic_type_params(parser: &mut Parser) -> CayResult<Vec<crate::as
 /// 例如：Optional<int, String>
 pub fn parse_generic_type_args(parser: &mut Parser) -> CayResult<Vec<Type>> {
     super::types::parse_generic_type_args(parser)
+}
+
+/// 解析 impl 声明
+/// 语法: impl Target [for Interface] { methods }
+/// - impl Target { methods }          : 为 Target 添加方法
+/// - impl Target for Interface { ... }: 为 Target 实现 Interface 接口
+pub fn parse_impl(parser: &mut Parser) -> CayResult<ImplDecl> {
+    let loc = parser.current_loc();
+
+    parser.consume(&Token::Impl, "期望关键字 'impl'\n提示: impl 声明应以 'impl' 开头，例如: impl Foo { ... }")?;
+
+    // 解析目标类型（被扩展或实现接口的 struct/enum/interface）
+    let target_type = super::types::parse_type(parser)?;
+
+    // 可选：for Interface
+    let interface_type = if parser.match_token(&Token::For) {
+        Some(super::types::parse_type(parser)?)
+    } else {
+        None
+    };
+
+    parser.consume(
+        &Token::LBrace,
+        "期望 '{'\n提示: impl 声明后应跟方法体，使用 '{' 开始，例如: impl Foo { int bar() { ... } }",
+    )?;
+
+    let mut methods = Vec::new();
+    while !parser.check(&Token::RBrace) && !parser.is_at_end() {
+        if parser.check(&Token::Fn) {
+            methods.push(parse_fn_method(parser)?);
+        } else {
+            methods.push(parse_method(parser)?);
+        }
+    }
+
+    parser.consume(&Token::RBrace, "期望 '}'\n提示: impl 体应以 '}' 结束")?;
+
+    Ok(ImplDecl {
+        target_type,
+        interface_type,
+        methods,
+        namespace_path: Vec::new(),
+        loc,
+    })
 }

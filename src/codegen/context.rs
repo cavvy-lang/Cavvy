@@ -2930,6 +2930,21 @@ impl IRGenerator {
         false
     }
 
+    /// 检查给定名称是否是 enum 类型
+    /// 支持泛型特化名（如 "Option<int>"）：先用完整名查找，再用基础名查找。
+    pub fn is_enum_type(&self, name: &str) -> bool {
+        if let Some(ref registry) = self.type_registry {
+            if registry.get_enum_by_name(name).is_some() {
+                return true;
+            }
+            let base_name = name.split('<').next().unwrap_or(name);
+            if registry.get_enum_by_name(base_name).is_some() {
+                return true;
+            }
+        }
+        false
+    }
+
     /// 获取 struct 字段的 GEP 索引（字段在 struct 定义中的顺序）
     /// 时间复杂度: O(n)，n 为字段数量
     pub fn get_struct_field_index(&self, struct_name: &str, field_name: &str) -> usize {

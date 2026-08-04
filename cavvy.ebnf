@@ -1,7 +1,7 @@
 (*
  * Cavvy 编程语言语法规范 - EBNF 表示
- * 版本: 6.1.0
- * 构建号: 39
+ * 版本: 6.2.0
+ * 构建号: 40
  *
  * 本文件使用扩展巴科斯-瑙尔范式 (EBNF) 描述 Cavvy 编程语言的语法结构。
  * 符号约定:
@@ -121,6 +121,7 @@ declaration = class_declaration
             | struct_declaration
             | enum_declaration
             | interface_declaration
+            | impl_declaration
             | top_level_function
             | extern_declaration
             | type_alias_declaration;
@@ -206,6 +207,23 @@ enum_variant = identifier, [ "(", type, ")" ];
  *
  *   Option<int> o = Option<int>.Some(42);    (* 显式类型实参的 variant 构造 *)
  *   Option<int> n = Option<int>.None;
+ *)
+
+(* impl 声明 - 为 struct / enum / class 外部添加方法，或为 class 实现接口 *)
+impl_declaration = "impl", type, [ "for", type ], "{", { method_declaration }, "}";
+
+(* impl 示例：
+ *   impl Point {
+ *       public int manhattan() { return this.x + this.y; }
+ *   }
+ *
+ *   impl Option<T> {
+ *       public bool isSome() { ... }
+ *   }
+ *
+ *   impl Greeter for IGreet {
+ *       public void greet(String name) { ... }
+ *   }
  *)
 
 interface_extends_clause = "extends", qualified_name, { ",", qualified_name };
@@ -963,7 +981,12 @@ any_unicode_character = ? 任何 Unicode 字符 ?;
  * ============================================================================ *)
 
 (*
- * 6.1.0 (Build 39+) - 当前版本
+ * 6.2.0 (Build 40) - 当前版本
+ *   - impl 声明：为 struct / enum / class 外部添加方法
+ *   - impl Interface for Class 接口实现语法（class 专属）
+ *   - struct / enum impl 方法完整代码生成（含 enum this 指针值语义处理）
+ *
+ * 6.1.0 (Build 39)
  *   - struct / enum 泛型支持与完整单态化（无类型擦除）
  *   - struct / enum 值类型语义：赋值、传参、返回均按值拷贝
  *   - 泛型 enum variant 构造与 switch payload 解构
@@ -1123,7 +1146,7 @@ any_unicode_character = ? 任何 Unicode 字符 ?;
  * 严格关键字（不能用作标识符）：
  *   abstract, alias, as, auto, bool, boolean, break, byte, case, char,
  *   class, continue, cdecl, default, do, double, else, enum, extern, extends,
- *   false, final, float, fn, for, if, implements, instanceof, int,
+ *   false, final, float, fn, for, if, impl, implements, instanceof, int,
  *   interface, let, long, native, new, null, private, protected, public,
  *   return, scope, static, stdcall, struct, super, switch, sysv64, this, true,
  *   var, void, while, win64

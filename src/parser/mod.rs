@@ -97,6 +97,7 @@ impl Parser {
         let mut namespace_decls = Vec::new();
         let mut using_decls = Vec::new();
         let mut specialize_classes = Vec::new();
+        let mut impl_decls = Vec::new();
 
         // 检查文件级 namespace 声明 (必须是文件第一个非注释/空行的语句)
         // 需要 lookahead 区分: namespace path; (文件级) vs namespace path { (块级)
@@ -174,6 +175,8 @@ impl Parser {
                 top_level_functions.push(self.parse_top_level_function_without_public()?);
             } else if self.check_top_level_fn_function_without_public() {
                 top_level_functions.push(self.parse_top_level_fn_function_without_public()?);
+            } else if self.check(&crate::lexer::Token::Impl) {
+                impl_decls.push(self.parse_impl()?);
             } else if self.check(&crate::lexer::Token::Extern) {
                 extern_declarations.push(self.parse_extern_declaration()?);
             } else if self.check(&crate::lexer::Token::Alias) {
@@ -266,6 +269,7 @@ impl Parser {
             using_decls,
             link_libraries: Vec::new(), // 链接库信息由预处理器收集，在编译阶段合并
             specialize_classes,
+            impl_decls,
         })
     }
 
@@ -305,6 +309,10 @@ impl Parser {
 
     fn parse_method(&mut self) -> CayResult<crate::ast::MethodDecl> {
         classes::parse_method(self)
+    }
+
+    fn parse_impl(&mut self) -> CayResult<crate::ast::ImplDecl> {
+        classes::parse_impl(self)
     }
 
     fn parse_modifiers(&mut self) -> CayResult<Vec<crate::ast::Modifier>> {
@@ -1170,6 +1178,7 @@ impl Parser {
         let mut extern_declarations = Vec::new();
         let mut type_aliases = Vec::new();
         let mut nested_namespaces = Vec::new();
+        let mut impl_decls = Vec::new();
 
         while !self.check(&crate::lexer::Token::RBrace) && !self.is_at_end() {
             if self.check(&crate::lexer::Token::Namespace) {
@@ -1221,10 +1230,12 @@ impl Parser {
                 extern_declarations.push(self.parse_extern_declaration()?);
             } else if self.check(&crate::lexer::Token::Alias) {
                 type_aliases.push(self.parse_type_alias()?);
+            } else if self.check(&crate::lexer::Token::Impl) {
+                impl_decls.push(self.parse_impl()?);
             } else {
                 let token_name = utils::get_token_name(utils::current_token(self));
                 return Err(self.error(&format!(
-                    "namespace 块内出现意外的令牌: {}\n提示: namespace 块内只能包含类、接口、函数、extern、enum、struct 和嵌套 namespace 声明",
+                    "namespace 块内出现意外的令牌: {}\n提示: namespace 块内只能包含类、接口、函数、extern、enum、struct、impl 和嵌套 namespace 声明",
                     token_name
                 )));
             }
@@ -1246,6 +1257,7 @@ impl Parser {
             extern_declarations,
             type_aliases,
             nested_namespaces,
+            impl_decls,
             loc,
         })
     }

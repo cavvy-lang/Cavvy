@@ -132,6 +132,9 @@ impl SemanticAnalyzer {
         // 保存 program 引用以供类型推断使用
         self.program = Some(std::rc::Rc::new(program.clone()));
 
+        // 处理 impl 声明：将方法附加到目标类型 AST，使后续收集阶段自动注册
+        self.process_impl_decls(&mut program)?;
+
         // 第一遍：收集所有类定义
         self.collect_classes(&program)?;
 

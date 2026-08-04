@@ -57,6 +57,18 @@ impl IRGenerator {
         let expr = self.generate_expression(&switch_stmt.expr)?;
         let (mut expr_type, mut expr_val) = self.parse_typed_value(&expr);
 
+        // enum 实例可能是值类型 { i32, i64 }，也可能是 this 指针 { i32, i64 }*。
+        // 如果是指针，先 load 出值，以便后续 extractvalue 操作在值类型上进行。
+        if expr_type == "{ i32, i64 }*" {
+            let loaded = self.new_temp();
+            self.emit_line(&format!(
+                "  {} = load {{ i32, i64 }}, {{ i32, i64 }}* {}, align 8",
+                loaded, expr_val
+            ));
+            expr_type = "{ i32, i64 }".to_string();
+            expr_val = loaded;
+        }
+
         // 保存 enum struct 指针/值引用，供后续 payload 提取使用
         let enum_struct_ref = if expr_type.starts_with("{ i32, i64 }") {
             Some((expr_type.clone(), expr_val.clone()))
@@ -107,6 +119,18 @@ impl IRGenerator {
 
         // 跟踪是否所有分支都终止（return）- break 不算终止，因为它只是跳转到 switch.end
         let mut all_cases_terminate = true;
+
+        // 辅助：判断语句是否以 return 终止（含单条 return 或 { ... return; } 块）
+        fn stmt_terminates_with_return(stmt: &crate::ast::Stmt) -> bool {
+            match stmt {
+                crate::ast::Stmt::Return(_) => true,
+                crate::ast::Stmt::Block(block) => block
+                    .statements
+                    .last()
+                    .map_or(false, stmt_terminates_with_return),
+                _ => false,
+            }
+        }
 
         // 生成 case 块
         let mut fallthrough = false;
@@ -273,7 +297,12 @@ impl IRGenerator {
                         }
                     }
                 }
-                // 如果 case 体有 return，跳过 br 生成
+                // 如果 case 体有 return（含块包裹的 return），跳过 br 生成
+                if !has_return && !case.body.is_empty() {
+                    if stmt_terminates_with_return(&case.body[case.body.len() - 1]) {
+                        has_return = true;
+                    }
+                }
                 if has_return {
                     fallthrough = false;
                 } else {
@@ -345,6 +374,12 @@ impl IRGenerator {
                     _ => {
                         self.generate_statement(stmt)?;
                     }
+                }
+            }
+            // 如果 default 体以 return 终止（含块包裹的 return），跳过 br 生成
+            if !has_return && !default_body.is_empty() {
+                if stmt_terminates_with_return(&default_body[default_body.len() - 1]) {
+                    has_return = true;
                 }
             }
             // 如果 default 体没有 return，跳转到结束

@@ -528,6 +528,11 @@ impl IRGenerator {
             self.generate_struct_methods(struct_decl)?;
         }
 
+        // 生成 enum 方法
+        for enum_decl in &program.enums {
+            self.generate_enum_methods(enum_decl)?;
+        }
+
         self.output.push_str(&self.code);
 
         // 生成跨平台 C entry point
@@ -1898,6 +1903,117 @@ impl IRGenerator {
         Ok(())
     }
 
+    /// 生成 enum 的所有方法。
+    ///
+    /// enum 是值类型，表示为 { i32, i64 }；实例方法接收 { i32, i64 }* 作为 this。
+    fn generate_enum_methods(&mut self, enum_decl: &EnumDecl) -> CayResult<()> {
+        if let Some(ref mut registry) = self.type_registry {
+            registry.current_namespace = enum_decl.namespace_path.clone();
+        }
+
+        let base_qname = if enum_decl.namespace_path.is_empty() {
+            enum_decl.name.clone()
+        } else {
+            format!(
+                "{}::{}",
+                enum_decl.namespace_path.join("::"),
+                enum_decl.name
+            )
+        };
+        let full_enum_name = if enum_decl.type_params.is_empty() {
+            base_qname.clone()
+        } else {
+            let type_param_names: Vec<String> =
+                enum_decl.type_params.iter().map(|p| p.name.clone()).collect();
+            if enum_decl.namespace_path.is_empty() {
+                format!("{}<{ }>", enum_decl.name, type_param_names.join(", "))
+            } else {
+                format!(
+                    "{}::{}<{ }>",
+                    enum_decl.namespace_path.join("::"),
+                    enum_decl.name,
+                    type_param_names.join(", ")
+                )
+            }
+        };
+
+        let is_generic = !enum_decl.type_params.is_empty();
+        let type_param_infos: Vec<crate::types::TypeParamInfo> = enum_decl
+            .type_params
+            .iter()
+            .map(|p| crate::types::TypeParamInfo {
+                name: p.name.clone(),
+                bound: p.bound.clone(),
+                default_type: p.default_type.clone(),
+            })
+            .collect();
+
+        if !is_generic {
+            for method in &enum_decl.methods {
+                if !method.modifiers.contains(&Modifier::Native)
+                    && !method.modifiers.contains(&Modifier::Abstract)
+                {
+                    self.generate_method(&full_enum_name, method)?;
+                }
+            }
+        } else {
+            // 泛型 enum：为每个收集到的特化实例生成单态化方法
+            let mut instances = self
+                .specializations
+                .get(&base_qname)
+                .cloned()
+                .unwrap_or_default();
+            if base_qname != enum_decl.name {
+                if let Some(extra) = self.specializations.get(&enum_decl.name) {
+                    instances.extend(extra.iter().cloned());
+                }
+            }
+
+            for instance in instances {
+                let specialized_name = instance.specialized_name();
+                let resolved_type_args = instance.resolve_type_args(&type_param_infos);
+
+                let mapping = instance.type_param_mapping(&type_param_infos);
+                let old_mapping = std::mem::replace(&mut self.generic_type_args, mapping);
+
+                for method in &enum_decl.methods {
+                    if !method.modifiers.contains(&Modifier::Native)
+                        && !method.modifiers.contains(&Modifier::Abstract)
+                    {
+                        let mut specialized_method = method.clone();
+                        specialized_method.return_type = substitute_type_params(
+                            &method.return_type,
+                            &resolved_type_args,
+                            &type_param_infos,
+                        );
+                        specialized_method.params = method
+                            .params
+                            .iter()
+                            .map(|p| crate::types::ParameterInfo {
+                                name: p.name.clone(),
+                                param_type: substitute_type_params(
+                                    &p.param_type,
+                                    &resolved_type_args,
+                                    &type_param_infos,
+                                ),
+                                is_varargs: p.is_varargs,
+                            })
+                            .collect();
+                        self.generate_method(&specialized_name, &specialized_method)?;
+                    }
+                }
+
+                self.generic_type_args = old_mapping;
+            }
+        }
+
+        if let Some(ref mut registry) = self.type_registry {
+            registry.current_namespace.clear();
+        }
+
+        Ok(())
+    }
+
     /// 生成 struct 构造函数
     fn generate_struct_constructor(
         &mut self,
@@ -2524,16 +2640,19 @@ impl IRGenerator {
 
         let mut params: Vec<String> = Vec::new();
 
-        // 判断是否是 struct 方法（决定 this 指针类型）
+        // 判断是否是 struct / enum 方法（决定 this 指针类型）
         let is_struct_method = self.is_struct_type(class_name);
-        // this 元素类型：class 为 i8*（对象地址），struct 为 %struct.Name（结构体值类型）。
-        // this 指针类型：class 为 i8*，struct 为 %struct.Name*。
+        let is_enum_method = self.is_enum_type(class_name);
+        // this 元素类型：class 为 i8*（对象地址），struct 为 %struct.Name（结构体值类型），
+        // enum 为 { i32, i64 }。this 指针类型为对应元素类型加 *。
         // 对于泛型 struct，必须使用 struct_llvm_type_name 生成合法 LLVM 标识符。
         let (this_elem_type, this_ptr_type) = if is_struct_method {
             let llvm_struct_type_name = self.struct_llvm_type_name(class_name);
             let elem = format!("%struct.{}", llvm_struct_type_name);
             let ptr = format!("{}*", elem);
             (elem, ptr)
+        } else if is_enum_method {
+            ("{ i32, i64 }".to_string(), "{ i32, i64 }*".to_string())
         } else {
             ("i8*".to_string(), "i8*".to_string())
         };

@@ -253,6 +253,7 @@ pub fn get_token_name(token: &Token) -> String {
         Token::Struct => "struct".to_string(),
         Token::Enum => "enum".to_string(),
         Token::Interface => "interface".to_string(),
+        Token::Impl => "impl".to_string(),
         Token::Void => "void".to_string(),
         Token::Int => "int".to_string(),
         Token::Long => "long".to_string(),

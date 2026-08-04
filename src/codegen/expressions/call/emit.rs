@@ -111,6 +111,7 @@ impl IRGenerator {
         obj_expr: &Option<Box<Expr>>,
         is_instance_method: bool,
         is_struct_target: bool,
+        is_enum_target: bool,
         this_llvm_type: &str,
         final_args: &mut Vec<String>,
     ) -> CayResult<Option<String>> {
@@ -140,6 +141,15 @@ impl IRGenerator {
                         cached_obj_val = Some(obj_val.clone());
                         if is_struct_target && obj_type.starts_with("%struct.") {
                             final_args.push(format!("{} {}", obj_type, obj_val));
+                        } else if is_enum_target && obj_type == "{ i32, i64 }" {
+                            // enum 实例是值类型 { i32, i64 }，需要在栈上分配副本后传递指针
+                            let local = self.new_temp();
+                            self.emit_line(&format!("  {} = alloca {{ i32, i64 }}", local));
+                            self.emit_line(&format!(
+                                "  store {{ i32, i64 }} {}, {{ i32, i64 }}* {}",
+                                obj_val, local
+                            ));
+                            final_args.push(format!("{} {}", this_llvm_type, local));
                         } else {
                             final_args.push(format!("{} {}", this_llvm_type, obj_val));
                         }
@@ -151,6 +161,15 @@ impl IRGenerator {
                     cached_obj_val = Some(obj_val.clone());
                     if is_struct_target && obj_type.starts_with("%struct.") {
                         final_args.push(format!("{} {}", obj_type, obj_val));
+                    } else if is_enum_target && obj_type == "{ i32, i64 }" {
+                        // enum 实例是值类型 { i32, i64 }，需要在栈上分配副本后传递指针
+                        let local = self.new_temp();
+                        self.emit_line(&format!("  {} = alloca {{ i32, i64 }}", local));
+                        self.emit_line(&format!(
+                            "  store {{ i32, i64 }} {}, {{ i32, i64 }}* {}",
+                            obj_val, local
+                        ));
+                        final_args.push(format!("{} {}", this_llvm_type, local));
                     } else {
                         final_args.push(format!("{} {}", this_llvm_type, obj_val));
                     }

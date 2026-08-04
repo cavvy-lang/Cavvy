@@ -1,0 +1,72 @@
+/**
+ * impl 声明 - enum 集成测试
+ *
+ * 测试内容:
+ * - 通过 impl 块为 enum 添加实例方法
+ * - enum 方法内对 this 进行 switch 模式匹配（含 payload 解构）
+ * - enum 值类型语义下 impl 方法调用
+ */
+
+public enum Color { Red, Green, Blue }
+
+public enum MyOption { Some(int), None }
+
+impl Color {
+    public bool isRed() {
+        switch (this) {
+            case Color.Red: { return true; }
+            case Color.Green: { return false; }
+            case Color.Blue: { return false; }
+            default: { return false; }
+        }
+    }
+
+    public int index() {
+        switch (this) {
+            case Color.Red: { return 0; }
+            case Color.Green: { return 1; }
+            case Color.Blue: { return 2; }
+            default: { return -1; }
+        }
+    }
+}
+
+impl MyOption {
+    public bool isSome() {
+        switch (this) {
+            case MyOption.Some(int v): { return true; }
+            case MyOption.None: { return false; }
+            default: { return false; }
+        }
+    }
+
+    public int unwrapOr(int defaultValue) {
+        switch (this) {
+            case MyOption.Some(int v): { return v; }
+            case MyOption.None: { return defaultValue; }
+            default: { return defaultValue; }
+        }
+    }
+}
+
+public class ImplEnumTest {
+    public static void main() {
+        println("=== impl enum 测试 ===");
+
+        Color c = Color.Green;
+        println("Green.isRed() = " + String.valueOf(c.isRed()));
+        println("Green.index() = " + String.valueOf(c.index()));
+
+        Color r = Color.Red;
+        println("Red.isRed() = " + String.valueOf(r.isRed()));
+
+        MyOption some = MyOption.Some(42);
+        MyOption none = MyOption.None;
+        println("some.isSome() = " + String.valueOf(some.isSome()));
+        println("none.isSome() = " + String.valueOf(none.isSome()));
+        println("some.unwrapOr(0) = " + String.valueOf(some.unwrapOr(0)));
+        println("none.unwrapOr(100) = " + String.valueOf(none.unwrapOr(100)));
+
+        println("=== impl enum 测试通过 ===");
+    }
+}

@@ -1,0 +1,49 @@
+/**
+ * impl 声明 - struct 集成测试
+ *
+ * 测试内容:
+ * - 通过 impl 块为 struct 添加实例方法
+ * - struct 方法内访问 this 字段
+ * - 值类型语义下 impl 方法调用
+ */
+
+public struct Point {
+    public int x;
+    public int y;
+}
+
+impl Point {
+    public int getX() {
+        return this.x;
+    }
+
+    public int getY() {
+        return this.y;
+    }
+
+    public int manhattan() {
+        return this.x + this.y;
+    }
+}
+
+public class ImplStructTest {
+    public static void main() {
+        println("=== impl struct 测试 ===");
+
+        Point p = new Point();
+        p.x = 3;
+        p.y = 4;
+
+        println("p.getX() = " + String.valueOf(p.getX()));
+        println("p.getY() = " + String.valueOf(p.getY()));
+        println("p.manhattan() = " + String.valueOf(p.manhattan()));
+
+        // 值类型：副本拥有独立存储，impl 方法仍正常工作
+        Point p2 = p;
+        p2.x = 10;
+        println("after p2.x = 10, p.getX() = " + String.valueOf(p.getX()));
+        println("after p2.x = 10, p2.getX() = " + String.valueOf(p2.getX()));
+
+        println("=== impl struct 测试通过 ===");
+    }
+}

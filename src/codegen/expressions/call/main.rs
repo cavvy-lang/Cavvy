@@ -111,13 +111,16 @@ impl IRGenerator {
             self.is_instance_method(&class_name, &method_name)
         };
 
-        // 判断目标类型是否是 struct，决定 this 指针类型。
+        // 判断目标类型是否是 struct / enum，决定 this 指针类型。
         // 对泛型特化使用完整 struct 类型名（如 Pair_int__String_），
         // 避免链式调用时退回到未定义的基名（如 Pair）。
         let is_struct_target = self.is_struct_type(&class_name);
+        let is_enum_target = self.is_enum_type(&class_name);
         let this_llvm_type = if is_struct_target {
             let llvm_struct_name = self.struct_llvm_type_name(&class_name);
             format!("%struct.{}*", llvm_struct_name)
+        } else if is_enum_target {
+            "{ i32, i64 }*".to_string()
         } else {
             "i8*".to_string()
         };
@@ -128,6 +131,7 @@ impl IRGenerator {
             &obj_expr,
             is_instance_method,
             is_struct_target,
+            is_enum_target,
             &this_llvm_type,
             &mut final_args,
         )?;

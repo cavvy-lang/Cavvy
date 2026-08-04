@@ -347,6 +347,65 @@ fn test_generic_enum_aliases() {
 }
 
 // ============================================================
+// impl 声明测试
+// ============================================================
+
+#[test]
+fn test_impl_struct() {
+    let output = compile_and_run_eol("examples/test_impl_struct.cay")
+        .expect("test_impl_struct.cay should compile and run");
+    assert_output_contains(
+        &output,
+        &[
+            "=== impl struct 测试 ===",
+            "p.getX() = 3",
+            "p.getY() = 4",
+            "p.manhattan() = 7",
+            "after p2.x = 10, p.getX() = 3",
+            "after p2.x = 10, p2.getX() = 10",
+            "=== impl struct 测试通过 ===",
+        ],
+        "test_impl_struct",
+    );
+}
+
+#[test]
+fn test_impl_enum() {
+    let output = compile_and_run_eol("examples/test_impl_enum.cay")
+        .expect("test_impl_enum.cay should compile and run");
+    assert_output_contains(
+        &output,
+        &[
+            "=== impl enum 测试 ===",
+            "Green.isRed() = false",
+            "Green.index() = 1",
+            "Red.isRed() = true",
+            "some.isSome() = true",
+            "none.isSome() = false",
+            "some.unwrapOr(0) = 42",
+            "none.unwrapOr(100) = 100",
+            "=== impl enum 测试通过 ===",
+        ],
+        "test_impl_enum",
+    );
+}
+
+#[test]
+fn test_impl_interface() {
+    let output = compile_and_run_eol("examples/test_impl_interface.cay")
+        .expect("test_impl_interface.cay should compile and run");
+    assert_output_contains(
+        &output,
+        &[
+            "=== impl interface 测试 ===",
+            "Hello, Cavvy",
+            "=== impl interface 测试通过 ===",
+        ],
+        "test_impl_interface",
+    );
+}
+
+// ============================================================
 // 实例泛型方法（方法级类型参数 method<U>）单态化测试
 // ============================================================
 

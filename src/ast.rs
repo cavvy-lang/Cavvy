@@ -30,6 +30,7 @@ pub struct Program {
     pub using_decls: Vec<UsingDecl>,          // using 声明
     pub link_libraries: Vec<LinkLibraryDecl>, // #link 声明的链接库
     pub specialize_classes: Vec<SpecializeClassDecl>, // 显式特化类声明
+    pub impl_decls: Vec<ImplDecl>,            // impl 声明
 }
 
 /// namespace 块级声明 - namespace std { ... }
@@ -44,6 +45,20 @@ pub struct NamespaceDecl {
     pub extern_declarations: Vec<ExternDecl>,
     pub type_aliases: Vec<TypeAliasDecl>,
     pub nested_namespaces: Vec<NamespaceDecl>, // 嵌套 namespace
+    pub impl_decls: Vec<ImplDecl>,             // impl 声明
+    pub loc: SourceLocation,
+}
+
+/// impl 声明 - 为 struct/enum/interface 定义外部方法或实现接口
+/// 语法: impl Target [for Interface] { methods }
+/// - impl Target { methods }          : 为 Target 添加方法
+/// - impl Target for Interface { ... }: 为 Target 实现 Interface 接口
+#[derive(Debug, Clone, Serialize)]
+pub struct ImplDecl {
+    pub target_type: Type,            // 被扩展或实现接口的类型
+    pub interface_type: Option<Type>, // 可选：要实现的接口
+    pub methods: Vec<MethodDecl>,
+    pub namespace_path: Vec<String>,
     pub loc: SourceLocation,
 }
 
@@ -145,6 +160,7 @@ pub struct EnumDecl {
     pub modifiers: Vec<Modifier>,
     pub type_params: Vec<TypeParam>, // 泛型类型参数
     pub variants: Vec<EnumVariant>,
+    pub methods: Vec<MethodDecl>,    // impl 块中为 enum 定义的方法
     pub namespace_path: Vec<String>, // 所属命名空间路径
     pub loc: SourceLocation,
 }
@@ -763,6 +779,7 @@ impl Program {
         let mut top_level_functions = self.top_level_functions.clone();
         let mut extern_declarations = self.extern_declarations.clone();
         let mut type_aliases = self.type_aliases.clone();
+        let mut impl_decls = self.impl_decls.clone();
         let file_namespace = self.namespace_path.clone();
 
         // 递归扁平化块级 namespace
@@ -776,6 +793,7 @@ impl Program {
             top_level_functions: &mut Vec<TopLevelFunction>,
             extern_declarations: &mut Vec<ExternDecl>,
             type_aliases: &mut Vec<TypeAliasDecl>,
+            impl_decls: &mut Vec<ImplDecl>,
             depth: usize,
         ) {
             let mut full_path = parent_path.to_vec();
@@ -825,6 +843,12 @@ impl Program {
                 }
                 type_aliases.push(alias);
             }
+            for mut impl_decl in ns.impl_decls.clone() {
+                if impl_decl.namespace_path.is_empty() {
+                    impl_decl.namespace_path = full_path.clone();
+                }
+                impl_decls.push(impl_decl);
+            }
             for nested in &ns.nested_namespaces {
                 // 嵌套 namespace 的路径如实累加：
                 // namespace a { namespace a {} } 的完整路径就是 a::a，不得静默去重
@@ -838,6 +862,7 @@ impl Program {
                     top_level_functions,
                     extern_declarations,
                     type_aliases,
+                    impl_decls,
                     depth + 1,
                 );
             }
@@ -854,6 +879,7 @@ impl Program {
                 &mut top_level_functions,
                 &mut extern_declarations,
                 &mut type_aliases,
+                &mut impl_decls,
                 0,
             );
         }
@@ -895,6 +921,11 @@ impl Program {
                     alias.namespace_path = ns_path.clone();
                 }
             }
+            for impl_decl in &mut impl_decls {
+                if impl_decl.namespace_path.is_empty() {
+                    impl_decl.namespace_path = ns_path.clone();
+                }
+            }
         }
 
         Program {
@@ -910,6 +941,7 @@ impl Program {
             using_decls: self.using_decls.clone(),
             link_libraries: self.link_libraries.clone(),
             specialize_classes: self.specialize_classes.clone(),
+            impl_decls,
         }
     }
 }
@@ -929,6 +961,7 @@ impl Default for Program {
             using_decls: Vec::new(),
             link_libraries: Vec::new(),
             specialize_classes: Vec::new(),
+            impl_decls: Vec::new(),
         }
     }
 }

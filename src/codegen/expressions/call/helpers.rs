@@ -35,6 +35,7 @@ impl IRGenerator {
             if registry.get_class(class_name).is_some()
                 || registry.get_interface(class_name).is_some()
                 || registry.get_struct(class_name).is_some()
+                || registry.get_enum_by_name(class_name).is_some()
             {
                 return class_name.to_string();
             }
@@ -263,6 +264,14 @@ impl IRGenerator {
                 }
             }
 
+            // enum 方法
+            if let Some(enum_info) = registry.get_enum_by_name(class_name) {
+                if let Some(methods) = enum_info.methods.get(method_name) {
+                    return methods.first().map(|m| m.params.clone());
+                }
+                return None;
+            }
+
             let mut current = class_name.to_string();
             loop {
                 if let Some(class_info) = registry.get_class(&current) {
@@ -316,6 +325,14 @@ impl IRGenerator {
                 }
             }
 
+            // enum 方法
+            if let Some(enum_info) = registry.get_enum_by_name(class_name) {
+                if let Some(methods) = enum_info.methods.get(method_name) {
+                    return methods.iter().any(|m| m.params.iter().any(|p| p.is_varargs));
+                }
+                return false;
+            }
+
             // 先尝试直接查找类
             if let Some(class_info) = registry.get_class(class_name) {
                 if let Some(methods) = class_info.methods.get(method_name) {
@@ -355,6 +372,18 @@ impl IRGenerator {
             // 先查 struct
             if let Some(struct_info) = registry.get_struct(class_name) {
                 if let Some(methods) = struct_info.methods.get(method_name) {
+                    for method in methods {
+                        if !method.is_static {
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            }
+
+            // 查 enum（impl 块添加的实例方法）
+            if let Some(enum_info) = registry.get_enum_by_name(class_name) {
+                if let Some(methods) = enum_info.methods.get(method_name) {
                     for method in methods {
                         if !method.is_static {
                             return true;

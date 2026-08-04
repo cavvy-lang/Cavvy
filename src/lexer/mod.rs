@@ -131,6 +131,8 @@ pub enum Token {
     Implements,
     #[token("interface")]
     Interface,
+    #[token("impl")]
+    Impl,
     #[token("instanceof")]
     InstanceOf,
     #[token("var")]
@@ -1160,6 +1162,7 @@ pub fn token_name(token: &Token) -> &'static str {
         Token::Extends => "extends",
         Token::Implements => "implements",
         Token::Interface => "interface",
+        Token::Impl => "impl",
         Token::InstanceOf => "instanceof",
         Token::Var => "var",
         Token::Let => "let",
@@ -1292,6 +1295,7 @@ pub fn is_keyword(token: &Token) -> bool {
             | Token::Extends
             | Token::Implements
             | Token::Interface
+            | Token::Impl
             | Token::InstanceOf
             | Token::Var
             | Token::Let
@@ -1475,6 +1479,16 @@ mod tests {
         assert!(matches!(tokens[0].token, Token::Public));
         assert!(matches!(tokens[1].token, Token::Static));
         assert!(matches!(tokens[2].token, Token::Void));
+        assert!(matches!(tokens[3].token, Token::Identifier(_)));
+    }
+
+    #[test]
+    fn test_impl_keyword() {
+        let source = r#"impl Foo for Bar {}"#;
+        let tokens = tokenize(source).unwrap();
+        assert!(matches!(tokens[0].token, Token::Impl));
+        assert!(matches!(tokens[1].token, Token::Identifier(_)));
+        assert!(matches!(tokens[2].token, Token::For));
         assert!(matches!(tokens[3].token, Token::Identifier(_)));
     }
 
