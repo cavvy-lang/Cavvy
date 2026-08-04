@@ -1323,7 +1323,7 @@ impl IRGenerator {
                                     }
                                 }
                             }
-                            // 枚举变体访问: EnumName.VARIANT
+                            // 枚举变体访问: EnumName.VARIANT 或 EnumName<T>.VARIANT
                             if let Some(ref registry) = self.type_registry {
                                 if let Some(enum_info) = registry.get_enum_by_name(obj_name_str) {
                                     if enum_info
@@ -1331,7 +1331,37 @@ impl IRGenerator {
                                         .iter()
                                         .any(|v| v.name == member.member)
                                     {
-                                        return Some(Type::Object(enum_info.name.clone()));
+                                        // 解析显式泛型实参，如 Optional<i32>
+                                        let type_args: Vec<Type> = if let Some(lt_pos) =
+                                            obj_name_str.find('<')
+                                        {
+                                            let gt_pos = obj_name_str
+                                                .rfind('>')
+                                                .unwrap_or(obj_name_str.len());
+                                            let args_str = &obj_name_str[lt_pos + 1..gt_pos];
+                                            crate::codegen::specialization::split_top_level_type_args(
+                                                args_str,
+                                            )
+                                            .iter()
+                                            .map(|s| {
+                                                self.resolve_type_arg_concrete(
+                                                    &crate::codegen::specialization::parse_type_str(
+                                                        s.trim(),
+                                                    ),
+                                                )
+                                            })
+                                            .collect()
+                                        } else {
+                                            Vec::new()
+                                        };
+
+                                        if type_args.is_empty() {
+                                            return Some(Type::Object(enum_info.name.clone()));
+                                        }
+                                        return Some(Type::Generic(
+                                            enum_info.name.clone(),
+                                            type_args,
+                                        ));
                                     }
                                 }
                                 // 静态字段访问: ClassName.FIELD

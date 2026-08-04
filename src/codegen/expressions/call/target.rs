@@ -272,6 +272,27 @@ impl IRGenerator {
                                 ptr_to_i64, pl_type, fresh
                             ));
                             ptr_to_i64
+                        } else if pl_type == "float" {
+                            // 32 位浮点先扩展为 64 位再按位解释为 i64 存入 payload
+                            let ext = self.new_temp();
+                            self.emit_line(&format!(
+                                "  {} = fpext float {} to double",
+                                ext, pl_val
+                            ));
+                            let bitcast = self.new_temp();
+                            self.emit_line(&format!(
+                                "  {} = bitcast double {} to i64",
+                                bitcast, ext
+                            ));
+                            bitcast
+                        } else if pl_type == "double" {
+                            // 64 位浮点按位解释为 i64 存入 payload
+                            let bitcast = self.new_temp();
+                            self.emit_line(&format!(
+                                "  {} = bitcast double {} to i64",
+                                bitcast, pl_val
+                            ));
+                            bitcast
                         } else if pl_type == "i8*" || pl_type.ends_with('*') {
                             let ptr_to_i64 = self.new_temp();
                             self.emit_line(&format!(

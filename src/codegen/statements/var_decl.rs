@@ -185,6 +185,107 @@ impl IRGenerator {
             }
         }
 
+        // 枚举变体构造函数调用：EnumName.Variant(args) 或 EnumName<T>.Variant(args)
+        if let Expr::MemberAccess(member) = call.callee.as_ref() {
+            if let Expr::Identifier(obj_name) = &*member.object {
+                let obj_name_str = obj_name.as_ref();
+                let enum_base_name = if let Some(lt_pos) = obj_name_str.find('<') {
+                    &obj_name_str[..lt_pos]
+                } else {
+                    obj_name_str
+                };
+                if let Some(ref registry) = self.type_registry {
+                    if let Some(enum_info) = registry.get_enum(enum_base_name) {
+                        if enum_info.variants.iter().any(|v| v.name == member.member) {
+                            // 非泛型 enum 直接返回 Object
+                            if enum_info.type_params.is_empty() {
+                                return Some(Type::Object(enum_info.name.clone()));
+                            }
+
+                            // 解析显式泛型实参，如 Optional<i32>.Some(42)
+                            let explicit_args: Option<Vec<Type>> =
+                                if let Some(lt_pos) = obj_name_str.find('<') {
+                                    let gt_pos = obj_name_str
+                                        .rfind('>')
+                                        .unwrap_or(obj_name_str.len());
+                                    let args_str = &obj_name_str[lt_pos + 1..gt_pos];
+                                    let args: Vec<Type> = crate::codegen::specialization::split_top_level_type_args(args_str)
+                                        .iter()
+                                        .map(|s| {
+                                            self.resolve_type_arg_concrete(
+                                                &crate::codegen::specialization::parse_type_str(s.trim()),
+                                            )
+                                        })
+                                        .collect();
+                                    if args.is_empty() {
+                                        None
+                                    } else {
+                                        Some(args)
+                                    }
+                                } else {
+                                    None
+                                };
+
+                            if let Some(mut args) = explicit_args {
+                                // 对缺失的类型参数使用默认值填充
+                                for (idx, param) in enum_info.type_params.iter().enumerate() {
+                                    if args.get(idx).is_none() {
+                                        args.push(
+                                            param.default_type.clone().unwrap_or(Type::GenericParam(
+                                                param.name.clone(),
+                                            )),
+                                        );
+                                    }
+                                }
+                                return Some(Type::Generic(enum_info.name.clone(), args));
+                            }
+
+                            // 无显式实参时尝试从 payload 推断，如 Optional.Some(114)
+                            if let Some(variant) =
+                                enum_info.variants.iter().find(|v| v.name == member.member)
+                            {
+                                if let Some(ref payload_type) = variant.payload_type {
+                                    if call.args.len() == 1 {
+                                        let fake_param = crate::types::ParameterInfo {
+                                            name: "value".to_string(),
+                                            param_type: payload_type.clone(),
+                                            is_varargs: false,
+                                        };
+                                        if let Some(mut inferred) = self
+                                            .infer_type_args_from_call_args_codegen(
+                                                &[fake_param],
+                                                &call.args,
+                                                &enum_info.type_params,
+                                            )
+                                        {
+                                            for (idx, param) in
+                                                enum_info.type_params.iter().enumerate()
+                                            {
+                                                if inferred.get(idx).is_none() {
+                                                    inferred.push(
+                                                        param.default_type.clone().unwrap_or(
+                                                            Type::GenericParam(param.name.clone()),
+                                                        ),
+                                                    );
+                                                }
+                                            }
+                                            return Some(Type::Generic(
+                                                enum_info.name.clone(),
+                                                inferred,
+                                            ));
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 无法推断类型参数时返回裸 Object，由后续报错路径处理
+                            return Some(Type::Object(enum_info.name.clone()));
+                        }
+                    }
+                }
+            }
+        }
+
         // 尝试从类型注册表获取（支持方法重载）
         if let Some(ref registry) = self.type_registry {
             if let Expr::Identifier(name) = call.callee.as_ref() {

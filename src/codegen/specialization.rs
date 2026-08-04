@@ -1069,10 +1069,10 @@ pub(crate) fn parse_type_str(s: &str) -> Type {
         return Type::Generic(base, args);
     }
     match s {
-        "int" => Type::Int32,
-        "long" => Type::Int64,
-        "float" => Type::Float32,
-        "double" => Type::Float64,
+        "int" | "i32" => Type::Int32,
+        "long" | "i64" => Type::Int64,
+        "float" | "f32" => Type::Float32,
+        "double" | "f64" => Type::Float64,
         "bool" | "boolean" => Type::Bool,
         "string" | "String" => Type::String,
         "char" => Type::Char,

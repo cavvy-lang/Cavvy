@@ -1140,10 +1140,10 @@ impl SemanticAnalyzer {
         }
 
         match type_str {
-            "int" => Type::Int32,
-            "long" => Type::Int64,
-            "float" => Type::Float32,
-            "double" => Type::Float64,
+            "int" | "i32" => Type::Int32,
+            "long" | "i64" => Type::Int64,
+            "float" | "f32" => Type::Float32,
+            "double" | "f64" => Type::Float64,
             "boolean" | "bool" => Type::Bool,
             "char" => Type::Char,
             "String" | "string" => Type::String,

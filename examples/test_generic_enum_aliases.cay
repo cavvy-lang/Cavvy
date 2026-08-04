@@ -1,0 +1,78 @@
+/**
+ * 泛型 enum 与现代化类型别名集成测试
+ * 测试内容:
+ * - 泛型 enum 使用 i32/i64/f32/f64 显式类型实参
+ * - 无显式实参时从 payload 自动推断类型参数
+ * - 多个 switch 语句中对同名 payload 绑定变量的作用域隔离
+ */
+public enum Optional<T> {
+    None,
+    Some(T),
+}
+
+public enum Result<T, E> {
+    Ok(T),
+    Err(E),
+}
+
+fn main() {
+    // 显式使用 i32 别名
+    let a = Optional<i32>.Some(42);
+    // 从 payload 推断 T = i32
+    let b = Optional.Some(114);
+    // 拷贝与重新赋值
+    let c = a;
+    a = Optional.Some(7);
+
+    // 多个 switch 都使用相同 payload 变量名 x，验证作用域隔离
+    switch (a) {
+    case Optional.Some(i32 x):
+        println("a=" + String.valueOf(x));
+        break;
+    case Optional.None:
+        println("a=None");
+        break;
+    }
+
+    switch (c) {
+    case Optional.Some(i32 x):
+        println("c=" + String.valueOf(x));
+        break;
+    case Optional.None:
+        println("c=None");
+        break;
+    }
+
+    switch (b) {
+    case Optional.Some(i32 x):
+        println("b=" + String.valueOf(x));
+        break;
+    case Optional.None:
+        println("b=None");
+        break;
+    }
+
+    // Result 使用 i64/f64 别名
+    let ok = Result<i64, f64>.Ok(999L);
+    let err = Result<i64, f64>.Err(0.5d);
+
+    switch (ok) {
+    case Result.Ok(i64 v):
+        println("ok=" + String.valueOf(v));
+        break;
+    case Result.Err(f64 e):
+        println("err=" + String.valueOf(e));
+        break;
+    }
+
+    switch (err) {
+    case Result.Ok(i64 v):
+        println("ok=" + String.valueOf(v));
+        break;
+    case Result.Err(f64 e):
+        println("err=" + String.valueOf(e));
+        break;
+    }
+
+    println("Generic enum aliases PASS");
+}

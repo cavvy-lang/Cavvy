@@ -115,8 +115,24 @@ impl IRGenerator {
             let case = &switch_stmt.cases[*case_idx];
             self.emit_line(&format!("{}:", label));
 
+            // 每个 case 进入独立作用域，避免多个 case 的 payload 绑定（如 x）
+            // 生成同名的 LLVM 局部值导致重复定义。
+            self.scope_manager.enter_scope();
+            let mut saved_binding: Option<(
+                String,
+                Option<crate::types::Type>,
+                Option<String>,
+                Option<String>,
+            )> = None;
+
             // 处理 enum variant payload 绑定: case EnumName.Variant(Type var_name):
             if let Some(ref binding) = case.payload_binding {
+                saved_binding = Some((
+                    binding.var_name.clone(),
+                    self.var_cay_types.get(&binding.var_name).cloned(),
+                    self.var_types.get(&binding.var_name).cloned(),
+                    self.var_class_map.get(&binding.var_name).cloned(),
+                ));
                 let var_type = self.type_to_llvm(&binding.var_type);
                 let align = self.get_type_align(&var_type);
                 let llvm_name = self.scope_manager.declare_var(&binding.var_name, &var_type);
@@ -159,6 +175,29 @@ impl IRGenerator {
                             format!("i32 {}", trunc)
                         }
                         "i64" => format!("i64 {}", pl_i64),
+                        "float" => {
+                            // payload 中的 i64 是按 64 位 double 解释的位模式，
+                            // 需要转回 double 后再截断为 float。
+                            let bc = self.new_temp();
+                            self.emit_line(&format!(
+                                "  {} = bitcast i64 {} to double",
+                                bc, pl_i64
+                            ));
+                            let trunc = self.new_temp();
+                            self.emit_line(&format!(
+                                "  {} = fptrunc double {} to float",
+                                trunc, bc
+                            ));
+                            format!("float {}", trunc)
+                        }
+                        "double" => {
+                            let bc = self.new_temp();
+                            self.emit_line(&format!(
+                                "  {} = bitcast i64 {} to double",
+                                bc, pl_i64
+                            ));
+                            format!("double {}", bc)
+                        }
                         "i8*" | _ if var_type.ends_with('*') => {
                             let ptr = self.new_temp();
                             self.emit_line(&format!(
@@ -241,6 +280,26 @@ impl IRGenerator {
                     all_cases_terminate = false;
                 }
             }
+
+            // 恢复 case 作用域之前的变量绑定，防止 payload 绑定泄漏到后续代码
+            if let Some((name, old_cay, old_llvm, old_class)) = saved_binding {
+                if let Some(ty) = old_cay {
+                    self.var_cay_types.insert(name.clone(), ty);
+                } else {
+                    self.var_cay_types.remove(&name);
+                }
+                if let Some(ty) = old_llvm {
+                    self.var_types.insert(name.clone(), ty);
+                } else {
+                    self.var_types.remove(&name);
+                }
+                if let Some(c) = old_class {
+                    self.var_class_map.insert(name.clone(), c);
+                } else {
+                    self.var_class_map.remove(&name);
+                }
+            }
+            self.scope_manager.exit_scope();
 
             // 如果不是 return，穿透到下一个 case
             if fallthrough && i < case_labels.len() - 1 {

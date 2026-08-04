@@ -325,6 +325,28 @@ fn test_optional_full() {
 }
 
 // ============================================================
+// 泛型 enum 与现代化类型别名集成测试
+// ============================================================
+
+#[test]
+fn test_generic_enum_aliases() {
+    let output = compile_and_run_eol("examples/test_generic_enum_aliases.cay")
+        .expect("test_generic_enum_aliases.cay should compile and run");
+    assert_output_contains(
+        &output,
+        &[
+            "a=7",
+            "c=42",
+            "b=114",
+            "ok=999",
+            "err=0.500000",
+            "Generic enum aliases PASS",
+        ],
+        "test_generic_enum_aliases",
+    );
+}
+
+// ============================================================
 // 实例泛型方法（方法级类型参数 method<U>）单态化测试
 // ============================================================
 
