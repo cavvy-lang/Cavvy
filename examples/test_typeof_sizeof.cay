@@ -1,0 +1,41 @@
+public int main() {
+    println("=== typeof/sizeof 测试 ===");
+
+    int i = 42;
+    long l = 100L;
+    float f = 2.5f;
+    double d = 3.14;
+    char c = 'A';
+    bool b = true;
+
+    // typeof 运行时等价于内部表达式的值
+    println(typeof(i));
+    println(typeof(l));
+    println(typeof(f));
+    println(typeof(d));
+    println(typeof(c));
+    println(typeof(b));
+    println(typeof(i + 1));
+    println(typeof(l * 2L));
+
+    // sizeof(type) 返回类型的字节大小
+    println(sizeof(int));
+    println(sizeof(long));
+    println(sizeof(float));
+    println(sizeof(double));
+    println(sizeof(char));
+    println(sizeof(bool));
+    println(sizeof(String));
+
+    // sizeof(expr) 返回表达式类型的字节大小
+    println(sizeof(i));
+    println(sizeof(l));
+    println(sizeof(f));
+    println(sizeof(d));
+    println(sizeof(c));
+    println(sizeof(b));
+    println(sizeof(i + 1));
+
+    println("=== typeof/sizeof 测试通过 ===");
+    return 0;
+}

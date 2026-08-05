@@ -83,6 +83,30 @@ impl IRGenerator {
 
             // 命名参数（生成内部值即可）
             Expr::NamedArg(named) => self.generate_expression(&named.value),
+
+            // typeof 表达式：运行时等价于内部表达式
+            Expr::TypeOf(type_of) => self.generate_type_of(type_of),
+
+            // sizeof 表达式：编译期常量
+            Expr::SizeOf(size_of) => self.generate_size_of(size_of),
         }
+    }
+
+    /// 生成 typeof 表达式代码。
+    /// typeof 在编译期完成类型推断，运行时直接生成内部表达式的值。
+    fn generate_type_of(&mut self, type_of: &TypeOfExpr) -> CayResult<String> {
+        self.generate_expression(&type_of.expr)
+    }
+
+    /// 生成 sizeof 表达式代码。
+    /// sizeof 在语义分析阶段已缓存目标类型，代码生成直接返回该类型的字节大小常量。
+    fn generate_size_of(&mut self, size_of: &SizeOfExpr) -> CayResult<String> {
+        let ty = size_of
+            .inferred_type
+            .borrow()
+            .clone()
+            .unwrap_or(crate::types::Type::Int32);
+        let size = self.type_size_in_bytes(&ty);
+        Ok(format!("i64 {}", size))
     }
 }

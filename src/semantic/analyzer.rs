@@ -401,6 +401,8 @@ impl SemanticAnalyzer {
             Expr::AllocArray(e) => (e.loc.line, e.loc.column),
             Expr::NamedArg(e) => (e.loc.line, e.loc.column),
             Expr::Try(e) => (e.loc.line, e.loc.column),
+            Expr::TypeOf(e) => (e.loc.line, e.loc.column),
+            Expr::SizeOf(e) => (e.loc.line, e.loc.column),
         }
     }
 
@@ -432,6 +434,8 @@ impl SemanticAnalyzer {
             Expr::AllocArray(e) => e.loc.clone(),
             Expr::NamedArg(e) => e.loc.clone(),
             Expr::Try(e) => e.loc.clone(),
+            Expr::TypeOf(e) => e.loc.clone(),
+            Expr::SizeOf(e) => e.loc.clone(),
         }
     }
 

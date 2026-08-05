@@ -197,7 +197,32 @@ impl SemanticAnalyzer {
             Expr::Dealloc(_) => Ok(Type::Void), // 0.5.0.0: dealloc 返回 void
             Expr::AllocArray(alloc_array) => self.infer_alloc_array_type(alloc_array), // 0.5.2.x
             Expr::NamedArg(named) => self.infer_expr_type_internal(&named.value), // 命名参数返回其值的类型
+            Expr::TypeOf(type_of) => self.infer_expr_type_internal(&type_of.expr),
+            Expr::SizeOf(size_of) => self.infer_sizeof_type(size_of),
         }
+    }
+
+    /// 推断 sizeof 表达式类型。
+    /// sizeof 始终返回 long（目标平台字节大小），并对类型形式参数做合法性校验。
+    /// 同时将目标类型缓存到 SizeOfExpr::inferred_type，供代码生成阶段计算字节大小。
+    pub(crate) fn infer_sizeof_type(
+        &mut self,
+        size_of: &SizeOfExpr,
+    ) -> crate::miette_diagnostic::CayResult<Type> {
+        let target_type = match &size_of.target {
+            SizeOfTarget::Type(ty) => {
+                if !self.is_valid_type_arg(ty) {
+                    return Err(semantic_error_at_loc(
+                        &size_of.loc,
+                        format!("Invalid type argument in sizeof: {}", ty.display_name()),
+                    ));
+                }
+                ty.clone()
+            }
+            SizeOfTarget::Expr(expr) => self.infer_expr_type_internal(expr)?,
+        };
+        size_of.inferred_type.replace(Some(target_type));
+        Ok(Type::Int64)
     }
 
     pub(crate) fn identifier_has_value_binding(&self, name: &str) -> bool {

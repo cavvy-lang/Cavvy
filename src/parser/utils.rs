@@ -371,5 +371,7 @@ pub fn get_token_name(token: &Token) -> String {
         Token::Fn => "fn".to_string(),
         Token::As => "as".to_string(),
         Token::Interop => "interop".to_string(),
+        Token::TypeOf => "typeof".to_string(),
+        Token::SizeOf => "sizeof".to_string(),
     }
 }

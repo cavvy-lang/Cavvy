@@ -587,7 +587,22 @@ primary_expression = literal
                    | lambda_expression
                    | method_reference
                    | alloc_expression
-                   | dealloc_expression;
+                   | dealloc_expression
+                   | typeof_expression
+                   | sizeof_expression;
+
+(* typeof 表达式 - 编译期类型查询，运行时等价于内部表达式的值 *)
+typeof_expression = "typeof", "(", expression, ")";
+
+(* sizeof 表达式 - 编译期返回类型在目标平台上的字节大小 *)
+sizeof_expression = "sizeof", "(", ( type | expression ), ")";
+
+(* typeof / sizeof 示例：
+ *   int x = 42;
+ *   println(typeof(x));      (* 输出 42，运行时等价于 x *)
+ *   println(sizeof(int));    (* 输出 4 *)
+ *   println(sizeof(x));      (* 输出 4，取表达式 x 的类型大小 *)
+ *)
 
 (* Lambda 表达式 *)
 lambda_expression = lambda_parameters, "->", lambda_body;
@@ -985,6 +1000,8 @@ any_unicode_character = ? 任何 Unicode 字符 ?;
  *   - impl 声明：为 struct / enum / class 外部添加方法
  *   - impl Interface for Class 接口实现语法（class 专属）
  *   - struct / enum impl 方法完整代码生成（含 enum this 指针值语义处理）
+ *   - typeof 表达式：编译期类型查询，运行时等价于内部表达式的值
+ *   - sizeof 表达式：编译期返回类型在目标平台上的字节大小
  *
  * 6.1.0 (Build 39)
  *   - struct / enum 泛型支持与完整单态化（无类型擦除）
@@ -1148,8 +1165,8 @@ any_unicode_character = ? 任何 Unicode 字符 ?;
  *   class, continue, cdecl, default, do, double, else, enum, extern, extends,
  *   false, final, float, fn, for, if, impl, implements, instanceof, int,
  *   interface, let, long, native, new, null, private, protected, public,
- *   return, scope, static, stdcall, struct, super, switch, sysv64, this, true,
- *   var, void, while, win64
+ *   return, scope, sizeof, static, stdcall, struct, super, switch, sysv64, this,
+ *   true, typeof, var, void, while, win64
  *
  * 上下文关键字（在特定上下文中是关键字）：
  *   Override, c_int, c_long, c_float, c_double, c_char, c_void, size_t,

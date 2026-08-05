@@ -461,6 +461,8 @@ pub enum Expr {
     Dealloc(DeallocExpr),       // 0.5.0.0: 内存释放表达式: __cay_free(ptr)
     AllocArray(AllocArrayExpr), // 0.5.2.x: 分配器-backed 数组: __cay_alloc_array<T>(allocator, count)
     NamedArg(NamedArgExpr),     // 命名参数: name=value
+    TypeOf(TypeOfExpr),         // 类型查询表达式: typeof(expr)
+    SizeOf(SizeOfExpr),         // 大小查询表达式: sizeof(type) 或 sizeof(expr)
 }
 
 impl HasLocation for Expr {
@@ -488,6 +490,8 @@ impl HasLocation for Expr {
             Expr::Dealloc(dealloc) => &dealloc.loc,
             Expr::AllocArray(alloc_array) => &alloc_array.loc,
             Expr::NamedArg(named) => &named.loc,
+            Expr::TypeOf(type_of) => &type_of.loc,
+            Expr::SizeOf(size_of) => &size_of.loc,
         }
     }
 }
@@ -524,6 +528,32 @@ pub struct NamedArgExpr {
     pub name: String,
     pub value: Box<Expr>,
     pub loc: SourceLocation,
+}
+
+/// typeof 表达式: typeof(expr)
+/// 编译期类型查询，运行时等价于内部表达式的值。
+#[derive(Debug, Clone, Serialize)]
+pub struct TypeOfExpr {
+    pub expr: Box<Expr>,
+    pub loc: SourceLocation,
+}
+
+/// sizeof 表达式: sizeof(type) 或 sizeof(expr)
+/// 编译期返回目标类型在目标平台上的字节大小。
+#[derive(Debug, Clone, Serialize)]
+pub struct SizeOfExpr {
+    pub target: SizeOfTarget,
+    /// 语义分析阶段填充的目标类型，供代码生成直接计算大小。
+    /// 使用 RefCell 以便在不可变 AST 引用下由语义分析器写入。
+    pub inferred_type: std::cell::RefCell<Option<Type>>,
+    pub loc: SourceLocation,
+}
+
+/// sizeof 的目标：可以是类型字面量，也可以是表达式（取表达式类型的大小）。
+#[derive(Debug, Clone, Serialize)]
+pub enum SizeOfTarget {
+    Type(Type),
+    Expr(Box<Expr>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]

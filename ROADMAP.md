@@ -1047,12 +1047,12 @@ debug = true
       public float z(); public float w();
   }
   ```
-- [ ] **内存布局控制** - `#[repr(C)]`, `#[repr(packed)]`, `#[align(N)]` 属性
+- [ ] **内存布局控制** - `@repr(C)`, `@repr(packed)`, `@align(N)` 属性
 
-  - `#[repr(C)]`：C 兼容布局，用于 FFI
-  - `#[repr(packed)]`：取消对齐填充，最小化内存占用
-  - `#[align(16)]`：指定对齐字节数
-  - `#[repr(transparent)]`：单字段结构体保证与字段相同布局（用于 newtype 模式）
+  - `@repr(C)`：C 兼容布局，用于 FFI
+  - `@repr(packed)`：取消对齐填充，最小化内存占用
+  - `@align(16)`：指定对齐字节数
+  - `@repr(transparent)`：单字段结构体保证与字段相同布局（用于 newtype 模式）
 - [ ] **零成本抽象验证** - 确保泛型、迭代器等抽象最终编译为与手写 C 等价的机器码
 
   - 建立性能基准测试套件（microbenchmarks）
@@ -1063,13 +1063,13 @@ debug = true
 - [ ] **no_std** - 支持无标准库环境，不链接 libc
 
   - `cavly build --no-std` 编译标志
-  - `#![no_std]` crate 级属性
+  - `#program no_std` crate 级属性
   - 提供 `core` 最小运行时（仅含基础类型、编译器内置函数）
 - [ ] **启动代码** - 自定义 `_start`，支持裸机 ARM/RISC-V 编程
 
   - 可自定义链接脚本
-  - `#[link_section = ".vector_table"]` 属性放置中断向量表
-  - `#[no_mangle]` 属性保留符号名
+  - `@link_section = ".vector_table"` 属性放置中断向量表
+  - `@no_mangle` 属性保留符号名
 - [ ] **内存映射 I/O** - `volatile` 读写语义，支持 MMIO 寄存器操作
 
   ```java
@@ -1233,7 +1233,7 @@ debug = true
 ### 24.x 与 G1/G0 的互操作
 
 - [ ] **unsafe 桥接** - 在 G2 代码中调用 G1/G0 的不安全代码，需显式 `unsafe` 块
-- [ ] **迁移路径** - 允许 G1 代码逐步添加所有权标注升级为 G2，提供 `#[legacy]` 属性允许无所有权代码存在
+- [ ] **迁移路径** - 允许 G1 代码逐步添加所有权标注升级为 G2，提供 `@legacy` 属性允许无所有权代码存在
   - `#edition G1` 模块：完整 G1 兼容模式
   - `#edition G2` 模块：强制所有权检查
   - 跨 edition 调用需 unsafe 桥接

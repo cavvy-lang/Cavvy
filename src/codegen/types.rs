@@ -220,4 +220,18 @@ impl IRGenerator {
     pub fn is_string_type(&self, ty: &str) -> bool {
         ty == "i8*"
     }
+
+    /// 计算 Cavvy 类型在目标平台上的字节大小。
+    ///
+    /// 基于 LLVM 类型表示进行估算：
+    /// - 基本整数/浮点类型按标准宽度；
+    /// - 指针、数组引用、类/struct 引用均为 8 字节；
+    /// - enum 存储为 { i32 discriminant, i64 payload }，占 16 字节。
+    pub fn type_size_in_bytes(&self, ty: &Type) -> i64 {
+        let llvm_ty = self.type_to_llvm(ty);
+        match llvm_ty.as_str() {
+            "{ i32, i64 }" => 16,
+            other => self.get_type_size(other),
+        }
+    }
 }

@@ -247,6 +247,62 @@ pub fn parse_primary(parser: &mut Parser) -> CayResult<Expr> {    let loc = pars
             parser.advance();
             parse_new_expression(parser, loc)
         }
+        crate::lexer::Token::TypeOf => {
+            parser.advance();
+            parser.consume(
+                &crate::lexer::Token::LParen,
+                "期望 '('\n提示: typeof 后应跟括号表达式，例如: typeof(x)",
+            )?;
+            let expr = parse_expression(parser)?;
+            parser.consume(
+                &crate::lexer::Token::RParen,
+                "期望 ')'\n提示: typeof 表达式应以 ')' 结束",
+            )?;
+            Ok(Expr::TypeOf(TypeOfExpr {
+                expr: Box::new(expr),
+                loc,
+            }))
+        }
+        crate::lexer::Token::SizeOf => {
+            parser.advance();
+            parser.consume(
+                &crate::lexer::Token::LParen,
+                "期望 '('\n提示: sizeof 后应跟括号，例如: sizeof(int) 或 sizeof(x)",
+            )?;
+
+            // sizeof 支持两种形式：
+            // 1. sizeof(type)      - 编译期类型大小
+            // 2. sizeof(expression) - 表达式类型的大小
+            // 为区分类名与变量名，当括号内以明显类型语法开始时按类型解析，
+            // 否则按表达式解析；单独标识符按表达式处理，由语义阶段识别为类型名。
+            let current = parser.current_token();
+            let is_type_start = is_sizeof_type_start(current)
+                || matches!(current, crate::lexer::Token::Identifier(_))
+                    && parser.pos + 1 < parser.tokens.len()
+                    && matches!(
+                        &parser.tokens[parser.pos + 1].token,
+                        crate::lexer::Token::Lt
+                            | crate::lexer::Token::DoubleColon
+                            | crate::lexer::Token::Star
+                            | crate::lexer::Token::LBracket
+                    );
+
+            let target = if is_type_start {
+                SizeOfTarget::Type(crate::parser::types::parse_type(parser)?)
+            } else {
+                SizeOfTarget::Expr(Box::new(parse_expression(parser)?))
+            };
+
+            parser.consume(
+                &crate::lexer::Token::RParen,
+                "期望 ')'\n提示: sizeof 表达式应以 ')' 结束",
+            )?;
+            Ok(Expr::SizeOf(SizeOfExpr {
+                target,
+                inferred_type: std::cell::RefCell::new(None),
+                loc,
+            }))
+        }
         crate::lexer::Token::LParen => {
             // 检查是否是 Lambda 表达式: (params) -> { body }
             // 需要向前看，检查是否有 -> 箭头
@@ -739,6 +795,41 @@ fn parse_arguments(parser: &mut Parser) -> CayResult<Vec<Expr>> {
     }
 
     Ok(args)
+}
+
+/// 判断当前 token 是否是 sizeof 的明显类型起始 token。
+/// 包括基本类型、void 以及所有 FFI 类型关键字。
+fn is_sizeof_type_start(token: &crate::lexer::Token) -> bool {
+    matches!(
+        token,
+        crate::lexer::Token::Int
+            | crate::lexer::Token::Long
+            | crate::lexer::Token::Float
+            | crate::lexer::Token::Double
+            | crate::lexer::Token::Bool
+            | crate::lexer::Token::Char
+            | crate::lexer::Token::String
+            | crate::lexer::Token::Void
+            | crate::lexer::Token::CInt
+            | crate::lexer::Token::CUInt
+            | crate::lexer::Token::CLong
+            | crate::lexer::Token::CULong
+            | crate::lexer::Token::CShort
+            | crate::lexer::Token::CUShort
+            | crate::lexer::Token::CChar
+            | crate::lexer::Token::CUChar
+            | crate::lexer::Token::CFloat
+            | crate::lexer::Token::CDouble
+            | crate::lexer::Token::SizeT
+            | crate::lexer::Token::SSizeT
+            | crate::lexer::Token::UIntPtr
+            | crate::lexer::Token::IntPtr
+            | crate::lexer::Token::CVoid
+            | crate::lexer::Token::CBool
+            | crate::lexer::Token::CString
+            | crate::lexer::Token::CInt64
+            | crate::lexer::Token::CUInt64
+    )
 }
 
 /// 将 Type 转换为字符串表示

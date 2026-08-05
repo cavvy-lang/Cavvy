@@ -501,7 +501,7 @@ impl SemanticAnalyzer {
     ///
     /// 有效类型包括：基本类型、已注册的类/结构体/枚举、当前类的泛型参数、
     /// 以及由上述类型递归构成的泛型类型（支持嵌套泛型）。
-    fn is_valid_type_arg(&self, ty: &Type) -> bool {
+    pub(crate) fn is_valid_type_arg(&self, ty: &Type) -> bool {
         match ty {
             Type::Void
             | Type::Int32

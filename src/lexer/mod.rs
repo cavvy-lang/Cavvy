@@ -149,6 +149,10 @@ pub enum Token {
     Using,
     #[token("scope")]
     Scope,
+    #[token("typeof")]
+    TypeOf,
+    #[token("sizeof")]
+    SizeOf,
     #[token("__ir")]
     InlineIr,
 
@@ -1172,6 +1176,8 @@ pub fn token_name(token: &Token) -> &'static str {
         Token::Using => "using",
         Token::Specialize => "specialize",
         Token::Scope => "scope",
+        Token::TypeOf => "typeof",
+        Token::SizeOf => "sizeof",
         Token::InlineIr => "__ir",
         Token::CInt => "c_int",
         Token::CUInt => "c_uint",
@@ -1302,6 +1308,8 @@ pub fn is_keyword(token: &Token) -> bool {
             | Token::Auto
             | Token::Extern
             | Token::Scope
+            | Token::TypeOf
+            | Token::SizeOf
             | Token::InlineIr
             | Token::Alias
             | Token::Fn

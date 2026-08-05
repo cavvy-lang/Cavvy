@@ -426,3 +426,46 @@ fn test_instance_generic_method() {
         "test_instance_generic_method",
     );
 }
+
+// ============================================================
+// typeof / sizeof 运算符测试
+// ============================================================
+
+#[test]
+fn test_typeof_sizeof() {
+    let output = compile_and_run_eol("examples/test_typeof_sizeof.cay")
+        .expect("test_typeof_sizeof.cay should compile and run");
+    assert_output_contains(
+        &output,
+        &[
+            "=== typeof/sizeof 测试 ===",
+            // typeof 值
+            "42",
+            "100",
+            "2.500000",
+            "3.140000",
+            "65",
+            "true",
+            "43",
+            "200",
+            // sizeof(type)
+            "4",
+            "8",
+            "4",
+            "8",
+            "1",
+            "1",
+            "8",
+            // sizeof(expr)
+            "4",
+            "8",
+            "4",
+            "8",
+            "1",
+            "1",
+            "4",
+            "=== typeof/sizeof 测试通过 ===",
+        ],
+        "test_typeof_sizeof",
+    );
+}

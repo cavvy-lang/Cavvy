@@ -1082,6 +1082,8 @@ fn expr_kind_name(expr: &cavvy::ast::Expr) -> &'static str {
         Expr::Dealloc(_) => "__cay_free",
         Expr::AllocArray(_) => "__cay_alloc_array",
         Expr::NamedArg(_) => "命名参数",
+        Expr::TypeOf(_) => "typeof",
+        Expr::SizeOf(_) => "sizeof",
     }
 }
 
