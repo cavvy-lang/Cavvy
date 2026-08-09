@@ -1,14 +1,13 @@
-use cavvy::Compiler;
 use cavvy::ir2exe_lib::{
-    IRSourceMap, Ir2ExeOptions, compile_ir_to_exe, parse_link_libraries_from_ir,
-    parse_source_map_from_ir,
+    IRSourceMap, Ir2ExeOptions, compile_ir_to_object, link_objects_to_exe,
+    parse_link_libraries_from_ir, parse_source_map_from_ir,
 };
 use cavvy::miette_diagnostic::{
-    print_error_with_context, print_miette_error, print_tool_error, print_warning,
+    print_error_with_context, print_miette_error, print_tool_error,
 };
 use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process;
 
 const VERSION: &str = env!("CAYC_VERSION");
@@ -63,6 +62,10 @@ struct CompileOptions {
     detect_cycles: bool, // --detect-cycles
     // 禁止 panic：panic()/abort() 转为编译错误
     no_panic: bool, // --no-panic
+    // 仅编译到目标文件，不链接
+    compile_only: bool, // -c
+    // 显式输出文件名
+    output: Option<String>, // -o / --output
 }
 
 /// 根据当前操作系统自动选择默认目标平台
@@ -129,13 +132,19 @@ impl Default for CompileOptions {
             test_mode: false,
             detect_cycles: false,
             no_panic: false,
+            compile_only: false,
+            output: None,
         }
     }
 }
 
 fn print_usage() {
     println!("Cavvy Compiler v{}", VERSION);
-    println!("Usage: cayc [options] <source_file.cay> [output_file.exe]");
+    println!("Usage: cayc [options] <source1.cay> [source2.cay ...] [output_file.exe]");
+    println!("");
+    println!("Compilation Mode:");
+    println!("  -c                    仅编译到目标文件 (.obj)，不链接");
+    println!("  -o <file>, --output <file>  指定输出文件名（可替代最后一个位置参数）");
     println!("");
     println!("Optimization Options:");
     println!("  -O0, -O1, -O2, -O3    优化级别 (默认: -O2)");
@@ -194,12 +203,16 @@ fn print_usage() {
     println!("  cayc --opt-ir -O3 --lto=full hello.cay");
     println!("  cayc -O3 -march=native -mtune=native -fvectorize hello.cay");
     println!("  cayc --static -O2 -L./libs -lmylib app.cay app.exe");
+    println!("  cayc helper.cay main.cay");
+    println!("  cayc helper.cay main.cay myapp");
+    println!("  cayc helper.cay main.cay -o myapp");
+    println!("  cayc -c helper.cay");
+    println!("  cayc -c helper.cay main.cay");
 }
 
-fn parse_args(args: &[String]) -> Result<(CompileOptions, String, String), String> {
+fn parse_args(args: &[String]) -> Result<(CompileOptions, Vec<String>, String), String> {
     let mut options = CompileOptions::default();
-    let mut input_file: Option<String> = None;
-    let mut output_file: Option<String> = None;
+    let mut positional: Vec<String> = Vec::new();
     let mut i = 1;
 
     while i < args.len() {
@@ -219,6 +232,16 @@ fn parse_args(args: &[String]) -> Result<(CompileOptions, String, String), Strin
             }
             "--opt-ir" => {
                 options.opt_ir = true;
+            }
+            "-c" => {
+                options.compile_only = true;
+            }
+            "-o" | "--output" => {
+                i += 1;
+                if i >= args.len() {
+                    return Err("-o/--output 需要输出文件名参数".to_string());
+                }
+                options.output = Some(args[i].clone());
             }
             "-g" => {
                 options.debug = true;
@@ -432,21 +455,39 @@ fn parse_args(args: &[String]) -> Result<(CompileOptions, String, String), Strin
                 if arg.starts_with('-') {
                     return Err(format!("未知选项: {}", arg));
                 }
-                if input_file.is_none() {
-                    input_file = Some(arg.clone());
-                } else if output_file.is_none() {
-                    output_file = Some(arg.clone());
-                } else {
-                    return Err(format!("多余参数: {}", arg));
-                }
+                positional.push(arg.clone());
             }
         }
         i += 1;
     }
 
-    let input_file = input_file.ok_or("需要指定输入文件")?;
-    let output_file = output_file.unwrap_or_else(|| {
-        let stem = Path::new(&input_file)
+    // 解析位置参数：.cay 结尾的是源文件，最后一个非 .cay 的是输出文件
+    let mut source_files: Vec<String> = Vec::new();
+    let mut output_file: Option<String> = None;
+    let mut has_positional_output = false;
+
+    for (idx, arg) in positional.iter().enumerate() {
+        let is_source = arg.to_lowercase().ends_with(".cay");
+        if is_source {
+            source_files.push(arg.clone());
+        } else if idx == positional.len() - 1 {
+            output_file = Some(arg.clone());
+            has_positional_output = true;
+        } else {
+            return Err(format!(
+                "多余参数 '{}': 非 .cay 文件只能作为最后一个输出参数",
+                arg
+            ));
+        }
+    }
+
+    if source_files.is_empty() {
+        return Err("需要指定至少一个输入文件".to_string());
+    }
+
+    let mut output_file = output_file.unwrap_or_else(|| {
+        let first_source = &source_files[0];
+        let stem = Path::new(first_source)
             .file_stem()
             .and_then(|stem| stem.to_str())
             .unwrap_or("output");
@@ -460,13 +501,24 @@ fn parse_args(args: &[String]) -> Result<(CompileOptions, String, String), Strin
         }
     });
 
-    Ok((options, input_file, output_file))
+    if let Some(explicit_output) = options.output.as_ref() {
+        if has_positional_output && output_file != explicit_output.as_str() {
+            // 如果 -o 与最后一个位置参数冲突，给出明确错误
+            return Err(format!(
+                "不能同时使用 -o/--output 和位置参数指定输出文件名: -o {} 与 {}",
+                explicit_output, output_file
+            ));
+        }
+        output_file = explicit_output.clone();
+    }
+
+    Ok((options, source_files, output_file))
 }
 
 fn main() {
     let args: Vec<String> = env::args().collect();
 
-    let (options, source_path, exe_output) = match parse_args(&args) {
+    let (options, source_paths, exe_output) = match parse_args(&args) {
         Ok(result) => result,
         Err(e) => {
             print_miette_error(
@@ -479,16 +531,16 @@ fn main() {
         }
     };
 
-    let ir_file = Path::new(&exe_output)
-        .with_extension("ll")
-        .to_string_lossy()
-        .to_string();
-
     println!("Cavvy 编译器 v{}", VERSION);
-    println!("源文件: {}", source_path);
-    println!("输出: {}", exe_output);
+    println!("源文件: {}", source_paths.join(", "));
+    if !options.compile_only {
+        println!("输出: {}", exe_output);
+    }
     println!("优化级别: {}", options.optimization);
 
+    if options.compile_only {
+        println!("模式: 仅编译 (-c)");
+    }
     if options.opt_ir {
         println!("IR 优化: 启用");
     }
@@ -556,21 +608,7 @@ fn main() {
     }
     println!("");
 
-    // 1. Cavvy → IR
-    println!("[1] Cavvy → IR 编译...");
-    let source = match fs::read_to_string(&source_path) {
-        Ok(content) => content,
-        Err(e) => {
-            print_miette_error(
-                "cavvy::io_error",
-                &format!("无法读取源文件 '{}': {}", source_path, e),
-                Some("请检查文件路径是否正确，文件是否存在"),
-            );
-            process::exit(1);
-        }
-    };
-
-    // 创建编译器选项
+    // 1. 构建编译器选项
     let compiler_options = cavvy::CompilerOptions {
         target_os: std::env::consts::OS.to_string(),
         features: options.features.clone(),
@@ -585,17 +623,55 @@ fn main() {
         no_panic: options.no_panic,
     };
     let compiler = cavvy::Compiler::with_options(compiler_options);
-    match compiler.compile_file(&source_path, &ir_file) {
-        Ok(_) => {
-            println!("  [+] Cavvy 编译成功");
-        }
-        Err(e) => {
-            print_error_with_context(&e, &source, &source_path);
-            process::exit(1);
+
+    // 为每个源文件生成 IR 和对象文件路径
+    let mut ir_files: Vec<String> = Vec::new();
+    let mut obj_files: Vec<String> = Vec::new();
+
+    for source_path in &source_paths {
+        let ir_file = Path::new(source_path)
+            .with_extension("ll")
+            .to_string_lossy()
+            .to_string();
+        let obj_file = Path::new(source_path)
+            .with_extension("obj")
+            .to_string_lossy()
+            .to_string();
+        ir_files.push(ir_file);
+        obj_files.push(obj_file);
+    }
+
+    // 2. Cavvy → IR（每个源文件独立编译）
+    println!("[1] Cavvy → IR 编译...");
+    for (idx, source_path) in source_paths.iter().enumerate() {
+        let ir_file = &ir_files[idx];
+        println!("  编译: {} -> {}", source_path, ir_file);
+
+        let source = match fs::read_to_string(source_path) {
+            Ok(content) => content,
+            Err(e) => {
+                print_miette_error(
+                    "cavvy::io_error",
+                    &format!("无法读取源文件 '{}': {}", source_path, e),
+                    Some("请检查文件路径是否正确，文件是否存在"),
+                );
+                process::exit(1);
+            }
+        };
+
+        match compiler.compile_file(source_path, ir_file) {
+            Ok(_) => {
+                println!("    [+] 编译成功");
+            }
+            Err(e) => {
+                print_error_with_context(&e, &source, source_path);
+                cleanup_temp_files(&ir_files, &obj_files, options.keep_ir, options.compile_only);
+                process::exit(1);
+            }
         }
     }
 
-    // 2. IR 优化 (如果启用)
+    // 3. IR 优化 (如果启用)
     if options.opt_ir {
         println!("");
         println!("[2] IR 优化 ({})...", options.optimization);
@@ -603,37 +679,7 @@ fn main() {
         println!("  [I] IR 优化将在编译阶段自动进行");
     }
 
-    // 3. IR → EXE (直接调用 ir2exe_lib)
-    println!("");
-    let step_num = if options.opt_ir { "[3]" } else { "[2]" };
-    println!("{} IR → EXE 编译...", step_num);
-
-    // 读取IR文件内容以解析源映射
-    let ir_content = match fs::read_to_string(&ir_file) {
-        Ok(content) => content,
-        Err(e) => {
-            print_miette_error(
-                "cavvy::io_error",
-                &format!("无法读取IR文件 '{}': {}", ir_file, e),
-                Some("请检查IR文件路径是否正确"),
-            );
-            process::exit(1);
-        }
-    };
-
-    // 解析源映射
-    let source_map = parse_source_map_from_ir(&ir_content);
-    if !source_map.mappings.is_empty() {
-        println!("  [I] 已加载源映射: {} 个映射点", source_map.mappings.len());
-    }
-
-    // 解析链接库元数据（来自 #link 指令）
-    let link_libraries = parse_link_libraries_from_ir(&ir_content);
-    if !link_libraries.is_empty() {
-        println!("  [I] 发现链接库声明: {:?}", link_libraries);
-    }
-
-    // 构建 ir2exe 选项
+    // 4. 构建 ir2exe 选项，并收集所有 #link 声明和 ws2_32
     let mut ir2exe_options = Ir2ExeOptions {
         optimization: options.optimization.clone(),
         debug: options.debug,
@@ -666,51 +712,141 @@ fn main() {
         use_embedded_llc: options.use_embedded_llc,
     };
 
-    // 添加 #link 指令声明的链接库
-    for lib in link_libraries {
-        if !ir2exe_options.extra_libs.contains(&lib) {
-            ir2exe_options.extra_libs.push(lib);
+    // 解析每个 IR 文件的源映射和链接库信息
+    let mut per_file_source_maps: Vec<IRSourceMap> = Vec::new();
+    for ir_file in &ir_files {
+        let ir_content = match fs::read_to_string(ir_file) {
+            Ok(content) => content,
+            Err(e) => {
+                print_miette_error(
+                    "cavvy::io_error",
+                    &format!("无法读取IR文件 '{}': {}", ir_file, e),
+                    Some("请检查IR文件路径是否正确"),
+                );
+                cleanup_temp_files(&ir_files, &obj_files, options.keep_ir, options.compile_only);
+                process::exit(1);
+            }
+        };
+
+        let source_map = parse_source_map_from_ir(&ir_content);
+        if !source_map.mappings.is_empty() {
+            println!("  [I] {} 已加载源映射: {} 个映射点", ir_file, source_map.mappings.len());
+        }
+
+        let link_libraries = parse_link_libraries_from_ir(&ir_content);
+        if !link_libraries.is_empty() {
+            println!("  [I] {} 发现链接库声明: {:?}", ir_file, link_libraries);
+        }
+        for lib in link_libraries {
+            if !ir2exe_options.extra_libs.contains(&lib) {
+                ir2exe_options.extra_libs.push(lib);
+            }
+        }
+
+        // Windows 平台自动检测 socket 相关函数并添加 ws2_32 库
+        #[cfg(target_os = "windows")]
+        if ir_content.contains("WSAStartup")
+            || ir_content.contains("socket(")
+            || ir_content.contains("@socket(")
+        {
+            if !ir2exe_options.extra_libs.contains(&"ws2_32".to_string()) {
+                ir2exe_options.extra_libs.push("ws2_32".to_string());
+            }
+        }
+
+        per_file_source_maps.push(source_map);
+    }
+
+    // 5. IR → OBJ（每个 IR 文件独立编译为目标文件）
+    println!("");
+    let step_num = if options.opt_ir { "[3]" } else { "[2]" };
+    println!("{} IR → OBJ 编译...", step_num);
+
+    for (idx, ir_file) in ir_files.iter().enumerate() {
+        let obj_file = &obj_files[idx];
+        let source_map = &per_file_source_maps[idx];
+        println!("  编译: {} -> {}", ir_file, obj_file);
+
+        match compile_ir_to_object(ir_file, obj_file, &ir2exe_options, Some(source_map)) {
+            Ok(result) => {
+                for msg in &result.messages {
+                    println!("    {}", msg);
+                }
+            }
+            Err(e) => {
+                print_tool_error("ir2exe", &format!("IR→OBJ编译失败: {}", ir_file), Some(&e));
+                cleanup_temp_files(&ir_files, &obj_files, options.keep_ir, options.compile_only);
+                process::exit(1);
+            }
         }
     }
 
-    // Windows 平台自动检测 socket 相关函数并添加 ws2_32 库
-    #[cfg(target_os = "windows")]
-    if ir_content.contains("WSAStartup")
-        || ir_content.contains("socket(")
-        || ir_content.contains("@socket(")
-    {
-        if !ir2exe_options.extra_libs.contains(&"ws2_32".to_string()) {
-            ir2exe_options.extra_libs.push("ws2_32".to_string());
+    // 6. -c 模式：到此为止，保留 .obj 文件
+    if options.compile_only {
+        println!("");
+        println!("[+] 仅编译完成，生成目标文件:");
+        for obj_file in &obj_files {
+            println!("  {}", obj_file);
         }
+
+        // 删除中间 .ll 文件（如果不保留）
+        if !options.keep_ir {
+            for ir_file in &ir_files {
+                let _ = fs::remove_file(ir_file);
+            }
+        } else {
+            println!("");
+            println!("[I] 保留 IR 文件:");
+            for ir_file in &ir_files {
+                println!("  {}", ir_file);
+            }
+        }
+        return;
     }
 
-    // 调用 ir2exe_lib 进行编译
-    match compile_ir_to_exe(&ir_file, &exe_output, &ir2exe_options, Some(&source_map)) {
+    // 7. OBJ → EXE（链接所有目标文件）
+    println!("");
+    let link_step_num = if options.opt_ir { "[4]" } else { "[3]" };
+    println!("{} OBJ → EXE 链接...", link_step_num);
+
+    match link_objects_to_exe(&obj_files, &exe_output, &ir2exe_options) {
         Ok(result) => {
             for msg in &result.messages {
                 println!("  {}", msg);
             }
         }
         Err(e) => {
-            print_tool_error("ir2exe", "IR→EXE编译失败", Some(&e));
-            if !options.keep_ir {
-                let _ = fs::remove_file(&ir_file);
-            }
+            print_tool_error("ir2exe", "OBJ→EXE链接失败", Some(&e));
+            cleanup_temp_files(&ir_files, &obj_files, options.keep_ir, options.compile_only);
             process::exit(1);
         }
     }
 
-    // 清理IR文件（如果不保留）
-    if !options.keep_ir {
-        if let Err(e) = fs::remove_file(&ir_file) {
-            print_warning(&format!("无法清理临时文件 {}: {}", ir_file, e));
-        }
-    } else {
-        println!("");
-        println!("[I] 保留 IR 文件: {}", ir_file);
-    }
+    // 清理中间文件
+    cleanup_temp_files(&ir_files, &obj_files, options.keep_ir, options.compile_only);
 
     println!("");
     println!("[+] 编译完成!");
     println!("生成: {}", exe_output);
+}
+
+/// 清理中间 .ll 和 .obj 文件
+fn cleanup_temp_files(
+    ir_files: &[String],
+    obj_files: &[String],
+    keep_ir: bool,
+    compile_only: bool,
+) {
+    if !keep_ir {
+        for ir_file in ir_files {
+            let _ = fs::remove_file(ir_file);
+        }
+    }
+
+    // 非 -c 模式才删除 .obj；否则 .obj 是最终产物
+    if !compile_only {
+        for obj_file in obj_files {
+            let _ = fs::remove_file(obj_file);
+        }
+    }
 }

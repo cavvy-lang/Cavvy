@@ -58,13 +58,19 @@ cay-setup uninstall
 **将 `.cay` 源文件直接编译为可执行文件。**
 
 ```bash
-cayc [选项] <input.cay> [output.exe]
+cayc [选项] <source1.cay> [source2.cay ...] [output.exe]
 ```
+
+- 位置参数以 `.cay` 结尾的均视为源文件，可传入一个或多个。
+- 最后一个不以 `.cay` 结尾的位置参数为输出可执行文件名；省略时默认使用第一个源文件的 stem。
+- `-c` 表示**仅编译**（compile-only），把每个源文件编译成目标文件 `.obj` 后停止，不进行链接。
 
 **选项**：
 
 | 选项 | 描述 |
 |---|---|
+| `-c` | 仅编译到目标文件，不链接 |
+| `-o <file>` / `--output <file>` | 指定输出文件名（可替代最后一个位置参数） |
 | `-O0` / `-O1` / `-O2` / `-O3` / `-Os` / `-Oz` | 优化级别（默认 `-O2`） |
 | `--opt-ir` | 启用 IR 阶段优化（使用 LLVM 优化 IR） |
 | `--lto[=<type>]` | 链接时优化（`full` / `thin`） |
@@ -96,7 +102,18 @@ cayc hello.cay
 cayc hello.cay hello.exe
 cayc --keep-ir -O2 hello.cay
 cayc -I./include -D DEBUG hello.cay
+
+# 多文件编译并链接（6.x 起支持）
+cayc helper.cay main.cay
+cayc helper.cay main.cay myapp
+cayc helper.cay main.cay -o myapp
+
+# 仅编译为目标文件
+cayc -c helper.cay
+cayc -c helper.cay main.cay
 ```
+
+> **Breaking change（6.x 起）**：`cayc` 的位置参数从「单一源文件 + 可选输出」改为「一个或多个源文件 + 可选输出」。单一源文件的旧用法完全兼容；多源文件时默认以第一个源文件的 stem 作为输出名。
 
 ---
 
