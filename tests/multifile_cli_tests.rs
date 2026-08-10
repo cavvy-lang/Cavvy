@@ -8,6 +8,9 @@ fn cayc_path() -> String {
     if let Ok(path) = std::env::var("CAYC_PATH") {
         return path;
     }
+    if let Ok(path) = std::env::var("CARGO_BIN_EXE_cayc") {
+        return path;
+    }
     if cfg!(target_os = "windows") {
         "./target/release/cayc.exe".to_string()
     } else {
@@ -86,6 +89,84 @@ fn compile_only_creates_object_files() {
     let _ = fs::remove_file(&main_obj);
     let _ = fs::remove_file(&tmp.join("helper.ll"));
     let _ = fs::remove_file(&tmp.join("main.ll"));
+    let _ = fs::remove_dir_all(&tmp);
+}
+
+#[test]
+fn compile_only_with_output_names_object_file() {
+    let tmp = PathBuf::from("target/tmp/multifile_compile_only_output");
+    fs::create_dir_all(&tmp).unwrap();
+
+    let main_file = tmp.join("main.cay");
+    let named_obj = tmp.join("build").join("main.obj");
+    fs::create_dir_all(named_obj.parent().unwrap()).unwrap();
+
+    fs::write(
+        &main_file,
+        r#"public class MainOnly {
+    public static void main() {
+        println("ok");
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    let _ = fs::remove_file(&named_obj);
+    let _ = fs::remove_file(tmp.join("main.obj"));
+
+    // 单源文件 -c 时，-o 指定目标文件名（与 gcc/clang 一致）
+    let output = Command::new(cayc_path())
+        .arg("-c")
+        .arg(&main_file)
+        .arg("-o")
+        .arg(&named_obj)
+        .output()
+        .expect("failed to run cayc -c -o");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "cayc -c -o should succeed:\n{}",
+        stderr
+    );
+    assert!(
+        named_obj.exists(),
+        "-o named object file should be created"
+    );
+    assert!(
+        !tmp.join("main.obj").exists(),
+        "default source-stem object file should not be created"
+    );
+
+    // 多源文件 -c 时指定输出名应报错
+    let helper = tmp.join("helper.cay");
+    fs::write(
+        &helper,
+        r#"public class Helper {
+    public static int getValue() {
+        return 42;
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    let output = Command::new(cayc_path())
+        .arg("-c")
+        .arg(&helper)
+        .arg(&main_file)
+        .arg("-o")
+        .arg(&named_obj)
+        .output()
+        .expect("failed to run cayc -c with multiple sources");
+
+    assert!(
+        !output.status.success(),
+        "cayc -c with multiple sources and -o should fail"
+    );
+
+    // 清理
     let _ = fs::remove_dir_all(&tmp);
 }
 

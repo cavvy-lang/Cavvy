@@ -210,7 +210,7 @@ fn print_usage() {
     println!("  cayc -c helper.cay main.cay");
 }
 
-fn parse_args(args: &[String]) -> Result<(CompileOptions, Vec<String>, String), String> {
+fn parse_args(args: &[String]) -> Result<(CompileOptions, Vec<String>, String, bool), String> {
     let mut options = CompileOptions::default();
     let mut positional: Vec<String> = Vec::new();
     let mut i = 1;
@@ -512,13 +512,23 @@ fn parse_args(args: &[String]) -> Result<(CompileOptions, Vec<String>, String), 
         output_file = explicit_output.clone();
     }
 
-    Ok((options, source_files, output_file))
+    // 显式输出名（-o 或位置参数）在 -c 模式下作为目标文件名，
+    // 与 gcc/clang 一致：仅单源文件时合法
+    let explicit_output = has_positional_output || options.output.is_some();
+    if options.compile_only && explicit_output && source_files.len() > 1 {
+        return Err(
+            "-c 编译多个源文件时不能用 -o 或位置参数指定输出文件名（每个源文件各生成一个 .obj）"
+                .to_string(),
+        );
+    }
+
+    Ok((options, source_files, output_file, explicit_output))
 }
 
 fn main() {
     let args: Vec<String> = env::args().collect();
 
-    let (options, source_paths, exe_output) = match parse_args(&args) {
+    let (options, source_paths, exe_output, explicit_output) = match parse_args(&args) {
         Ok(result) => result,
         Err(e) => {
             print_miette_error(
@@ -639,6 +649,11 @@ fn main() {
             .to_string();
         ir_files.push(ir_file);
         obj_files.push(obj_file);
+    }
+
+    // -c 单源文件时，显式输出名（-o 或位置参数）作为目标文件名
+    if options.compile_only && explicit_output {
+        obj_files[0] = exe_output.clone();
     }
 
     // 2. Cavvy → IR（每个源文件独立编译）
