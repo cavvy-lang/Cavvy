@@ -323,8 +323,8 @@ fn test_source_map_generation() {
     fs::write(&source_file, TEST_PROGRAM).expect("Failed to write source file");
 
     // 编译生成IR文件
-    // IR文件与输出exe同名，只是扩展名为.ll
-    let ir_file = temp_dir.join("test_output.ll");
+    // IR文件与源文件同名，只是扩展名为.ll（6.x 多文件编译约定：每个源文件对应一个 .ll）
+    let ir_file = temp_dir.join("test_source_map.ll");
     let exe_ext = get_exe_extension();
     let output_exe = temp_dir.join(format!("test_output{}", exe_ext));
     let output = Command::new(get_cayc_path())
@@ -390,8 +390,8 @@ fn test_source_map_accuracy() {
     let source_file = temp_dir.join("test_accuracy.cay");
     fs::write(&source_file, TEST_PROGRAM).expect("Failed to write source file");
 
-    // 编译生成IR文件
-    let ir_file = temp_dir.join("test_output.ll");
+    // 编译生成IR文件（与源文件同名，扩展名为.ll）
+    let ir_file = temp_dir.join("test_accuracy.ll");
     let exe_ext = get_exe_extension();
     let output_exe = temp_dir.join(format!("test_output{}", exe_ext));
     let output = Command::new(get_cayc_path())
@@ -559,8 +559,8 @@ fn test_source_map_comment_format() {
     let source_file = temp_dir.join("test_format.cay");
     fs::write(&source_file, simple_program).expect("Failed to write source file");
 
-    // 编译生成IR文件
-    let ir_file = temp_dir.join("test_output.ll");
+    // 编译生成IR文件（与源文件同名，扩展名为.ll）
+    let ir_file = temp_dir.join("test_format.ll");
     let exe_ext = get_exe_extension();
     let output_exe = temp_dir.join(format!("test_output{}", exe_ext));
     let output = Command::new(get_cayc_path())

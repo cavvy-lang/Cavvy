@@ -343,6 +343,10 @@ pub struct IRGenerator {
     pub extern_declarations: Vec<crate::ast::ExternDecl>, // FFI extern 声明
     pub extern_function_map: HashMap<String, usize>,      // 函数名 -> extern_declarations索引
     pub emitted_externs: HashSet<String>,                 // 已生成的extern声明（函数名 -> 签名）
+    /// 跨 TU 析构调用需要的延迟 declare 集合（Itanium 函数名）。
+    /// 在模块收尾时统一发射：仅当该函数未在本模块定义时才补 declare，
+    /// 避免 declare+define 同模块冲突（捆绑的 llvm-minimal 不接受）。
+    pub pending_dtor_declares: HashSet<String>,
     pub top_level_functions: Vec<crate::ast::TopLevelFunction>, // 顶层函数列表
     pub current_param_order: Vec<String>,                 // 当前函数参数顺序（用于内联IR）
     pub type_aliases: HashMap<String, crate::types::Type>, // 类型别名映射
@@ -480,6 +484,7 @@ impl IRGenerator {
             extern_declarations: Vec::new(),
             extern_function_map: HashMap::new(),
             emitted_externs: HashSet::new(),
+            pending_dtor_declares: HashSet::new(),
             top_level_functions: Vec::new(),
             current_param_order: Vec::new(),
             type_aliases: HashMap::new(),
@@ -946,6 +951,9 @@ impl IRGenerator {
             "i64" => 8,
             "float" => 4,
             "double" => 8,
+            // enum 存储为 { i32 discriminant, i64 payload }，占 16 字节
+            // （与 type_size_in_bytes / new T[n] 的元素大小口径一致）。
+            "{ i32, i64 }" => 16,
             t if t.ends_with("*") => 8, // 所有指针都是 8 字节（64位系统）
             _ => 8,
         }
@@ -1024,12 +1032,51 @@ impl IRGenerator {
             // 局部类实例变量的 alloca 存储的是对象指针 i8*。
             // 加载该指针并调用 Itanium ABI 析构函数名。
             let dtor_fn = self.mangle_itanium_method(&cand.class_name, "D1", &[], false, true, false);
+            // 跨 TU 场景（如 main.cay 经类型推断持有 lexer.cay 中特化的
+            // ArrayList<Token>）：本模块可能不生成该析构定义，需要补 declare，
+            // 否则 llc 报 "use of undefined value"。但 declare 不能立即发射——
+            // 若本模块稍后会生成定义（特化在函数体之后生成），同模块
+            // declare+define 会被捆绑的 llvm-minimal 拒绝。先登记，模块收尾时
+            // 只对未定义的函数补 declare（见 generate 末尾的 flush_pending_dtor_declares）。
+            self.pending_dtor_declares.insert(dtor_fn.clone());
             let obj_temp = self.new_temp();
             self.emit_line(&format!(
                 "  {} = load i8*, i8** %{}",
                 obj_temp, cand.llvm_name
             ));
             self.emit_line(&format!("  call void @{}(i8* {})", dtor_fn, obj_temp));
+        }
+    }
+
+    /// 模块收尾：为跨 TU 析构调用补发 `declare`。
+    ///
+    /// 仅当析构函数未在本模块定义（`generated_methods` 无记录）且尚未通过
+    /// 其他路径声明过时，才把 declare 追加到模块末尾（模块级顺序无关）。
+    pub fn flush_pending_dtor_declares(&mut self) {
+        if self.pending_dtor_declares.is_empty() {
+            return;
+        }
+        let pending: Vec<String> = self.pending_dtor_declares.drain().collect();
+        let mut decls = String::new();
+        for dtor_fn in pending {
+            if self.generated_methods.contains(&dtor_fn) {
+                continue;
+            }
+            let sig = format!("{}@void@i8*", dtor_fn);
+            if self.is_extern_emitted(&sig) {
+                continue;
+            }
+            let cc_attr =
+                self.calling_convention_to_llvm_attr(crate::ast::CallingConvention::Cdecl);
+            if cc_attr.is_empty() {
+                decls.push_str(&format!("declare void @{}(i8*)\n", dtor_fn));
+            } else {
+                decls.push_str(&format!("declare void @{}(i8*) {}\n", dtor_fn, cc_attr));
+            }
+            self.mark_extern_emitted(sig);
+        }
+        if !decls.is_empty() {
+            self.output.push_str(&decls);
         }
     }
 
@@ -1197,8 +1244,8 @@ impl IRGenerator {
     }
 
     /// 判断类型实参是否为具体类型（非未解析的泛型参数）。
-    /// `GenericParam` 恒为非具体；`Object(name)` 仅当 `name` 是已注册的类时才算
-    /// 具体（未注册的短名如 "T" 视为未解析参数）。
+    /// `GenericParam` 恒为非具体；`Object(name)` 仅当 `name` 是已注册的类、
+    /// 接口、struct 或 enum 时才算具体（未注册的短名如 "T" 视为未解析参数）。
     pub fn type_arg_is_concrete(&self, ty: &crate::types::Type) -> bool {
         use crate::types::Type;
         match ty {
@@ -1210,6 +1257,7 @@ impl IRGenerator {
                     r.get_class(name).is_some()
                         || r.get_interface(name).is_some()
                         || r.get_struct(name).is_some()
+                        || r.get_enum_by_name(name).is_some()
                 })
                 .unwrap_or(false),
             Type::Array(inner) | Type::Pointer(inner) => self.type_arg_is_concrete(inner),

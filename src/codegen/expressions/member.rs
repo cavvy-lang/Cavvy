@@ -325,8 +325,25 @@ impl IRGenerator {
                 false
             };
 
-            // 如果不是字段，则检查是否是数组类型
             if !is_field {
+                // string 是 NUL 结尾的 C 字符串（无长度头），其 .length 必须走
+                // strlen 运行时；若误用数组头部读取（ptr-8），字符串字面量与
+                // readLine 返回的字符串都会读出垃圾长度，导致下游循环越界。
+                if matches!(
+                    self.get_expression_type(&member.object),
+                    Some(crate::types::Type::String)
+                ) {
+                    let obj = self.generate_expression(&member.object)?;
+                    let (_, obj_val) = self.parse_typed_value(&obj);
+                    let temp = self.new_temp();
+                    self.emit_line(&format!(
+                        "  {} = call i32 @__cay_string_length(i8* {})",
+                        temp, obj_val
+                    ));
+                    return Ok(format!("i32 {}", temp));
+                }
+
+                // 如果不是字段，则检查是否是数组类型
                 let obj = self.generate_expression(&member.object)?;
                 let (obj_type, obj_val) = self.parse_typed_value(&obj);
 

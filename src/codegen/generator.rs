@@ -728,6 +728,9 @@ impl IRGenerator {
             self.output.push_str(lambda_code);
         }
 
+        // 所有 define（含懒生成特化）已确定，此时补发跨 TU 析构的 declare。
+        self.flush_pending_dtor_declares();
+
         let string_decls = self.get_string_declarations();
         let type_id_decls = self.emit_type_id_declarations();
 
@@ -2742,10 +2745,15 @@ impl IRGenerator {
             ));
         }
 
-        // enum 定义可能被多个编译单元同时包含（如 .cayh 声明文件中的 enum），
-        // 其方法在每个 TU 各生成一份定义；用 linkonce_odr 让链接器去重
-        // （C++ vague linkage 思路，仿 Object 默认构造的先例）。
-        let linkage = if is_enum_method { "linkonce_odr " } else { "" };
+        // enum/class 定义可能被多个编译单元同时包含（如 .cayh 声明文件、
+        // 多文件各自 #include <std/...> 的场景），其方法在每个 TU 各生成一份
+        // 定义；用 linkonce_odr 让链接器去重（C++ vague linkage 思路，
+        // 仿 Object 默认构造、析构与 vtable 的先例）。
+        let linkage = if is_enum_method || !is_struct_method {
+            "linkonce_odr "
+        } else {
+            ""
+        };
         self.emit_line(&format!(
             "define {}{} @{}({}) {{",
             linkage,
@@ -4571,7 +4579,10 @@ impl IRGenerator {
     }
 
     /// 将调用约定转换为 LLVM 属性
-    fn calling_convention_to_llvm_attr(&self, cc: crate::ast::CallingConvention) -> String {
+    pub(crate) fn calling_convention_to_llvm_attr(
+        &self,
+        cc: crate::ast::CallingConvention,
+    ) -> String {
         match cc {
             // Windows x64 平台使用 win64 调用约定
             crate::ast::CallingConvention::Cdecl => {
