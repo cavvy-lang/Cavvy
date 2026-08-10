@@ -265,6 +265,19 @@ fn test_error_include_c_missing() {
     );
 }
 
+#[test]
+fn test_include_c_user_form_not_shadowed_by_cay_file() {
+    // 引号形式不得匹配同名 .cay 包装（包装仅限 <...> 系统形式的 caylibs/c/ 白名单）。
+    // 若错误匹配到 shadow.cay 诱饵，abs_c 未声明，编译将失败。
+    let output = compile_and_run_eol("examples/include_c_shadow/main.cay")
+        .expect("user-form include_c must parse the real header, not a same-named .cay");
+    assert!(
+        output.contains("shadow_real=5"),
+        "Should call abs() extracted from the real header, got: {}",
+        output
+    );
+}
+
 // ==================== #include_c C++ 头文件测试 ====================
 
 /// 查找可用的 C++ 编译器（g++ 优先，其次 clang++）

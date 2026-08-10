@@ -1,5 +1,6 @@
-// 演示 #include_c 的 C++ 头文件支持：demo_include_cpp.h 没有 .cay 包装，
-// 走保守提取器按 C++ 模式解析——class 提取为 `namespace demo { interop class
+// 演示 #include_c 的 C++ 头文件支持：引号形式一律解析真实头文件（同名 .cay
+// 不参与包装匹配——本文件自身就叫 demo_include_cpp.cay，也不会被误匹配），
+// 按 C++ 模式提取——class 提取为 `namespace demo { interop class
 // Counter { ... } }`（字段镜像 + native 构造/析构/方法），Cay 侧用原生类语法：
 // new 构造、方法调用、离开作用域自动析构（RAII）。
 // 运行需要配套实现：demo_include_cpp.cpp 编译出的静态库（-L/-l 链接）。

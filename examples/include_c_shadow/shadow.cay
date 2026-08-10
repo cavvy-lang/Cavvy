@@ -1,0 +1,7 @@
+// 诱饵文件：旧行为会把 main.cay 的 #include_c "shadow.h" 错误映射到本文件。
+// 新行为下（包装仅限 <...> 系统形式的 caylibs/c/ 白名单）本文件永远不会被
+// #include_c 匹配；若被错误包含，main.cay 中的 abs_c 将未声明而编译失败。
+
+extern {
+    c_int shadow_decoy_never_called(c_int x);
+}

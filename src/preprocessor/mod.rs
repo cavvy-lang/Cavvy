@@ -2,8 +2,8 @@
 //!
 //! 实现预处理指令系统（当前版本见 .verinfo，6.2.0）：
 //! - #include "path"  - 文件包含（隐式 #pragma once）
-//! - #include_c <header.h> / "header.h"  - 导入 C 头文件的 Cay FFI 声明 + 自动链接
-//!   （优先映射到 caylibs/c/<name>.cay 包装；无包装时用保守提取器解析真实 .h）
+//! - #include_c <header.h> / "header.h"  - 导入 C/C++ 头文件的 Cay FFI 声明 + 自动链接
+//!   （仅 <...> 系统形式且命中 caylibs/c/<name>.cay 标准库包装时用包装；其余一律解析真实头文件）
 //! - #define NAME value  - 常量定义（无参数宏）
 //! - #ifdef / #ifndef / #else / #elif / #endif  - 条件编译
 //! - #error "message"  - 编译期错误
@@ -882,13 +882,14 @@ impl Preprocessor {
         }
     }
 
-    /// 处理 #include_c 指令：导入 C 头文件的 Cay FFI 声明并自动链接。
+    /// 处理 #include_c 指令：导入 C/C++ 头文件的 Cay FFI 声明并自动链接。
     ///
     /// 解析顺序：
-    /// 1. **首选 .cay 包装**（caylibs/c/<base>.cay 或 <base>.cay）—— 包装是手写、
-    ///    类型正确的 Cay 声明，命中即递归包含（复用 #pragma once / 循环检测）。
-    /// 2. **兜底真实 .h 解析**—— 当无包装时，定位磁盘上的真实头文件，用保守提取器
-    ///    （c_header 模块）把函数原型转成 Cay `extern {}`，只产出能干净映射的声明。
+    /// 1. **标准库白名单包装**（仅 <...> 系统形式，且命中 caylibs/c/<base>.cay）——
+    ///    包装是手写、类型正确的 Cay 声明，命中即递归包含（复用 #pragma once / 循环检测）。
+    /// 2. **真实头文件解析**—— 其余所有情况（含全部 "..." 形式）：定位磁盘上的真实
+    ///    头文件，用提取器（c_header 模块）把声明转成 Cay 源码（C：extern 块；
+    ///    C++：interop class + native 方法），只产出能干净映射的声明。
     /// 3. 两层都按"头名→库"映射（c_header::c_header_link_libs）自动声明链接。
     fn process_include_c(
         &mut self,
@@ -904,9 +905,12 @@ impl Preprocessor {
         // (a) 规范化头名：去掉 .h / .cay 后缀，保留子目录（如 sys/socket）
         let base = Self::strip_header_ext(path);
 
-        // (b) 优先映射到 .cay 包装
-        if let Some(cay_path) = self.resolve_cay_wrapper(&base, is_system, current_file) {
-            return self.process_resolved_include(&cay_path, current_file, &base);
+        // (b) 仅 <...> 系统形式允许映射到标准库白名单包装（caylibs/c/<base>.cay）；
+        //     "..." 形式与所有其他头名一律解析真实头文件，同名 .cay 不参与匹配。
+        if is_system {
+            if let Some(cay_path) = self.resolve_cay_wrapper(&base, current_file) {
+                return self.process_resolved_include(&cay_path, current_file, &base);
+            }
         }
 
         // (c) 兜底：定位真实 .h 并解析
@@ -953,16 +957,24 @@ impl Preprocessor {
         }
 
         // 全找不到
+        let (target, suggestion) = if is_system {
+            (
+                format!("#include_c: 找不到 C 头文件 '{}'（无标准库包装，也未找到真实头）", path),
+                "用 -I 指定头文件搜索路径，或在 caylibs/c/ 下放置 <name>.cay 包装".to_string(),
+            )
+        } else {
+            (
+                format!("#include_c: 找不到头文件 '{}'", path),
+                "检查相对路径，或用 -I 指定头文件搜索路径".to_string(),
+            )
+        };
         Err(CayError::Preprocessor {
             error_code: ErrorCodes::PREPROCESSOR_INCLUDE_C_ERROR,
             file: Some(current_file.to_string()),
             line: line_num,
             column: 1,
-            message: format!(
-                "#include_c: 找不到 C 头文件 '{}' 的 Cay 包装或真实头",
-                path
-            ),
-            suggestion: "在 caylibs/c/ 下放置 <name>.cay 包装，或用 -I 指定头文件搜索路径，或用 #include 指定包装路径".to_string(),
+            message: target,
+            suggestion,
         })
     }
 
@@ -1029,30 +1041,13 @@ impl Preprocessor {
         })
     }
 
-    /// 解析 #include_c 对应的 .cay 包装路径（首选）。
-    /// 系统形式先查 `c/<base>.cay`（libc 包装所在），再查 `<base>.cay`；
-    /// 用户形式先查相对当前文件的 `<base>.cay`，再查 `c/<base>.cay`。
+    /// 解析 #include_c 对应的标准库包装路径（仅 <...> 系统形式可达，见 process_include_c）。
+    /// 只匹配 `c/<base>.cay`（caylibs/c/ 白名单命名空间），不匹配任意同名 `<base>.cay`——
+    /// 后者会被用户源文件/第三方库中的同名 .cay 劫持，遮蔽真实头文件。
     /// 复用 `resolve_include_path` 的搜索根（exe-dir/caylibs、cwd/caylibs、-I 等）。
-    /// 解析结果若恰为当前文件自身（源文件与头文件同名时）则跳过——
-    /// 一个文件的 #include_c 包装绝不可能是它自己。
-    fn resolve_cay_wrapper(&self, base: &str, is_system: bool, current_file: &str) -> Option<String> {
-        let candidates: Vec<String> = if is_system {
-            vec![format!("c/{}.cay", base), format!("{}.cay", base)]
-        } else {
-            vec![format!("{}.cay", base), format!("c/{}.cay", base)]
-        };
-        let current_canon = std::fs::canonicalize(current_file).ok();
-        for cand in &candidates {
-            if let Ok(p) = self.resolve_include_path(cand, is_system, current_file) {
-                if let Some(cc) = &current_canon {
-                    if std::fs::canonicalize(&p).ok().as_ref() == Some(cc) {
-                        continue;
-                    }
-                }
-                return Some(p);
-            }
-        }
-        None
+    fn resolve_cay_wrapper(&self, base: &str, current_file: &str) -> Option<String> {
+        let cand = format!("c/{}.cay", base);
+        self.resolve_include_path(&cand, true, current_file).ok()
     }
 
     /// 兜底：定位磁盘上的真实 .h。用户形式相对当前文件/基础目录；系统形式查 -I 与

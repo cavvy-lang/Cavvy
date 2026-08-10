@@ -125,8 +125,10 @@ Windows 下编译器会在检测到 socket API 时自动链接 `ws2_32`。
 
 ## `#include_c` 的 C++ 头文件支持
 
-`#include_c` 找不到 `.cay` 包装时会直接解析磁盘上的真实头文件。当头文件扩展名为
-`.hpp`/`.hh`/`.hxx`，或内容中出现 `class`/`template`/`namespace`/`extern "C++"` 时，
+`#include_c` 默认直接解析磁盘上的真实头文件；唯一的例外是 `<...>` 系统形式且
+头名命中标准库白名单包装（`caylibs/c/<name>.cay`，如 stdio/stdlib/string 等）时
+使用手写包装。`"..."` 形式永不匹配 `.cay` 包装——同名 Cay 文件不会遮蔽真实头文件。
+当头文件扩展名为 `.hpp`/`.hh`/`.hxx`，或内容中出现 `class`/`template`/`namespace`/`extern "C++"` 时，
 提取器进入 C++ 模式，支持**无模板**的 C++ 头文件：
 
 - class/struct 提取为 Cay **`interop class`**：数据成员按声明顺序镜像为等尺寸

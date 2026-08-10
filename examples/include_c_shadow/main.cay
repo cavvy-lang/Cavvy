@@ -1,0 +1,13 @@
+// 回归测试：#include_c "shadow.h" 不得被同目录同名 shadow.cay 劫持。
+// 同名 .cay 包装匹配已从引号形式移除（包装仅限 <...> 系统形式的 caylibs/c/
+// 白名单）。若错误匹配到 shadow.cay，abs_c 未声明，编译将失败。
+
+#include_c "shadow.h"
+
+public class IncludeCShadow {
+    public static void main() {
+        c_int v = abs_c(-5);
+        print("shadow_real=");
+        println(v);
+    }
+}
