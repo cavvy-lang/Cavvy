@@ -4,6 +4,16 @@
 
 use crate::codegen::context::IRGenerator;
 
+/// 构建方法签名键（与方法名 + 参数类型的 vtable 槽位键一致）。
+pub(crate) fn build_method_signature(method_name: &str, arg_types: &[crate::types::Type]) -> String {
+    let param_type_strs: Vec<String> = arg_types.iter().map(|t| format!("{:?}", t)).collect();
+    if param_type_strs.is_empty() {
+        method_name.to_string()
+    } else {
+        format!("{}({})", method_name, param_type_strs.join(","))
+    }
+}
+
 /// 简单解析类型实参字符串（与 SpecializationCollector 语义对齐）。
 fn parse_type_arg_str(s: &str) -> crate::types::Type {
     use crate::types::Type;
@@ -461,6 +471,181 @@ impl IRGenerator {
             }
         }
         // 默认返回 false（不是 private）
+        false
+    }
+
+    /// 检查方法是否是 final 方法（或在 final 类中）。
+    /// final 方法禁止被子类重写，因此可以安全地进行静态绑定。
+    pub(crate) fn is_method_final(&self, class_name: &str, method_name: &str) -> bool {
+        let mut current = self.resolved_class_lookup_name(class_name);
+        let Some(ref registry) = self.type_registry else {
+            return false;
+        };
+        loop {
+            if let Some(class_info) = registry.get_class(&current) {
+                // final 类中的实例方法等同于 final 方法
+                if class_info.is_final {
+                    return true;
+                }
+                if let Some(methods) = class_info.methods.get(method_name) {
+                    return methods.iter().any(|m| m.is_final);
+                }
+                current = match class_info.parent.as_ref() {
+                    Some(p) => self.resolved_class_lookup_name(p),
+                    None => break,
+                };
+            } else {
+                break;
+            }
+        }
+        false
+    }
+
+    /// 检查指定类中的方法是否被任何后代类重写。
+    ///
+    /// 用于编译期去虚拟化：如果实例方法在其声明类及所有后代类中均未被重写，
+    /// 则调用点可以安全地降级为直接调用，避免 vtable 间接分派开销。
+    ///
+    /// # 参数
+    /// * `class_name` - 方法声明类的名称（静态类型）
+    /// * `method_name` - 方法名
+    /// * `arg_types` - 调用点解析出的实参类型，用于匹配重载签名
+    pub(crate) fn is_method_overridden(
+        &self,
+        class_name: &str,
+        method_name: &str,
+        arg_types: &[crate::types::Type],
+    ) -> bool {
+        let class_name = self.resolved_class_lookup_name(class_name);
+        let class_name = class_name.as_str();
+        let Some(ref registry) = self.type_registry else {
+            return false;
+        };
+        let Some(class_info) = registry.get_class(class_name) else {
+            return false;
+        };
+        // final 类不可能存在子类，方法自然不会被重写
+        if class_info.is_final {
+            return false;
+        }
+        // 安全性检查：如果方法在 class_name 及其父类中根本不存在，
+        // 说明调用点使用的类名可能由于命名空间别名/using 被错误解析为其他类。
+        // 此时保守视为被重写，禁止去虚拟化，避免生成未定义函数的直接调用。
+        if !self.method_exists_in_hierarchy(class_name, method_name, arg_types) {
+            return true;
+        }
+        let method_sig = build_method_signature(method_name, arg_types);
+        self.is_method_overridden_in_descendants(class_name, method_name, &method_sig, registry)
+    }
+
+    /// 检查指定签名的方法是否存在于类或其父类中。
+    fn method_exists_in_hierarchy(
+        &self,
+        class_name: &str,
+        method_name: &str,
+        arg_types: &[crate::types::Type],
+    ) -> bool {
+        let mut current = self.resolved_class_lookup_name(class_name);
+        let Some(ref registry) = self.type_registry else {
+            return false;
+        };
+        let method_sig = build_method_signature(method_name, arg_types);
+        loop {
+            if let Some(class_info) = registry.get_class(&current) {
+                if let Some(methods) = class_info.methods.get(method_name) {
+                    for method in methods {
+                        let sub_sig = build_method_signature(
+                            &method.name,
+                            &method
+                                .params
+                                .iter()
+                                .map(|p| p.param_type.clone())
+                                .collect::<Vec<_>>(),
+                        );
+                        if sub_sig == method_sig {
+                            return true;
+                        }
+                    }
+                }
+                current = match class_info.parent.as_ref() {
+                    Some(p) => self.resolved_class_lookup_name(p),
+                    None => break,
+                };
+            } else {
+                break;
+            }
+        }
+        false
+    }
+
+    /// 递归检查后代类中是否存在与 `method_sig` 匹配的 override 方法。
+    fn is_method_overridden_in_descendants(
+        &self,
+        class_name: &str,
+        method_name: &str,
+        method_sig: &str,
+        registry: &crate::types::TypeRegistry,
+    ) -> bool {
+        for (sub_key, sub_info) in &registry.classes {
+            let is_direct_child = sub_info
+                .parent
+                .as_ref()
+                .map(|p| self.resolved_class_lookup_name(p))
+                .map(|p| p == class_name)
+                .unwrap_or(false);
+            if !is_direct_child {
+                continue;
+            }
+            if let Some(sub_class) = registry.get_class(sub_key) {
+                if let Some(methods) = sub_class.methods.get(method_name) {
+                    for method in methods {
+                        if method.is_override {
+                            let sub_sig = build_method_signature(
+                                &method.name,
+                                &method
+                                    .params
+                                    .iter()
+                                    .map(|p| p.param_type.clone())
+                                    .collect::<Vec<_>>(),
+                            );
+                            if sub_sig == method_sig {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+            if self.is_method_overridden_in_descendants(sub_key, method_name, method_sig, registry)
+            {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// 检查类名（basename）是否在多个命名空间中存在歧义。
+    ///
+    /// 当调用点使用简单类名（如 `HttpRequest`）且多个命名空间中都有同名类时，
+    /// using/别名可能将其解析到非预期类。此时 vtable 分派仍能工作（实际对象的
+    /// vtable 决定函数），但静态绑定会引用错误的函数名，因此禁止去虚拟化。
+    pub(crate) fn is_class_name_ambiguous(&self, class_name: &str) -> bool {
+        let base_name = class_name
+            .rsplit_once("::")
+            .map(|(_, base)| base)
+            .unwrap_or(class_name);
+        let Some(ref registry) = self.type_registry else {
+            return false;
+        };
+        let mut matches = 0usize;
+        for key in registry.classes.keys() {
+            let key_base = key.rsplit_once("::").map(|(_, base)| base).unwrap_or(key);
+            if key_base == base_name {
+                matches += 1;
+                if matches > 1 {
+                    return true;
+                }
+            }
+        }
         false
     }
 

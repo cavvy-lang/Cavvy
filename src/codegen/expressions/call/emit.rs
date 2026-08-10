@@ -9,6 +9,8 @@ use crate::miette_diagnostic::{CayResult, ErrorCodes, codegen_error_at};
 use crate::semantic::resolve_call_args;
 use crate::types::Type;
 
+use super::helpers::build_method_signature;
+
 impl IRGenerator {
     /// 检查是否有命名参数需要重排；有则按形参顺序重排并返回 Some，
     /// 否则返回 None（调用方直接使用原始参数列表）。
@@ -300,11 +302,34 @@ impl IRGenerator {
         // 必须直接调用，不能走 vtable 槽位间接分派。
         let is_method_level_generic =
             self.method_has_method_level_type_params(class_name, method_name);
+        // 编译期去虚拟化：非接口分派下，若方法为 final 或在所有后代类中均未被重写，
+        // 则调用点可以安全降级为直接调用，避免 vtable 间接分派开销。
+        //
+        // 额外检查：调用点生成的函数名必须与继承链中实际定义的函数名一致。
+        // 这可以防御命名空间/using 别名导致类名被错误解析的场景：
+        // 此时 vtable 分派仍能工作（槽位函数来自实际类），但直接调用会引用未定义符号。
+        let method_sig = build_method_signature(method_name, param_types);
+        let real_fn_name_opt = self
+            .find_method_in_hierarchy(class_name, &method_sig)
+            .map(|(n, _, _)| n);
+        let fn_name_consistent = real_fn_name_opt
+            .as_ref()
+            .map(|n| n == fn_name)
+            .unwrap_or(false);
+        // 如果类名（basename）在多个命名空间中存在，说明调用点使用的简单名可能
+        // 被 using/别名解析到非预期类。保守起见，禁止去虚拟化，继续走 vtable。
+        let class_name_unambiguous = !self.is_class_name_ambiguous(class_name);
+        let can_devirtualize = !is_interface_dispatch
+            && class_name_unambiguous
+            && fn_name_consistent
+            && (self.is_method_final(class_name, method_name)
+                || !self.is_method_overridden(class_name, method_name, param_types));
         let needs_vtable_dispatch = is_instance_method
             && resolved_this_val.is_some()
             && has_dispatch_slot
             && !is_private
-            && !is_method_level_generic;
+            && !is_method_level_generic
+            && !can_devirtualize;
 
         if needs_vtable_dispatch {
             self.emit_vtable_dispatch_call(

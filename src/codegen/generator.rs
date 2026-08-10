@@ -2329,7 +2329,7 @@ impl IRGenerator {
     /// 按接口类型实参推导出的期望返回类型消歧仅返回类型不同的重载集合
     /// （如 `Into<IOError>::into` 与 `Into<ParseError>::into`），确保 vtable
     /// 每个特化槽位填入正确的函数指针。
-    fn find_method_in_hierarchy(
+    pub(crate) fn find_method_in_hierarchy(
         &self,
         class_name: &str,
         method_sig: &str,

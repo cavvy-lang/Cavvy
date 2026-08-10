@@ -1,0 +1,54 @@
+// 测试编译期去虚拟化优化
+// - 方法未被重写时应生成直接调用（仍可得到正确结果）
+// - 方法被重写时仍需经 vtable 动态分派
+
+public class Base {
+    public void notOverridden() {
+        println("Base.notOverridden");
+    }
+
+    public void overridden() {
+        println("Base.overridden");
+    }
+
+    public final void finalMethod() {
+        println("Base.finalMethod");
+    }
+}
+
+public class Derived extends Base {
+    @Override
+    public void overridden() {
+        println("Derived.overridden");
+    }
+}
+
+public final class FinalLeaf {
+    public void leafMethod() {
+        println("FinalLeaf.leafMethod");
+    }
+}
+
+public class TestDevirtualization {
+    public static void main() {
+        // 1. 通过基类引用调用未被重写的方法：可静态绑定
+        Base b = new Derived();
+        b.notOverridden();
+
+        // 2. 通过基类引用调用被重写的方法：仍需动态分派
+        b.overridden();
+
+        // 3. final 方法可直接绑定
+        b.finalMethod();
+
+        // 4. final 类的实例方法可直接绑定
+        FinalLeaf leaf = new FinalLeaf();
+        leaf.leafMethod();
+
+        // 5. 具体子类类型调用自己未重写的方法：可静态绑定
+        Derived d = new Derived();
+        d.notOverridden();
+
+        println("devirtualization test passed");
+    }
+}
