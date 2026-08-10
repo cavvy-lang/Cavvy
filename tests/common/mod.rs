@@ -152,6 +152,11 @@ pub fn compile_and_run_eol_with_timeout(
     features: &[&str],
     timeout: Duration,
 ) -> Result<String, String> {
+    // cayc 默认把中间文件 (.ll / .obj) 生成在源文件同目录下，
+    // 因此同一个测试二进制内的多个测试并发编译同一个源文件时会互相覆盖中间文件。
+    // 使用全局锁串行化编译、运行和清理过程，避免这种竞争。
+    let _lock = TEST_LOCK.lock().unwrap();
+
     // 使用唯一ID生成输出文件名，避免测试冲突
     let unique_id = format!("{}_{:?}", std::process::id(), std::thread::current().id());
     let exe_ext = get_exe_extension();
@@ -236,6 +241,10 @@ pub fn compile_eol_expect_error_with_features(
     source_path: &str,
     features: &[&str],
 ) -> Result<String, String> {
+    // 与 compile_and_run_eol_with_timeout 保持一致：串行化编译过程，
+    // 防止并发编译同一源文件时中间文件互相覆盖。
+    let _lock = TEST_LOCK.lock().unwrap();
+
     // 使用唯一ID生成输出文件名，避免测试冲突
     let unique_id = format!("{}_{:?}", std::process::id(), std::thread::current().id());
     let exe_ext = get_exe_extension();
@@ -284,6 +293,9 @@ pub fn compile_eol_expect_error_with_features(
 /// assert!(error.contains("division by zero"));
 /// ```
 pub fn compile_and_run_expect_error(source_path: &str) -> Result<String, String> {
+    // 串行化编译运行过程，避免并发编译同一源文件时中间文件冲突。
+    let _lock = TEST_LOCK.lock().unwrap();
+
     let exe_ext = get_exe_extension();
     let exe_path = source_path.replace(".cay", exe_ext);
     let ir_path = source_path.replace(".cay", ".ll");

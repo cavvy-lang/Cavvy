@@ -14,7 +14,6 @@ use common::{assert_output_contains, compile_and_run_eol};
 
 #[test]
 fn test_thread_basic() {
-    let _lock = common::TEST_LOCK.lock().unwrap();
     let output = compile_and_run_eol("examples/test_thread.cay")
         .expect("test_thread should compile and run");
     assert_output_contains(
@@ -40,7 +39,6 @@ fn test_thread_basic() {
 
 #[test]
 fn test_atomic_operations() {
-    let _lock = common::TEST_LOCK.lock().unwrap();
     let output = compile_and_run_eol("examples/test_atomic.cay")
         .expect("test_atomic should compile and run");
     assert_output_contains(
@@ -60,7 +58,6 @@ fn test_atomic_operations() {
 
 #[test]
 fn test_mutex_and_rwlock() {
-    let _lock = common::TEST_LOCK.lock().unwrap();
     let output = compile_and_run_eol("examples/test_mutex.cay")
         .expect("test_mutex should compile and run");
     assert_output_contains(
@@ -78,7 +75,6 @@ fn test_mutex_and_rwlock() {
 /// RwLock 多线程竞争：1 写 + 3 读，最终值与读计数必须精确
 #[test]
 fn test_rwlock_contention() {
-    let _lock = common::TEST_LOCK.lock().unwrap();
     let output = compile_and_run_eol("examples/test_rwlock_contention.cay")
         .expect("test_rwlock_contention should compile and run");
     assert_output_contains(
@@ -97,7 +93,6 @@ fn test_rwlock_contention() {
 /// detach() 后台运行 + ThreadBuilder.name() 命名效果（Linux/macOS 读回验证）
 #[test]
 fn test_thread_detach_and_naming() {
-    let _lock = common::TEST_LOCK.lock().unwrap();
     let output = compile_and_run_eol("examples/test_thread_detach.cay")
         .expect("test_thread_detach should compile and run");
     let mut expected = vec!["1", "detached", "done"];
@@ -115,7 +110,6 @@ fn test_thread_detach_and_naming() {
 /// @Class.method，导致 "use of undefined value"）。
 #[test]
 fn test_method_ref_mangling() {
-    let _lock = common::TEST_LOCK.lock().unwrap();
     let output = compile_and_run_eol("examples/test_method_ref_mangling.cay")
         .expect("test_method_ref_mangling should compile and run");
     assert_output_contains(&output, &["1", "2", "3", "4", "done"], "test_method_ref_mangling");

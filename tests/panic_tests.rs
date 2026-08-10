@@ -5,7 +5,7 @@
 //! - `-g` debug 模式：abort 前打印调用栈回溯
 
 mod common;
-use common::{compile_and_run_expect_error, compile_eol_expect_error_with_features};
+use common::{TEST_LOCK, compile_and_run_expect_error, compile_eol_expect_error_with_features};
 
 /// 获取当前平台的 cayc 可执行文件路径（与 tests/common 保持一致）
 fn cayc_path() -> String {
@@ -43,6 +43,10 @@ fn test_no_panic_flag() {
 
 #[test]
 fn test_panic_backtrace_debug_mode() {
+    // 与 test_panic_builtin / test_no_panic_flag 共用 examples/test_panic.cay，
+    // 加锁防止并发编译时中间文件互相覆盖。
+    let _lock = TEST_LOCK.lock().unwrap();
+
     let exe_ext = if cfg!(target_os = "windows") { ".exe" } else { "" };
     let unique_id = format!("{}_{:?}", std::process::id(), std::thread::current().id());
     let exe_path = format!("examples/test_panic_bt_{}{}", unique_id, exe_ext);

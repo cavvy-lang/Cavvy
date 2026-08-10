@@ -6,12 +6,11 @@
 //! 3. 数组初始化：所有元素类型必须一致
 
 mod common;
-use common::{TEST_LOCK, assert_output_contains, compile_and_run_eol, compile_eol_expect_error};
+use common::{assert_output_contains, compile_and_run_eol, compile_eol_expect_error};
 
 /// Object 实例赋给 String 必须报语义错误
 #[test]
 fn test_object_instance_not_assignable_to_string() {
-    let _guard = TEST_LOCK.lock().unwrap();
     let error = compile_eol_expect_error("examples/errors/fix_semantic_object_to_string.cay")
         .expect("Object instance assigned to String should fail to compile");
     assert!(
@@ -24,7 +23,6 @@ fn test_object_instance_not_assignable_to_string() {
 /// String 与 int 的关系比较必须报语义错误
 #[test]
 fn test_string_relational_compare_with_int_errors() {
-    let _guard = TEST_LOCK.lock().unwrap();
     let error = compile_eol_expect_error("examples/errors/fix_semantic_string_lt_int.cay")
         .expect("\"abc\" < 42 should fail to compile");
     assert!(
@@ -37,7 +35,6 @@ fn test_string_relational_compare_with_int_errors() {
 /// 数组初始化元素类型不一致必须报语义错误
 #[test]
 fn test_array_init_mixed_element_types_error() {
-    let _guard = TEST_LOCK.lock().unwrap();
     let error = compile_eol_expect_error("examples/errors/fix_semantic_array_mixed_init.cay")
         .expect("{1, \"hello\"} should fail to compile");
     assert!(
@@ -50,7 +47,6 @@ fn test_array_init_mixed_element_types_error() {
 /// 泛型类默认类型参数必须参与构造函数实参类型检查
 #[test]
 fn test_arraylist_default_type_arg_mismatch_error() {
-    let _guard = TEST_LOCK.lock().unwrap();
     let error = compile_eol_expect_error("examples/errors/fix_semantic_arraylist_default_type_arg.cay")
         .expect("ArrayList<ArrayList<int>>(int, ArrayList<int>) should fail to compile");
     assert!(
@@ -63,7 +59,6 @@ fn test_arraylist_default_type_arg_mismatch_error() {
 /// 正向：null 可赋给任何引用类型、可与引用类型比较；合法比较与数组初始化不受影响
 #[test]
 fn test_null_assignment_and_comparisons_ok() {
-    let _guard = TEST_LOCK.lock().unwrap();
     let output = compile_and_run_eol("examples/fix_semantic_null_ok.cay")
         .expect("null/comparison legal program should compile and run");
     assert_output_contains(
