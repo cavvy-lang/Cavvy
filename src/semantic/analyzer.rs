@@ -204,6 +204,7 @@ impl SemanticAnalyzer {
                 is_protected: false,
                 is_static: true,
                 is_native: true,
+                is_const: false,
                 is_abstract: false,
                 is_override: false,
                 is_final: false,

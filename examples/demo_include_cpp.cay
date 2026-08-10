@@ -1,0 +1,40 @@
+// 演示 #include_c 的 C++ 头文件支持：demo_include_cpp.h 没有 .cay 包装，
+// 走保守提取器按 C++ 模式解析——class 提取为 `namespace demo { interop class
+// Counter { ... } }`（字段镜像 + native 构造/析构/方法），Cay 侧用原生类语法：
+// new 构造、方法调用、离开作用域自动析构（RAII）。
+// 运行需要配套实现：demo_include_cpp.cpp 编译出的静态库（-L/-l 链接）。
+
+#include_c "demo_include_cpp.h"
+
+using demo::Counter;
+
+public class DemoIncludeCpp {
+    public static void main() {
+        print("alive0=");
+        println(demo_counter_alive());
+        {
+            Counter c = new Counter(40);
+            c.add(2);
+            print("counter.value()=");
+            println(c.value());
+            // 字段镜像：C++ private 成员也按布局镜像（Cay 侧为 public）
+            print("counter.v_=");
+            println(c.v_);
+            print("alive1=");
+            println(demo_counter_alive());
+        }
+        // RAII：离开作用域自动调用 ~Counter
+        print("alive2=");
+        println(demo_counter_alive());
+
+        // 命名空间自由函数维持 <ns>__<fn> 别名形式
+        print("demo::twice(21)=");
+        println(demo__twice(21));
+
+        // 静态成员函数：类原生语法
+        print("Counter::version()=");
+        println(Counter::version());
+
+        println("include_c C++ demo passed!");
+    }
+}

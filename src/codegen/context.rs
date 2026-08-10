@@ -1023,7 +1023,7 @@ impl IRGenerator {
         for cand in candidates {
             // 局部类实例变量的 alloca 存储的是对象指针 i8*。
             // 加载该指针并调用 Itanium ABI 析构函数名。
-            let dtor_fn = self.mangle_itanium_method(&cand.class_name, "D1", &[], false, true);
+            let dtor_fn = self.mangle_itanium_method(&cand.class_name, "D1", &[], false, true, false);
             let obj_temp = self.new_temp();
             self.emit_line(&format!(
                 "  {} = load i8*, i8** %{}",
@@ -1766,6 +1766,8 @@ impl IRGenerator {
         class_name: &str,
         method: &crate::ast::MethodDecl,
     ) -> String {
+        // C++ 互操作 const 方法：mangling 在 N 后输出 K（定义侧与调用侧必须一致）
+        let is_const = method.modifiers.contains(&crate::ast::Modifier::Const);
         // 优先使用 AST 中已解析的参数类型。对于泛型特化类，调用方已经在生成特化代码前
         // 将方法参数中的泛型参数替换为具体类型，因此 method.params 中保存的是正确类型。
         let param_types: Vec<crate::types::Type> =
@@ -1809,6 +1811,7 @@ impl IRGenerator {
                                         &substituted,
                                         false,
                                         false,
+                                        is_const,
                                     );
                                 }
                             }
@@ -1824,6 +1827,7 @@ impl IRGenerator {
             &param_types,
             &method.return_type,
             &method.loc,
+            is_const,
         )
     }
 
@@ -1840,8 +1844,9 @@ impl IRGenerator {
         param_types: &[crate::types::Type],
         return_type: &crate::types::Type,
         self_loc: &crate::miette_diagnostic::SourceLocation,
+        is_const: bool,
     ) -> String {
-        let base = self.mangle_itanium_method(class_name, method_name, param_types, false, false);
+        let base = self.mangle_itanium_method(class_name, method_name, param_types, false, false, is_const);
         if !self.method_has_return_only_overloads(
             class_name,
             method_name,
@@ -2002,13 +2007,14 @@ impl IRGenerator {
         param_types: &[crate::types::Type],
         is_constructor: bool,
         is_destructor: bool,
+        is_const: bool,
     ) -> String {
         let mut mangler = crate::codegen::itanium_mangle::ItaniumMangler::new(
             self.type_registry.as_ref(),
             &self.class_namespaces,
             self.is_windows_target(),
         );
-        mangler.mangle_method(class_name, method_name, param_types, is_constructor, is_destructor)
+        mangler.mangle_method(class_name, method_name, param_types, is_constructor, is_destructor, is_const)
     }
 
     /// Mangle 变量名以确保是合法的 LLVM 标识符

@@ -311,6 +311,7 @@ impl SemanticAnalyzer {
                     is_protected: false,
                     is_static: false,
                     is_native: false,
+                    is_const: false,
                     is_abstract: false, // 接口方法在Cavvy中视为非抽象（有默认实现机制）
                     is_override: false,
                     is_final: false, // 接口方法不是final
@@ -617,6 +618,7 @@ impl SemanticAnalyzer {
                         is_protected: method.modifiers.contains(&Modifier::Protected),
                         is_static: method.modifiers.contains(&Modifier::Static),
                         is_native: method.modifiers.contains(&Modifier::Native),
+                        is_const: method.modifiers.contains(&Modifier::Const),
                         is_abstract: method.modifiers.contains(&Modifier::Abstract),
                         is_override: method.modifiers.contains(&Modifier::Override),
                         is_final: method.modifiers.contains(&Modifier::Final),
@@ -1342,6 +1344,10 @@ impl SemanticAnalyzer {
                         .modifiers
                         .iter()
                         .any(|m| matches!(m, Modifier::Native)),
+                    is_const: method
+                        .modifiers
+                        .iter()
+                        .any(|m| matches!(m, Modifier::Const)),
                     is_abstract: false,
                     is_override: false,
                     is_final: method
@@ -1432,6 +1438,10 @@ impl SemanticAnalyzer {
                         .modifiers
                         .iter()
                         .any(|m| matches!(m, Modifier::Native)),
+                    is_const: method
+                        .modifiers
+                        .iter()
+                        .any(|m| matches!(m, Modifier::Const)),
                     is_abstract: false,
                     is_override: false,
                     is_final: method
@@ -1477,6 +1487,7 @@ impl SemanticAnalyzer {
                             is_protected: method.modifiers.contains(&Modifier::Protected),
                             is_static: method.modifiers.contains(&Modifier::Static),
                             is_native: false,
+                            is_const: false,
                             is_abstract: false,
                             is_override: false,
                             is_final: false,

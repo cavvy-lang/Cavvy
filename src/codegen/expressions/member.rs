@@ -95,6 +95,7 @@ impl IRGenerator {
                                 &member.member,
                                 &method_info.params,
                                 false,
+                                method_info.is_const,
                             );
 
                             // 获取参数类型和返回类型

@@ -43,6 +43,7 @@ impl<'a> ItaniumMangler<'a> {
     /// 示例：
     /// - `MyNS::MyVec<int>::get(int)` -> `_ZN4MyNS5MyVecIiE3getEi`
     /// - `MyVec<int>::push_back(int)` -> `_ZN5MyVecIiE9push_backEi`
+    /// - const 方法 `Foo::bar(int) const` -> `_ZNK3Foo3barEi`（`N` 后输出 `K`）
     pub fn mangle_method(
         &mut self,
         class_name: &str,
@@ -50,11 +51,17 @@ impl<'a> ItaniumMangler<'a> {
         param_types: &[Type],
         is_constructor: bool,
         is_destructor: bool,
+        is_const: bool,
     ) -> String {
         let mut result = String::from("_Z");
         let (ns, base, targs) = self.parse_class_name(class_name);
+        // 记录 'N' 的写入位置：const 成员函数的 `K` 紧跟 `N` 之后
+        let n_pos = result.len();
         let class_need_n =
             self.encode_nested_class(&mut result, &ns, &base, &targs, true);
+        if is_const && class_need_n && result.as_bytes().get(n_pos) == Some(&b'N') {
+            result.insert(n_pos + 1, 'K');
+        }
 
         if is_constructor {
             result.push_str("C1");
@@ -491,7 +498,7 @@ mod tests {
         let namespaces = HashMap::new();
         let mut m = new_mangler(&namespaces);
         assert_eq!(
-            m.mangle_method("MyVec<int>", "get", &[Type::Int32], false, false),
+            m.mangle_method("MyVec<int>", "get", &[Type::Int32], false, false, false),
             "_ZN5MyVecIiE3getEi"
         );
     }
@@ -501,7 +508,7 @@ mod tests {
         let namespaces = HashMap::new();
         let mut m = new_mangler(&namespaces);
         assert_eq!(
-            m.mangle_method("MyNS::MyVec<int>", "get", &[Type::Int32], false, false),
+            m.mangle_method("MyNS::MyVec<int>", "get", &[Type::Int32], false, false, false),
             "_ZN4MyNS5MyVecIiE3getEi"
         );
     }
@@ -516,6 +523,7 @@ mod tests {
                 "MyNS::MyVec<MyNS::MyVec<int>>",
                 "get",
                 &[Type::Int32],
+                false,
                 false,
                 false
             ),
@@ -558,12 +566,12 @@ mod tests {
         // 每个 mangled 符号使用独立替换表，因此分别创建 mangler。
         let mut m = new_mangler(&namespaces);
         assert_eq!(
-            m.mangle_method("MyVec<int>", "C1", &[Type::Int32], true, false),
+            m.mangle_method("MyVec<int>", "C1", &[Type::Int32], true, false, false),
             "_ZN5MyVecIiEC1Ei"
         );
         let mut m = new_mangler(&namespaces);
         assert_eq!(
-            m.mangle_method("MyVec<int>", "D1", &[], false, true),
+            m.mangle_method("MyVec<int>", "D1", &[], false, true, false),
             "_ZN5MyVecIiED1Ev"
         );
     }
@@ -574,7 +582,7 @@ mod tests {
         let namespaces = HashMap::new();
         let mut m = new_mangler(&namespaces);
         assert_eq!(
-            m.mangle_method("MyNS::MyVec<int>", "push_back", &[Type::Int32], false, false),
+            m.mangle_method("MyNS::MyVec<int>", "push_back", &[Type::Int32], false, false, false),
             "_ZN4MyNS5MyVecIiE9push_backEi"
         );
     }
@@ -584,8 +592,31 @@ mod tests {
         let namespaces = HashMap::new();
         let mut m = new_mangler(&namespaces);
         assert_eq!(
-            m.mangle_method("MyNS::MyVec<int>", "D1", &[], false, true),
+            m.mangle_method("MyNS::MyVec<int>", "D1", &[], false, true, false),
             "_ZN4MyNS5MyVecIiED1Ev"
+        );
+    }
+
+    #[test]
+    fn test_const_method_k_marker() {
+        // const 成员函数在 N 后输出 K：Foo::bar(int) const -> _ZNK3Foo3barEi
+        let namespaces = HashMap::new();
+        let mut m = new_mangler(&namespaces);
+        assert_eq!(
+            m.mangle_method("Foo", "bar", &[Type::Int32], false, false, true),
+            "_ZNK3Foo3barEi"
+        );
+        // 命名空间内的 const 方法：K 同样紧跟最外层 N
+        let mut m = new_mangler(&namespaces);
+        assert_eq!(
+            m.mangle_method("ns::Foo", "bar", &[], false, false, true),
+            "_ZNK2ns3Foo3barEv"
+        );
+        // 非 const 对照：无 K
+        let mut m = new_mangler(&namespaces);
+        assert_eq!(
+            m.mangle_method("Foo", "bar", &[Type::Int32], false, false, false),
+            "_ZN3Foo3barEi"
         );
     }
 
@@ -594,7 +625,7 @@ mod tests {
         let namespaces = HashMap::new();
         let mut m = new_mangler(&namespaces);
         assert_eq!(
-            m.mangle_method("MyNS::MyVec<int>", "C1", &[Type::Int32], true, false),
+            m.mangle_method("MyNS::MyVec<int>", "C1", &[Type::Int32], true, false, false),
             "_ZN4MyNS5MyVecIiEC1Ei"
         );
     }

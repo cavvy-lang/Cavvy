@@ -18,26 +18,26 @@ fn test_mangle_itanium_method_basic() {
             "add",
             &[Type::Int32, Type::Int32],
             false,
-            false
+            false, false
         ),
         "_ZN3HHH6Helper3addEii"
     );
 
     // HHH::Inst::getNum() -> _ZN3HHH4Inst6getNumEv
     assert_eq!(
-        generator.mangle_itanium_method("HHH::Inst", "getNum", &[], false, false),
+        generator.mangle_itanium_method("HHH::Inst", "getNum", &[], false, false, false),
         "_ZN3HHH4Inst6getNumEv"
     );
 
     // HHH::Inst::Inst(int) -> _ZN3HHH4InstC1Ei
     assert_eq!(
-        generator.mangle_itanium_method("HHH::Inst", "C1", &[Type::Int32], true, false),
+        generator.mangle_itanium_method("HHH::Inst", "C1", &[Type::Int32], true, false, false),
         "_ZN3HHH4InstC1Ei"
     );
 
     // Object default constructor -> _ZN6ObjectC1Ev
     assert_eq!(
-        generator.mangle_itanium_method("Object", "C1", &[], true, false),
+        generator.mangle_itanium_method("Object", "C1", &[], true, false, false),
         "_ZN6ObjectC1Ev"
     );
 }
@@ -55,14 +55,14 @@ fn test_mangle_itanium_method_nested_and_dtor() {
             "foo",
             &[Type::Int64, Type::Float64],
             false,
-            false
+            false, false
         ),
         "_ZN1A1B1C3fooExd"
     );
 
     // A::B::C::~C() -> _ZN1A1B1CD1Ev
     assert_eq!(
-        generator.mangle_itanium_method("A::B::C", "D1", &[], false, true),
+        generator.mangle_itanium_method("A::B::C", "D1", &[], false, true, false),
         "_ZN1A1B1CD1Ev"
     );
 }

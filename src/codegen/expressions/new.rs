@@ -250,9 +250,11 @@ impl IRGenerator {
         };
 
         // 获取类布局信息，确定对象大小（使用基础类名查找）
+        // interop class 允许零字段（如纯 C++ 句柄类），此时 total_size 为 0，
+        // calloc(1, 0) 语义未定义，这里钳制到至少 1 字节保证返回唯一非空指针。
         let obj_size = self
             .get_class_layout(&registry_name)
-            .map(|layout| layout.total_size as i64)
+            .map(|layout| (layout.total_size as i64).max(1))
             .unwrap_or(8i64); // 默认最小大小
 
         let calloc_temp = self.new_temp();

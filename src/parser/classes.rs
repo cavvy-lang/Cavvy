@@ -440,6 +440,14 @@ pub fn parse_method(parser: &mut Parser) -> CayResult<MethodDecl> {
     let params = parse_parameters(parser)?;
     parser.consume(&Token::RParen, "期望 ')'\n提示: 参数列表应以 ')' 结束")?;
 
+    // 尾随上下文 const：`native int value() const;`（C++ 互操作用；
+    // Cay 无 const 关键字，此处按上下文关键字识别，只影响 Itanium mangling）
+    let mut modifiers = modifiers;
+    if matches!(parser.current_token(), Token::Identifier(id) if id == "const") {
+        parser.advance();
+        modifiers.push(Modifier::Const);
+    }
+
     // 检查是否是native方法或abstract方法（这两种都可以没有方法体）
     let is_native = modifiers.contains(&Modifier::Native);
     let is_abstract = modifiers.contains(&Modifier::Abstract);
@@ -499,6 +507,13 @@ pub fn parse_fn_method(parser: &mut Parser) -> CayResult<MethodDecl> {
     } else {
         crate::types::Type::Auto
     };
+
+    // 尾随上下文 const（同 parse_method，放在可选返回类型之后）
+    let mut modifiers = modifiers;
+    if matches!(parser.current_token(), Token::Identifier(id) if id == "const") {
+        parser.advance();
+        modifiers.push(Modifier::Const);
+    }
 
     // 检查是否是native方法或abstract方法（这两种都可以没有方法体）
     let is_native = modifiers.contains(&Modifier::Native);
@@ -699,6 +714,7 @@ fn parse_constructor_call_args(parser: &mut Parser) -> CayResult<Vec<Expr>> {
 
 /// 解析析构函数声明
 /// 格式: ~ClassName() { body }
+/// 或:   native ~ClassName();（C++ 互操作：只声明，实现由外部提供）
 pub fn parse_destructor(parser: &mut Parser) -> CayResult<DestructorDecl> {
     let loc = parser.current_loc();
     let modifiers = parse_modifiers(parser)?;
@@ -720,8 +736,21 @@ pub fn parse_destructor(parser: &mut Parser) -> CayResult<DestructorDecl> {
     )?;
     parser.consume(&Token::RParen, "期望 ')'\n提示: 析构函数不接受参数")?;
 
-    // 解析析构函数体
-    let body = parse_block(parser)?;
+    // native 析构无实现体，以 ';' 结束（仿 native 构造/方法）
+    let body = if modifiers.contains(&Modifier::Native) {
+        parser.consume(
+            &Token::Semicolon,
+            "期望 ';'\n提示: native 析构函数声明应以 ';' 结束，例如: native ~MyClass();",
+        )?;
+        Block {
+            statements: Vec::new(),
+            tail_expr: None,
+            loc: parser.current_loc(),
+        }
+    } else {
+        // 解析析构函数体
+        parse_block(parser)?
+    };
 
     Ok(DestructorDecl {
         modifiers,
@@ -1310,4 +1339,57 @@ pub fn parse_impl(parser: &mut Parser) -> CayResult<ImplDecl> {
         namespace_path: Vec::new(),
         loc,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::ast::{ClassMember, Modifier};
+
+    fn parse_class(source: &str) -> crate::ast::ClassDecl {
+        let tokens = crate::lexer::lex(source).expect("source should lex");
+        let ast = crate::parser::parse_with_source(tokens, source.to_string())
+            .expect("source should parse");
+        ast.classes.into_iter().next().expect("one class")
+    }
+
+    /// native 析构函数以 ';' 结束、无实现体（interop class 的 C++ 析构声明）
+    #[test]
+    fn native_destructor_semicolon_no_body() {
+        let class = parse_class(
+            "interop class C {\n\
+                 public native C();\n\
+                 public native ~C();\n\
+             }",
+        );
+        let dtor = class
+            .members
+            .iter()
+            .find_map(|m| match m {
+                ClassMember::Destructor(d) => Some(d),
+                _ => None,
+            })
+            .expect("destructor member");
+        assert!(dtor.modifiers.contains(&Modifier::Native));
+        assert!(dtor.body.statements.is_empty());
+    }
+
+    /// 尾随 const 方法（C++ const 成员函数）：解析为 Modifier::Const
+    #[test]
+    fn trailing_const_method_modifier() {
+        let class = parse_class(
+            "interop class C {\n\
+                 public native c_int value() const;\n\
+                 public native void touch();\n\
+             }",
+        );
+        let mut methods = class.members.iter().filter_map(|m| match m {
+            ClassMember::Method(m) => Some(m),
+            _ => None,
+        });
+        let value = methods.next().expect("value method");
+        assert_eq!(value.name, "value");
+        assert!(value.modifiers.contains(&Modifier::Const));
+        let touch = methods.next().expect("touch method");
+        assert!(!touch.modifiers.contains(&Modifier::Const));
+    }
 }

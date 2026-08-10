@@ -711,7 +711,7 @@ impl IRGenerator {
             "into",
             &[],
             &target.return_type,
-            &target.loc,
+            &target.loc, false
         );
         let e2_llvm = self.type_to_llvm(e2_type);
         let converted_temp = self.new_temp();

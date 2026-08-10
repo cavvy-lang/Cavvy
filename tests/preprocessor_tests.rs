@@ -264,3 +264,138 @@ fn test_error_include_c_missing() {
         error
     );
 }
+
+// ==================== #include_c C++ 头文件测试 ====================
+
+/// 查找可用的 C++ 编译器（g++ 优先，其次 clang++）
+fn find_cpp_compiler() -> Option<&'static str> {
+    for cc in ["g++", "clang++"] {
+        let ok = std::process::Command::new(cc)
+            .arg("--version")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        if ok {
+            return Some(cc);
+        }
+    }
+    None
+}
+
+/// C++ 头文件兜底提取 + 真实链接验证：
+/// 1. g++/clang++ 把 demo_include_cpp.cpp 编译为静态库；
+/// 2. cayc 提取 demo_include_cpp.h（C++ 模式，Itanium mangled 链接名）并链接该库；
+/// 3. 运行生成的可执行文件，验证构造/成员/const 方法/静态方法/自由函数全部链接正确。
+///
+/// 环境没有 C++ 编译器时跳过（mangled 名由 c_header/cpp_mangle 单测锁定）。
+#[test]
+fn test_include_cpp_real_header_link() {
+    let cxx = match find_cpp_compiler() {
+        Some(c) => c,
+        None => {
+            eprintln!("skip test_include_cpp_real_header_link: no g++/clang++ available");
+            return;
+        }
+    };
+    let unique = format!("{}_{:?}", std::process::id(), std::thread::current().id())
+        .replace(|c: char| !c.is_alphanumeric(), "_");
+    let work = std::env::temp_dir().join(format!("cay_cpp_demo_{}", unique));
+    std::fs::create_dir_all(&work).expect("create temp dir");
+
+    // 1. C++ 实现 → 静态库（禁用异常/RTTI，避免引入 libstdc++ 运行时符号）
+    let obj = work.join("demo_include_cpp.o");
+    let lib = work.join("libdemo_include_cpp.a");
+    let out = std::process::Command::new(cxx)
+        .args([
+            "-c",
+            "-std=c++17",
+            "-fno-exceptions",
+            "-fno-rtti",
+            "examples/demo_include_cpp.cpp",
+            "-o",
+        ])
+        .arg(&obj)
+        .output()
+        .expect("run c++ compiler");
+    assert!(
+        out.status.success(),
+        "c++ compile failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let out = std::process::Command::new("ar")
+        .arg("rcs")
+        .arg(&lib)
+        .arg(&obj)
+        .output()
+        .expect("run ar");
+    assert!(
+        out.status.success(),
+        "ar failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    // 2. cayc 编译 .cay 并链接静态库
+    let exe = work.join(if cfg!(target_os = "windows") {
+        "demo_include_cpp_run.exe"
+    } else {
+        "demo_include_cpp_run"
+    });
+    let cayc = if cfg!(target_os = "windows") {
+        "./target/release/cayc.exe"
+    } else {
+        "./target/release/cayc"
+    };
+    let out = std::process::Command::new(cayc)
+        .args(["examples/demo_include_cpp.cay"])
+        .arg(&exe)
+        .arg(format!("-L{}", work.display()))
+        .arg("-ldemo_include_cpp")
+        .output()
+        .expect("run cayc");
+    assert!(
+        out.status.success(),
+        "cayc compile/link failed: {}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    // 3. 运行并验证
+    let out = std::process::Command::new(&exe)
+        .output()
+        .expect("run demo executable");
+    let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+    let _ = std::fs::remove_dir_all(&work);
+    assert!(out.status.success(), "demo exited nonzero: {}", stdout);
+    assert!(
+        stdout.contains("counter.value()=42"),
+        "ctor/add/value (const method) should work, got: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("counter.v_=42"),
+        "mirrored field layout should match C++, got: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("alive0=0") && stdout.contains("alive1=1") && stdout.contains("alive2=0"),
+        "RAII destructor should run at scope exit, got: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("demo::twice(21)=42"),
+        "namespaced free function should link, got: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("Counter::version()=7"),
+        "static member function should link, got: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("include_c C++ demo passed!"),
+        "got: {}",
+        stdout
+    );
+}

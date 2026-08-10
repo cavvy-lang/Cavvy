@@ -824,7 +824,7 @@ impl IRGenerator {
                     &method_ref.method_name,
                     &cay_params,
                     false,
-                    false,
+                    false, false
                 );
                 (mangled, ret, params)
             } else {

@@ -123,6 +123,101 @@ Windows 下编译器会在检测到 socket API 时自动链接 `ws2_32`。
 
 ---
 
+## `#include_c` 的 C++ 头文件支持
+
+`#include_c` 找不到 `.cay` 包装时会直接解析磁盘上的真实头文件。当头文件扩展名为
+`.hpp`/`.hh`/`.hxx`，或内容中出现 `class`/`template`/`namespace`/`extern "C++"` 时，
+提取器进入 C++ 模式，支持**无模板**的 C++ 头文件：
+
+- class/struct 提取为 Cay **`interop class`**：数据成员按声明顺序镜像为等尺寸
+  Cay 字段（布局与 C++ 一致），构造/析构/成员函数/静态成员函数渲染为 `native`
+  声明，由 Cay 编译器按 Itanium ABI（g++/clang/MinGW，不支持 MSVC）mangle
+  链接名；
+- 顶层自由函数按 Itanium mangle 后以 `<ns>__<fn>` 别名注入 `extern` 块；
+  `extern "C"` 块内保持 C 链接。
+
+以这个头文件为例：
+
+```cpp
+namespace demo {
+class Counter {
+public:
+    Counter();
+    Counter(int v);
+    ~Counter();
+    void add(int delta);
+    int value() const;
+    static int version();
+private:
+    int v_;
+};
+int twice(int x);
+}
+```
+
+提取结果形如：
+
+```cay ignore
+extern {
+    c_int _ZN4demo5twiceEi(c_int) as demo__twice;
+}
+namespace demo {
+    interop class Counter {
+        public c_int v_;
+        public native Counter();
+        public native Counter(c_int p0);
+        public native ~Counter();
+        public native void add(c_int p0);
+        public native c_int value() const;
+        public native static c_int version();
+    }
+}
+```
+
+Cavvy 侧用**原生类语法**：`new` 构造、方法调用、离开作用域自动析构（RAII）：
+
+```cay ignore
+#include_c "demo_include_cpp.h"
+
+using demo::Counter;
+
+public class Main {
+    public static void main() {
+        Counter c = new Counter(40);   // 调用 C++ 构造函数
+        c.add(2);                      // 成员函数（_ZN4demo7Counter3addEi）
+        println(c.value());            // const 成员函数（_ZNK4demo7Counter5valueEv）
+        println(c.v_);                 // 字段镜像（private 成员也会镜像）
+        println(Counter::version());   // 静态成员函数
+        println(demo__twice(21));      // 命名空间自由函数维持别名形式
+    }   // 离开作用域自动调用 ~Counter（RAII）
+}
+```
+
+注意事项：
+
+- **对象布局**：标量数据成员镜像为等尺寸 Cay 字段（`int`→`c_int`、
+  `long`→`c_long`、`float`→`c_float`、`bool`→`c_bool` 等），指针/引用成员
+  镜像为 `c_void*`；字段按声明顺序排列，布局与 C++ 一致，可直接读写；
+- **哪些类能 `new`**：含基类、位域、按值类成员、模板类型成员、匿名 union
+  或未识别类型成员的类**布局不完整**，提取器不生成构造/析构（`new` 被自然
+  封死）并告警，此类对象请通过 C++ 工厂函数创建（指针以 `c_void*` 传递）；
+- **虚函数**：含 virtual 的类在字段最前补 `c_void* __cpp_vptr;` 保持布局，
+  Cay 侧为**直接调用**（静态绑定），不支持虚分派语义；纯虚函数无独立符号，
+  跳过并告警；
+- **const/重载**：尾随 `const` 成员函数按 Itanium `K` 标记 mangle；仅 const
+  区分的重载对跳过 const 版本并告警，其余重载由 Cay 原生重载决议处理；
+- **运算符重载**：无法对应 Cay 方法语法，维持 `<Class>__operator_<op>`
+  自由函数别名形式（首参 `c_void*` 为 `this`），如
+  `demo__Counter__operator_plus(a, b)`；
+- **跳过并告警**：模板声明、嵌套类（Cay 无嵌套类语法）、静态数据成员、
+  按值传递/返回 class 类型的函数；
+- **链接**：需要把配套 `.cpp` 用 g++/clang++ 编译成库后用 `-L`/`-l` 链接，
+  见 `examples/demo_include_cpp.{h,cpp,cay}`。
+
+---
+
+---
+
 ## 标准库 FFI 封装
 
 推荐使用标准库中已封装的 FFI：

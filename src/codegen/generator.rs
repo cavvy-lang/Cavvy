@@ -2161,7 +2161,7 @@ impl IRGenerator {
 
     /// 生成 struct 默认构造函数（无参）
     fn generate_struct_default_constructor(&mut self, struct_name: &str) -> CayResult<()> {
-        let fn_name = self.mangle_itanium_method(struct_name, "C1", &[], true, false);
+        let fn_name = self.mangle_itanium_method(struct_name, "C1", &[], true, false, false);
 
         if self.generated_methods.contains(&fn_name) {
             return Ok(());
@@ -2476,7 +2476,7 @@ impl IRGenerator {
                                     method_name,
                                     &substituted_param_types,
                                     &substituted_return_type,
-                                    &method.loc,
+                                    &method.loc, false
                                 );
                                 matched.push((
                                     fn_name,
@@ -3083,7 +3083,7 @@ impl IRGenerator {
 
     /// 生成默认构造函数（无参构造函数）
     fn generate_default_constructor(&mut self, class_name: &str) -> CayResult<()> {
-        let fn_name = self.mangle_itanium_method(class_name, "C1", &[], true, false);
+        let fn_name = self.mangle_itanium_method(class_name, "C1", &[], true, false, false);
 
         // 防止重复生成相同名称的默认构造函数（泛型特化可能产生同名构造函数）
         if self.generated_methods.contains(&fn_name) {
@@ -3144,7 +3144,7 @@ impl IRGenerator {
             if let Some(class_info) = registry.get_class(class_name) {
                 if let Some(ref parent_name) = class_info.parent {
                     let parent_ctor_name =
-                        self.mangle_itanium_method(parent_name, "C1", &[], true, false);
+                        self.mangle_itanium_method(parent_name, "C1", &[], true, false, false);
                     self.emit_line(&format!("  call void @{}(i8* %this)", parent_ctor_name));
                 }
             }
@@ -3257,13 +3257,30 @@ impl IRGenerator {
         dtor: &crate::ast::DestructorDecl,
     ) -> CayResult<()> {
         let llvm_class = self.get_qualified_class_name(class_name);
-        let fn_name = self.mangle_itanium_method(class_name, "D1", &[], false, true);
+        let fn_name = self.mangle_itanium_method(class_name, "D1", &[], false, true, false);
 
         // 防止重复生成相同名称的析构函数（泛型特化可能产生同名析构函数）
         if self.generated_methods.contains(&fn_name) {
             return Ok(());
         }
         self.generated_methods.insert(fn_name.clone());
+
+        // native 析构不生成实现体（符号由外部 C++ 实现提供），
+        // 但必须在 IR 中声明以便 RAII 调用点引用（仿 native 方法/构造）
+        if dtor.modifiers.contains(&Modifier::Native) {
+            let cc_attr = self.calling_convention_to_llvm_attr(crate::ast::CallingConvention::Cdecl);
+            let decl = if cc_attr.is_empty() {
+                format!("declare void @{}(i8*)\n", fn_name)
+            } else {
+                format!("declare void @{}(i8*) {}\n", fn_name, cc_attr)
+            };
+            let sig = format!("{}@void@i8*", fn_name);
+            if !self.is_extern_emitted(&sig) {
+                self.emit_raw(&decl);
+                self.mark_extern_emitted(sig);
+            }
+            return Ok(());
+        }
 
         self.current_function = fn_name.clone();
         // 从可能包含 :: 的限定名中提取简单名用于 current_class
@@ -3427,7 +3444,7 @@ impl IRGenerator {
             return Ok(());
         };
 
-        let dtor_fn = self.mangle_itanium_method(&t_class, "D1", &[], false, true);
+        let dtor_fn = self.mangle_itanium_method(&t_class, "D1", &[], false, true, false);
 
         let data_offset = self.get_field_offset(class_name, "data")?;
         let size_offset = self.get_field_offset(class_name, "size")?;
@@ -3628,7 +3645,7 @@ impl IRGenerator {
 
         // 若 T 是带析构函数的类，调用其 __dtor。
         if let Some(t_class) = self.type_has_destructor(t_type) {
-            let dtor_fn = self.mangle_itanium_method(&t_class, "D1", &[], false, true);
+            let dtor_fn = self.mangle_itanium_method(&t_class, "D1", &[], false, true, false);
             self.emit_line(&format!(
                 "  call void @{}(i8* {})",
                 dtor_fn, obj
@@ -3764,7 +3781,7 @@ impl IRGenerator {
 
         // 若 T 有析构函数，先调用。
         if let Some(t_class) = self.type_has_destructor(t_type) {
-            let dtor_fn = self.mangle_itanium_method(&t_class, "D1", &[], false, true);
+            let dtor_fn = self.mangle_itanium_method(&t_class, "D1", &[], false, true, false);
             self.emit_line(&format!(
                 "  call void @{}(i8* {})",
                 dtor_fn, obj
@@ -3997,7 +4014,7 @@ impl IRGenerator {
             value, value_ptr
         ));
 
-        let dtor_fn = self.mangle_itanium_method(&t_class, "D1", &[], false, true);
+        let dtor_fn = self.mangle_itanium_method(&t_class, "D1", &[], false, true, false);
         self.emit_line(&format!(
             "  call void @{}(i8* {})",
             dtor_fn, value
@@ -4130,7 +4147,7 @@ impl IRGenerator {
                                 return self.mangle_itanium_method(
                                     class_name, "C1",
                                     &ctor.params.iter().map(|p| p.param_type.clone()).collect::<Vec<_>>(),
-                                    true, false,
+                                    true, false, false
                                 );
                             }
                         }
@@ -4151,7 +4168,7 @@ impl IRGenerator {
                                 return self.mangle_itanium_method(
                                     class_name, "C1",
                                     &ctor.params.iter().map(|p| p.param_type.clone()).collect::<Vec<_>>(),
-                                    true, false,
+                                    true, false, false
                                 );
                             }
                         }
@@ -4162,7 +4179,7 @@ impl IRGenerator {
         } else {
             ctor.params.iter().map(|p| p.param_type.clone()).collect()
         };
-        self.mangle_itanium_method(class_name, "C1", &param_types, true, false)
+        self.mangle_itanium_method(class_name, "C1", &param_types, true, false, false)
     }
 
     /// 生成构造函数调用名称（基于参数类型列表）
@@ -4171,14 +4188,14 @@ impl IRGenerator {
         class_name: &str,
         param_types: &[crate::types::Type],
     ) -> String {
-        self.mangle_itanium_method(class_name, "C1", param_types, true, false)
+        self.mangle_itanium_method(class_name, "C1", param_types, true, false, false)
     }
 
     /// 生成构造函数调用名称（基于参数数量 - 仅用于简单情况，参数类型全部假定为 int）
     pub fn generate_constructor_call_name(&self, class_name: &str, arg_count: usize) -> String {
         let param_types: Vec<crate::types::Type> =
             (0..arg_count).map(|_| crate::types::Type::Int32).collect();
-        self.mangle_itanium_method(class_name, "C1", &param_types, true, false)
+        self.mangle_itanium_method(class_name, "C1", &param_types, true, false, false)
     }
 
     /// 推断表达式类型（用于构造函数调用）

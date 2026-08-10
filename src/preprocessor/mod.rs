@@ -21,6 +21,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 mod c_header;
+mod cpp_mangle;
 
 /// 源位置信息
 #[derive(Debug, Clone)]
@@ -1032,14 +1033,22 @@ impl Preprocessor {
     /// 系统形式先查 `c/<base>.cay`（libc 包装所在），再查 `<base>.cay`；
     /// 用户形式先查相对当前文件的 `<base>.cay`，再查 `c/<base>.cay`。
     /// 复用 `resolve_include_path` 的搜索根（exe-dir/caylibs、cwd/caylibs、-I 等）。
+    /// 解析结果若恰为当前文件自身（源文件与头文件同名时）则跳过——
+    /// 一个文件的 #include_c 包装绝不可能是它自己。
     fn resolve_cay_wrapper(&self, base: &str, is_system: bool, current_file: &str) -> Option<String> {
         let candidates: Vec<String> = if is_system {
             vec![format!("c/{}.cay", base), format!("{}.cay", base)]
         } else {
             vec![format!("{}.cay", base), format!("c/{}.cay", base)]
         };
+        let current_canon = std::fs::canonicalize(current_file).ok();
         for cand in &candidates {
             if let Ok(p) = self.resolve_include_path(cand, is_system, current_file) {
+                if let Some(cc) = &current_canon {
+                    if std::fs::canonicalize(&p).ok().as_ref() == Some(cc) {
+                        continue;
+                    }
+                }
                 return Some(p);
             }
         }
@@ -1087,10 +1096,13 @@ impl Preprocessor {
         None
     }
 
-    /// 去掉头文件路径的单个 `.h` 或 `.cay` 后缀，保留其余（含子目录）。
+    /// 去掉头文件路径的单个 `.h`/`.hpp`/`.hh`/`.hxx`/`.cay` 后缀，保留其余（含子目录）。
     fn strip_header_ext(p: &str) -> String {
         let p = p.trim();
-        p.strip_suffix(".h")
+        p.strip_suffix(".hpp")
+            .or_else(|| p.strip_suffix(".hxx"))
+            .or_else(|| p.strip_suffix(".hh"))
+            .or_else(|| p.strip_suffix(".h"))
             .or_else(|| p.strip_suffix(".cay"))
             .unwrap_or(p)
             .to_string()

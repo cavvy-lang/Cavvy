@@ -21,7 +21,7 @@
 
 ```
 class, interface, struct, enum, extends, implements
-public, private, protected, static, final, abstract, native
+public, private, protected, static, final, abstract, native, interop
 if, else, switch, case, default, for, while, do, break, continue, return
 new, delete, this, super, instanceof, typeof
 true, false, null
@@ -214,6 +214,7 @@ alias type = existing_type;
 | `final`    | 类：禁止继承；方法：禁止重写   |
 | `abstract` | 抽象类（不可实例化）或抽象方法 |
 | `native`   | native 方法声明（由 FFI 实现） |
+| `interop`  | C++ 互操作类（无 Cavvy 对象头，布局与 C++ 一致） |
 | `virtual`  | 可被重写的虚方法               |
 | `override` | 重写父类方法                   |
 
@@ -271,6 +272,28 @@ class Resource {
     }
 }
 ```
+
+### interop class（C++ 互操作类）
+
+`interop class` 用于映射 C++ 类：无 Cavvy 对象头与 vtable，字段布局与 C++
+一致，构造/析构/方法以 `native` 声明并以 `;` 结束（无实现体），由 Cay
+编译器按 Itanium ABI mangle 链接名。成员方法支持尾随 `const`（对应 C++
+const 成员函数，mangle 时加 `K` 标记）。对象用 `new` 创建，离开作用域
+自动析构（RAII）：
+
+```cay ignore
+interop class Counter {
+    public c_int value_;
+    public native Counter();            // native 构造：';' 结束
+    public native ~Counter();           // native 析构：';' 结束
+    public native void add(c_int x);
+    public native c_int value() const;  // C++ const 成员函数
+    public native static c_int version();
+}
+```
+
+通常不由手写，而是 `#include_c` 解析 C++ 头文件时自动生成，详见
+[FFI 文档](ffi.md)的 C++ 节。
 
 ### 继承
 

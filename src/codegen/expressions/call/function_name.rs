@@ -99,6 +99,7 @@ impl IRGenerator {
                                     method_name,
                                     &method.params,
                                     has_varargs_array,
+                                    method.is_const,
                                 );
                             }
                         }
@@ -121,6 +122,7 @@ impl IRGenerator {
                                         method_name,
                                         &method.params,
                                         has_varargs_array,
+                                        method.is_const,
                                     );
                                 }
                             } else if param_count == arg_count {
@@ -130,6 +132,7 @@ impl IRGenerator {
                                     method_name,
                                     &method.params,
                                     has_varargs_array,
+                                    method.is_const,
                                 );
                             }
                         }
@@ -165,7 +168,7 @@ impl IRGenerator {
                     self.llvm_type_to_cay_type(&ty).unwrap_or(crate::types::Type::Int32)
                 })
                 .collect();
-            self.mangle_itanium_method(class_name, method_name, &param_types, false, false)
+            self.mangle_itanium_method(class_name, method_name, &param_types, false, false, false)
         }
     }
 
@@ -238,7 +241,7 @@ impl IRGenerator {
                 .iter()
                 .map(|p| crate::types::substitute_type_params(&p.param_type, &mapping))
                 .collect();
-            return Some(self.mangle_itanium_method(class_name, method_name, &param_types, false, false));
+            return Some(self.mangle_itanium_method(class_name, method_name, &param_types, false, false, false));
         }
 
         // 泛型 struct 的特化方法调用：与泛型类同理，但 struct 无继承、无 vtable，
@@ -279,7 +282,7 @@ impl IRGenerator {
                 .iter()
                 .map(|p| crate::types::substitute_type_params(&p.param_type, &mapping))
                 .collect();
-            return Some(self.mangle_itanium_method(class_name, method_name, &param_types, false, false));
+            return Some(self.mangle_itanium_method(class_name, method_name, &param_types, false, false, false));
         }
 
         None
@@ -292,15 +295,17 @@ impl IRGenerator {
     /// * `method_name` - 方法名
     /// * `params` - 参数信息列表
     /// * `has_varargs_array` - 是否有可变参数数组
+    /// * `is_const` - 是否 C++ 互操作 const 方法（mangling 输出 K）
     pub fn build_function_name_from_method(
         &self,
         class_name: &str,
         method_name: &str,
         params: &[crate::types::ParameterInfo],
         has_varargs_array: bool,
+        is_const: bool,
     ) -> String {
         if params.is_empty() {
-            return self.mangle_itanium_method(class_name, method_name, &[], false, false);
+            return self.mangle_itanium_method(class_name, method_name, &[], false, false, is_const);
         }
 
         // 获取基础类名（去除泛型参数）以查找类信息
@@ -349,7 +354,7 @@ impl IRGenerator {
             })
             .collect();
 
-        self.mangle_itanium_method(class_name, method_name, &param_types, false, false)
+        self.mangle_itanium_method(class_name, method_name, &param_types, false, false, is_const)
     }
 
     /// 将参数类型转换为签名

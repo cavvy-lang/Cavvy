@@ -267,6 +267,9 @@ pub enum Modifier {
     Test,         // @Test 注解，标记测试方法
     FreeFunction, // @FreeFunction 注解，将类方法导出为可直接调用的顶层函数
     StackOnly,    // @stack_only 注解，禁止类被堆分配
+    /// C++ 互操作 const 方法：尾随上下文语法（`native int value() const;`），
+    /// 仅影响 Itanium mangling（`N` 后输出 `K`），不参与重载解析。
+    Const,
 }
 
 #[derive(Debug, Clone, Serialize)]
