@@ -8,6 +8,38 @@ use crate::miette_diagnostic::CayResult;
 use crate::types::Type;
 
 impl IRGenerator {
+    /// 循环栈保护：进入循环前保存栈指针（`llvm.stacksave`）。
+    ///
+    /// 循环体内的 alloca 每次迭代都会重新执行，llc 不会自动回收，
+    /// 栈帧会随迭代次数无界增长（逐字符处理长文本时可耗尽 8MB 栈）。
+    /// 在循环前保存 sp，并在每次迭代的回边目标块顶部用
+    /// `emit_loop_stackrestore` 恢复，使单次迭代的栈分配随迭代结束回收。
+    fn emit_loop_stacksave(&mut self) -> String {
+        if !self.is_extern_emitted("llvm.stacksave@i8*@void") {
+            self.emit_raw("declare i8* @llvm.stacksave()\n");
+            self.mark_extern_emitted("llvm.stacksave@i8*@void".to_string());
+        }
+        if !self.is_extern_emitted("llvm.stackrestore@void@i8*") {
+            self.emit_raw("declare void @llvm.stackrestore(i8*)\n");
+            self.mark_extern_emitted("llvm.stackrestore@void@i8*".to_string());
+        }
+        let ss = self.new_temp();
+        self.emit_line(&format!("  {} = call i8* @llvm.stacksave()", ss));
+        ss
+    }
+
+    /// 在回边目标块顶部恢复栈指针（配合 `emit_loop_stacksave`）。
+    /// 放在目标块顶部（而非各跳转点前）可同时覆盖循环体尾部的
+    /// fall-through 回边与块内任意深度的 `continue`（含标签 continue 到
+    /// 外层循环：直接落在外层目标块顶部，恢复外层保存点即连带丢弃内层
+    /// 分配，语义正确）。
+    fn emit_loop_stackrestore(&mut self, saved_sp: &str) {
+        self.emit_line(&format!(
+            "  call void @llvm.stackrestore(i8* {})",
+            saved_sp
+        ));
+    }
+
     /// 生成 while 语句代码
     pub fn generate_while_statement(&mut self, while_stmt: &WhileStmt) -> CayResult<()> {
         let cond_label = self.new_label("while.cond");
@@ -21,10 +53,13 @@ impl IRGenerator {
             while_stmt.label.clone(),
         );
 
+        // 循环体 alloca 栈保护：cond 块是 continue 与体尾回边的共同目标
+        let saved_sp = self.emit_loop_stacksave();
         self.emit_line(&format!("  br label %{}", cond_label));
 
         // 条件块
         self.emit_line(&format!("{}:", cond_label));
+        self.emit_loop_stackrestore(&saved_sp);
         let cond = self.generate_expression(&while_stmt.condition)?;
         let (cond_type, cond_val) = self.parse_typed_value(&cond);
         let cond_reg = self.new_temp();
@@ -74,6 +109,8 @@ impl IRGenerator {
             for_stmt.label.clone(),
         );
 
+        // 循环体 alloca 栈保护：update 块是 continue 与体尾回边的共同目标
+        let saved_sp = self.emit_loop_stacksave();
         self.emit_line(&format!("  br label %{}", cond_label));
 
         // 条件块
@@ -106,6 +143,7 @@ impl IRGenerator {
 
         // 更新块
         self.emit_line(&format!("{}:", update_label));
+        self.emit_loop_stackrestore(&saved_sp);
         if let Some(update) = for_stmt.update.as_ref() {
             self.generate_expression(update)?;
         }
@@ -165,6 +203,9 @@ impl IRGenerator {
             do_while_stmt.label.clone(),
         );
 
+        // 循环体 alloca 栈保护：cond 块是 continue 与体尾回边的共同目标
+        let saved_sp = self.emit_loop_stacksave();
+
         // 先执行循环体
         self.emit_line(&format!("  br label %{}", body_label));
         self.emit_line(&format!("{}:", body_label));
@@ -173,6 +214,7 @@ impl IRGenerator {
 
         // 条件检查
         self.emit_line(&format!("{}:", cond_label));
+        self.emit_loop_stackrestore(&saved_sp);
         let cond = self.generate_expression(&do_while_stmt.condition)?;
         let (cond_type, cond_val) = self.parse_typed_value(&cond);
         let cond_reg = self.new_temp();

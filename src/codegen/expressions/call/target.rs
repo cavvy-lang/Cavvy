@@ -258,6 +258,31 @@ impl IRGenerator {
                             let ext = self.new_temp();
                             self.emit_line(&format!("  {} = sext i32 {} to i64", ext, pl_val));
                             ext
+                        } else if pl_type == "{ i32, i64 }" {
+                            // enum 值作为 payload（如 Token.Intliteral(Option<int>)）：
+                            // 16 字节值类型放不进 i64 槽位，堆拷贝后存指针
+                            //（与 struct payload 同一策略），提取侧对应 inttoptr + load。
+                            if !self.is_extern_emitted("malloc@i8*@i64") {
+                                self.emit_raw("declare i8* @malloc(i64)");
+                                self.mark_extern_emitted("malloc@i8*@i64".to_string());
+                            }
+                            let raw = self.new_temp();
+                            self.emit_line(&format!("  {} = call i8* @malloc(i64 16)", raw));
+                            let typed = self.new_temp();
+                            self.emit_line(&format!(
+                                "  {} = bitcast i8* {} to {{ i32, i64 }}*",
+                                typed, raw
+                            ));
+                            self.emit_line(&format!(
+                                "  store {{ i32, i64 }} {}, {{ i32, i64 }}* {}",
+                                pl_val, typed
+                            ));
+                            let ptr_to_i64 = self.new_temp();
+                            self.emit_line(&format!(
+                                "  {} = ptrtoint {{ i32, i64 }}* {} to i64",
+                                ptr_to_i64, typed
+                            ));
+                            ptr_to_i64
                         } else if let Some(struct_name) =
                             self.extract_struct_name_from_ptr_type(&pl_type)
                         {

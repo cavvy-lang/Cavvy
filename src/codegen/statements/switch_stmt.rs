@@ -222,6 +222,21 @@ impl IRGenerator {
                             ));
                             format!("double {}", bc)
                         }
+                        "{ i32, i64 }" => {
+                            // payload 是另一个 enum：构造侧堆拷贝后存入指针，
+                            // 此处 inttoptr 取回并 load 出值。
+                            let ptr = self.new_temp();
+                            self.emit_line(&format!(
+                                "  {} = inttoptr i64 {} to {{ i32, i64 }}*",
+                                ptr, pl_i64
+                            ));
+                            let v = self.new_temp();
+                            self.emit_line(&format!(
+                                "  {} = load {{ i32, i64 }}, {{ i32, i64 }}* {}, align 8",
+                                v, ptr
+                            ));
+                            format!("{{ i32, i64 }} {}", v)
+                        }
                         "i8*" | _ if var_type.ends_with('*') => {
                             let ptr = self.new_temp();
                             self.emit_line(&format!(

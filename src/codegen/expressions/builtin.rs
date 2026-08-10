@@ -648,7 +648,8 @@ impl IRGenerator {
         for &arg_idx in &arg_mapping {
             let (type_str, val) = &arg_types_and_values[arg_idx - 1];
             let placeholder = &placeholders[arg_idx - 1];
-            let (final_type, final_val) = self.convert_for_placeholder(type_str, val, placeholder);
+            let (final_type, final_val) =
+                self.convert_for_placeholder(type_str, val, placeholder, loc)?;
             arg_values.push(format!("{} {}", final_type, final_val));
         }
 
@@ -810,103 +811,172 @@ impl IRGenerator {
         type_str: &str,
         val: &str,
         placeholder: &Placeholder,
-    ) -> (String, String) {
+        loc: &crate::miette_diagnostic::SourceLocation,
+    ) -> CayResult<(String, String)> {
         match placeholder {
-            Placeholder::CStyle(spec) => self.convert_for_format(type_str, val, spec),
+            Placeholder::CStyle(spec) => self.convert_for_format(type_str, val, spec, loc),
             Placeholder::Sequential | Placeholder::Named(_) => {
                 // {} 和 {name} 默认作为字符串处理
                 if type_str == "i8*" {
-                    ("i8*".to_string(), val.to_string())
+                    Ok(("i8*".to_string(), val.to_string()))
                 } else {
                     // 非字符串类型需要转换为字符串
-                    self.convert_to_string(type_str, val)
+                    self.convert_to_string(type_str, val, loc)
                 }
             }
         }
     }
 
     /// 根据格式说明符转换值类型
-    fn convert_for_format(&mut self, type_str: &str, val: &str, spec: &str) -> (String, String) {
+    fn convert_for_format(
+        &mut self,
+        type_str: &str,
+        val: &str,
+        spec: &str,
+        loc: &crate::miette_diagnostic::SourceLocation,
+    ) -> CayResult<(String, String)> {
+        // 聚合值类型（enum 的 { i32, i64 }、数组值等）无法作为 printf 的
+        // 标量参数传递。此前兜底分支会把聚合值原样标成 i64/double，生成
+        // 非法 IR，直到 llc 才报错。此处提前给出明确的编译错误。
+        if type_str.starts_with('{') || type_str.starts_with('[') {
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
+                loc.clone(),
+                format!(
+                    "格式说明符 '{}' 不支持聚合类型 '{}'(enum/数组值)",
+                    spec, type_str
+                ),
+            ));
+        }
         match spec {
             "%d" | "%i" => {
                 // 整数格式 - 转换为 i64
                 if type_str == "i64" {
-                    ("i64".to_string(), val.to_string())
+                    Ok(("i64".to_string(), val.to_string()))
                 } else if type_str.starts_with("i") && !type_str.ends_with("*") {
                     let ext_temp = self.new_temp();
                     self.emit_line(&format!(
                         "  {} = sext {} {} to i64",
                         ext_temp, type_str, val
                     ));
-                    ("i64".to_string(), ext_temp)
+                    Ok(("i64".to_string(), ext_temp))
+                } else if type_str.ends_with('*') {
+                    // 指针按地址值打印
+                    let cast_temp = self.new_temp();
+                    self.emit_line(&format!(
+                        "  {} = ptrtoint {} {} to i64",
+                        cast_temp, type_str, val
+                    ));
+                    Ok(("i64".to_string(), cast_temp))
                 } else {
-                    // 其他类型（包括指针），尝试作为 i64
-                    ("i64".to_string(), val.to_string())
+                    Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
+                        loc.clone(),
+                        format!("格式说明符 '{}' 需要整数类型参数，实际为 '{}'", spec, type_str),
+                    ))
                 }
             }
             "%f" | "%e" | "%g" | "%E" | "%G" => {
                 // 浮点格式 - 转换为 double
                 if type_str == "double" {
-                    ("double".to_string(), val.to_string())
+                    Ok(("double".to_string(), val.to_string()))
                 } else if type_str == "float" {
                     let ext_temp = self.new_temp();
                     self.emit_line(&format!("  {} = fpext float {} to double", ext_temp, val));
-                    ("double".to_string(), ext_temp)
+                    Ok(("double".to_string(), ext_temp))
+                } else if type_str.starts_with("i") && !type_str.ends_with("*") {
+                    // 整数隐式转浮点打印
+                    let cvt_temp = self.new_temp();
+                    self.emit_line(&format!(
+                        "  {} = sitofp {} {} to double",
+                        cvt_temp, type_str, val
+                    ));
+                    Ok(("double".to_string(), cvt_temp))
                 } else {
-                    // 其他类型，尝试作为 double
-                    ("double".to_string(), val.to_string())
+                    Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
+                        loc.clone(),
+                        format!("格式说明符 '{}' 需要数值类型参数，实际为 '{}'", spec, type_str),
+                    ))
                 }
             }
             "%s" => {
                 // 字符串格式 - 必须是 i8*
                 if type_str == "i8*" {
-                    ("i8*".to_string(), val.to_string())
+                    Ok(("i8*".to_string(), val.to_string()))
                 } else {
                     // 非字符串类型需要转换为字符串
-                    self.convert_to_string(type_str, val)
+                    self.convert_to_string(type_str, val, loc)
                 }
             }
             "%c" => {
                 // 字符格式 - 转换为 i32
                 if type_str == "i32" {
-                    ("i32".to_string(), val.to_string())
+                    Ok(("i32".to_string(), val.to_string()))
                 } else if type_str == "i8" {
                     let ext_temp = self.new_temp();
                     self.emit_line(&format!("  {} = sext i8 {} to i32", ext_temp, val));
-                    ("i32".to_string(), ext_temp)
+                    Ok(("i32".to_string(), ext_temp))
+                } else if type_str.starts_with("i") && !type_str.ends_with("*") {
+                    let trunc_temp = self.new_temp();
+                    self.emit_line(&format!(
+                        "  {} = trunc {} {} to i32",
+                        trunc_temp, type_str, val
+                    ));
+                    Ok(("i32".to_string(), trunc_temp))
                 } else {
-                    ("i32".to_string(), val.to_string())
+                    Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
+                        loc.clone(),
+                        format!("格式说明符 '{}' 需要字符/整数类型参数，实际为 '{}'", spec, type_str),
+                    ))
                 }
             }
             "%x" | "%X" | "%o" | "%u" => {
                 // 无符号整数 - 转换为 i64
                 if type_str == "i64" {
-                    ("i64".to_string(), val.to_string())
+                    Ok(("i64".to_string(), val.to_string()))
                 } else if type_str.starts_with("i") && !type_str.ends_with("*") {
                     let ext_temp = self.new_temp();
                     self.emit_line(&format!(
                         "  {} = sext {} {} to i64",
                         ext_temp, type_str, val
                     ));
-                    ("i64".to_string(), ext_temp)
+                    Ok(("i64".to_string(), ext_temp))
+                } else if type_str.ends_with('*') {
+                    let cast_temp = self.new_temp();
+                    self.emit_line(&format!(
+                        "  {} = ptrtoint {} {} to i64",
+                        cast_temp, type_str, val
+                    ));
+                    Ok(("i64".to_string(), cast_temp))
                 } else {
-                    ("i64".to_string(), val.to_string())
+                    Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
+                        loc.clone(),
+                        format!("格式说明符 '{}' 需要整数类型参数，实际为 '{}'", spec, type_str),
+                    ))
                 }
             }
             "%p" => {
                 // 指针格式
-                (type_str.to_string(), val.to_string())
+                Ok((type_str.to_string(), val.to_string()))
             }
             _ => {
                 // 未知的格式说明符，使用原类型
-                (type_str.to_string(), val.to_string())
+                Ok((type_str.to_string(), val.to_string()))
             }
         }
     }
 
     /// 将值转换为字符串类型
     /// 根据值的类型调用相应的运行时转换函数
-    fn convert_to_string(&mut self, type_str: &str, val: &str) -> (String, String) {
+    fn convert_to_string(
+        &mut self,
+        type_str: &str,
+        val: &str,
+        loc: &crate::miette_diagnostic::SourceLocation,
+    ) -> CayResult<(String, String)> {
         match type_str {
             "i8" => {
                 // 字符类型
@@ -915,7 +985,7 @@ impl IRGenerator {
                     "  {} = call i8* @__cay_char_to_string(i8 {})",
                     str_temp, val
                 ));
-                ("i8*".to_string(), str_temp)
+                Ok(("i8*".to_string(), str_temp))
             }
             "i32" => {
                 // 32位整数
@@ -924,7 +994,7 @@ impl IRGenerator {
                     "  {} = call i8* @__cay_int_to_string(i32 {})",
                     str_temp, val
                 ));
-                ("i8*".to_string(), str_temp)
+                Ok(("i8*".to_string(), str_temp))
             }
             "i64" => {
                 // 64位整数
@@ -933,7 +1003,7 @@ impl IRGenerator {
                     "  {} = call i8* @__cay_long_to_string(i64 {})",
                     str_temp, val
                 ));
-                ("i8*".to_string(), str_temp)
+                Ok(("i8*".to_string(), str_temp))
             }
             "float" => {
                 // 浮点数
@@ -942,7 +1012,7 @@ impl IRGenerator {
                     "  {} = call i8* @__cay_float_to_string(float {})",
                     str_temp, val
                 ));
-                ("i8*".to_string(), str_temp)
+                Ok(("i8*".to_string(), str_temp))
             }
             "double" => {
                 // 双精度浮点数
@@ -951,7 +1021,7 @@ impl IRGenerator {
                     "  {} = call i8* @__cay_double_to_string(double {})",
                     str_temp, val
                 ));
-                ("i8*".to_string(), str_temp)
+                Ok(("i8*".to_string(), str_temp))
             }
             "i1" => {
                 // 布尔类型
@@ -960,12 +1030,20 @@ impl IRGenerator {
                     "  {} = call i8* @__cay_bool_to_string(i1 {})",
                     str_temp, val
                 ));
-                ("i8*".to_string(), str_temp)
+                Ok(("i8*".to_string(), str_temp))
             }
             _ => {
+                // 聚合值类型（enum/数组值）无法转字符串，提前报错而非生成非法 IR
+                if type_str.starts_with('{') || type_str.starts_with('[') {
+                    return Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
+                        loc.clone(),
+                        format!("无法将聚合类型 '{}' 转换为字符串进行打印", type_str),
+                    ));
+                }
                 // 其他类型（包括指针），尝试直接使用
                 if type_str.ends_with("*") {
-                    (type_str.to_string(), val.to_string())
+                    Ok((type_str.to_string(), val.to_string()))
                 } else {
                     // 未知类型，默认作为 i64 处理
                     let str_temp = self.new_temp();
@@ -973,7 +1051,7 @@ impl IRGenerator {
                         "  {} = call i8* @__cay_long_to_string(i64 {})",
                         str_temp, val
                     ));
-                    ("i8*".to_string(), str_temp)
+                    Ok(("i8*".to_string(), str_temp))
                 }
             }
         }
