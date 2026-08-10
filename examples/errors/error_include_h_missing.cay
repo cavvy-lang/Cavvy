@@ -1,0 +1,9 @@
+// 测试 #include_h 错误场景：既没有 caylibs/cayh/ 标准库头，也没有可定位的真实 .cayh 文件
+
+#include_h <this_header_does_not_exist_anywhere.cayh>
+
+public class ErrorIncludeHMissing {
+    public static void main() {
+        println("This should not compile");
+    }
+}

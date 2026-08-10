@@ -1,0 +1,33 @@
+// main.cay —— 使用方：通过 #include_h 引入 helper.cay 的声明。
+//
+// 编译：cayc helper.cay main.cay -o main
+// main.cay 只见过声明（native），符号在链接期由 helper.cay 的 object 解析。
+
+#include_h "helper.cayh"
+
+public class Main {
+    public static void main() {
+        // 跨 TU 静态方法调用
+        int sum = Helper.add(19, 23);
+        println("Helper.add(19, 23) = " + String.valueOf(sum));
+
+        // 使用头文件中声明的高级 ADT（enum）
+        Color c = Helper.favorite();
+        switch (c) {
+            case Color.Blue: println("favorite is Blue"); break;
+            default: println("favorite is other"); break;
+        }
+
+        // 使用头文件 impl 块中的 enum 方法
+        println("Blue.index() = " + String.valueOf(c.index()));
+
+        // 跨 TU 构造 + 实例方法 + 字段布局
+        Helper h = new Helper(21);
+        int scaled = h.scale(2);
+        println("h.scale(2) = " + String.valueOf(scaled));
+
+        if (sum == 42 && scaled == 42 && c.index() == 2) {
+            println("include_h declaration-file test passed!");
+        }
+    }
+}

@@ -76,7 +76,7 @@
       "patterns": [
         {
           "name": "meta.preprocessor.cavvy",
-          "match": "^(\\s*)(#)(define|ifdef|ifndef|endif|undef|if|elif|else|pragma|include|error|warning)(\\s+)(.*)$",
+          "match": "^(\\s*)(#)(define|ifdef|ifndef|endif|undef|if|elif|else|pragma|include_c|include_h|include|error|warning|link)(\\s+)(.*)$",
           "captures": {
             "1": {
               "name": "punctuation.whitespace.preprocessor.leading.cavvy"

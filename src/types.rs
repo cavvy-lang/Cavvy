@@ -102,6 +102,9 @@ pub struct ClassInfo {
     pub fields: HashMap<String, FieldInfo>,
     pub constructors: Vec<ConstructorInfo>, // 构造函数列表
     pub has_destructor: bool,               // 是否有析构函数
+    /// 析构是否为 native 声明（.cayh 声明类 / C++ 互操作）：
+    /// true 表示只有签名，实现由外部或其他编译单元提供
+    pub destructor_is_native: bool,
     pub parent: Option<String>,
     pub interfaces: Vec<Type>, // 实现的接口列表（支持泛型实参）
     pub is_abstract: bool,     // 是否是抽象类
@@ -121,6 +124,8 @@ pub struct ConstructorInfo {
     pub is_public: bool,
     pub is_private: bool,
     pub is_protected: bool,
+    /// native 构造（.cayh 声明 / C++ 互操作）：仅声明签名，实现由外部或其他 TU 提供
+    pub is_native: bool,
     pub loc: crate::miette_diagnostic::SourceLocation,
 }
 
@@ -1021,6 +1026,7 @@ impl TypeRegistry {
             fields: HashMap::new(),
             constructors: Vec::new(),
             has_destructor: false,
+            destructor_is_native: false,
             parent: None,
             interfaces: Vec::new(),
             is_abstract: false,
@@ -1082,6 +1088,7 @@ impl TypeRegistry {
             is_public: true,
             is_private: false,
             is_protected: false,
+            is_native: false,
             loc: crate::miette_diagnostic::SourceLocation::default(),
         });
 
@@ -1098,6 +1105,7 @@ impl TypeRegistry {
             fields: HashMap::new(),
             constructors: Vec::new(),
             has_destructor: false,
+            destructor_is_native: false,
             parent: Some("Object".to_string()), // String 继承 Object
             interfaces: Vec::new(),
             is_abstract: false,
@@ -1343,6 +1351,7 @@ impl TypeRegistry {
             fields: HashMap::new(),
             constructors: Vec::new(),
             has_destructor: false,
+            destructor_is_native: false,
             parent: Some("Object".to_string()), // Integer 继承 Object
             interfaces: Vec::new(),
             is_abstract: false,

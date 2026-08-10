@@ -125,6 +125,11 @@ Windows 下编译器会在检测到 socket API 时自动链接 `ws2_32`。
 
 ## `#include_c` 的 C++ 头文件支持
 
+> 注：`#include_c` 面向 C/C++ 头文件，只产出 C 类型集的 FFI 声明。若要按
+> C 式 `.h`/`.c` 分离共享 Cavvy 声明（enum 等高级 ADT、native 类声明），
+> 请使用 `.cayh` 声明文件与 `#include_h`，见
+> [预处理器指南](preprocessor.md#cavvy-声明文件cayh)。
+
 `#include_c` 默认直接解析磁盘上的真实头文件；唯一的例外是 `<...>` 系统形式且
 头名命中标准库白名单包装（`caylibs/c/<name>.cay`，如 stdio/stdlib/string 等）时
 使用手写包装。`"..."` 形式永不匹配 `.cay` 包装——同名 Cay 文件不会遮蔽真实头文件。

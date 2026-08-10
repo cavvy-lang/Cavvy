@@ -1,0 +1,29 @@
+// helper.cay —— 实现文件：完整实现 helper.cayh 中声明的方法。
+// 与 C++ 一样，实现文件 #include_h 自己的头文件：头中的纯声明类
+// （全 native 成员）会与本文件的实现类合并，而不是重复定义。
+
+#include_h "helper.cayh"
+
+public class Helper {
+    private int base;
+
+    public Helper(int b) {
+        this.base = b;
+    }
+
+    public ~Helper() {
+        println("Helper dtor");
+    }
+
+    public static int add(int a, int b) {
+        return a + b;
+    }
+
+    public static Color favorite() {
+        return Color.Blue;
+    }
+
+    public int scale(int factor) {
+        return this.base * factor;
+    }
+}

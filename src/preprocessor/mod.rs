@@ -4,6 +4,10 @@
 //! - #include "path"  - 文件包含（隐式 #pragma once）
 //! - #include_c <header.h> / "header.h"  - 导入 C/C++ 头文件的 Cay FFI 声明 + 自动链接
 //!   （仅 <...> 系统形式且命中 caylibs/c/<name>.cay 标准库包装时用包装；其余一律解析真实头文件）
+//! - #include_h <header.cayh> / "header.cayh"  - 导入 Cavvy 声明文件（.cayh）
+//!   与 .h/.hpp 不同，.cayh 是 Cavvy 源码，支持高级 ADT（enum 等）；约定只放
+//!   "零符号"声明（enum 定义、纯 native 类声明、#define），实现在对应 .cay 中，
+//!   多文件分别编译后链接（仅 <...> 系统形式且命中 caylibs/cayh/<name>.cayh 时优先命中）
 //! - #define NAME value  - 常量定义（无参数宏）
 //! - #ifdef / #ifndef / #else / #elif / #endif  - 条件编译
 //! - #error "message"  - 编译期错误
@@ -142,6 +146,8 @@ enum Directive {
     Link(String, bool), // (库名, 是否系统库)
     /// #include_c "header.h" 或 #include_c <header.h> — 导入 C 头文件的 Cay FFI 声明
     IncludeC(String, bool), // (路径, 是否系统路径)
+    /// #include_h "header.cayh" 或 #include_h <header.cayh> — 导入 Cavvy 原生头文件
+    IncludeH(String, bool), // (路径, 是否系统路径)
     /// #undef name
     Undef(String),
 }
@@ -472,6 +478,12 @@ impl Preprocessor {
                 let (path, is_system) = self.parse_include_path(args, line_num, file_path)?;
                 Ok(Some(Directive::IncludeC(path, is_system)))
             }
+            "include_h" => {
+                // 解析 #include_h "header.cayh" 或 #include_h <header.cayh>
+                // 与 #include_c 结构一致，但目标是 Cavvy 原生头文件（支持 enum 等高级 ADT）
+                let (path, is_system) = self.parse_include_path(args, line_num, file_path)?;
+                Ok(Some(Directive::IncludeH(path, is_system)))
+            }
             _ => {
                 Err(CayError::Preprocessor {
                     error_code: ErrorCodes::PREPROCESSOR_DEFINE_ERROR,
@@ -479,7 +491,7 @@ impl Preprocessor {
                     line: line_num,
                     column: 1,
                     message: format!("未知的预处理指令: {}", directive_name),
-                    suggestion: "支持的指令: #include, #include_c, #define, #undef, #ifdef, #ifndef, #else, #elif, #endif, #error, #warning, #link".to_string(),
+                    suggestion: "支持的指令: #include, #include_c, #include_h, #define, #undef, #ifdef, #ifndef, #else, #elif, #endif, #error, #warning, #link".to_string(),
                 })
             }
         }
@@ -665,6 +677,9 @@ impl Preprocessor {
             }
             Directive::IncludeC(path, is_system) => {
                 self.process_include_c(&path, is_system, file_path, line_num)
+            }
+            Directive::IncludeH(path, is_system) => {
+                self.process_include_h(&path, is_system, file_path, line_num)
             }
         }
     }
@@ -978,7 +993,78 @@ impl Preprocessor {
         })
     }
 
-    /// 处理已解析路径的 .cay 包装：读取 + 一次性/循环检测 + 递归预处理 + 自动链接。
+    /// 处理 #include_h 指令：导入 Cavvy 声明文件（.cayh）。
+    ///
+    /// .cayh 是 C 式 .h/.c 分离模型中的声明文件：与 .h/.hpp 不同，它是 Cavvy
+    /// 源码，可以直接声明高级 ADT（enum 等）。约定 .cayh 只放"零符号"声明——
+    /// enum 定义、纯 native 方法/构造的类声明、#define 常量；实现放在对应的
+    /// .cay 中，经 `cayc helper.cay main.cay` 分别编译后链接解析。
+    /// 实现文件可以像 C 一样 #include_h 自己的头文件：纯声明类会与同 TU 的
+    /// 同名实现类合并（semantic 阶段），不产生重复定义。
+    ///
+    /// 解析顺序（镜像 #include_c）：
+    /// 1. **标准库白名单**（仅 <...> 系统形式，且命中 caylibs/cayh/<base>.cayh）——
+    ///    命中即用该声明文件；
+    /// 2. **真实文件解析**—— 其余所有情况（含全部 "..." 形式）：按 #include 的搜索
+    ///    顺序定位磁盘上的 .cayh 并递归预处理；
+    /// 3. 按"头名→库"映射（c_header::c_header_link_libs）自动声明链接。
+    fn process_include_h(
+        &mut self,
+        path: &str,
+        is_system: bool,
+        current_file: &str,
+        line_num: usize,
+    ) -> CayResult<DirectiveResult> {
+        if self.skipping {
+            return Ok(DirectiveResult::Single(None));
+        }
+
+        // (a) 规范化头名：去掉 .cayh 等后缀，保留子目录
+        let base = Self::strip_header_ext(path);
+
+        // (b) 仅 <...> 系统形式允许映射到标准库白名单头（caylibs/cayh/<base>.cayh）
+        if is_system {
+            if let Some(cayh_path) = self.resolve_cayh_wrapper(&base, current_file) {
+                return self.process_resolved_include(&cayh_path, current_file, &base);
+            }
+        }
+
+        // (c) 定位真实 .cayh 并按 Cavvy 源码递归包含（支持 enum 等高级 ADT）
+        if let Ok(header_path) = self.resolve_include_path(path, is_system, current_file) {
+            return self.process_resolved_include(&header_path, current_file, &base);
+        }
+
+        // 全找不到
+        let (target, suggestion) = if is_system {
+            (
+                format!("#include_h: 找不到 Cavvy 头文件 '{}'（无标准库头，也未找到真实文件）", path),
+                "用 -I 指定头文件搜索路径，或在 caylibs/cayh/ 下放置 <name>.cayh".to_string(),
+            )
+        } else {
+            (
+                format!("#include_h: 找不到头文件 '{}'", path),
+                "检查相对路径，或用 -I 指定头文件搜索路径".to_string(),
+            )
+        };
+        Err(CayError::Preprocessor {
+            error_code: ErrorCodes::PREPROCESSOR_INCLUDE_H_ERROR,
+            file: Some(current_file.to_string()),
+            line: line_num,
+            column: 1,
+            message: target,
+            suggestion,
+        })
+    }
+
+    /// 解析 #include_h 对应的标准库头路径（仅 <...> 系统形式可达，见 process_include_h）。
+    /// 只匹配 `cayh/<base>.cayh`（caylibs/cayh/ 白名单命名空间），复用
+    /// `resolve_include_path` 的搜索根（exe-dir/caylibs、cwd/caylibs、-I 等）。
+    fn resolve_cayh_wrapper(&self, base: &str, current_file: &str) -> Option<String> {
+        let cand = format!("cayh/{}.cayh", base);
+        self.resolve_include_path(&cand, true, current_file).ok()
+    }
+
+    /// 处理已解析路径的 .cay 包装 / .cayh 原生头：读取 + 一次性/循环检测 + 递归预处理 + 自动链接。
     /// 不再走 `read_include_file` 的二次解析（避免对相对路径重复 join 当前目录）。
     fn process_resolved_include(
         &mut self,
@@ -1091,10 +1177,11 @@ impl Preprocessor {
         None
     }
 
-    /// 去掉头文件路径的单个 `.h`/`.hpp`/`.hh`/`.hxx`/`.cay` 后缀，保留其余（含子目录）。
+    /// 去掉头文件路径的单个 `.h`/`.hpp`/`.hh`/`.hxx`/`.cay`/`.cayh` 后缀，保留其余（含子目录）。
     fn strip_header_ext(p: &str) -> String {
         let p = p.trim();
-        p.strip_suffix(".hpp")
+        p.strip_suffix(".cayh")
+            .or_else(|| p.strip_suffix(".hpp"))
             .or_else(|| p.strip_suffix(".hxx"))
             .or_else(|| p.strip_suffix(".hh"))
             .or_else(|| p.strip_suffix(".h"))
@@ -2194,5 +2281,47 @@ mod tests {
         for p in bundled_c_include_paths() {
             assert!(p.is_dir(), "候选路径不存在: {}", p.display());
         }
+    }
+
+    #[test]
+    fn test_include_h_native_cayh_header() {
+        // .cayh 按 Cavvy 源码包含：enum 等高级 ADT 原样展开（区别于 #include_c 的 FFI 提取）
+        let dir = std::env::temp_dir().join(format!("cay_include_h_test_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let header = dir.join("shape.cayh");
+        std::fs::write(
+            &header,
+            "public enum Shape {\n    Circle(double),\n    Point\n}\n",
+        )
+        .unwrap();
+        let main = dir.join("main.cay");
+
+        let mut pp = Preprocessor::new(&dir);
+        let result = pp
+            .process("#include_h \"shape.cayh\"\nint x = 1;", main.to_str().unwrap())
+            .unwrap();
+        assert!(result.contains("public enum Shape"));
+        assert!(result.contains("Circle(double)"));
+        assert!(result.contains("int x = 1;"));
+
+        // pragma once 语义：第二次包含同一 .cayh 不再展开
+        let result2 = pp
+            .process("#include_h \"shape.cayh\"\nint y = 2;", main.to_str().unwrap())
+            .unwrap();
+        assert!(!result2.contains("public enum Shape"));
+        assert!(result2.contains("int y = 2;"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_include_h_missing_header_error() {
+        let mut pp = Preprocessor::new(".");
+        let err = pp
+            .process("#include_h \"no_such_header.cayh\"\nint x = 1;", "test.c")
+            .unwrap_err();
+        let msg = format!("{:?}", err);
+        assert!(msg.contains("E1008"), "应报告 E1008，实际: {}", msg);
+        assert!(msg.contains("#include_h"), "错误信息应含 #include_h，实际: {}", msg);
     }
 }

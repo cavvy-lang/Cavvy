@@ -333,6 +333,10 @@ impl SemanticAnalyzer {
         }
 
         // 然后收集类定义
+        // 记录"仅声明类"（.cayh 头文件风格：全 native 成员、无字段）的查找名，
+        // 用于同 TU 内声明类与实现类的合并（见下方注册处的合并分支）。
+        let mut decl_only_classes: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
         for class in &program.classes {
             let is_abstract = class.modifiers.contains(&Modifier::Abstract);
             let is_final = class.modifiers.contains(&Modifier::Final);
@@ -353,6 +357,7 @@ impl SemanticAnalyzer {
                 fields: std::collections::HashMap::new(),
                 constructors: Vec::new(),
                 has_destructor: false,
+                destructor_is_native: false,
                 // 未显式指定父类时，默认继承 Object 根类。
                 // C++ 互操作类（interop）不继承 Cavvy 根类，避免与外部 C++ 布局冲突。
                 parent: if is_interop {
@@ -405,6 +410,7 @@ impl SemanticAnalyzer {
                             is_public: ctor.modifiers.contains(&Modifier::Public),
                             is_private: ctor.modifiers.contains(&Modifier::Private),
                             is_protected: ctor.modifiers.contains(&Modifier::Protected),
+                            is_native: ctor.modifiers.contains(&Modifier::Native),
                             loc: ctor.loc.clone(),
                         };
                         // 检查是否存在签名完全相同的构造函数（重复定义）
@@ -454,8 +460,10 @@ impl SemanticAnalyzer {
                         }
                         class_info.constructors.push(ctor_info);
                     }
-                    ClassMember::Destructor(_) => {
+                    ClassMember::Destructor(dtor) => {
                         class_info.has_destructor = true;
+                        class_info.destructor_is_native =
+                            dtor.modifiers.contains(&Modifier::Native);
                     }
                     _ => {}
                 }
@@ -465,22 +473,43 @@ impl SemanticAnalyzer {
             let file = class.loc.file.clone().or_else(|| self.current_file.clone());
             let line = class.loc.line;
 
-            // 如果有命名空间路径，使用限定名注册并记录
-            if !class.namespace_path.is_empty() {
-                let qualified_name = format!("{}::{}", class.namespace_path.join("::"), class.name);
-                let mut qualified_class_info = class_info.clone();
-                qualified_class_info.name = qualified_name.clone();
-                self.type_registry.register_class(
-                    qualified_class_info,
-                    file,
-                    line,
-                    class.loc.column,
-                )?;
-                self.type_registry
-                    .set_class_namespace(&qualified_name, class.namespace_path.clone());
+            // .cayh 头文件声明类（全 native 成员、无字段，见 is_header_declaration_class）
+            // 允许与同一编译单元内的同名实现类合并：不视为重复定义，而是把声明与实现
+            // 合并进同一个 ClassInfo（声明先行或实现先行均可）。这是 #include_h 的
+            // 声明文件模型——实现文件可以像 C 一样 #include_h 自己的头文件。
+            let lookup_name = self.qualified_class_name(class);
+            let new_is_decl = Self::is_header_declaration_class(class);
+            if self.type_registry.get_class(&lookup_name).is_some()
+                && (new_is_decl || decl_only_classes.contains(&lookup_name))
+            {
+                let merged = self.type_registry.get_class_mut(&lookup_name).unwrap();
+                Self::merge_class_declaration(merged, class_info, new_is_decl);
+                if !new_is_decl {
+                    // 实现已就位：该类不再是"仅声明"
+                    decl_only_classes.remove(&lookup_name);
+                }
             } else {
-                self.type_registry
-                    .register_class(class_info, file, line, class.loc.column)?;
+                // 如果有命名空间路径，使用限定名注册并记录
+                if !class.namespace_path.is_empty() {
+                    let qualified_name =
+                        format!("{}::{}", class.namespace_path.join("::"), class.name);
+                    let mut qualified_class_info = class_info.clone();
+                    qualified_class_info.name = qualified_name.clone();
+                    self.type_registry.register_class(
+                        qualified_class_info,
+                        file,
+                        line,
+                        class.loc.column,
+                    )?;
+                    self.type_registry
+                        .set_class_namespace(&qualified_name, class.namespace_path.clone());
+                } else {
+                    self.type_registry
+                        .register_class(class_info, file, line, class.loc.column)?;
+                }
+                if new_is_decl {
+                    decl_only_classes.insert(lookup_name);
+                }
             }
 
             // 验证 @stack_only 只能用于类声明，不能用于成员。
@@ -577,6 +606,80 @@ impl SemanticAnalyzer {
             class.name.clone()
         } else {
             format!("{}::{}", class.namespace_path.join("::"), class.name)
+        }
+    }
+
+    /// 判断一个类是否是 .cayh 头文件风格的"纯声明类"：
+    /// 非泛型、非 interop，所有方法/构造/析构均为 native（无实现），
+    /// 可含实例字段（C++ 头文件中的类定义同样列出字段；实例字段不产生
+    /// 链接符号）。静态字段不允许（会生成 private 全局，合并时同模块撞名）。
+    /// 纯声明类与同 TU 的同名实现类合并（见 collect_classes 的合并分支）。
+    fn is_header_declaration_class(class: &crate::ast::ClassDecl) -> bool {
+        class.type_params.is_empty()
+            && !class.modifiers.contains(&Modifier::Interop)
+            && !class.members.is_empty()
+            // 纯字段类是真正的定义（带隐式构造），不是声明：必须至少有一个
+            // 方法/构造/析构签名才算"头文件声明类"，否则重复类定义应照常报错
+            && class.members.iter().any(|m| {
+                matches!(
+                    m,
+                    ClassMember::Method(_) | ClassMember::Constructor(_) | ClassMember::Destructor(_)
+                )
+            })
+            && class.members.iter().all(|m| match m {
+                ClassMember::Method(md) => md.modifiers.contains(&Modifier::Native),
+                ClassMember::Constructor(c) => c.modifiers.contains(&Modifier::Native),
+                ClassMember::Destructor(d) => d.modifiers.contains(&Modifier::Native),
+                ClassMember::Field(f) => !f.modifiers.contains(&Modifier::Static),
+                _ => false,
+            })
+    }
+
+    /// 把 `new`（声明类或实现类）合并进已注册的 `existing`。
+    /// 前提：二者至少一方是纯声明类（调用方保证），因此不会遇到双方都是
+    /// 实现的同签名构造函数冲突。方法不在此合并——方法在 analyze_methods
+    /// 阶段收集，那里有对应的 native/实现合并规则。
+    fn merge_class_declaration(existing: &mut ClassInfo, new: ClassInfo, new_is_decl: bool) {
+        // 构造函数：按签名去重，实现（非 native）覆盖声明（native）
+        for new_ctor in new.constructors {
+            let same_sig_pos = existing.constructors.iter().position(|c| {
+                c.params.len() == new_ctor.params.len()
+                    && c.params.iter().zip(new_ctor.params.iter()).all(|(a, b)| {
+                        a.param_type == b.param_type && a.is_varargs == b.is_varargs
+                    })
+            });
+            match same_sig_pos {
+                Some(pos) => {
+                    if existing.constructors[pos].is_native && !new_ctor.is_native {
+                        existing.constructors[pos] = new_ctor;
+                    }
+                    // 其余情况（实现已就位、或双方均为声明）保留已有条目
+                }
+                None => existing.constructors.push(new_ctor),
+            }
+        }
+        // 字段：声明类与实现类通常镜像同一组字段，按名去重（先到为准）；
+        // 实现类独有的字段直接并入
+        for (name, field) in new.fields {
+            existing.fields.entry(name).or_insert(field);
+        }
+        // 析构标记取并集；实现析构（非 native）覆盖 native 声明
+        if new.has_destructor && !new.destructor_is_native {
+            existing.has_destructor = true;
+            existing.destructor_is_native = false;
+        } else if new.has_destructor && !existing.has_destructor {
+            existing.has_destructor = true;
+            existing.destructor_is_native = true;
+        }
+        // 实现类到达时，以其为准更新继承与修饰标记（声明类这些字段无信息量）
+        if !new_is_decl {
+            existing.parent = new.parent;
+            existing.interfaces = new.interfaces;
+            existing.type_params = new.type_params;
+            existing.is_abstract = new.is_abstract;
+            existing.is_final = new.is_final;
+            existing.is_interop = new.is_interop;
+            existing.is_stack_only = new.is_stack_only;
         }
     }
 
@@ -688,7 +791,15 @@ impl SemanticAnalyzer {
                         .unwrap_or_default();
 
                     if let Some(class_info) = self.type_registry.get_class_mut(&class_lookup_name) {
-                        // 检查是否存在签名完全相同的方法（重复定义）
+                        // 检查是否存在签名完全相同的方法（重复定义）。
+                        // .cayh 头文件声明（native）与实现（非 native）同签名不算重复：
+                        // 实现覆盖已注册的声明；声明后于实现到达则忽略（声明文件模型）。
+                        enum DupAction {
+                            Add,
+                            Skip,
+                            Replace(usize),
+                        }
+                        let mut action = DupAction::Add;
                         if let Some(existing_methods) = class_info.methods.get(&method_info.name) {
                             for (existing_idx, existing) in existing_methods.iter().enumerate() {
                                 if existing.params.len() == method_info.params.len() {
@@ -700,6 +811,32 @@ impl SemanticAnalyzer {
                                             },
                                         );
                                     if same_params {
+                                        let same_static =
+                                            existing.is_static == method_info.is_static;
+                                        if same_static
+                                            && existing.is_native
+                                            && method_info.is_native
+                                        {
+                                            // 多个头文件重复声明同一方法：忽略后到的声明
+                                            action = DupAction::Skip;
+                                            break;
+                                        }
+                                        if same_static
+                                            && existing.is_native
+                                            && !method_info.is_native
+                                        {
+                                            // 头文件声明已注册，实现到达：用实现替换声明
+                                            action = DupAction::Replace(existing_idx);
+                                            break;
+                                        }
+                                        if same_static
+                                            && !existing.is_native
+                                            && method_info.is_native
+                                        {
+                                            // 实现已注册，后到的头文件声明忽略
+                                            action = DupAction::Skip;
+                                            break;
+                                        }
                                         // 仅返回类型不同的重载：当两个方法分别匹配
                                         // 类所实现的泛型接口的不同实例化时允许
                                         // （如 Into<IOError> 与 Into<ParseError>
@@ -757,7 +894,15 @@ impl SemanticAnalyzer {
                                 }
                             }
                         }
-                        class_info.add_method(method_info);
+                        match action {
+                            DupAction::Add => class_info.add_method(method_info),
+                            DupAction::Skip => {}
+                            DupAction::Replace(idx) => {
+                                if let Some(ms) = class_info.methods.get_mut(&method_info.name) {
+                                    ms[idx] = method_info;
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1288,6 +1433,10 @@ impl SemanticAnalyzer {
                             .modifiers
                             .iter()
                             .any(|m| matches!(m, Modifier::Protected)),
+                        is_native: ctor
+                            .modifiers
+                            .iter()
+                            .any(|m| matches!(m, Modifier::Native)),
                         loc: ctor.loc.clone(),
                     })
                     .collect(),
@@ -1648,16 +1797,19 @@ impl SemanticAnalyzer {
             }
         }
 
-        // 收集当前类的虚方法（非 static、非 native、非 private）
-        // 虚方法：实例方法 + 非 final + 非 native
+        // 收集当前类的虚方法（非 static、非 private）
+        // 虚方法：实例方法 + 非 final
+        // native 方法（.cayh 声明类）同样分配槽位：vtable 布局必须在所有
+        // 编译单元间一致（ODR），声明侧的槽位与其在实现侧的槽位一一对应，
+        // 否则声明侧 new 出的对象 vptr/槽位与分派不一致（空 vptr 段错误）。
         // 为每个重载方法分配独立的槽位，使用方法签名（名字+参数类型）作为键
         if let Some(class_info) = self.type_registry.get_class(class_name) {
             // 收集所有虚方法签名
             let mut instance_method_sigs: Vec<String> = Vec::new();
             for (method_name, methods) in &class_info.methods {
                 for method in methods {
-                    // 只收集非 static、非 native、非 private 的实例方法
-                    if !method.is_static && !method.is_native && !method.is_private {
+                    // 只收集非 static、非 private 的实例方法
+                    if !method.is_static && !method.is_private {
                         let sig = crate::types::TypeRegistry::build_method_signature(
                             method_name,
                             &method.params,

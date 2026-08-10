@@ -2301,9 +2301,11 @@ impl IRGenerator {
 
         // 生成 vtable 全局常量
         // 类型：[N x i8*]
+        // linkonce_odr：同一类的声明（.cayh）与实现（.cay）可能在不同编译单元
+        // 各自生成 vtable，由链接器去重（C++ vague linkage 思路）。
         let vtable_type = format!("[{} x i8*]", entries.len());
         self.emit_line(&format!(
-            "@{} = global {} [{}]",
+            "@{} = linkonce_odr global {} [{}]",
             vtable_name,
             vtable_type,
             entries.join(", ")
@@ -2557,6 +2559,46 @@ impl IRGenerator {
         self.generate_method_with_name(class_name, method, fn_name)
     }
 
+    /// 判断同 TU 内是否存在该 native 方法的实现（.cayh 声明类 + .cay 实现类
+    /// 合并场景）：registry 中存在同名、同签名、static 性一致且非 native 的条目。
+    /// 查找失败（如泛型特化名）保守返回 false，维持原有 declare 行为。
+    fn class_method_has_local_impl(&self, class_name: &str, method: &MethodDecl) -> bool {
+        let is_static = method.modifiers.contains(&Modifier::Static);
+        if let Some(ref registry) = self.type_registry {
+            if let Some(class_info) = registry.get_class(class_name) {
+                if let Some(candidates) = class_info.methods.get(&method.name) {
+                    return candidates.iter().any(|m| {
+                        !m.is_native
+                            && m.is_static == is_static
+                            && m.params.len() == method.params.len()
+                            && m.params.iter().zip(method.params.iter()).all(|(a, b)| {
+                                a.param_type == b.param_type && a.is_varargs == b.is_varargs
+                            })
+                    });
+                }
+            }
+        }
+        false
+    }
+
+    /// 判断同 TU 内是否存在该 native/abstract 构造函数的实现（.cayh 声明类 +
+    /// .cay 实现类合并场景）：registry 中存在同签名且非 native 的构造条目。
+    /// 查找失败保守返回 false，维持原有 declare 行为。
+    fn class_ctor_has_local_impl(&self, class_name: &str, ctor: &crate::ast::ConstructorDecl) -> bool {
+        if let Some(ref registry) = self.type_registry {
+            if let Some(class_info) = registry.get_class(class_name) {
+                return class_info.constructors.iter().any(|c| {
+                    !c.is_native
+                        && c.params.len() == ctor.params.len()
+                        && c.params.iter().zip(ctor.params.iter()).all(|(a, b)| {
+                            a.param_type == b.param_type && a.is_varargs == b.is_varargs
+                        })
+                });
+            }
+        }
+        false
+    }
+
     /// 以显式指定的函数名生成方法体。
     ///
     /// 与 `generate_method` 的唯一差别是函数名由调用方给出而非从方法签名推导，
@@ -2571,13 +2613,36 @@ impl IRGenerator {
 
         // native 方法不生成实现体，但必须在 IR 中声明以便调用点引用
         if method.modifiers.contains(&Modifier::Native) {
+            // 实现已生成（同 TU 内声明类与实现类合并的场景，实现先行）则无需再声明
             if self.generated_methods.contains(&fn_name) {
                 return Ok(());
             }
-            self.generated_methods.insert(fn_name.clone());
+            // 同 TU 内存在该方法的实现（.cayh 声明类 + .cay 实现类已合并进
+            // registry，实现条目覆盖了 native 声明条目）时跳过 declare：
+            // 捆绑的 llvm-minimal 不接受同一模块内 declare+define 同名函数。
+            if self.class_method_has_local_impl(class_name, method) {
+                return Ok(());
+            }
+            // 注意：不向 generated_methods 插入——native 仅是声明，不能遮蔽
+            // 同 TU 内随后的实现定义（.cayh 声明类先于实现类处理的顺序）。
 
             let ret_type = self.type_to_llvm(&method.return_type);
-            let mut params = vec!["i8*".to_string()];
+            // this 前缀必须与定义侧签名一致（见下方 generate_method_with_name 的
+            // 非 native 分支）：static 方法无 this；struct/enum 方法的 this 不是 i8*。
+            // 此前无条件加 i8* 会导致 native static 声明与静态定义签名不匹配，
+            // 跨 TU 链接（.cayh 声明 + .cay 实现）时失败。
+            let is_static = method.modifiers.contains(&Modifier::Static);
+            let mut params: Vec<String> = Vec::new();
+            if !is_static {
+                let this_ptr_type = if self.is_struct_type(class_name) {
+                    format!("%struct.{}*", self.struct_llvm_type_name(class_name))
+                } else if self.is_enum_type(class_name) {
+                    "{ i32, i64 }*".to_string()
+                } else {
+                    "i8*".to_string()
+                };
+                params.push(this_ptr_type);
+            }
             for p in &method.params {
                 params.push(self.type_to_llvm(&p.param_type));
             }
@@ -2677,8 +2742,13 @@ impl IRGenerator {
             ));
         }
 
+        // enum 定义可能被多个编译单元同时包含（如 .cayh 声明文件中的 enum），
+        // 其方法在每个 TU 各生成一份定义；用 linkonce_odr 让链接器去重
+        // （C++ vague linkage 思路，仿 Object 默认构造的先例）。
+        let linkage = if is_enum_method { "linkonce_odr " } else { "" };
         self.emit_line(&format!(
-            "define {} @{}({}) {{",
+            "define {}{} @{}({}) {{",
+            linkage,
             ret_type,
             fn_name,
             params.join(", ")
@@ -2882,10 +2952,17 @@ impl IRGenerator {
         if ctor.modifiers.contains(&crate::ast::Modifier::Native)
             || ctor.modifiers.contains(&crate::ast::Modifier::Abstract)
         {
+            // 实现已生成（同 TU 声明/实现合并、实现先行）则无需再声明；
+            // 不向 generated_methods 插入，避免遮蔽同 TU 随后的实现定义。
             if self.generated_methods.contains(&fn_name) {
                 return Ok(());
             }
-            self.generated_methods.insert(fn_name.clone());
+            // 同 TU 内存在该构造函数的实现（.cayh 声明类 + 实现类合并进
+            // registry，实现条目覆盖了 native 声明条目）时跳过 declare：
+            // 捆绑的 llvm-minimal 不接受同一模块内 declare+define 同名函数。
+            if self.class_ctor_has_local_impl(class_name, ctor) {
+                return Ok(());
+            }
 
             let mut params = vec!["i8*".to_string()];
             for p in &ctor.params {
@@ -3113,21 +3190,13 @@ impl IRGenerator {
         self.scope_manager.reset();
         self.loop_stack.clear();
 
-        // Object 根类默认构造函数在每个编译单元都会生成，使用 linkonce_odr
-        // 避免多个 Cavvy 对象文件链接时出现重复符号错误。
-        let linkage = if class_name == "Object" {
-            "linkonce_odr"
-        } else {
-            ""
-        };
-        if linkage.is_empty() {
-            self.emit_line(&format!("define void @{}(i8* %this) {{", fn_name));
-        } else {
-            self.emit_line(&format!(
-                "define {} void @{}(i8* %this) {{",
-                linkage, fn_name
-            ));
-        }
+        // 隐式默认构造函数在每个编译单元都会生成（C++ 中隐式构造等同 inline），
+        // 统一使用 linkonce_odr 让链接器去重——多文件编译（.cayh 声明文件模型）
+        // 时同名默认构造不会冲突；实现文件中的显式构造是强符号，天然优先。
+        self.emit_line(&format!(
+            "define linkonce_odr void @{}(i8* %this) {{",
+            fn_name
+        ));
         self.indent += 1;
         self.emit_line("entry:");
 
@@ -3259,15 +3328,24 @@ impl IRGenerator {
         let llvm_class = self.get_qualified_class_name(class_name);
         let fn_name = self.mangle_itanium_method(class_name, "D1", &[], false, true, false);
 
-        // 防止重复生成相同名称的析构函数（泛型特化可能产生同名析构函数）
-        if self.generated_methods.contains(&fn_name) {
-            return Ok(());
-        }
-        self.generated_methods.insert(fn_name.clone());
-
         // native 析构不生成实现体（符号由外部 C++ 实现提供），
-        // 但必须在 IR 中声明以便 RAII 调用点引用（仿 native 方法/构造）
+        // 但必须在 IR 中声明以便 RAII 调用点引用（仿 native 方法/构造）。
+        // 实现已生成（同 TU 声明/实现合并、实现先行）则跳过；且不向
+        // generated_methods 插入，避免遮蔽同 TU 内随后的实现定义。
         if dtor.modifiers.contains(&Modifier::Native) {
+            if self.generated_methods.contains(&fn_name) {
+                return Ok(());
+            }
+            // 同 TU 内存在该析构的实现（.cayh 声明类 + 实现类合并场景）时跳过
+            // declare：捆绑的 llvm-minimal 不接受同模块 declare+define 同名函数。
+            if let Some(ref registry) = self.type_registry {
+                if registry
+                    .get_class(class_name)
+                    .map_or(false, |c| c.has_destructor && !c.destructor_is_native)
+                {
+                    return Ok(());
+                }
+            }
             let cc_attr = self.calling_convention_to_llvm_attr(crate::ast::CallingConvention::Cdecl);
             let decl = if cc_attr.is_empty() {
                 format!("declare void @{}(i8*)\n", fn_name)
@@ -3281,6 +3359,12 @@ impl IRGenerator {
             }
             return Ok(());
         }
+
+        // 防止重复生成相同名称的析构函数（泛型特化可能产生同名析构函数）
+        if self.generated_methods.contains(&fn_name) {
+            return Ok(());
+        }
+        self.generated_methods.insert(fn_name.clone());
 
         self.current_function = fn_name.clone();
         // 从可能包含 :: 的限定名中提取简单名用于 current_class

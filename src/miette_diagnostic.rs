@@ -28,6 +28,7 @@ impl ErrorCodes {
     pub const PREPROCESSOR_CIRCULAR_INCLUDE: &'static str = "E1005";
     pub const PREPROCESSOR_INVALID_MACRO: &'static str = "E1006";
     pub const PREPROCESSOR_INCLUDE_C_ERROR: &'static str = "E1007";
+    pub const PREPROCESSOR_INCLUDE_H_ERROR: &'static str = "E1008";
 
     pub const LEXER_INVALID_CHARACTER: &'static str = "E2001";
     pub const LEXER_UNTERMINATED_STRING: &'static str = "E2002";
@@ -110,6 +111,7 @@ impl ErrorCodes {
             Self::PREPROCESSOR_CIRCULAR_INCLUDE => "循环包含错误",
             Self::PREPROCESSOR_INVALID_MACRO => "无效的宏定义",
             Self::PREPROCESSOR_INCLUDE_C_ERROR => "C 头文件包含错误",
+            Self::PREPROCESSOR_INCLUDE_H_ERROR => "Cavvy 头文件包含错误",
             Self::LEXER_INVALID_CHARACTER => "非法字符",
             Self::LEXER_UNTERMINATED_STRING => "未闭合的字符串",
             Self::LEXER_INVALID_ESCAPE_SEQUENCE => "无效的转义序列",

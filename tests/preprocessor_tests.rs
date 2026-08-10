@@ -278,6 +278,95 @@ fn test_include_c_user_form_not_shadowed_by_cay_file() {
     );
 }
 
+// ==================== #include_h 测试 ====================
+
+/// .cayh 声明文件模型的端到端验证：
+/// 1. helper.cayh 声明 enum（高级 ADT）+ 纯 native 声明类 Helper；
+/// 2. helper.cay #include_h 自己的头文件（声明类与实现类同 TU 合并）并提供实现；
+/// 3. main.cay #include_h 头文件，跨 TU 调用 Helper.add / 使用 Color；
+/// 4. `cayc helper.cay main.cay -o out` 分别编译再链接，运行验证。
+#[test]
+fn test_include_h_declaration_file_multifile_link() {
+    let unique = format!("{}_{:?}", std::process::id(), std::thread::current().id())
+        .replace(|c: char| !c.is_alphanumeric(), "_");
+    let exe = if cfg!(target_os = "windows") {
+        format!("include_h_demo_{}.exe", unique)
+    } else {
+        format!("include_h_demo_{}", unique)
+    };
+    let exe_path = std::env::temp_dir().join(&exe);
+    let exe_str = exe_path.to_string_lossy().to_string();
+
+    let out = std::process::Command::new("./target/release/cayc")
+        .args([
+            "examples/include_h/helper.cay",
+            "examples/include_h/main.cay",
+            "-o",
+            &exe_str,
+        ])
+        .output()
+        .expect("run cayc");
+    assert!(
+        out.status.success(),
+        "multi-file compile+link failed: {}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let run = std::process::Command::new(&exe_path)
+        .output()
+        .expect("run linked executable");
+    let stdout = String::from_utf8_lossy(&run.stdout);
+    assert!(
+        stdout.contains("Helper.add(19, 23) = 42"),
+        "Should call Helper.add implemented in helper.cay, got: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("favorite is Blue"),
+        "Should use enum ADT declared in the .cayh header, got: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("Blue.index() = 2"),
+        "Should use enum impl-block method from the .cayh header, got: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("h.scale(2) = 42"),
+        "Should call instance method cross-TU (vtable dispatch), got: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("Helper dtor"),
+        "Should run destructor implemented in helper.cay, got: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("include_h declaration-file test passed!"),
+        "include_h declaration-file demo should pass, got: {}",
+        stdout
+    );
+
+    let _ = std::fs::remove_file(&exe_path);
+    // 清理 cayc 在源文件旁生成的中间文件（未 --keep-ir 时正常已删除，防御性清理）
+    let _ = std::fs::remove_file("examples/include_h/helper.ll");
+    let _ = std::fs::remove_file("examples/include_h/main.ll");
+    let _ = std::fs::remove_file("examples/include_h/helper.obj");
+    let _ = std::fs::remove_file("examples/include_h/main.obj");
+}
+
+#[test]
+fn test_error_include_h_missing() {
+    let error = compile_eol_expect_error("examples/errors/error_include_h_missing.cay")
+        .expect("missing cayh header should fail to compile");
+    assert!(
+        error.contains("E1008") || error.contains("#include_h"),
+        "Should report include_h missing header error, got: {}",
+        error
+    );
+}
+
 // ==================== #include_c C++ 头文件测试 ====================
 
 /// 查找可用的 C++ 编译器（g++ 优先，其次 clang++）

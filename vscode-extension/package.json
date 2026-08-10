@@ -49,6 +49,7 @@
         ],
         "extensions": [
           ".cay",
+          ".cayh",
           ".eol",
           ".caybc",
           ".ll"
