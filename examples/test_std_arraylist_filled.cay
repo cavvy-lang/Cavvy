@@ -1,7 +1,9 @@
 #include <std/arraylist.cay>
+#include <std/arraylistutils.cay>
 #include <c/stdio.cay>
 
 using std::ArrayList;
+using std::ArrayListNDFiller;
 
 public int main() {
     // 一维：filled(5, 7) -> [7,7,7,7,7]
@@ -15,7 +17,7 @@ public int main() {
     println("filled sum = " + String.valueOf(sum));
 
     // 二维：2x3 全 0，每一行是独立对象
-    ArrayList<ArrayList<int>> matrix = ArrayList<int>::filled2D(2, 3, 0);
+    ArrayList<ArrayList<int>> matrix = ArrayListNDFiller<int>::filled2D(2, 3, 0);
     matrix.get(0).set(1, 5);
     matrix.get(1).set(2, 9);
     println("matrix rows = " + String.valueOf(matrix.size()));
@@ -24,7 +26,7 @@ public int main() {
     println("matrix[1][2] = " + String.valueOf(matrix.get(1).get(2)));
 
     // 三维：2x2x2 全 1，每一层独立
-    ArrayList<ArrayList<ArrayList<int>>> cube = ArrayList<int>::filled3D(2, 2, 2, 1);
+    ArrayList<ArrayList<ArrayList<int>>> cube = ArrayListNDFiller<int>::filled3D(2, 2, 2, 1);
     cube.get(1).get(0).set(1, 42);
     println("cube[0][0][0] = " + String.valueOf(cube.get(0).get(0).get(0)));
     println("cube[1][0][1] = " + String.valueOf(cube.get(1).get(0).get(1)));

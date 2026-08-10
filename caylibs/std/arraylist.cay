@@ -123,46 +123,6 @@ public class ArrayList<T, A: Allocator = GlobalAlloc> implements Iterable<T> {
     }
 
     /**
-     * 静态工厂：创建 rows x cols 的二维 ArrayList。
-     *
-     * 每一行都是独立构造的 ArrayList<T>，因此修改 matrix[i] 不会影响
-     * matrix[j]（对原始类型元素为值独立，对对象类型元素仍为指针共享）。
-     */
-    public static ArrayList<ArrayList<T>> filled2D(int rows, int cols, T value) {
-        ArrayList<ArrayList<T>> matrix = new ArrayList<ArrayList<T>>();
-        for (int i = 0; i < rows; i = i + 1) {
-            ArrayList<T> row = new ArrayList<T>();
-            for (int j = 0; j < cols; j = j + 1) {
-                row.add(value);
-            }
-            matrix.add(row);
-        }
-        return matrix;
-    }
-
-    /**
-     * 静态工厂：创建 d1 x d2 x d3 的三维 ArrayList。
-     *
-     * 每一层都是独立构造的 ArrayList<ArrayList<T>>，因此修改
-     * cube[i] 不会影响 cube[j]。
-     */
-    public static ArrayList<ArrayList<ArrayList<T>>> filled3D(int d1, int d2, int d3, T value) {
-        ArrayList<ArrayList<ArrayList<T>>> cube = new ArrayList<ArrayList<ArrayList<T>>>();
-        for (int i = 0; i < d1; i = i + 1) {
-            ArrayList<ArrayList<T>> layer = new ArrayList<ArrayList<T>>();
-            for (int j = 0; j < d2; j = j + 1) {
-                ArrayList<T> row = new ArrayList<T>();
-                for (int k = 0; k < d3; k = k + 1) {
-                    row.add(value);
-                }
-                layer.add(row);
-            }
-            cube.add(layer);
-        }
-        return cube;
-    }
-
-    /**
      * 析构函数：释放 backing buffer，并递归析构元素对象。
      *
      * 编译器会在调用用户编写的析构体之前，自动为 ArrayList<T> 注入元素
