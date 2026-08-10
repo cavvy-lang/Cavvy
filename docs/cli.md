@@ -71,14 +71,14 @@ cayc [选项] <source1.cay> [source2.cay ...] [output.exe]
 |---|---|
 | `-c` | 仅编译到目标文件，不链接 |
 | `-o <file>` / `--output <file>` | 指定输出文件名（可替代最后一个位置参数） |
-| `-O0` / `-O1` / `-O2` / `-O3` / `-Os` / `-Oz` | 优化级别（默认 `-O2`） |
-| `--opt-ir` | 启用 IR 阶段优化（使用 LLVM 优化 IR） |
-| `--lto[=<type>]` | 链接时优化（`full` / `thin`） |
-| `-march=<arch>` / `-mtune=<cpu>` / `-mcpu=<cpu>` | 目标 CPU 架构与调优 |
+| `-O0` / `-O1` / `-O2` / `-O3` / `-Os` / `-Oz` | 优化级别（默认 `-O2`；`-Os`/`-Oz` 在 llc 工具链下先对 IR 做中端体积优化） |
+| `--opt-ir` | 启用 IR 阶段优化（使用 LLVM 中端流水线优化 IR） |
+| `--lto[=<type>]` | 链接时优化（`full` / `thin`；需要 clang 工具链，自动切换，与 `--use-llc-lld`/`--use-embedded-llc` 互斥） |
+| `-march=<arch>` / `-mtune=<cpu>` / `-mcpu=<cpu>` | 目标 CPU 架构与调优（llc 工具链下优先级 `-mcpu` > `-march` > `-mtune`） |
 | `-msse=<ver>` / `-mavx=<ver>` / `--mneon` | SIMD 指令集（SSE / AVX / NEON） |
-| `-funroll-loops` / `-fvectorize` / `-fslp-vectorize` | 循环展开与自动向量化 |
+| `-funroll-loops` / `-fvectorize` / `-fslp-vectorize` | 循环展开与自动向量化（IR 中端优化，llc 工具链下先优化 IR 再生成代码） |
 | `-fomit-frame-pointer` | 省略帧指针 |
-| `-fprofile-generate` / `-fprofile-use=<path>` / `-fcs-profile-generate` | PGO 性能分析优化 |
+| `-fprofile-generate` / `-fprofile-use=<path>` / `-fcs-profile-generate` | PGO 性能分析优化（需要 clang 工具链，自动切换） |
 | `-g` | 生成调试信息 |
 | `--keep-ir` | 同时保留 `.ll` 文件 |
 | `-I<path>` | 添加包含路径 |
@@ -164,12 +164,12 @@ ir2exe [选项] <input.ll> [output.exe]
 | 选项 | 描述 |
 |---|---|
 | `-O0` / `-O1` / `-O2` / `-O3` / `-Os` / `-Oz` | 优化级别（默认 `-O2`） |
-| `--lto[=<type>]` | 链接时优化（`full` / `thin`） |
+| `--lto[=<type>]` | 链接时优化（`full` / `thin`；需要 clang 工具链，自动切换，与 `--use-llc-lld`/`--use-embedded-llc` 互斥） |
 | `--march <arch>` / `--mtune <cpu>` / `--mcpu <cpu>` | 目标 CPU 架构与调优 |
 | `--msse <ver>` / `--mavx <ver>` / `--mneon` | SIMD 指令集（SSE / AVX / NEON） |
-| `--funroll-loops` / `--fvectorize` / `--fslp-vectorize` | 循环展开与自动向量化 |
+| `--funroll-loops` / `--fvectorize` / `--fslp-vectorize` | 循环展开与自动向量化（IR 中端优化，llc 工具链下先优化 IR 再生成代码） |
 | `--fomit-frame-pointer` | 省略帧指针 |
-| `--pgo-gen` / `--pgo-use <path>` / `--pgo-cs` | PGO 性能分析优化 |
+| `--pgo-gen` / `--pgo-use <path>` / `--pgo-cs` | PGO 性能分析优化（需要 clang 工具链，自动切换） |
 | `-g` | 生成调试信息 |
 | `-L<path>` / `-l<lib>` | 库搜索路径 / 链接额外的库 |
 | `--ldflags <flags>` / `--cflags <flags>` | 传递额外的链接器 / 编译器标志 |

@@ -672,12 +672,8 @@ fn main() {
     }
 
     // 3. IR 优化 (如果启用)
-    if options.opt_ir {
-        println!("");
-        println!("[2] IR 优化 ({})...", options.optimization);
-        // IR 优化现在由 ir2exe_lib 在编译时自动处理
-        println!("  [I] IR 优化将在编译阶段自动进行");
-    }
+    // 注意: clang 中端优化会丢弃 `; !source` / `; !link` 注释，
+    // 因此优化必须放在元数据解析（下方步骤 4）之后执行，见步骤 4.5。
 
     // 4. 构建 ir2exe 选项，并收集所有 #link 声明和 ws2_32
     let mut ir2exe_options = Ir2ExeOptions {
@@ -755,6 +751,31 @@ fn main() {
         }
 
         per_file_source_maps.push(source_map);
+    }
+
+    // 4.5 IR 优化 (如果启用 --opt-ir)
+    // 放在元数据解析之后：clang 中端优化会丢弃 `; !source` / `; !link` 注释，
+    // 源映射与链接库信息已从原始 IR 中提取完毕。
+    if options.opt_ir {
+        println!("");
+        println!("[2] IR 优化 ({})...", options.optimization);
+        for ir_file in ir_files.iter_mut() {
+            match cavvy::ir2exe_lib::optimize_ir(ir_file, &options.optimization, &[]) {
+                Ok(optimized_file) => {
+                    println!("  优化: {} -> {}", ir_file, optimized_file);
+                    // 后续阶段使用优化后的 IR；原始 IR 按 --keep-ir 决定去留
+                    let original = std::mem::replace(ir_file, optimized_file);
+                    if !options.keep_ir {
+                        let _ = fs::remove_file(&original);
+                    }
+                }
+                Err(e) => {
+                    print_tool_error("cayc", &format!("IR 优化失败: {}", ir_file), Some(&e));
+                    cleanup_temp_files(&ir_files, &obj_files, options.keep_ir, options.compile_only);
+                    process::exit(1);
+                }
+            }
+        }
     }
 
     // 5. IR → OBJ（每个 IR 文件独立编译为目标文件）
