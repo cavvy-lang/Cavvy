@@ -731,6 +731,7 @@ fn generate_statement(
                     CaseValue::EnumVariant {
                         enum_name,
                         variant_name,
+                        ..
                     } => {
                         return Err(format!(
                             "暂不支持 switch 枚举分支 ({}.{}) 的字节码生成 (行 {})",

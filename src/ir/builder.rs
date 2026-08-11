@@ -1269,6 +1269,7 @@ impl IrBuilder {
             CaseValue::EnumVariant {
                 enum_name,
                 variant_name,
+                ..
             } => {
                 // 在类型注册表中查找 enum 定义
                 if let Some(ref registry) = self.type_registry {

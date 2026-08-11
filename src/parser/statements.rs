@@ -600,33 +600,41 @@ pub fn parse_switch_statement(parser: &mut Parser) -> CayResult<Stmt> {
                     parser.advance();
                     CaseValue::Integer(val)
                 }
-                crate::lexer::Token::Identifier(ref enum_name) => {
-                    // 可能是 enum variant: Color.Red 或带解构: Result.Ok(int val)
-                    let enum_name = enum_name.clone();
-                    parser.advance();
-
-                    // 检查是否是 MemberAccess: EnumName.VariantName
-                    if parser.check(&crate::lexer::Token::Dot) {
-                        parser.advance(); // consume '.'
-
-                        if let crate::lexer::Token::Identifier(variant_name) =
-                            parser.current_token().clone()
-                        {
-                            parser.advance();
-                            CaseValue::EnumVariant {
-                                enum_name,
-                                variant_name,
-                            }
-                        } else {
+                crate::lexer::Token::Identifier(_) => {
+                    // 解析 enum 前缀类型：可能是 Color、std::Color 或 Result<int, string>
+                    let enum_type = super::types::parse_type(parser)?;
+                    let (enum_name, type_args) = match enum_type {
+                        crate::types::Type::Generic(name, args) => (name, args),
+                        crate::types::Type::Object(name) => (name, Vec::new()),
+                        _ => {
                             return Err(parser.error(&format!(
-                                "期望 enum variant 名称\n提示: case 标签格式为 'EnumName.VariantName'"
+                                "case 标签期望 enum 类型，但遇到了 '{}'\n提示: 应使用整数常量（如 case 1:）或 enum variant（如 case Color.Red:）",
+                                enum_type.display_name()
                             )));
                         }
-                    } else {
-                        // 单独的标识符，可能是常量（未来扩展）
+                    };
+
+                    // 检查是否是 MemberAccess: EnumName.VariantName
+                    if !parser.check(&crate::lexer::Token::Dot) {
                         return Err(parser.error(&format!(
                             "case 标签不支持单独的标识符 '{}'\n提示: 应使用整数常量（如 case 1:）或 enum variant（如 case Color.Red:）",
                             enum_name
+                        )));
+                    }
+                    parser.advance(); // consume '.'
+
+                    if let crate::lexer::Token::Identifier(variant_name) =
+                        parser.current_token().clone()
+                    {
+                        parser.advance();
+                        CaseValue::EnumVariant {
+                            enum_name,
+                            type_args,
+                            variant_name,
+                        }
+                    } else {
+                        return Err(parser.error(&format!(
+                            "期望 enum variant 名称\n提示: case 标签格式为 'EnumName.VariantName'"
                         )));
                     }
                 }

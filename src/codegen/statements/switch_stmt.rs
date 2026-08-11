@@ -15,6 +15,7 @@ impl IRGenerator {
             CaseValue::EnumVariant {
                 enum_name,
                 variant_name,
+                ..
             } => {
                 // 查找 enum 定义
                 if let Some(ref registry) = self.type_registry {

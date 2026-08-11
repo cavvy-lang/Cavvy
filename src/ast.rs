@@ -376,6 +376,8 @@ pub enum CaseValue {
     Integer(i64),
     EnumVariant {
         enum_name: String,
+        /// 泛型 enum 的类型实参，如 Result<int, string> 中的 [int, string]
+        type_args: Vec<Type>,
         variant_name: String,
     },
 }
@@ -395,6 +397,7 @@ impl CaseValue {
             CaseValue::EnumVariant {
                 enum_name,
                 variant_name,
+                ..
             } => Some((enum_name.as_str(), variant_name.as_str())),
             _ => None,
         }
@@ -407,9 +410,19 @@ impl fmt::Display for CaseValue {
             CaseValue::Integer(v) => write!(f, "{}", v),
             CaseValue::EnumVariant {
                 enum_name,
+                type_args,
                 variant_name,
             } => {
-                write!(f, "{}.{}", enum_name, variant_name)
+                if type_args.is_empty() {
+                    write!(f, "{}.{}", enum_name, variant_name)
+                } else {
+                    let args = type_args
+                        .iter()
+                        .map(|t| t.display_name())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    write!(f, "{}<{}>.{}", enum_name, args, variant_name)
+                }
             }
         }
     }
