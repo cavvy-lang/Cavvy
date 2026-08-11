@@ -484,6 +484,12 @@ impl IRGenerator {
             }
         }
 
+        // 缓存 struct 定义（用于判断 struct 是否来自头文件，决定构造函数/方法链接方式）
+        for struct_decl in &program.structs {
+            self.structs_cache
+                .insert(struct_decl.name.clone(), struct_decl.clone());
+        }
+
         self.emit_static_field_declarations();
         self.register_type_identifiers(&program);
 
@@ -2148,11 +2154,33 @@ impl IRGenerator {
         let mut all_params = vec![format!("{} %this", llvm_struct_ptr)];
         all_params.extend(params);
 
-        self.emit_line(&format!(
-            "define void @{}({}) {{",
-            fn_name,
-            all_params.join(", ")
-        ));
+        // 显式构造函数在头文件中被多个 TU 包含时，使用 linkonce_odr + COMDAT
+        // 让链接器去重；当前源文件自身定义的 struct 使用外部链接。
+        let ctor_is_header = !self.class_belongs_to_current_unit(struct_name);
+        let ctor_emit_comdat = ctor_is_header && self.emit_odr_comdat;
+        if ctor_emit_comdat {
+            self.emit_comdat(&fn_name);
+        }
+        if ctor_emit_comdat {
+            self.emit_line(&format!(
+                "define linkonce_odr void @{}({}) comdat(${}) {{",
+                fn_name,
+                all_params.join(", "),
+                fn_name
+            ));
+        } else if ctor_is_header {
+            self.emit_line(&format!(
+                "define linkonce_odr void @{}({}) {{",
+                fn_name,
+                all_params.join(", ")
+            ));
+        } else {
+            self.emit_line(&format!(
+                "define void @{}({}) {{",
+                fn_name,
+                all_params.join(", ")
+            ));
+        }
         self.indent += 1;
 
         self.emit_line("entry:");
@@ -2238,10 +2266,31 @@ impl IRGenerator {
         let llvm_struct_type = format!("%struct.{}", llvm_struct_type_name);
         let llvm_struct_ptr = format!("{}*", llvm_struct_type);
 
-        self.emit_line(&format!(
-            "define void @{}({} %this) {{",
-            fn_name, llvm_struct_ptr
-        ));
+        // 隐式默认构造函数在每个编译单元都会生成（C++ 中隐式构造等同 inline）。
+        // 头文件引入的 struct 使用 linkonce_odr + COMDAT，避免多 TU 重复定义冲突；
+        // 当前源文件自身定义的 struct 使用外部链接，防止 LTO 阶段单个 TU 内未引用
+        // 就丢弃默认构造，导致跨 TU 的 `new` 等调用链接失败。
+        let ctor_is_header = !self.class_belongs_to_current_unit(struct_name);
+        let ctor_emit_comdat = ctor_is_header && self.emit_odr_comdat;
+        if ctor_emit_comdat {
+            self.emit_comdat(&fn_name);
+        }
+        if ctor_emit_comdat {
+            self.emit_line(&format!(
+                "define linkonce_odr void @{}({} %this) comdat(${}) {{",
+                fn_name, llvm_struct_ptr, fn_name
+            ));
+        } else if ctor_is_header {
+            self.emit_line(&format!(
+                "define linkonce_odr void @{}({} %this) {{",
+                fn_name, llvm_struct_ptr
+            ));
+        } else {
+            self.emit_line(&format!(
+                "define void @{}({} %this) {{",
+                fn_name, llvm_struct_ptr
+            ));
+        }
         self.indent += 1;
         self.emit_line("entry:");
         self.scope_manager.enter_scope();
@@ -2622,11 +2671,11 @@ impl IRGenerator {
         ))
     }
 
-    /// 判断类定义是否来自当前正在编译的源文件（而非通过 #include 引入的头文件）。
+    /// 判断类/struct 定义是否来自当前正在编译的源文件（而非通过 #include 引入的头文件）。
     ///
     /// 用于决定方法/vtable/默认构造的链接方式：
-    /// - 当前源文件定义的类：使用外部链接（强符号），允许其它 TU 引用；
-    /// - 头文件（.cayh / .cay）引入的类：使用 linkonce_odr + COMDAT，避免多 TU
+    /// - 当前源文件定义的类/struct：使用外部链接（强符号），允许其它 TU 引用；
+    /// - 头文件（.cayh / .cay）引入的类/struct：使用 linkonce_odr + COMDAT，避免多 TU
     ///   重复定义冲突，同时让未引用的副本在本地优化阶段被删除，减小 .obj 体积。
     fn class_belongs_to_current_unit(&self, class_name: &str) -> bool {
         // 取裸类名（去掉命名空间与泛型实参）查缓存。
@@ -2637,10 +2686,17 @@ impl IRGenerator {
         } else {
             class_name
         };
-        let Some(class_decl) = self.classes_cache.get(bare) else {
+        // 先查 class 缓存，再查 struct 缓存
+        let loc_file = if let Some(class_decl) = self.classes_cache.get(bare) {
+            class_decl.loc.file.as_ref()
+        } else if let Some(struct_decl) = self.structs_cache.get(bare) {
+            struct_decl.loc.file.as_ref()
+        } else {
+            // 既不在 class 也不在 struct 缓存中：保守视为非当前单元（使用
+            // linkonce_odr），因为无法确认定义来源时弱符号更安全，可被强符号覆盖。
             return false;
         };
-        let Some(loc_file) = class_decl.loc.file.as_ref() else {
+        let Some(loc_file) = loc_file else {
             // 无源位置信息时保守视为当前文件（外部链接更安全）。
             return true;
         };
@@ -2849,15 +2905,14 @@ impl IRGenerator {
             ));
         }
 
-        // enum/class 定义可能被多个编译单元同时包含（如 .cayh 声明文件、
+        // enum/class/struct 定义可能被多个编译单元同时包含（如 .cayh 声明文件、
         // 多文件各自 #include <std/...> 的场景），其方法在每个 TU 各生成一份
         // 定义；用 linkonce_odr 让链接器去重（C++ vague linkage 思路）。
-        // 但如果类定义就在当前编译的源文件里（不是从头文件 include 进来的），
+        // 但如果类/struct 定义就在当前编译的源文件里（不是从头文件 include 进来的），
         // 方法应当使用外部链接，否则本地优化器会把未被本 TU 引用的方法删掉，
         // LTO / 多文件链接时其它 TU 就找不到符号；同时外部链接也避免了为当前
         // TU 保留一份未使用的头文件方法副本，显著减小 .obj 体积。
-        let is_header_class = (is_enum_method || !is_struct_method)
-            && !self.class_belongs_to_current_unit(class_name);
+        let is_header_class = !self.class_belongs_to_current_unit(class_name);
         let linkage = if is_header_class {
             "linkonce_odr "
         } else {

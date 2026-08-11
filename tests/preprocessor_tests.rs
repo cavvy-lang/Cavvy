@@ -356,6 +356,63 @@ fn test_include_h_declaration_file_multifile_link() {
     let _ = std::fs::remove_file("examples/include_h/main.obj");
 }
 
+/// 回归测试：struct 定义在头文件中被多个 TU #include 时，隐式默认构造函数
+/// 必须使用 linkonce_odr 链接，避免链接器报 duplicate symbol 错误。
+///
+/// 场景：error.cay 定义 struct LexerError，a.cay 和 b.cay 各自 #include 它
+/// 并 `new LexerError()`。两个 TU 都会生成 `_ZN10LexerErrorC1Ev`，
+/// 链接器必须能去重。修复前使用外部链接导致：
+///   ld.lld: error: duplicate symbol: LexerError::LexerError()
+#[test]
+fn test_struct_multitu_linkonce_odr() {
+    let unique = format!("{}_{:?}", std::process::id(), std::thread::current().id())
+        .replace(|c: char| !c.is_alphanumeric(), "_");
+    let exe = if cfg!(target_os = "windows") {
+        format!("struct_multitu_{}.exe", unique)
+    } else {
+        format!("struct_multitu_{}", unique)
+    };
+    let exe_path = std::env::temp_dir().join(&exe);
+    let exe_str = exe_path.to_string_lossy().to_string();
+
+    let out = std::process::Command::new("./target/release/cayc")
+        .args([
+            "examples/struct_multitu/a.cay",
+            "examples/struct_multitu/b.cay",
+            "-o",
+            &exe_str,
+        ])
+        .output()
+        .expect("run cayc");
+    assert!(
+        out.status.success(),
+        "multi-file struct compile+link failed (duplicate symbol?): {}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let run = std::process::Command::new(&exe_path)
+        .output()
+        .expect("run linked executable");
+    let stdout = String::from_utf8_lossy(&run.stdout);
+    assert!(
+        stdout.contains("error from A"),
+        "Should instantiate LexerError in TU A, got: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("struct multi-TU linkonce_odr test passed!"),
+        "struct multi-TU linkonce_odr test should pass, got: {}",
+        stdout
+    );
+
+    let _ = std::fs::remove_file(&exe_path);
+    let _ = std::fs::remove_file("examples/struct_multitu/a.ll");
+    let _ = std::fs::remove_file("examples/struct_multitu/b.ll");
+    let _ = std::fs::remove_file("examples/struct_multitu/a.obj");
+    let _ = std::fs::remove_file("examples/struct_multitu/b.obj");
+}
+
 #[test]
 fn test_error_include_h_missing() {
     let error = compile_eol_expect_error("examples/errors/error_include_h_missing.cay")

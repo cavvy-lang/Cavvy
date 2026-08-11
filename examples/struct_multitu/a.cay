@@ -1,0 +1,25 @@
+// a.cay —— 第一个 TU：#include 头文件中的 struct 定义并实例化。
+// 与 b.cay 各自独立生成 LexerError 的隐式默认构造函数，链接器去重后不应报错。
+//
+// 编译：cayc a.cay b.cay -o out
+
+#include "error.cay"
+#include <c/stdio.cay>
+
+pub class A {
+    pub static fn make() {
+        let tmp = new LexerError();
+        tmp.ErrorCode = "E1";
+        tmp.line = 10;
+        tmp.column = 20;
+        tmp.message = "error from A";
+        tmp.suggestion = "fix in A";
+        println("A: %s line=%d col=%d msg=%s sug=%s",
+            tmp.ErrorCode, tmp.line, tmp.column, tmp.message, tmp.suggestion);
+    }
+
+    pub static fn main() {
+        A.make();
+        println("struct multi-TU linkonce_odr test passed!");
+    }
+}

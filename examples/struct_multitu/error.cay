@@ -1,0 +1,15 @@
+#ifndef ERROR_H
+#define ERROR_H
+
+// struct 定义在头文件中，被多个 TU #include。
+// 回归测试：验证 struct 的隐式默认构造函数使用 linkonce_odr 链接，
+// 避免多 TU 链接时出现 duplicate symbol 错误。
+pub struct LexerError {
+    string ErrorCode;
+    long   line;
+    long   column;
+    string message;
+    string suggestion;
+}
+
+#endif // ERROR_H

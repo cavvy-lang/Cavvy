@@ -1,0 +1,18 @@
+// b.cay —— 第二个 TU：同样 #include 头文件中的 struct 定义并实例化。
+// 两个 TU 都生成 LexerError::LexerError()，链接器必须能去重。
+
+#include "error.cay"
+#include <c/stdio.cay>
+
+pub class B {
+    pub static fn make() {
+        let tmp = new LexerError();
+        tmp.ErrorCode = "E2";
+        tmp.line = 30;
+        tmp.column = 40;
+        tmp.message = "error from B";
+        tmp.suggestion = "fix in B";
+        println("B: %s line=%d col=%d msg=%s sug=%s",
+            tmp.ErrorCode, tmp.line, tmp.column, tmp.message, tmp.suggestion);
+    }
+}
