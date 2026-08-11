@@ -1,0 +1,9 @@
+public class LtoHelper {
+    public static int getValue() {
+        return 42;
+    }
+
+    public int getInstanceValue() {
+        return 100;
+    }
+}

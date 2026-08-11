@@ -1,0 +1,8 @@
+#include_h "lto_cross_tu_helper.cayh"
+
+fn main() {
+    int staticValue = LtoHelper::getValue();
+    LtoHelper helper = new LtoHelper();
+    int instanceValue = helper.getInstanceValue();
+    println("%d %d", staticValue, instanceValue);
+}

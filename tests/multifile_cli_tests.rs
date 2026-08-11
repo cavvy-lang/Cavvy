@@ -356,3 +356,88 @@ fn multiple_sources_with_dash_o() {
     let _ = fs::remove_file(&tmp.join("main.ll"));
     let _ = fs::remove_dir_all(&tmp);
 }
+
+#[test]
+fn lto_links_cross_tu_class_methods() {
+    let tmp = PathBuf::from("target/tmp/lto_cross_tu");
+    fs::create_dir_all(&tmp).unwrap();
+
+    let helper_src = PathBuf::from("examples/lto_cross_tu_helper.cay");
+    let header_src = PathBuf::from("examples/lto_cross_tu_helper.cayh");
+    let main_src = PathBuf::from("examples/lto_cross_tu_main.cay");
+    let helper = tmp.join("helper.cay");
+    let header = tmp.join("lto_cross_tu_helper.cayh");
+    let main_file = tmp.join("main.cay");
+    fs::copy(&helper_src, &helper).unwrap();
+    fs::copy(&header_src, &header).unwrap();
+    fs::copy(&main_src, &main_file).unwrap();
+
+    let exe = tmp.join(format!("combined{}", exe_extension()));
+    let _ = fs::remove_file(&exe);
+    let _ = fs::remove_file(tmp.join("helper.obj"));
+    let _ = fs::remove_file(tmp.join("main.obj"));
+    let _ = fs::remove_file(tmp.join("helper.ll"));
+    let _ = fs::remove_file(tmp.join("main.ll"));
+
+    // 先验证非 LTO 多文件链接正常
+    let output = Command::new(cayc_path())
+        .arg(&helper)
+        .arg(&main_file)
+        .arg("-o")
+        .arg(&exe)
+        .output()
+        .expect("failed to run cayc without --lto");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "cayc should link cross-TU methods without LTO:\n{}",
+        stderr
+    );
+    let run_output = Command::new(&exe)
+        .output()
+        .expect("failed to run combined executable");
+    let stdout = String::from_utf8_lossy(&run_output.stdout);
+    assert!(
+        stdout.contains("42 100"),
+        "non-LTO executable should print '42 100', got: {}",
+        stdout
+    );
+
+    let _ = fs::remove_file(&exe);
+    let _ = fs::remove_file(tmp.join("helper.obj"));
+    let _ = fs::remove_file(tmp.join("main.obj"));
+
+    // 再验证 LTO 模式下跨 TU 的类方法/默认构造/vtable 不会变成 undefined symbol
+    let output = Command::new(cayc_path())
+        .arg(&helper)
+        .arg(&main_file)
+        .arg("--lto")
+        .arg("-o")
+        .arg(&exe)
+        .output()
+        .expect("failed to run cayc with --lto");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "cayc --lto should link cross-TU class methods:\n{}",
+        stderr
+    );
+    assert!(exe.exists(), "LTO executable should be created");
+    let run_output = Command::new(&exe)
+        .output()
+        .expect("failed to run LTO executable");
+    let stdout = String::from_utf8_lossy(&run_output.stdout);
+    assert!(
+        stdout.contains("42 100"),
+        "LTO executable should print '42 100', got: {}",
+        stdout
+    );
+
+    // 清理
+    let _ = fs::remove_file(&exe);
+    let _ = fs::remove_file(tmp.join("helper.obj"));
+    let _ = fs::remove_file(tmp.join("main.obj"));
+    let _ = fs::remove_file(tmp.join("helper.ll"));
+    let _ = fs::remove_file(tmp.join("main.ll"));
+    let _ = fs::remove_dir_all(&tmp);
+}

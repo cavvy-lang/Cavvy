@@ -209,6 +209,7 @@ impl IRGenerator {
 
         // 设置源文件路径
         self.source_file = source_file.to_string();
+        self.compilation_unit_source = source_file.to_string();
 
         // 先设置 extern 声明，这样 emit_header 中的运行时声明可以检查用户是否已声明
         self.set_extern_declarations(program.extern_declarations.clone());
@@ -2304,15 +2305,32 @@ impl IRGenerator {
 
         // 生成 vtable 全局常量
         // 类型：[N x i8*]
-        // linkonce_odr：同一类的声明（.cayh）与实现（.cay）可能在不同编译单元
-        // 各自生成 vtable，由链接器去重（C++ vague linkage 思路）。
+        // 头文件引入的类可能在多个 TU 生成 vtable，使用 linkonce_odr + COMDAT
+        // 去重；当前源文件自身定义的类使用外部链接，避免为未引用的头文件类
+        // 保留多余副本，同时仍能被其它 TU 引用。
+        let vtable_is_header = !self.class_belongs_to_current_unit(class_name);
+        if vtable_is_header {
+            self.emit_comdat(&vtable_name);
+        }
         let vtable_type = format!("[{} x i8*]", entries.len());
-        self.emit_line(&format!(
-            "@{} = linkonce_odr global {} [{}]",
-            vtable_name,
-            vtable_type,
-            entries.join(", ")
-        ));
+        if vtable_is_header {
+            // 头文件类：linkonce_odr + COMDAT，允许链接器去重并删除未引用副本。
+            self.emit_line(&format!(
+                "@{} = linkonce_odr global {} [{}], comdat(${})",
+                vtable_name,
+                vtable_type,
+                entries.join(", "),
+                vtable_name
+            ));
+        } else {
+            // 当前源文件类：默认外部链接，带初始化器，可被其它 TU 引用。
+            self.emit_line(&format!(
+                "@{} = global {} [{}]",
+                vtable_name,
+                vtable_type,
+                entries.join(", ")
+            ));
+        }
 
         // 标记已生成
         self.generated_vtables.insert(vtable_name);
@@ -2557,6 +2575,45 @@ impl IRGenerator {
         ))
     }
 
+    /// 判断类定义是否来自当前正在编译的源文件（而非通过 #include 引入的头文件）。
+    ///
+    /// 用于决定方法/vtable/默认构造的链接方式：
+    /// - 当前源文件定义的类：使用外部链接（强符号），允许其它 TU 引用；
+    /// - 头文件（.cayh / .cay）引入的类：使用 linkonce_odr + COMDAT，避免多 TU
+    ///   重复定义冲突，同时让未引用的副本在本地优化阶段被删除，减小 .obj 体积。
+    fn class_belongs_to_current_unit(&self, class_name: &str) -> bool {
+        // 取裸类名（去掉命名空间与泛型实参）查缓存。
+        let bare = if let Some(pos) = class_name.find('<') {
+            &class_name[..pos]
+        } else if let Some(pos) = class_name.rfind("::") {
+            &class_name[pos + 2..]
+        } else {
+            class_name
+        };
+        let Some(class_decl) = self.classes_cache.get(bare) else {
+            return false;
+        };
+        let Some(loc_file) = class_decl.loc.file.as_ref() else {
+            // 无源位置信息时保守视为当前文件（外部链接更安全）。
+            return true;
+        };
+        self.same_source_file(loc_file, &self.compilation_unit_source)
+    }
+
+    /// 规范化比较两个源文件路径是否指向同一文件。
+    fn same_source_file(&self, a: &str, b: &str) -> bool {
+        if a == b {
+            return true;
+        }
+        let path_a = std::path::Path::new(a);
+        let path_b = std::path::Path::new(b);
+        if let (Ok(ca), Ok(cb)) = (path_a.canonicalize(), path_b.canonicalize()) {
+            return ca == cb;
+        }
+        // 规范化失败时，至少比较绝对/相对组件是否一致。
+        path_a.components().eq(path_b.components())
+    }
+
     fn generate_method(&mut self, class_name: &str, method: &MethodDecl) -> CayResult<()> {
         let fn_name = self.generate_method_name(class_name, method);
         self.generate_method_with_name(class_name, method, fn_name)
@@ -2747,19 +2804,36 @@ impl IRGenerator {
 
         // enum/class 定义可能被多个编译单元同时包含（如 .cayh 声明文件、
         // 多文件各自 #include <std/...> 的场景），其方法在每个 TU 各生成一份
-        // 定义；用 linkonce_odr 让链接器去重（C++ vague linkage 思路，
-        // 仿 Object 默认构造、析构与 vtable 的先例）。
-        let linkage = if is_enum_method || !is_struct_method {
+        // 定义；用 linkonce_odr 让链接器去重（C++ vague linkage 思路）。
+        // 但如果类定义就在当前编译的源文件里（不是从头文件 include 进来的），
+        // 方法应当使用外部链接，否则本地优化器会把未被本 TU 引用的方法删掉，
+        // LTO / 多文件链接时其它 TU 就找不到符号；同时外部链接也避免了为当前
+        // TU 保留一份未使用的头文件方法副本，显著减小 .obj 体积。
+        let is_header_class = (is_enum_method || !is_struct_method)
+            && !self.class_belongs_to_current_unit(class_name);
+        let linkage = if is_header_class {
             "linkonce_odr "
         } else {
             ""
         };
+        // LTO 模式下为 linkonce_odr 方法显式关联 COMDAT，确保链接器能正确合并
+        // 重复定义；非 LTO 模式省略 COMDAT，保持目标文件小巧。
+        let emit_comdat_for_this_method = is_header_class && self.emit_odr_comdat;
+        if emit_comdat_for_this_method {
+            self.emit_comdat(&fn_name);
+        }
+        let comdat_suffix = if emit_comdat_for_this_method {
+            format!(" comdat(${}) ", fn_name)
+        } else {
+            " ".to_string()
+        };
         self.emit_line(&format!(
-            "define {}{} @{}({}) {{",
+            "define {}{} @{}({}){} {{",
             linkage,
             ret_type,
             fn_name,
-            params.join(", ")
+            params.join(", "),
+            comdat_suffix
         ));
         self.indent += 1;
 
@@ -3198,13 +3272,32 @@ impl IRGenerator {
         self.scope_manager.reset();
         self.loop_stack.clear();
 
-        // 隐式默认构造函数在每个编译单元都会生成（C++ 中隐式构造等同 inline），
-        // 统一使用 linkonce_odr 让链接器去重——多文件编译（.cayh 声明文件模型）
-        // 时同名默认构造不会冲突；实现文件中的显式构造是强符号，天然优先。
-        self.emit_line(&format!(
-            "define linkonce_odr void @{}(i8* %this) {{",
-            fn_name
-        ));
+        // 隐式默认构造函数在每个编译单元都会生成（C++ 中隐式构造等同 inline）。
+        // 头文件引入的类使用 linkonce_odr，避免多 TU 重复定义冲突；
+        // 当前源文件自身定义的类使用外部链接，防止 LTO 阶段单个 TU 内未引用就
+        // 丢弃默认构造，导致跨 TU 的 `new` 等调用链接失败，同时避免保留未使用
+        // 的头文件默认构造副本。
+        let ctor_is_header = !self.class_belongs_to_current_unit(class_name);
+        let ctor_emit_comdat = ctor_is_header && self.emit_odr_comdat;
+        if ctor_emit_comdat {
+            self.emit_comdat(&fn_name);
+        }
+        if ctor_emit_comdat {
+            self.emit_line(&format!(
+                "define linkonce_odr void @{}(i8* %this) comdat(${}) {{",
+                fn_name, fn_name
+            ));
+        } else if ctor_is_header {
+            self.emit_line(&format!(
+                "define linkonce_odr void @{}(i8* %this) {{",
+                fn_name
+            ));
+        } else {
+            self.emit_line(&format!(
+                "define void @{}(i8* %this) {{",
+                fn_name
+            ));
+        }
         self.indent += 1;
         self.emit_line("entry:");
 

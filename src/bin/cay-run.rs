@@ -311,6 +311,7 @@ fn compile_cay_to_ir(source_path: &str, options: &RunOptions) -> Result<String, 
         test_mode: false,
         detect_cycles: options.detect_cycles,
         no_panic: options.no_panic,
+        lto: false,
     };
 
     let compiler = Compiler::with_options(compiler_options);

@@ -1,0 +1,9 @@
+#ifndef LTO_CROSS_TU_HELPER_CAYH
+#define LTO_CROSS_TU_HELPER_CAYH
+
+public class LtoHelper {
+    pub native static int getValue();
+    pub native int getInstanceValue();
+}
+
+#endif

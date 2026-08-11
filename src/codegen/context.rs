@@ -353,7 +353,9 @@ pub struct IRGenerator {
     pub class_namespaces: HashMap<String, Vec<String>>,   // 类名 -> 命名空间路径 映射
     // 源映射相关
     pub current_ir_line: usize,  // 当前IR行号
-    pub source_file: String,     // 当前源文件
+    pub source_file: String,     // 当前源文件（可能随 #include 切换）
+    pub compilation_unit_source: String, // 本次编译的根源文件（不随 #include 改变）
+    pub emit_odr_comdat: bool,   // 是否为 linkonce_odr 方法显式发射 COMDAT（LTO 需要）
     pub source_line: usize,      // 当前源行号
     pub source_column: usize,    // 当前源列号
     pub enable_source_map: bool, // 是否启用源映射
@@ -392,6 +394,8 @@ pub struct IRGenerator {
     pub generated_vtables: HashSet<String>,
     // 已生成的方法定义（避免重复生成）
     pub generated_methods: HashSet<String>,
+    // 已发射的 COMDAT（用于 weak_odr / linkonce_odr 函数/全局变量），避免重复声明
+    pub emitted_comdats: HashSet<String>,
     // 代码生成阶段收集的警告（使用 RefCell 允许在 &self 方法中修改）
     pub warnings: std::cell::RefCell<Vec<crate::miette_diagnostic::CayError>>,
     // 类定义缓存（用于显式特化查找原始类）
@@ -492,6 +496,8 @@ impl IRGenerator {
             // 源映射初始化
             current_ir_line: 1,
             source_file: String::new(),
+            compilation_unit_source: String::new(),
+            emit_odr_comdat: false,
             source_line: 1,
             source_column: 1,
             enable_source_map: true, // 默认启用
@@ -520,6 +526,7 @@ impl IRGenerator {
             generated_specializations: HashSet::new(),
             generated_vtables: HashSet::new(),
             generated_methods: HashSet::new(),
+            emitted_comdats: HashSet::new(),
             warnings: std::cell::RefCell::new(Vec::new()),
             classes_cache: std::collections::HashMap::new(),
             structs_cache: std::collections::HashMap::new(),
@@ -891,6 +898,19 @@ impl IRGenerator {
         // DWARF: 闭合函数时弹出作用域
         if self.debug_info && line.trim() == "}" && !self.debug_scope_stack.is_empty() {
             self.debug_scope_stack.pop();
+        }
+    }
+
+    /// 为 weak_odr / linkonce_odr 符号发射 COMDAT 声明。
+    ///
+    /// LLVM 要求 weak_odr / linkonce_odr 函数/全局变量必须关联 COMDAT，否则
+    /// LTO 链接时链接器无法正确合并重复定义，会导致 undefined symbol 错误。
+    /// 同一 COMDAT 在一个 TU 内只声明一次。
+    pub fn emit_comdat(&mut self, symbol_name: &str) {
+        if self.emitted_comdats.insert(symbol_name.to_string()) {
+            self.output
+                .push_str(&format!("${} = comdat any\n", symbol_name));
+            self.current_ir_line += 1;
         }
     }
 

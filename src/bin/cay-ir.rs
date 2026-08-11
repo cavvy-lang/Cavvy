@@ -317,6 +317,7 @@ fn main() {
         test_mode: false,
         detect_cycles: options.detect_cycles,
         no_panic: options.no_panic,
+        lto: false,
     };
 
     // 编译 Cavvy → IR

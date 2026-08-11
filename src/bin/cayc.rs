@@ -631,6 +631,7 @@ fn main() {
         test_mode: options.test_mode,
         detect_cycles: options.detect_cycles,
         no_panic: options.no_panic,
+        lto: options.lto,
     };
     let compiler = cavvy::Compiler::with_options(compiler_options);
 

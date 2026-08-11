@@ -44,6 +44,9 @@ pub struct CompilerOptions {
     pub detect_cycles: bool,
     /// --no-panic：将 panic()/abort() 调用转为编译错误（适用于嵌入式等不允许 panic 的环境）。
     pub no_panic: bool,
+    /// 是否启用 LTO。开启后，头文件中的 linkonce_odr 方法会显式关联 COMDAT，
+    /// 确保链接器能在跨 TU 场景下正确合并/去重，避免 undefined symbol。
+    pub lto: bool,
 }
 
 impl Default for CompilerOptions {
@@ -60,6 +63,7 @@ impl Default for CompilerOptions {
             test_mode: false,
             detect_cycles: false,
             no_panic: false,
+            lto: false,
         }
     }
 }
@@ -179,6 +183,9 @@ impl Compiler {
         if self.options.test_mode {
             ir_gen.enable_test_mode();
         }
+        // LTO 模式下需要为 linkonce_odr 方法显式发射 COMDAT，否则跨 TU 链接会
+        // 出现 undefined symbol；非 LTO 模式则保持较小目标文件。
+        ir_gen.emit_odr_comdat = self.options.lto;
         // 设置源文件路径以启用源映射
         let source_file = main_file.as_deref().unwrap_or("");
         let gen_result = ir_gen.generate(&ast, source_file);
