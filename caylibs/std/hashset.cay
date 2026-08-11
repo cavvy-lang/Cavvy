@@ -17,7 +17,7 @@ namespace std {
 /**
  * 泛型哈希集合。
  */
-public class HashSet<T, A: Allocator = GlobalAlloc> {
+public final class HashSet<T, A: Allocator = GlobalAlloc> {
     private HashMap<T, bool, A> map;
 
     public HashSet() {

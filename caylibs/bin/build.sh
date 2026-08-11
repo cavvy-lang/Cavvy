@@ -30,6 +30,10 @@ SOURCES=(
 
 CFLAGS="-O2 -std=c11 -Wall -Wextra -fPIC -ffunction-sections -fdata-sections"
 
+# clang 路径启用 -flto：产出 LLVM bitcode 目标文件，
+# 使 cayc --lto 链接时运行时库函数可参与跨模块内联与死代码消除。
+# gcc 回退路径保持原生 ELF。
+
 build_for_target() {
     local target="$1"
     local output_name="$2"
@@ -69,7 +73,7 @@ case "${1:-native}" in
         if command -v clang &> /dev/null; then
             CC="clang"
             AR="llvm-ar"
-            EXTRA="-target x86_64-w64-mingw32"
+            EXTRA="-target x86_64-w64-mingw32 -flto"
         elif command -v x86_64-w64-mingw32-gcc &> /dev/null; then
             CC="x86_64-w64-mingw32-gcc"
             AR="x86_64-w64-mingw32-ar"
@@ -85,7 +89,7 @@ case "${1:-native}" in
         if command -v clang &> /dev/null; then
             CC="clang"
             AR="llvm-ar"
-            EXTRA="-target x86_64-unknown-linux-gnu"
+            EXTRA="-target x86_64-unknown-linux-gnu -flto"
         else
             CC="gcc"
             AR="ar"
@@ -99,7 +103,7 @@ case "${1:-native}" in
         if command -v clang &> /dev/null; then
             CC="clang"
             AR="llvm-ar"
-            EXTRA=""
+            EXTRA="-flto"
         else
             CC="gcc"
             AR="ar"

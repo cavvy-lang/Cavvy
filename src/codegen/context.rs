@@ -388,6 +388,12 @@ pub struct IRGenerator {
     // 泛型特化：已收集的特化实例（基础类名 -> 实例集合）
     pub specializations:
         HashMap<String, HashSet<crate::codegen::specialization::SpecializationInstance>>,
+    // 泛型方法懒实例化：整个程序 AST 中作为方法调用/成员访问/方法引用出现过的
+    // 名字集合（含 codegen 直插调用的种子名），由 SpecializationCollector 填充。
+    pub used_method_names: HashSet<String>,
+    // 泛型方法懒实例化开关：CAVY_NO_LAZY_INSTANTIATION=1 时整体关闭，
+    // 便于排查回归（在 generate() 开始时读取环境变量）。
+    pub lazy_method_instantiation_enabled: bool,
     // 泛型特化：已生成的特化方法名（避免重复生成）
     pub generated_specializations: HashSet<String>,
     // 已生成的 vtable 全局常量（避免重复生成）
@@ -523,6 +529,8 @@ impl IRGenerator {
             generic_type_args: HashMap::new(),
             pending_new_expected_type: None,
             specializations: HashMap::new(),
+            used_method_names: HashSet::new(),
+            lazy_method_instantiation_enabled: true,
             generated_specializations: HashSet::new(),
             generated_vtables: HashSet::new(),
             generated_methods: HashSet::new(),

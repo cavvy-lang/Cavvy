@@ -71,7 +71,7 @@ extern {
  * 进程控制
  * ============================================================================ */
 
-public class Process {
+public final class Process {
     public static void exit(int code) {
         sys_exit((c_int)code);
     }
@@ -85,7 +85,7 @@ public class Process {
  * 环境变量
  * ============================================================================ */
 
-public class Environment {
+public final class Environment {
     public static String get(String name) {
         return (String)sys_getenv((c_string)name);
     }
@@ -95,7 +95,7 @@ public class Environment {
  * 命令行参数包装
  * ============================================================================ */
 
-public class Args {
+public final class Args {
     public String[] values;
 
     public Args(String[] values) {

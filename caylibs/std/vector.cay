@@ -25,7 +25,7 @@ namespace std {
 /**
  * vector 迭代器实现。
  */
-public class VectorIterator<T> implements Iterator<T>, MutableRandomAccessIterator<T> {
+public final class VectorIterator<T> implements Iterator<T>, MutableRandomAccessIterator<T> {
     private T[] data;
     private int size;
     private int index;
@@ -52,7 +52,7 @@ public class VectorIterator<T> implements Iterator<T>, MutableRandomAccessIterat
 
 }
 
-public class vector<T> implements Iterable<T> {
+public final class vector<T> implements Iterable<T> {
     public T[] data;
     public int size;
 

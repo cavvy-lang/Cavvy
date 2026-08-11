@@ -22,7 +22,7 @@ namespace std {
  * 创建时快照当前 data 数组与有效长度，因此遍历期间对列表的结构性修改
  * 不会反映到迭代器上（与 std::vector 迭代器行为一致）。
  */
-public class ArrayListIterator<T> implements Iterator<T>, MutableRandomAccessIterator<T> {
+public final class ArrayListIterator<T> implements Iterator<T>, MutableRandomAccessIterator<T> {
     private T[] data;
     private int size;
     private int index;
@@ -55,7 +55,7 @@ public class ArrayListIterator<T> implements Iterator<T>, MutableRandomAccessIte
  * 默认分配器为 GlobalAlloc。API 风格贴近 Java ArrayList，同时保留
  * `reserve`/`trimToSize` 等 C++ 风格命名以方便迁移。
  */
-public class ArrayList<T, A: Allocator = GlobalAlloc> implements Iterable<T> {
+public final class ArrayList<T, A: Allocator = GlobalAlloc> implements Iterable<T> {
     private T[] data;
     private int size;
     private A allocator;

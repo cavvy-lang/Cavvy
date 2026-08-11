@@ -1804,6 +1804,7 @@ impl SemanticAnalyzer {
         // 否则声明侧 new 出的对象 vptr/槽位与分派不一致（空 vptr 段错误）。
         // 为每个重载方法分配独立的槽位，使用方法签名（名字+参数类型）作为键
         if let Some(class_info) = self.type_registry.get_class(class_name) {
+            let is_final = class_info.is_final;
             // 收集所有虚方法签名
             let mut instance_method_sigs: Vec<String> = Vec::new();
             for (method_name, methods) in &class_info.methods {
@@ -1826,6 +1827,14 @@ impl SemanticAnalyzer {
             // 为每个虚方法签名分配槽位
             for method_sig in &instance_method_sigs {
                 if !slots.contains_key(method_sig) {
+                    if is_final {
+                        // final 类的新方法（非父类重写）永远不需要动态分派：
+                        // 无子类可重写它，父类/接口引用也无法命名它
+                        // （接口实现方法由 attach_interface_slots_to_class_vtables
+                        // 单独附加接口槽位）。不分配槽位后，方法体不再被 vtable
+                        // 引用，未被调用的方法可被链接器死代码回收。
+                        continue;
+                    }
                     // 新方法，分配新槽位
                     slots.insert(method_sig.clone(), next_slot);
                     next_slot += 1;

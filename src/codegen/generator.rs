@@ -229,6 +229,12 @@ impl IRGenerator {
         let mut collector = crate::codegen::specialization::SpecializationCollector::new();
         collector.collect_from_program(&program);
         self.specializations = collector.instances.clone();
+        // 泛型方法懒实例化：全程序被使用方法名集合（含 codegen 直插调用的种子名）。
+        self.used_method_names = std::mem::take(&mut collector.used_method_names);
+        // CAVY_NO_LAZY_INSTANTIATION=1 可整体关闭懒实例化，便于排查回归。
+        self.lazy_method_instantiation_enabled = std::env::var("CAVY_NO_LAZY_INSTANTIATION")
+            .map(|v| v.is_empty() || v == "0")
+            .unwrap_or(true);
 
         let mut main_class = None;
         let mut main_method = None;
@@ -1279,6 +1285,17 @@ impl IRGenerator {
                         {
                             continue;
                         }
+                        // 泛型方法懒实例化（对齐 C++ 模板按需实例化）：整个程序
+                        // AST 中名字从未作为方法调用/成员访问/方法引用出现、且未被
+                        // 本类 vtable 布局钉住的普通方法不生成。构造/析构始终生成
+                        // （ctor 名为 mangled 不参与名字扫描；dtor 由 RAII 隐式调用）。
+                        // vtable 槽位钉住的方法必须生成，否则 vtable 全局引用未定义符号。
+                        if self.lazy_method_instantiation_enabled
+                            && !self.used_method_names.contains(&method.name)
+                            && !self.method_pinned_by_vtable(base_qname, &method.name)
+                        {
+                            continue;
+                        }
                         // 创建特化版本的方法（替换参数和返回类型中的泛型参数）
                         let mut specialized_method = method.clone();
                         specialized_method.return_type = substitute_type_params(
@@ -1343,6 +1360,36 @@ impl IRGenerator {
         self.generic_type_args = old_mapping;
 
         Ok(())
+    }
+
+    /// 判断方法是否被类的 vtable 布局钉住。
+    ///
+    /// vtable 全局（`generate_vtable_global`）会对布局中每个槽位直接引用
+    /// `@函数名`，被钉住的方法必须生成，否则 vtable 引用未定义符号。
+    /// 槽位键形如 `name(param,...)` 或接口键 `$iface$Iface<Args>$name(param,...)`，
+    /// 按方法名比较（重载按名全保留，属于可接受的过度近似）。
+    /// 查找失败（无 registry、类未注册）时保守返回 true（视为钉住，保留生成）。
+    fn method_pinned_by_vtable(&self, base_qname: &str, method_name: &str) -> bool {
+        let Some(ref registry) = self.type_registry else {
+            return true;
+        };
+        let bare = base_qname.rsplit("::").next().unwrap_or(base_qname);
+        let class_info = registry
+            .get_class(base_qname)
+            .or_else(|| registry.get_class(bare));
+        let Some(class_info) = class_info else {
+            return true;
+        };
+        let Some(layout) = class_info.vtable_layout.as_ref() else {
+            // 无 vtable 布局（如 final 类且无继承槽位）：没有槽位引用，未钉住。
+            return false;
+        };
+        layout.slots.keys().any(|key| {
+            let sig =
+                crate::types::TypeRegistry::interface_vtable_key_method_signature(key).unwrap_or(key);
+            let name = sig.split('(').next().unwrap_or(sig);
+            name == method_name
+        })
     }
 
     /// 在隔离的代码缓冲区中执行懒单态化生成。
@@ -3112,10 +3159,30 @@ impl IRGenerator {
         let mut all_params = vec![format!("i8* %this")];
         all_params.extend(params);
 
+        // 与 generate_method_with_name 相同的 vague linkage 处理：
+        // 头文件类的构造函数可能在多个 TU 各生成一份（预收集路径 + 调用点懒生成），
+        // 用 linkonce_odr 让链接器去重，避免重复符号错误。
+        let ctor_is_header_class = !self.class_belongs_to_current_unit(class_name);
+        let ctor_linkage = if ctor_is_header_class {
+            "linkonce_odr "
+        } else {
+            ""
+        };
+        let ctor_emit_comdat = ctor_is_header_class && self.emit_odr_comdat;
+        if ctor_emit_comdat {
+            self.emit_comdat(&fn_name);
+        }
+        let ctor_comdat_suffix = if ctor_emit_comdat {
+            format!(" comdat(${}) ", fn_name)
+        } else {
+            " ".to_string()
+        };
         self.emit_line(&format!(
-            "define void @{}({}) {{",
+            "define {}void @{}({}){} {{",
+            ctor_linkage,
             fn_name,
-            all_params.join(", ")
+            all_params.join(", "),
+            ctor_comdat_suffix
         ));
         self.indent += 1;
 
@@ -3489,7 +3556,27 @@ impl IRGenerator {
         self.scope_manager.reset();
         self.loop_stack.clear();
 
-        self.emit_line(&format!("define void @{}(i8* %this) {{", fn_name));
+        // 与 generate_method_with_name 相同的 vague linkage 处理：
+        // 头文件类的析构函数可能在多个 TU 各生成一份（预收集路径 + 调用点懒生成），
+        // 用 linkonce_odr 让链接器去重，避免重复符号错误。
+        let dtor_is_header = !self.class_belongs_to_current_unit(class_name);
+        let dtor_emit_comdat = dtor_is_header && self.emit_odr_comdat;
+        if dtor_emit_comdat {
+            self.emit_comdat(&fn_name);
+        }
+        if dtor_emit_comdat {
+            self.emit_line(&format!(
+                "define linkonce_odr void @{}(i8* %this) comdat(${}) {{",
+                fn_name, fn_name
+            ));
+        } else if dtor_is_header {
+            self.emit_line(&format!(
+                "define linkonce_odr void @{}(i8* %this) {{",
+                fn_name
+            ));
+        } else {
+            self.emit_line(&format!("define void @{}(i8* %this) {{", fn_name));
+        }
         self.indent += 1;
 
         self.emit_line("entry:");

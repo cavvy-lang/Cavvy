@@ -2,7 +2,7 @@
 #include <std/arraylist.cay>
 namespace std {
 
-public class ArrayListNDFiller<T> {
+public final class ArrayListNDFiller<T> {
     
     /**
      * 静态工厂：创建 rows x cols 的二维 ArrayList。

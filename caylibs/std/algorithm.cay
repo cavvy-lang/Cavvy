@@ -24,7 +24,7 @@ namespace std {
  * 排序算法
  * ============================================================================ */
 
-public class algorithm {
+public final class algorithm {
 
     /**
      * 冒泡排序 - 稳定排序

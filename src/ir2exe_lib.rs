@@ -831,6 +831,9 @@ fn build_clang_compile_cmd(
         .arg(&options.optimization)
         .arg("-Wno-override-module");
 
+    // 按函数/数据分 section，配合链接端 --gc-sections 回收未引用代码
+    cmd.arg("-ffunction-sections").arg("-fdata-sections");
+
     // LTO 设置
     if options.lto {
         if options.lto_thin {
@@ -1032,6 +1035,13 @@ fn build_clang_link_cmd(
         cmd.arg("-lc").arg("-lm");
     }
 
+    // 回收未引用的 section（编译端已加 -ffunction-sections/-fdata-sections）
+    if options.target.contains("darwin") || options.target.contains("macos") {
+        cmd.arg("-Wl,-dead_strip");
+    } else if !options.target.contains("msvc") {
+        cmd.arg("-Wl,--gc-sections");
+    }
+
     // 额外库
     for lib in &options.extra_libs {
         cmd.arg(format!("-l{}", lib));
@@ -1057,6 +1067,9 @@ fn build_llc_compile_cmd(
         .arg("-o")
         .arg(output_file)
         .arg(input_file);
+
+    // 按函数/数据分 section，配合链接端 --gc-sections 回收未引用代码
+    cmd.arg("-function-sections").arg("-data-sections");
 
     // 优化级别
     // 注意: llc 只接受 0-3；-Os/-Oz 的体积优化由 IR 优化阶段（optimize_ir）承担，
@@ -1145,6 +1158,9 @@ fn build_lld_link_cmd(
             .arg("advapi32.lib")
             .arg("msvcrt.lib");
 
+        // 回收未引用的 section（MSVC 风格）
+        cmd.arg("/OPT:REF");
+
         // 额外库
         for lib in &options.extra_libs {
             cmd.arg(format!("{}.lib", lib));
@@ -1154,6 +1170,7 @@ fn build_lld_link_cmd(
         cmd.arg("-flavor").arg("gnu");
         cmd.arg("-m").arg("i386pep");
         cmd.arg("-o").arg(output_file);
+        cmd.arg("--gc-sections");
 
         // 添加启动文件
         let crt_paths = vec![
@@ -1236,6 +1253,7 @@ fn build_lld_link_cmd(
         // macOS: 使用 ld64 风格参数
         cmd.arg("-flavor").arg("darwin");
         cmd.arg("-o").arg(output_file);
+        cmd.arg("-dead_strip");
 
         for obj in obj_files {
             cmd.arg(obj);
@@ -1288,6 +1306,7 @@ fn build_lld_link_cmd(
         // Linux/Unix: 使用 GNU ld 风格参数
         cmd.arg("-flavor").arg("gnu");
         cmd.arg("-o").arg(output_file);
+        cmd.arg("--gc-sections");
 
         // 添加标准库搜索路径 - ld.lld 不会自动搜索系统库路径
         let default_lib_paths = vec![

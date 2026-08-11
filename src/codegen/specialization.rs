@@ -146,6 +146,11 @@ pub struct SpecializationCollector {
     dep_class_base: Option<String>,
     /// 依赖特化收集阶段：当前类实例允许的最大自嵌套深度。
     dep_max_depth: usize,
+    /// 整个程序 AST 中作为方法调用、成员访问或方法引用出现过的名字集合。
+    /// 供代码生成阶段实现泛型类方法懒实例化：名字不在此集合中且未被
+    /// vtable 钉住的方法可以跳过生成（对齐 C++ 模板按需实例化）。
+    /// 按名字过度近似：同名方法被其它类调用也会保留，这是可接受的保守行为。
+    pub used_method_names: HashSet<String>,
 }
 
 impl SpecializationCollector {
@@ -155,6 +160,31 @@ impl SpecializationCollector {
 
     /// 从程序中收集所有泛型特化实例
     pub fn collect_from_program(&mut self, program: &Program) {
+        // codegen 直插的隐式方法调用（不经过 AST 调用节点）：这些名字必须视为
+        // 「已使用」，否则懒实例化会跳过对应方法的生成，产生未定义符号链接错误。
+        // - iterator / hasNext / next：foreach 循环的迭代器协议由 codegen
+        //   （src/codegen/statements/loops.rs）与 IR builder（src/ir/builder.rs）
+        //   直接构造调用表达式插入，源码 AST 中不存在。
+        // - mutableIterator：可变迭代协议预留名（当前代码库未见直插，保守 seed）。
+        // - isOk / getValue / getError / fromError / into：`?` 运算符
+        //   （src/codegen/expressions/try_op.rs）经 vtable 直插分派；vtable 槽位
+        //   本身已钉住这些方法，此处 seed 仅作兜底。
+        // 构造/析构函数始终生成（ctor 名为 mangled 不参与名字扫描；dtor 由 RAII
+        // 隐式调用），无需 seed。
+        for name in [
+            "iterator",
+            "hasNext",
+            "next",
+            "mutableIterator",
+            "isOk",
+            "getValue",
+            "getError",
+            "fromError",
+            "into",
+        ] {
+            self.used_method_names.insert(name.to_string());
+        }
+
         // 收集顶层类中的泛型实例化
         for class in &program.classes {
             self.collect_from_class_decl(class);
@@ -440,7 +470,15 @@ impl SpecializationCollector {
                     }
                 }
             }
-            Stmt::Break(_, _) | Stmt::Continue(_, _) | Stmt::InlineIr(_) => {}
+            Stmt::Break(_, _) | Stmt::Continue(_, _) => {}
+            Stmt::InlineIr(inline_ir) => {
+                // 内联 IR 可能直接 `call @Class__method` 引用方法符号，绕过 AST
+                // 调用节点。将 `@标识符` 按 `_` 拆段全部登记为已使用方法名
+                // （过度近似，保留更多方法，保证不产生未定义符号）。
+                for line in &inline_ir.raw_lines {
+                    self.record_used_names_from_inline_ir(line);
+                }
+            }
         }
     }
 
@@ -454,16 +492,28 @@ impl SpecializationCollector {
                 }
             }
             Expr::Call(call) => {
+                self.record_used_method_from_callee(&call.callee);
                 self.collect_from_expr(&call.callee);
                 for arg in &call.args {
                     self.collect_from_expr(arg);
                 }
             }
             Expr::MemberAccess(member) => {
+                // 成员访问（方法调用、字段访问、静态方法取地址）的名字都登记为
+                // 已使用：字段名混入只是过度近似，保留更多方法永远安全。
+                self.used_method_names.insert(member.member.clone());
                 self.collect_from_expr(&member.object);
                 // 检查 object 是否是泛型类型标识，如 FileResult<File>
                 if let Expr::Identifier(id) = &*member.object {
                     self.collect_generic_class_name(&id.name);
+                }
+            }
+            Expr::MethodRef(method_ref) => {
+                // 方法引用（ClassName::method / obj::method）直接取函数地址，
+                // 不经 vtable，必须按名字保留。
+                self.used_method_names.insert(method_ref.method_name.clone());
+                if let Some(object) = &method_ref.object {
+                    self.collect_from_expr(object);
                 }
             }
             Expr::ArrayAccess(arr) => {
@@ -499,6 +549,51 @@ impl SpecializationCollector {
                 LambdaBody::Expr(expr) => self.collect_from_expr(expr),
                 LambdaBody::Block(block) => self.collect_from_block(block),
             },
+            // 以下变体此前落入 `_ => {}` 不递归；其中可能嵌套方法调用
+            // （如 `foo.bar()?`、`new T[foo.size()]`），其方法名必须登记为
+            // 已使用，否则懒实例化会误跳方法生成。顺带补全其中的泛型实例收集。
+            Expr::Try(try_expr) => {
+                self.collect_from_expr(&try_expr.expr);
+            }
+            Expr::InstanceOf(instance_of) => {
+                self.collect_from_expr(&instance_of.expr);
+                self.collect_type(&instance_of.target_type);
+            }
+            Expr::Alloc(alloc) => {
+                self.collect_from_expr(&alloc.size);
+                if let Some(align) = &alloc.align {
+                    self.collect_from_expr(align);
+                }
+            }
+            Expr::Dealloc(dealloc) => {
+                self.collect_from_expr(&dealloc.ptr);
+            }
+            Expr::AllocArray(alloc_array) => {
+                self.collect_type(&alloc_array.element_type);
+                self.collect_from_expr(&alloc_array.allocator);
+                self.collect_from_expr(&alloc_array.size);
+            }
+            Expr::NamedArg(named_arg) => {
+                self.collect_from_expr(&named_arg.value);
+            }
+            Expr::TypeOf(type_of) => {
+                self.collect_from_expr(&type_of.expr);
+            }
+            Expr::SizeOf(size_of) => match &size_of.target {
+                SizeOfTarget::Type(ty) => self.collect_type(ty),
+                SizeOfTarget::Expr(expr) => self.collect_from_expr(expr),
+            },
+            Expr::ArrayCreation(array_creation) => {
+                self.collect_type(&array_creation.element_type);
+                for size in &array_creation.sizes {
+                    self.collect_from_expr(size);
+                }
+            }
+            Expr::ArrayInit(array_init) => {
+                for element in &array_init.elements {
+                    self.collect_from_expr(element);
+                }
+            }
             _ => {}
         }
     }
@@ -560,6 +655,58 @@ impl SpecializationCollector {
                 }
             }
             _ => {}
+        }
+    }
+
+    /// 从调用表达式的 callee 中登记被使用的方法名。
+    ///
+    /// - `obj.method(...)` / `ClassName.staticMethod(...)`：callee 为 MemberAccess，
+    ///   登记 member 名（成员访问分支也会登记，此处不重复处理）。
+    /// - `method(...)`：类体内对同类方法的无限定调用，callee 为裸 Identifier，
+    ///   登记该名字（顶层函数名混入只是过度近似）。
+    /// - `ClassName::method(...)`：命名空间式静态调用，callee 为含 `::` 的
+    ///   Identifier（见 call/dispatch.rs 的重写），登记 `::` 后的方法名。
+    fn record_used_method_from_callee(&mut self, callee: &Expr) {
+        match callee {
+            Expr::Identifier(id) => {
+                if let Some(pos) = id.name.rfind("::") {
+                    self.used_method_names.insert(id.name[pos + 2..].to_string());
+                } else {
+                    self.used_method_names.insert(id.name.clone());
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// 扫描内联 IR 文本行，将 `@标识符` 按 `_` 拆段登记为已使用方法名。
+    /// 方法 LLVM 名形如 `std__ArrayList__Token__add` 或 `Class_method`，
+    /// 拆段后的末段即方法名；其余段混入只是过度近似，保留更多方法永远安全。
+    fn record_used_names_from_inline_ir(&mut self, line: &str) {
+        let bytes = line.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            if bytes[i] == b'@' {
+                let start = i + 1;
+                let mut end = start;
+                while end < bytes.len()
+                    && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_' || bytes[end] == b'.')
+                {
+                    end += 1;
+                }
+                if end > start {
+                    let token = &line[start..end];
+                    // 跳过 LLVM 内在函数与运行时辅助函数名中的点号前缀（如 llvm.stacksave）
+                    for segment in token.split('_') {
+                        if !segment.is_empty() && !segment.contains('.') {
+                            self.used_method_names.insert(segment.to_string());
+                        }
+                    }
+                }
+                i = end;
+            } else {
+                i += 1;
+            }
         }
     }
 

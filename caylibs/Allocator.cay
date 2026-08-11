@@ -17,7 +17,7 @@ public interface Allocator {
     void deallocate(long ptr);
 }
 
-public class GlobalAlloc implements Allocator {
+public final class GlobalAlloc implements Allocator {
     private static bool initialized = false;
 
     public static GlobalAlloc getInstance() {
@@ -59,7 +59,7 @@ public class GlobalAlloc implements Allocator {
     }
 }
 
-public class Arena implements Allocator {
+public final class Arena implements Allocator {
     private static long buffer;
     private static long current;
     private static long end;
@@ -114,7 +114,7 @@ public class Arena implements Allocator {
     }
 }
 
-public class ScopeAlloc implements Allocator {
+public final class ScopeAlloc implements Allocator {
     private static long marker;
     
     public static ScopeAlloc create() {

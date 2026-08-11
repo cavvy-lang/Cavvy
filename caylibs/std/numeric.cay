@@ -18,7 +18,7 @@
 
 namespace std {
 
-public class numeric {
+public final class numeric {
 
     /* ============================================================================
      * 基础数值操作

@@ -20,7 +20,7 @@ namespace std {
 /**
  * HashMap 键值对迭代器。
  */
-public class HashMapIterator<K, V> implements Iterator<K> {
+public final class HashMapIterator<K, V> implements Iterator<K> {
     private K[] keys;
     private V[] values;
     private char[] states;

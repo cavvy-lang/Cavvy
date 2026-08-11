@@ -319,7 +319,11 @@ impl IRGenerator {
         // 如果类名（basename）在多个命名空间中存在，说明调用点使用的简单名可能
         // 被 using/别名解析到非预期类。保守起见，禁止去虚拟化，继续走 vtable。
         let class_name_unambiguous = !self.is_class_name_ambiguous(class_name);
+        // 直接调用要求目标函数在当前 TU 已有定义（如泛型特化方法可能只在其他
+        // TU 生成，本 TU 只有 vtable 引用时仍能链接，直接调用却会触发未定义）。
+        let is_locally_defined = self.generated_methods.contains(fn_name);
         let can_devirtualize = !is_interface_dispatch
+            && is_locally_defined
             && class_name_unambiguous
             && fn_name_consistent
             && (self.is_method_final(class_name, method_name)
@@ -346,6 +350,16 @@ impl IRGenerator {
             )
         } else {
             // 直接调用
+            // final 类没有 vtable 可回退：若目标方法未在本 TU 生成（如泛型特化
+            // 仅在其它 TU 通过 new 实例化，本 TU 只经推断类型拿到对象），
+            // 懒生成该特化，否则直接调用会引用未定义符号。
+            if !self.generated_methods.contains(fn_name) {
+                let type_args = parse_interface_type_args(class_name);
+                if !type_args.is_empty() {
+                    let base_name = &class_name[..class_name.find('<').unwrap()];
+                    self.ensure_generic_class_specialization_generated(base_name, &type_args);
+                }
+            }
             if llvm_ret_type == "void" {
                 self.emit_line(&format!(
                     "  call void @{}({})",
