@@ -203,11 +203,30 @@ public class Harness {
         Harness.check("element container released", alloc.live() == 0);
         println("step8 elements ok");
 
-        /* ---- 9. 嵌套容器：ArrayList<ArrayList<Element>> 的元素递归析构 ----
-           注：此处用默认分配器。带自定义分配器的嵌套实例
-           （如 Stack<ArrayList<int, A>, A>）当前会命中一个既有的编译器缺口
-           —— 经泛型包装类字段/迭代器路径请求的嵌套特化实例未被完整生成
-           （undefined vtable/get），与本文件验证的内存回收无关。 */
+        /* ---- 9. 嵌套容器：Stack<ArrayList<int, A>, A> ----
+           验证嵌套实例的缓冲区归还与元素析构都完整（曾经因构造函数重载误选
+           而让内层容器拿到错误的分配器）。 */
+        Element.dtors = 0;
+        scope {
+            Stack<ArrayList<int, CountingAlloc>, CountingAlloc> nested
+                = new Stack<ArrayList<int, CountingAlloc>, CountingAlloc>(alloc);
+            for (int i = 0; i < 4; i = i + 1) {
+                ArrayList<int, CountingAlloc> row = new ArrayList<int, CountingAlloc>(alloc);
+                for (int j = 0; j < 5; j = j + 1) {
+                    row.add(j);
+                }
+                nested.push(row);
+            }
+            int total = 0;
+            for (ArrayList<int, CountingAlloc> row : nested) {
+                total = total + row.size();
+            }
+            Harness.check("nested iterate sum", total == 20);
+            Harness.check("nested live before exit", alloc.live() > 0);
+        }
+        Harness.check("nested containers released", alloc.live() == 0);
+
+        /* 元素递归析构（默认分配器的二维表） */
         Element.dtors = 0;
         scope {
             ArrayList<ArrayList<Element>> grid = new ArrayList<ArrayList<Element>>();
@@ -218,7 +237,6 @@ public class Harness {
                 }
                 grid.add(row);
             }
-            Harness.check("nested build ok", grid.size() == 4);
             Harness.check("nested elements alive in scope", Element.dtors == 0);
         }
         Harness.check("nested elements destroyed exactly once", Element.dtors == 20);

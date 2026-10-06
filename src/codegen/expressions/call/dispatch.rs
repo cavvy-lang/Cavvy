@@ -152,7 +152,127 @@ impl IRGenerator {
             }
         }
 
+        // 原始类型的 equals / hashCode（Object 协议的其余两个方法，与 toString 同一组）
+        if member.member == "equals" && call.args.len() == 1 {
+            if let Some(result) = self.try_generate_primitive_equals_call(member, call)? {
+                return Ok(Some(result));
+            }
+        }
+        if member.member == "hashCode" && call.args.is_empty() {
+            if let Some(result) = self.try_generate_primitive_hashcode_call(member)? {
+                return Ok(Some(result));
+            }
+        }
+
         Ok(None)
+    }
+
+    /// 处理原始类型的 `equals(other)`：按值比较。
+    ///
+    /// 接收者与实参的 LLVM 位宽可能不同（int vs long），统一到接收者的位宽后
+    /// 做 `icmp eq`。浮点用 `fcmp oeq`。
+    fn try_generate_primitive_equals_call(
+        &mut self,
+        member: &MemberAccessExpr,
+        call: &CallExpr,
+    ) -> CayResult<Option<String>> {
+        let Some(obj_type) = self.get_expression_type(&member.object) else {
+            return Ok(None);
+        };
+        let obj_llvm = match obj_type {
+            crate::types::Type::Int32 => "i32",
+            crate::types::Type::Int64 => "i64",
+            crate::types::Type::Char => "i8",
+            crate::types::Type::Bool => "i1",
+            crate::types::Type::Float32 => "float",
+            crate::types::Type::Float64 => "double",
+            _ => return Ok(None),
+        };
+        let obj_val = self.generate_expression(&member.object)?;
+        let (_, lhs) = self.parse_typed_value(&obj_val);
+        let arg_val = self.generate_expression(&call.args[0])?;
+        let (arg_ty, arg_v) = self.parse_typed_value(&arg_val);
+
+        // 统一到接收者位宽（浮点/整数都按各自规则转换）
+        let rhs = self.convert_arg_type(&arg_ty, &arg_v, obj_llvm);
+        let rhs_val = self
+            .parse_typed_value(&rhs)
+            .1
+            .to_string();
+        let temp = self.new_temp();
+        let is_float = obj_llvm == "float" || obj_llvm == "double";
+        if is_float {
+            self.emit_line(&format!(
+                "  {} = fcmp oeq {} {}, {}",
+                temp, obj_llvm, lhs, rhs_val
+            ));
+        } else {
+            self.emit_line(&format!(
+                "  {} = icmp eq {} {}, {}",
+                temp, obj_llvm, lhs, rhs_val
+            ));
+        }
+        Ok(Some(format!("i1 {}", temp)))
+    }
+
+    /// 处理原始类型的 `hashCode()`。
+    ///
+    /// 语义只要求「相等值同哈希」，因此整数直接用其值（64 位做高低位混合），
+    /// 浮点用其位模式。符号位由调用方（如 HashMap）自行处理。
+    fn try_generate_primitive_hashcode_call(
+        &mut self,
+        member: &MemberAccessExpr,
+    ) -> CayResult<Option<String>> {
+        let Some(obj_type) = self.get_expression_type(&member.object) else {
+            return Ok(None);
+        };
+        let obj_val = self.generate_expression(&member.object)?;
+        let (ty, val) = self.parse_typed_value(&obj_val);
+        let temp = self.new_temp();
+        match obj_type {
+            crate::types::Type::Int32 | crate::types::Type::Char | crate::types::Type::Bool => {
+                // 统一到 i32
+                let src = match ty.as_str() {
+                    "i32" => val.to_string(),
+                    _ => {
+                        let t = self.new_temp();
+                        let op = if ty == "i64" { "trunc" } else { "zext" };
+                        self.emit_line(&format!("  {} = {} {} {} to i32", t, op, ty, val));
+                        t
+                    }
+                };
+                self.emit_line(&format!("  {} = add i32 {}, 0", temp, src));
+                Ok(Some(format!("i32 {}", temp)))
+            }
+            crate::types::Type::Int64 => {
+                // 高低 32 位异或，保留高位信息
+                let lo = self.new_temp();
+                self.emit_line(&format!("  {} = trunc i64 {} to i32", lo, val));
+                let hi64 = self.new_temp();
+                self.emit_line(&format!("  {} = lshr i64 {}, 32", hi64, val));
+                let hi = self.new_temp();
+                self.emit_line(&format!("  {} = trunc i64 {} to i32", hi, hi64));
+                self.emit_line(&format!("  {} = xor i32 {}, {}", temp, lo, hi));
+                Ok(Some(format!("i32 {}", temp)))
+            }
+            crate::types::Type::Float32 => {
+                self.emit_line(&format!("  {} = bitcast float {} to i32", temp, val));
+                Ok(Some(format!("i32 {}", temp)))
+            }
+            crate::types::Type::Float64 => {
+                let bits = self.new_temp();
+                self.emit_line(&format!("  {} = bitcast double {} to i64", bits, val));
+                let lo = self.new_temp();
+                self.emit_line(&format!("  {} = trunc i64 {} to i32", lo, bits));
+                let hi64 = self.new_temp();
+                self.emit_line(&format!("  {} = lshr i64 {}, 32", hi64, bits));
+                let hi = self.new_temp();
+                self.emit_line(&format!("  {} = trunc i64 {} to i32", hi, hi64));
+                self.emit_line(&format!("  {} = xor i32 {}, {}", temp, lo, hi));
+                Ok(Some(format!("i32 {}", temp)))
+            }
+            _ => Ok(None),
+        }
     }
 
     /// 处理基本类型的 toString() 方法调用。
