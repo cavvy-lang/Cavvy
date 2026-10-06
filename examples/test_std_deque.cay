@@ -1,0 +1,229 @@
+#include <std/deque.cay>
+#include <std/arraylist.cay>
+#include <c/stdio.cay>
+
+using std::Deque;
+using std::ArrayList;
+
+public int main() {
+    /* ================= 空容器行为 ================= */
+    Deque<int> blank = new Deque<int>();
+    println("empty size = " + String.valueOf(blank.size()));
+    println("empty isEmpty = " + String.valueOf(blank.isEmpty()));
+    println("empty peekFront = " + String.valueOf(blank.peekFront()));
+    println("empty peekBack = " + String.valueOf(blank.peekBack()));
+    println("empty popFront = " + String.valueOf(blank.popFront()));
+    println("empty popBack = " + String.valueOf(blank.popBack()));
+    println("empty get(0) = " + String.valueOf(blank.get(0)));
+    println("empty get(-1) = " + String.valueOf(blank.get(-1)));
+    int blankSum = 0;
+    for (int x : blank) {
+        blankSum = blankSum + x;
+    }
+    println("empty foreach sum = " + String.valueOf(blankSum));
+    println("empty size after reads = " + String.valueOf(blank.size()));
+
+    /* ================= 基本增删与访问 ================= */
+    Deque<int> dq = new Deque<int>();
+    dq.pushBack(2);
+    dq.pushBack(3);
+    dq.pushFront(1);                       /* 队列变为 [1, 2, 3] */
+    println("after pushes size = " + String.valueOf(dq.size()));
+    println("front = " + String.valueOf(dq.peekFront()));
+    println("back = " + String.valueOf(dq.peekBack()));
+    println("get(0) = " + String.valueOf(dq.get(0)));
+    println("get(1) = " + String.valueOf(dq.get(1)));
+    println("get(2) = " + String.valueOf(dq.get(2)));
+    println("get(3) oob = " + String.valueOf(dq.get(3)));
+
+    int frontValue = dq.popFront();        /* 1，队列变为 [2, 3] */
+    println("popFront = " + String.valueOf(frontValue));
+    int backValue = dq.popBack();          /* 3，队列变为 [2] */
+    println("popBack = " + String.valueOf(backValue));
+    println("size after pops = " + String.valueOf(dq.size()));
+    println("peekFront after pops = " + String.valueOf(dq.peekFront()));
+    println("peekBack after pops = " + String.valueOf(dq.peekBack()));
+    println("get(1) after pops oob = " + String.valueOf(dq.get(1)));
+
+    dq.pushFront(0);                       /* 队列变为 [0, 2] */
+    println("size after pushFront = " + String.valueOf(dq.size()));
+    println("front after pushFront = " + String.valueOf(dq.peekFront()));
+    println("back after pushFront = " + String.valueOf(dq.peekBack()));
+
+    int sum = 0;
+    for (int x : dq) {
+        sum = sum + x;
+    }
+    println("foreach sum = " + String.valueOf(sum));
+
+    /* ================= clear 与复用 ================= */
+    dq.clear();
+    println("after clear size = " + String.valueOf(dq.size()));
+    println("after clear isEmpty = " + String.valueOf(dq.isEmpty()));
+    int clearedPop = dq.popFront();
+    println("cleared popFront = " + String.valueOf(clearedPop));
+    dq.pushFront(7);
+    dq.pushBack(8);                        /* 队列变为 [7, 8] */
+    println("reuse size = " + String.valueOf(dq.size()));
+    println("reuse front = " + String.valueOf(dq.peekFront()));
+    println("reuse back = " + String.valueOf(dq.peekBack()));
+
+    /* ========== 窗口偏移（head > 0）下的访问与遍历 ========== */
+    Deque<int> windowed = new Deque<int>();
+    int w = 0;
+    while (w < 10) {
+        windowed.pushBack(10 + w);         /* [10 .. 19] */
+        w = w + 1;
+    }
+    w = 0;
+    while (w < 5) {
+        windowed.popFront();               /* 丢弃 10..14，head = 5，未触发压缩 */
+        w = w + 1;
+    }
+    println("windowed size = " + String.valueOf(windowed.size()));
+    println("windowed front = " + String.valueOf(windowed.peekFront()));
+    println("windowed back = " + String.valueOf(windowed.peekBack()));
+    int windowedSum = 0;
+    for (int x : windowed) {
+        windowedSum = windowedSum + x;
+    }
+    println("windowed foreach sum = " + String.valueOf(windowedSum));
+    int windowedGetSum = 0;
+    w = 0;
+    while (w < windowed.size()) {
+        windowedGetSum = windowedGetSum + windowed.get(w);
+        w = w + 1;
+    }
+    println("windowed get sum = " + String.valueOf(windowedGetSum));
+
+    /* ============ 200+ 连续操作并触发压缩 ============ */
+    Deque<int> big = new Deque<int>();
+    int i = 0;
+    while (i < 100) {
+        big.pushBack(i);                   /* [0 .. 99] */
+        i = i + 1;
+    }
+    println("big size after 100 pushBack = " + String.valueOf(big.size()));
+
+    i = 0;
+    while (i < 40) {
+        big.popFront();                    /* 丢弃 0..39，head 增长到 40 */
+        i = i + 1;
+    }
+    println("big size after 40 popFront = " + String.valueOf(big.size()));
+    println("big front after 40 popFront = " + String.valueOf(big.peekFront()));
+
+    i = 0;
+    while (i < 30) {
+        big.pushFront(-1 - i);             /* 复用前端空槽，加入 -1 .. -30 */
+        i = i + 1;
+    }
+    println("big size after 30 pushFront = " + String.valueOf(big.size()));
+    println("big front after 30 pushFront = " + String.valueOf(big.peekFront()));
+    println("big get(29) = " + String.valueOf(big.get(29)));
+    println("big get(30) = " + String.valueOf(big.get(30)));
+
+    i = 0;
+    while (i < 30) {
+        big.popBack();                     /* 丢弃 99..70，队列变为 [-30..-1, 40..69] */
+        i = i + 1;
+    }
+    println("big back after 30 popBack = " + String.valueOf(big.peekBack()));
+
+    i = 0;
+    while (i < 25) {
+        big.popFront();                    /* head 到达 35 时触发一次压缩 */
+        i = i + 1;
+    }
+    println("big size after 25 popFront = " + String.valueOf(big.size()));
+    println("big front after compact = " + String.valueOf(big.peekFront()));
+    println("big back after compact = " + String.valueOf(big.peekBack()));
+    println("big get(4) = " + String.valueOf(big.get(4)));
+    println("big get(5) = " + String.valueOf(big.get(5)));
+    println("big get(34) = " + String.valueOf(big.get(34)));
+
+    int bigSum = 0;
+    for (int x : big) {
+        bigSum = bigSum + x;
+    }
+    println("big foreach sum = " + String.valueOf(bigSum));
+
+    /* 交替弹出直到空：总和应与遍历和一致 */
+    int drainSum = 0;
+    bool frontTurn = true;
+    while (!big.isEmpty()) {
+        if (frontTurn) {
+            int v = big.popFront();
+            drainSum = drainSum + v;
+        } else {
+            int v2 = big.popBack();
+            drainSum = drainSum + v2;
+        }
+        frontTurn = !frontTurn;
+    }
+    println("big drain sum = " + String.valueOf(drainSum));
+    println("big drained size = " + String.valueOf(big.size()));
+    println("big drained isEmpty = " + String.valueOf(big.isEmpty()));
+
+    /* ============ 200 次混合操作与 ArrayList 模型比对 ============ */
+    Deque<int> mixed = new Deque<int>();
+    ArrayList<int> model = new ArrayList<int>();
+    bool match = true;
+    int k = 0;
+    while (k < 200) {
+        int op = k % 6;
+        if (op == 0) {
+            mixed.pushBack(k);
+            model.add(k);
+        } else if (op == 1) {
+            mixed.pushFront(k);
+            model.add(0, k);
+        } else if (op == 2) {
+            mixed.pushBack(k);
+            model.add(k);
+        } else if (op == 3) {
+            int fromFront = mixed.popFront();
+            int modelFront = model.remove(0);
+            if (fromFront != modelFront) {
+                match = false;
+            }
+        } else if (op == 4) {
+            mixed.pushFront(k);
+            model.add(0, k);
+        } else {
+            int fromBack = mixed.popBack();
+            int modelBack = model.removeLast();
+            if (fromBack != modelBack) {
+                match = false;
+            }
+        }
+        if (mixed.size() != model.size()) {
+            match = false;
+        }
+        k = k + 1;
+    }
+    /* 逐元素全量比对 */
+    int m = 0;
+    while (m < model.size()) {
+        if (mixed.get(m) != model.get(m)) {
+            match = false;
+        }
+        m = m + 1;
+    }
+    println("mixed model match after 200 ops = " + String.valueOf(match));
+    println("mixed size = " + String.valueOf(mixed.size()));
+    println("mixed isEmpty = " + String.valueOf(mixed.isEmpty()));
+    println("mixed front = " + String.valueOf(mixed.peekFront()));
+    println("mixed back = " + String.valueOf(mixed.peekBack()));
+
+    /* ================= 显式分配器构造 ================= */
+    Deque<int> withAlloc = new Deque<int>(std::GlobalAlloc.getInstance());
+    withAlloc.pushBack(11);
+    withAlloc.pushFront(22);
+    println("allocator ctor size = " + String.valueOf(withAlloc.size()));
+    println("allocator ctor front = " + String.valueOf(withAlloc.peekFront()));
+    println("allocator ctor back = " + String.valueOf(withAlloc.peekBack()));
+
+    println("std::Deque tests passed");
+    return 0;
+}

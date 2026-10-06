@@ -1,0 +1,200 @@
+/*
+ * std::LinkedList<T> 双向链表示例与自检测试。
+ *
+ * 覆盖：空容器行为（所有取元素方法返回类型零值）、基本首尾增删、
+ * size/isEmpty/clear、单元素删除后 head/tail 置空、首尾交替操作、
+ * 增强 for 循环遍历、clear 后复用，以及 1000 次连续操作后的正确性。
+ *
+ * 收尾行固定为 "std::LinkedList tests passed"，供 Rust 集成测试断言。
+ */
+
+#include <std/linkedlist.cay>
+#include <c/stdio.cay>
+
+using std::LinkedList;
+
+public int main() {
+    /* ---------- 空容器行为：所有取元素方法返回类型零值 ---------- */
+    LinkedList<int> empty = new LinkedList<int>();
+    println("empty size = " + String.valueOf(empty.size()));
+    println("empty isEmpty = " + String.valueOf(empty.isEmpty()));
+    println("empty getFirst = " + String.valueOf(empty.getFirst()));
+    println("empty getLast = " + String.valueOf(empty.getLast()));
+    println("empty removeFirst = " + String.valueOf(empty.removeFirst()));
+    println("empty removeLast = " + String.valueOf(empty.removeLast()));
+    println("empty get(0) = " + String.valueOf(empty.get(0)));
+    println("empty get(-1) = " + String.valueOf(empty.get(-1)));
+    println("empty indexOf 10 = " + String.valueOf(empty.indexOf(10)));
+    println("empty contains 10 = " + String.valueOf(empty.contains(10)));
+    println("empty size after failed removes = " + String.valueOf(empty.size()));
+
+    /* ---------- 基本首插尾插与下标读取 ---------- */
+    LinkedList<int> list = new LinkedList<int>();
+    list.addLast(10);
+    list.addLast(20);
+    list.addLast(30);
+    list.addFirst(5);
+    println("list size after 4 adds = " + String.valueOf(list.size()));
+    println("list isEmpty after adds = " + String.valueOf(list.isEmpty()));
+    println("list getFirst = " + String.valueOf(list.getFirst()));
+    println("list getLast = " + String.valueOf(list.getLast()));
+    println("list get(0) = " + String.valueOf(list.get(0)));
+    println("list get(1) = " + String.valueOf(list.get(1)));
+    println("list get(2) = " + String.valueOf(list.get(2)));
+    println("list get(3) = " + String.valueOf(list.get(3)));
+    println("list get(4) out of range = " + String.valueOf(list.get(4)));
+    println("list get(-1) out of range = " + String.valueOf(list.get(-1)));
+
+    /* ---------- 查找（== 比较） ---------- */
+    println("list indexOf 5 = " + String.valueOf(list.indexOf(5)));
+    println("list indexOf 20 = " + String.valueOf(list.indexOf(20)));
+    println("list indexOf 99 = " + String.valueOf(list.indexOf(99)));
+    println("list contains 30 = " + String.valueOf(list.contains(30)));
+    println("list contains 99 = " + String.valueOf(list.contains(99)));
+
+    /* ---------- 双端删除 ---------- */
+    println("list removeFirst = " + String.valueOf(list.removeFirst()));
+    println("list removeLast = " + String.valueOf(list.removeLast()));
+    println("list size after 2 removes = " + String.valueOf(list.size()));
+    println("list getFirst after removes = " + String.valueOf(list.getFirst()));
+    println("list getLast after removes = " + String.valueOf(list.getLast()));
+
+    /* ---------- 单元素：removeLast 后 head/tail 都置 null ---------- */
+    LinkedList<int> single = new LinkedList<int>();
+    single.addLast(7);
+    println("single removeLast = " + String.valueOf(single.removeLast()));
+    println("single size = " + String.valueOf(single.size()));
+    println("single isEmpty = " + String.valueOf(single.isEmpty()));
+    println("single getFirst = " + String.valueOf(single.getFirst()));
+    println("single getLast = " + String.valueOf(single.getLast()));
+
+    /* ---------- 单元素：removeFirst 后 head/tail 都置 null ---------- */
+    LinkedList<int> single2 = new LinkedList<int>();
+    single2.addFirst(8);
+    println("single2 removeFirst = " + String.valueOf(single2.removeFirst()));
+    println("single2 size = " + String.valueOf(single2.size()));
+    println("single2 getFirst = " + String.valueOf(single2.getFirst()));
+    println("single2 getLast = " + String.valueOf(single2.getLast()));
+
+    /* ---------- 首尾交替操作 ---------- */
+    LinkedList<int> alt = new LinkedList<int>();
+    alt.addFirst(1);
+    alt.addLast(2);
+    alt.addFirst(0);
+    alt.addLast(3);
+    println("alt get(0) = " + String.valueOf(alt.get(0)));
+    println("alt get(1) = " + String.valueOf(alt.get(1)));
+    println("alt get(2) = " + String.valueOf(alt.get(2)));
+    println("alt get(3) = " + String.valueOf(alt.get(3)));
+    int altFront = alt.removeFirst();
+    int altBack = alt.removeLast();
+    println("alt removed front = " + String.valueOf(altFront));
+    println("alt removed back = " + String.valueOf(altBack));
+    println("alt size after removals = " + String.valueOf(alt.size()));
+    println("alt getFirst after removals = " + String.valueOf(alt.getFirst()));
+    println("alt getLast after removals = " + String.valueOf(alt.getLast()));
+    int altFront2 = alt.removeFirst();
+    int altBack2 = alt.removeLast();
+    println("alt removed front2 = " + String.valueOf(altFront2));
+    println("alt removed back2 = " + String.valueOf(altBack2));
+    println("alt size final = " + String.valueOf(alt.size()));
+    println("alt isEmpty final = " + String.valueOf(alt.isEmpty()));
+
+    /* ---------- 增强 for 循环遍历 ---------- */
+    LinkedList<int> loop = new LinkedList<int>();
+    for (int i = 0; i < 5; i = i + 1) {
+        loop.addLast(i);
+    }
+    int sum = 0;
+    int count = 0;
+    for (int x : loop) {
+        sum = sum + x;
+        count = count + 1;
+    }
+    println("foreach sum = " + String.valueOf(sum));
+    println("foreach count = " + String.valueOf(count));
+
+    LinkedList<int> emptyLoop = new LinkedList<int>();
+    int emptyIterations = 0;
+    for (int x : emptyLoop) {
+        emptyIterations = emptyIterations + 1;
+    }
+    println("foreach empty iterations = " + String.valueOf(emptyIterations));
+
+    /* ---------- clear 后复用 ---------- */
+    loop.clear();
+    println("size after clear = " + String.valueOf(loop.size()));
+    println("isEmpty after clear = " + String.valueOf(loop.isEmpty()));
+    println("getFirst after clear = " + String.valueOf(loop.getFirst()));
+    println("getLast after clear = " + String.valueOf(loop.getLast()));
+    println("indexOf after clear = " + String.valueOf(loop.indexOf(3)));
+    loop.addLast(42);
+    println("size after clear reuse = " + String.valueOf(loop.size()));
+    println("getFirst after clear reuse = " + String.valueOf(loop.getFirst()));
+
+    /* ---------- 1000 节点 push/pop 不崩溃 ---------- */
+    LinkedList<int> big = new LinkedList<int>();
+    for (int i = 0; i < 1000; i = i + 1) {
+        big.addLast(i);
+    }
+    println("big size after 1000 addLast = " + String.valueOf(big.size()));
+    println("big get(0) = " + String.valueOf(big.get(0)));
+    println("big get(500) = " + String.valueOf(big.get(500)));
+    println("big get(999) = " + String.valueOf(big.get(999)));
+    println("big get(1000) out of range = " + String.valueOf(big.get(1000)));
+    println("big indexOf 999 = " + String.valueOf(big.indexOf(999)));
+    println("big getLast = " + String.valueOf(big.getLast()));
+
+    int bigSum = 0;
+    for (int x : big) {
+        bigSum = bigSum + x;
+    }
+    println("big foreach sum = " + String.valueOf(bigSum));
+
+    int lastFront = 0;
+    int lastBack = 0;
+    for (int i = 0; i < 500; i = i + 1) {
+        lastFront = big.removeFirst();
+        lastBack = big.removeLast();
+    }
+    println("big size after 1000 removes = " + String.valueOf(big.size()));
+    println("big last removeFirst = " + String.valueOf(lastFront));
+    println("big last removeLast = " + String.valueOf(lastBack));
+    println("big isEmpty = " + String.valueOf(big.isEmpty()));
+    println("big removeFirst on emptied = " + String.valueOf(big.removeFirst()));
+    println("big removeLast on emptied = " + String.valueOf(big.removeLast()));
+
+    /* ---------- 600 次插入 + 400 次删除的连续操作正确性 ---------- */
+    LinkedList<int> seq = new LinkedList<int>();
+    for (int i = 0; i < 300; i = i + 1) {
+        seq.addFirst(i);
+        seq.addLast(i + 1000);
+    }
+    println("seq size after 600 adds = " + String.valueOf(seq.size()));
+    println("seq get(0) = " + String.valueOf(seq.get(0)));
+    println("seq get(299) = " + String.valueOf(seq.get(299)));
+    println("seq get(300) = " + String.valueOf(seq.get(300)));
+    println("seq get(599) = " + String.valueOf(seq.get(599)));
+    println("seq indexOf 0 = " + String.valueOf(seq.indexOf(0)));
+
+    int expectFront = 299;
+    int expectBack = 1299;
+    int mismatches = 0;
+    for (int i = 0; i < 200; i = i + 1) {
+        if (seq.removeFirst() != expectFront) {
+            mismatches = mismatches + 1;
+        }
+        expectFront = expectFront - 1;
+        if (seq.removeLast() != expectBack) {
+            mismatches = mismatches + 1;
+        }
+        expectBack = expectBack - 1;
+    }
+    println("seq mismatches = " + String.valueOf(mismatches));
+    println("seq size after 400 removes = " + String.valueOf(seq.size()));
+    println("seq getFirst = " + String.valueOf(seq.getFirst()));
+    println("seq getLast = " + String.valueOf(seq.getLast()));
+
+    println("std::LinkedList tests passed");
+    return 0;
+}

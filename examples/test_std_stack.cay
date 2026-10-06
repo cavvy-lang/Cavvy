@@ -1,0 +1,174 @@
+#include <std/stack.cay>
+#include <c/stdio.cay>
+
+using std::Stack;
+using std::Allocator;
+
+/**
+ * 自定义 Arena/Bump 分配器，用于验证 Stack 的 Stack(A allocator) 构造函数
+ * 确实把底层内存申请转发给指定分配器。
+ */
+public class BumpAlloc implements Allocator {
+    private long buffer;
+    private long current;
+    private long end;
+
+    public BumpAlloc() {
+        long cap = 4096;
+        long buf;
+        __ir {
+            %p = call i8* @malloc(i64 4096)
+            %v = ptrtoint i8* %p to i64
+            store i64 %v, i64* %buf
+        }
+        this.buffer = buf;
+        this.current = buf;
+        this.end = buf + cap;
+    }
+
+    public long allocate(long size) {
+        long alignment = 8;
+        return this.allocateAligned(size, alignment);
+    }
+
+    public long allocateAligned(long size, long alignBytes) {
+        long mask = alignBytes - 1;
+        long aligned = (this.current + mask) & ~mask;
+        long next = aligned + size;
+        if (next > this.end) {
+            return 0;
+        }
+        this.current = next;
+        return aligned;
+    }
+
+    public void deallocate(long ptr) {
+        /* Arena 不单独释放 */
+    }
+
+    public long used() {
+        return this.current - this.buffer;
+    }
+
+    public long remaining() {
+        return this.end - this.current;
+    }
+}
+
+public int main() {
+    /* 空容器行为：isEmpty/size 与零值返回 */
+    Stack<int> s = new Stack<int>();
+    println("empty isEmpty = " + String.valueOf(s.isEmpty()));
+    println("empty size = " + String.valueOf(s.size()));
+    println("empty pop = " + String.valueOf(s.pop()));
+    println("empty peek = " + String.valueOf(s.peek()));
+
+    /* 基本入栈 */
+    s.push(10);
+    s.push(20);
+    s.push(30);
+    println("size after 3 pushes = " + String.valueOf(s.size()));
+    println("isEmpty after push = " + String.valueOf(s.isEmpty()));
+    println("peek after push = " + String.valueOf(s.peek()));
+
+    /* 出栈：后进先出 */
+    println("pop 1 = " + String.valueOf(s.pop()));
+    println("pop 2 = " + String.valueOf(s.pop()));
+    println("size after 2 pops = " + String.valueOf(s.size()));
+    println("peek after 2 pops = " + String.valueOf(s.peek()));
+
+    /* 迭代器：栈顶 -> 栈底（即 pop 顺序） */
+    Stack<int> order = new Stack<int>();
+    order.push(1);
+    order.push(2);
+    order.push(3);
+    int encoded = 0;
+    int count = 0;
+    for (int x : order) {
+        encoded = encoded * 10 + x;
+        count = count + 1;
+    }
+    println("iterator order encoded = " + String.valueOf(encoded));
+    println("iterator count = " + String.valueOf(count));
+    println("size after iteration = " + String.valueOf(order.size()));
+
+    /* clear 与复用 */
+    s.clear();
+    println("size after clear = " + String.valueOf(s.size()));
+    println("isEmpty after clear = " + String.valueOf(s.isEmpty()));
+    println("pop after clear = " + String.valueOf(s.pop()));
+    s.push(7);
+    println("peek after clear reuse = " + String.valueOf(s.peek()));
+
+    /* 大批量连续操作：入栈 200 个后全部出栈，逐个校验 LIFO 顺序与总和 */
+    Stack<int> bulk = new Stack<int>();
+    for (int i = 0; i < 200; i = i + 1) {
+        bulk.push(i);
+    }
+    println("bulk size after 200 pushes = " + String.valueOf(bulk.size()));
+
+    bool ordered = true;
+    int sum = 0;
+    int expected = 199;
+    for (int i = 0; i < 200; i = i + 1) {
+        int v = bulk.pop();
+        if (v != expected) {
+            ordered = false;
+        }
+        sum = sum + v;
+        expected = expected - 1;
+    }
+    println("bulk 200 pops ordered = " + String.valueOf(ordered));
+    println("bulk 200 pops sum = " + String.valueOf(sum));
+    println("bulk size after 200 pops = " + String.valueOf(bulk.size()));
+    println("bulk isEmpty after 200 pops = " + String.valueOf(bulk.isEmpty()));
+    println("bulk empty pop after drain = " + String.valueOf(bulk.pop()));
+
+    /* 混合操作：入 250、出 125、再入 25 */
+    Stack<int> mixed = new Stack<int>();
+    for (int i = 0; i < 250; i = i + 1) {
+        mixed.push(i);
+    }
+    for (int i = 0; i < 125; i = i + 1) {
+        mixed.pop();
+    }
+    println("mixed peek after 125 pops = " + String.valueOf(mixed.peek()));
+    for (int i = 0; i < 25; i = i + 1) {
+        mixed.push(1000 + i);
+    }
+    println("mixed size after refill = " + String.valueOf(mixed.size()));
+    println("mixed peek after refill = " + String.valueOf(mixed.peek()));
+    println("mixed top pop = " + String.valueOf(mixed.pop()));
+    println("mixed size after top pop = " + String.valueOf(mixed.size()));
+
+    /* 指定分配器构造：底层内存全部来自 BumpAlloc */
+    BumpAlloc bump = new BumpAlloc();
+    long before = bump.used();
+    Stack<int, BumpAlloc> arenaStack = new Stack<int, BumpAlloc>(bump);
+    arenaStack.push(10);
+    arenaStack.push(20);
+    arenaStack.push(30);
+    arenaStack.push(40);
+    arenaStack.push(50);
+    long after = bump.used();
+    println("arena used before pushes = " + String.valueOf((int)before));
+    println("arena used increased = " + String.valueOf(after > before));
+    println("arena stack size = " + String.valueOf(arenaStack.size()));
+    println("arena stack peek = " + String.valueOf(arenaStack.peek()));
+
+    bool arenaOrdered = true;
+    int arenaExpected = 50;
+    for (int i = 0; i < 5; i = i + 1) {
+        int v = arenaStack.pop();
+        if (v != arenaExpected) {
+            arenaOrdered = false;
+        }
+        arenaExpected = arenaExpected - 10;
+    }
+    println("arena stack pops ordered = " + String.valueOf(arenaOrdered));
+    println("arena stack isEmpty after drain = " + String.valueOf(arenaStack.isEmpty()));
+
+    println("arena-backed Stack tests passed");
+    println("std::Stack tests passed");
+    return 0;
+}

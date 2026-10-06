@@ -1,0 +1,342 @@
+/*
+ * Cavvy 双端队列标准库 - 0.5.2.x
+ *
+ * 泛型单态化实现：Deque<T, A: Allocator = GlobalAlloc>
+ *
+ * 内部基于 ArrayList<T, A> 实现「滑动窗口」式存储：
+ * 逻辑位置 i 的元素存放在 items 的物理下标 head + i 处，
+ * 物理下标 [0, head) 是 popFront 留下的空槽（死区），
+ * 当空槽过多时由 compact 就地回收。因此底层有效区间
+ * 始终表示为滑动窗口 [head, items.size())。
+ *
+ * 两端插入/删除均为 O(1) 摊销（相对 ArrayList 的头部操作），
+ * 仅在窗口前端没有空槽可复用、或触发压缩时才会发生 O(n) 搬移。
+ */
+
+#pragma once
+
+#include <Allocator.cay>
+#include <std/arraylist.cay>
+#include <std/iterator.cay>
+
+namespace std {
+
+/**
+ * Deque 迭代器实现：按队头 -> 队尾的顺序遍历。
+ *
+ * 迭代器直接持有底层 ArrayList 引用并记录窗口区间 [head, end)，
+ * 遍历期间对队列的结构性修改不会被快照隔离（与窗口下标保持一致）。
+ */
+public final class DequeIterator<T, A: Allocator = GlobalAlloc> implements Iterator<T> {
+    private ArrayList<T, A> items;
+    private int index;
+    private int end;
+
+    /**
+     * 构造迭代器，游标从 head 出发直到 end - 1。
+     *
+     * @param items 底层存储（滑动窗口所在 ArrayList）
+     * @param head 起始物理下标（队头在 items 中的位置）
+     * @param end 结束物理下标（不含，通常传入 items.size()）
+     */
+    public DequeIterator(ArrayList<T, A> items, int head, int end) {
+        this.items = items;
+        this.index = head;
+        this.end = end;
+    }
+
+    /**
+     * 是否还有未遍历元素。
+     *
+     * @return 游标未到 end 时返回 true
+     */
+    public bool hasNext() {
+        return this.index < this.end;
+    }
+
+    /**
+     * 返回当前游标处的元素并将游标后移一位。
+     *
+     * 游标越过 end 后调用不会崩溃，返回 T 的零值 —— 与
+     * Deque.popFront()/peekFront() 的空队列语义一致。
+     *
+     * @return 当前元素的副本；迭代器已耗尽时返回 T 的零值
+     */
+    public T next() {
+        if (this.index < 0 || this.index >= this.end) {
+            T zero = 0;
+            return zero;
+        }
+        T value = this.items.get(this.index);
+        this.index = this.index + 1;
+        return value;
+    }
+}
+
+/**
+ * 双端队列，支持泛型类型参数 T 与分配器参数 A。
+ *
+ * 语义：两端均可 O(1) 摊销插入/删除（相对 ArrayList 的头部操作），
+ * index = 0 表示队头，index = size() - 1 表示队尾。
+ * 空容器上的弹出/查看操作返回 T 的零值，越界 get 同样返回 T 的零值。
+ *
+ * 【内存释放的当前限制】编译器只为「自身声明了析构函数」的类注册析构候选，
+ * 且不会为包装类的 __dtor 链式调用字段的析构函数。因此本类的局部变量离开
+ * 作用域时，内部 ArrayList 的缓冲区不会被释放（与基线 HashSet 相同的系统性
+ * 缺口，属编译器侧特性，无法在源码层补齐）。需要立即回收时请显式调用 clear()
+ * 或让内部的 ArrayList 直接离开作用域。
+ *
+ * 【所有权转移的当前限制】编译器的 RAII 所有权转移只识别直接调用
+ * ArrayList.add 的场合。把局部对象经 pushFront()/pushBack() 放入双端队列后，
+ * 该局部变量仍会在其作用域结束时被析构，容器将持有已析构对象的悬垂引用。
+ * 存放对象类型时请使用 new 表达式直接入队（不要先绑定到局部变量再 push），
+ * 或使用 UniquePtr/ScopedPtr 管理所有权。
+ */
+public final class Deque<T, A: Allocator = GlobalAlloc> implements Iterable<T> {
+    private ArrayList<T, A> items;
+    private int head;
+
+    /**
+     * 默认构造，底层 ArrayList 使用 GlobalAlloc。
+     */
+    public Deque() {
+        this.items = new ArrayList<T, A>();
+        this.head = 0;
+    }
+
+    /**
+     * 指定初始容量构造，底层 ArrayList 使用 GlobalAlloc。
+     *
+     * @param initialCapacity 初始容量提示；小于 1 时底层按 1 处理
+     */
+    public Deque(int initialCapacity) {
+        this.items = new ArrayList<T, A>(initialCapacity);
+        this.head = 0;
+    }
+
+    /**
+     * 指定分配器构造。
+     *
+     * @param allocator 底层 ArrayList 使用的分配器
+     */
+    public Deque(A allocator) {
+        this.items = new ArrayList<T, A>(allocator);
+        this.head = 0;
+    }
+
+    /**
+     * 在队头插入元素。
+     *
+     * 逻辑位置 i 对应物理下标 head + i：
+     * - head > 0 时，物理下标 head - 1 是 popFront 留下的空槽，
+     *   直接 head = head - 1 后覆写该空槽即可，O(1)；
+     * - head == 0 时没有空槽可复用，退化为 items.add(0, value)，
+     *   由 ArrayList 将现有元素整体后移一位腾出空间，O(n)。
+     *
+     * 注意：不能写成「head = head - 1 后再 items.add(head, value)」，
+     * 那样会把下标 head - 1 处的旧空槽一并右移，让空槽内容夹在新队头
+     * 与原队头之间，使窗口与元素错位（读到脏数据）。
+     *
+     * @param value 待插入的元素，成为新的队头
+     */
+    public void pushFront(@owns T value) {
+        if (this.head > 0) {
+            this.head = this.head - 1;
+            this.items.set(this.head, value);
+        } else {
+            this.items.add(0, value);
+        }
+    }
+
+    /**
+     * 在队尾插入元素。
+     *
+     * @param value 待插入的元素，成为新的队尾
+     */
+    public void pushBack(@owns T value) {
+        this.items.add(value);
+    }
+
+    /**
+     * 移除并返回队头元素。
+     *
+     * 队列为空时不修改队列，直接返回 T 的零值。
+     * 弹出后若前端空槽过多会触发一次压缩回收。
+     *
+     * @return 原队头元素，空队列时为 T 的零值
+     */
+    public T popFront() {
+        if (this.isEmpty()) {
+            T zero = 0;
+            return zero;
+        }
+        T value = this.items.get(this.head);
+        /* 让出的槽位置零：避免死区仍持有已交还调用方的对象引用
+           （否则底层 ArrayList 注入的元素析构会二次析构该对象） */
+        T cleared = 0;
+        this.items.set(this.head, cleared);
+        this.head = this.head + 1;
+        this.compactIfNeeded();
+        return value;
+    }
+
+    /**
+     * 移除并返回队尾元素。
+     *
+     * 队列为空时不修改队列，直接返回 T 的零值。
+     *
+     * @return 原队尾元素，空队列时为 T 的零值
+     */
+    public T popBack() {
+        if (this.isEmpty()) {
+            T zero = 0;
+            return zero;
+        }
+        return this.items.removeLast();
+    }
+
+    /**
+     * 查看队头元素（不删除）。
+     *
+     * @return 队头元素，空队列时为 T 的零值
+     */
+    public T peekFront() {
+        if (this.isEmpty()) {
+            T zero = 0;
+            return zero;
+        }
+        return this.items.get(this.head);
+    }
+
+    /**
+     * 查看队尾元素（不删除）。
+     *
+     * @return 队尾元素，空队列时为 T 的零值
+     */
+    public T peekBack() {
+        if (this.isEmpty()) {
+            T zero = 0;
+            return zero;
+        }
+        return this.items.get(this.items.size() - 1);
+    }
+
+    /**
+     * 按逻辑下标访问元素，index = 0 表示队头。
+     *
+     * @param index 逻辑下标，合法范围 [0, size())
+     * @return 对应元素；index 为负或越界时返回 T 的零值
+     */
+    public T get(int index) {
+        if (index < 0 || index >= this.size()) {
+            T zero = 0;
+            return zero;
+        }
+        return this.items.get(this.head + index);
+    }
+
+    /**
+     * front 是 peekFront 的别名：只读访问队头元素。
+     *
+     * 提供该别名是为了与 Queue.front() 的命名对齐，方便从 Queue 迁移。
+     *
+     * @return 队头元素，空队列时为 T 的零值
+     */
+    public T front() {
+        return this.peekFront();
+    }
+
+    /**
+     * back 是 peekBack 的别名：只读访问队尾元素。
+     *
+     * 提供该别名是为了与 Queue.back() 的命名对齐，方便从 Queue 迁移。
+     *
+     * 注意：本类刻意不提供无后缀的 push/pop/peek —— Deque 两端对称，
+     * 这类名字无法指明操作哪一端（Stack/PriorityQueue 是单端容器，故可无歧义使用）。
+     *
+     * @return 队尾元素，空队列时为 T 的零值
+     */
+    public T back() {
+        return this.peekBack();
+    }
+
+    /**
+     * 队列是否为空。
+     *
+     * @return 元素个数为 0 时返回 true
+     */
+    public bool isEmpty() {
+        return this.size() == 0;
+    }
+
+    /**
+     * 返回元素个数。
+     *
+     * @return 队头到队尾的元素数量
+     */
+    public int size() {
+        return this.items.size() - this.head;
+    }
+
+    /**
+     * 清空队列。底层容量保持不变，之后可继续使用。
+     */
+    public void clear() {
+        this.items.clear();
+        this.head = 0;
+    }
+
+    /**
+     * 返回按队头 -> 队尾顺序遍历的迭代器，支持增强 for 循环。
+     *
+     * @return DequeIterator 实例（以 Iterator<T> 形式返回）
+     */
+    public Iterator<T> iterator() {
+        return new DequeIterator<T, A>(this.items, this.head, this.items.size());
+    }
+
+    /**
+     * 析构函数：析构内部 ArrayList（释放 backing buffer 并析构其中元素）。
+     * 前端死区槽位已被 popFront 置零，不会被二次析构。
+     */
+    ~Deque() {
+        __cay_destroy<ArrayList<T, A>>(this.items);
+    }
+
+    /**
+     * 压缩前端死区：当 head >= 32 且 head * 2 >= items.size() 时，
+     * 把有效元素整体左移到物理下标 0..，丢弃失效的前 head 个槽位并 head = 0。
+     *
+     * 用 long 比较，避免 head * 2 在极端容量下 int 溢出。
+     */
+    private void compactIfNeeded() {
+        if (this.head < 32) {
+            return;
+        }
+        if ((long)this.head * 2L < (long)this.items.size()) {
+            return;
+        }
+        this.compact();
+    }
+
+    /**
+     * 就地压缩：把窗口 [head, items.size()) 的元素复制到数组前段，
+     * 再从尾部逐个丢弃前 head 个失效槽位，最后 head = 0。
+     *
+     * 左移时按 i 递增顺序、从高地址向低地址复制（目标下标恒小于源下标），
+     * 不会覆盖尚未读取的元素；整体复杂度 O(items.size())。
+     */
+    private void compact() {
+        int remaining = this.items.size() - this.head;
+        for (int i = 0; i < remaining; i = i + 1) {
+            T moved = this.items.get(this.head + i);
+            this.items.set(i, moved);
+        }
+        for (int i = 0; i < this.head; i = i + 1) {
+            this.items.removeLast();
+        }
+        this.head = 0;
+    }
+}
+
+} // namespace std
