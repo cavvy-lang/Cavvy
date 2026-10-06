@@ -8,18 +8,17 @@ use crate::miette_diagnostic::CayResult;
 
 /// 收集返回表达式中应视为「所有权已转移」的局部标识符。
 ///
-/// 规则：
+/// 规则只有两条：
 ///   1. 返回值本身是裸标识符（`return x;`）—— 值逃逸出本作用域；
-///   2. 三元分支递归应用同样的规则；
-///   3. 构造实参按保守处理（视为转移）：`new` 的实参走
-///      `expressions/new.rs`，尚未支持 `@owns`。
+///   2. 三元分支递归应用同样的规则。
 ///
-/// **调用实参不在此处处理**：`@owns` 形参对应的实参摘除发生在
-/// `generate_and_pack_args`（生成调用表达式时），return 表达式同样会经过它，
-/// 因此归属单一。旧实现把**任何**调用实参都视为已转移（名字盲的语法近似），
-/// 会把未被接管的实参漏析构；而在这里重新解析调用目标又会有副作用
-/// —— `resolve_call_target` 会为判定重载再次发射实参代码（曾导致
-/// `return fgetc(handle)` 生成两次 `fgetc` 调用）。
+/// **调用/构造实参一律不在此处处理**：`@owns` 形参对应的实参摘除发生在
+/// 生成调用表达式时（方法调用见 `generate_and_pack_args`，构造调用见
+/// `expressions/new.rs`），return 表达式同样会经过那两条路径，因此归属单一、
+/// 且完全由被调方声明驱动。旧实现把**任何**调用实参与构造实参都视为已转移
+/// （名字盲的语法近似），会把未被接管的实参漏析构；而在这里重新解析调用目标
+/// 又会有副作用 —— `resolve_call_target` 会为判定重载再次发射实参代码
+/// （曾导致 `return fgetc(handle)` 生成两次 `fgetc` 调用）。
 fn collect_moved_identifiers(expr: &Expr, top_level: bool) -> Vec<String> {
     let mut ids = Vec::new();
     match expr {
@@ -28,16 +27,11 @@ fn collect_moved_identifiers(expr: &Expr, top_level: bool) -> Vec<String> {
                 ids.push(id.name.clone());
             }
         }
-        Expr::New(new_expr) => {
-            for arg in &new_expr.args {
-                ids.extend(collect_moved_identifiers(arg, true));
-            }
-        }
         Expr::Ternary(ternary) => {
             ids.extend(collect_moved_identifiers(&ternary.true_branch, true));
             ids.extend(collect_moved_identifiers(&ternary.false_branch, true));
         }
-        // 方法调用的接收者、二元/一元表达式等不视为所有权转移。
+        // 方法调用的接收者、构造实参、二元/一元表达式等不视为所有权转移。
         _ => {}
     }
     ids

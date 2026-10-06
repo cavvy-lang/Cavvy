@@ -386,6 +386,24 @@ impl IRGenerator {
 
         let mut arg_values = Vec::new();
         for (idx, arg) in new_expr.args.iter().enumerate() {
+            // 构造函数的 `@owns` 形参：与普通方法调用同一语义 —— 被调方接管
+            // 实参生命周期，因此把实参局部变量从当前作用域的析构候选中摘除。
+            // 与 generate_and_pack_args 保持同一条规则（都只看形参声明）。
+            if ctor_info_opt
+                .as_ref()
+                .and_then(|ctor| ctor.params.get(idx))
+                .map_or(false, |p| p.is_owning)
+            {
+                if let Expr::Identifier(ident) = arg {
+                    let var_name = &ident.name;
+                    if let Some(var_type) = self.get_variable_type(var_name) {
+                        if self.type_has_destructor(&var_type).is_some() {
+                            self.scope_manager
+                                .remove_dtor_candidate_by_var_name(var_name);
+                        }
+                    }
+                }
+            }
             let arg_val = self.generate_expression(arg)?;
             let is_generic_param = ctor_info_opt
                 .as_ref()
