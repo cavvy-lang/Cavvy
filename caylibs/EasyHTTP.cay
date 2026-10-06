@@ -294,7 +294,12 @@ public class HttpHeaders {
             return;
         }
 
-        int newCapacity = this.capacity * 2;
+        /* 用 long 计算，避免容量翻倍时 int 溢出为负 */
+        long newCapL = (long)this.capacity * 2L;
+        if (newCapL > 2147483647L) {
+            newCapL = 2147483647L;
+        }
+        int newCapacity = (int)newCapL;
         String[] newNames = new String[newCapacity]();
         String[] newValues = new String[newCapacity]();
 
@@ -386,18 +391,19 @@ public class HttpParams {
             return "0";
         }
 
-        bool negative = false;
-        if (n < 0) {
-            negative = true;
-            n = -n;
-        }
+        /* 保持在负数域取模，避免 INT_MIN 取负溢出 */
+        bool negative = n < 0;
+        int value = n;
 
         String result = "";
-        while (n > 0) {
-            int digit = n % 10;
+        while (value != 0) {
+            int digit = value % 10;
+            if (digit < 0) {
+                digit = -digit;
+            }
             char c = (char)('0' + digit);
             result = c + result;
-            n = n / 10;
+            value = value / 10;
         }
 
         if (negative) {
@@ -417,18 +423,19 @@ public class HttpParams {
             return "0";
         }
 
-        bool negative = false;
-        if (n < 0) {
-            negative = true;
-            n = -n;
-        }
+        /* 保持在负数域取模，避免 LONG_MIN 取负溢出 */
+        bool negative = n < 0;
+        long value = n;
 
         String result = "";
-        while (n > 0) {
-            long digit = n % 10;
+        while (value != 0) {
+            long digit = value % 10;
+            if (digit < 0) {
+                digit = -digit;
+            }
             char c = (char)('0' + digit);
             result = c + result;
-            n = n / 10;
+            value = value / 10;
         }
 
         if (negative) {
@@ -553,7 +560,12 @@ public class HttpParams {
             return;
         }
 
-        int newCapacity = this.capacity * 2;
+        /* 用 long 计算，避免容量翻倍时 int 溢出为负 */
+        long newCapL = (long)this.capacity * 2L;
+        if (newCapL > 2147483647L) {
+            newCapL = 2147483647L;
+        }
+        int newCapacity = (int)newCapL;
         String[] newNames = new String[newCapacity]();
         String[] newValues = new String[newCapacity]();
 
@@ -1189,10 +1201,16 @@ public class HttpRequest {
             return;
         }
 
-        /* 分割头部和正文 */
+        /* 分割头部和正文；记录分隔符实际长度，LF-only 响应下为 2 而非 4 */
+        int sepLen = 0;
         int headerEnd = responseStr.indexOf("\r\n\r\n");
-        if (headerEnd < 0) {
+        if (headerEnd >= 0) {
+            sepLen = 4;
+        } else {
             headerEnd = responseStr.indexOf("\n\n");
+            if (headerEnd >= 0) {
+                sepLen = 2;
+            }
         }
 
         String headers = "";
@@ -1200,7 +1218,7 @@ public class HttpRequest {
 
         if (headerEnd >= 0) {
             headers = responseStr.substring(0, headerEnd);
-            body = responseStr.substring(headerEnd + 4, responseStr.length());
+            body = responseStr.substring(headerEnd + sepLen, responseStr.length());
         } else {
             headers = responseStr;
         }
@@ -1262,25 +1280,31 @@ public class HttpRequest {
      * @param headersObj HttpHeaders对象
      */
     private void parseHeaders(String headers, HttpHeaders headersObj) {
+        /* 换行分隔符长度随 CRLF/LF 变化，不能固定加 2 */
         int pos = headers.indexOf("\r\n");
+        int lineSkip = 2;
         if (pos < 0) {
             pos = headers.indexOf("\n");
+            lineSkip = 1;
         }
 
         /* 跳过状态行 */
         if (pos >= 0) {
-            pos = pos + 2;
+            pos = pos + lineSkip;
         } else {
             return;
         }
 
         while (pos < headers.length()) {
             int lineEnd = headers.indexOf("\r\n", pos);
+            int endSkip = 2;
             if (lineEnd < 0) {
                 lineEnd = headers.indexOf("\n", pos);
+                endSkip = 1;
             }
             if (lineEnd < 0) {
                 lineEnd = headers.length();
+                endSkip = 0;
             }
 
             String line = headers.substring(pos, lineEnd);
@@ -1291,7 +1315,7 @@ public class HttpRequest {
                 headersObj.add(name, value);
             }
 
-            pos = lineEnd + 2;
+            pos = lineEnd + endSkip;
         }
     }
 
@@ -1407,7 +1431,8 @@ public class HttpRequest {
             return 0;
         }
 
-        int result = 0;
+        /* 用 long 累加并饱和，避免溢出回绕得到错误数值 */
+        long result = 0;
         int sign = 1;
         int i = 0;
 
@@ -1422,14 +1447,23 @@ public class HttpRequest {
         while (i < str.length()) {
             char c = str.charAt(i);
             if (c >= '0' && c <= '9') {
-                result = result * 10 + (c - '0');
+                result = result * 10L + (long)(c - '0');
+                if (sign > 0 && result > 2147483647L) {
+                    result = 2147483647L;
+                }
+                if (sign < 0 && result > 2147483648L) {
+                    result = 2147483648L;
+                }
             } else {
                 break;
             }
             i = i + 1;
         }
 
-        return result * sign;
+        if (sign < 0) {
+            return (int)(-result);
+        }
+        return (int)result;
     }
 
     /**

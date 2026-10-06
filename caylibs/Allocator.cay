@@ -18,27 +18,47 @@ public interface Allocator {
 }
 
 public final class GlobalAlloc implements Allocator {
+    /*
+     * 单例实例。GlobalAlloc 本身无状态，但按 getInstance() 的语义应返回同一实例；
+     * 之前只置位 initialized 却每次 new，标志毫无作用，这里改为真正缓存实例。
+     */
+    private static GlobalAlloc instance;
     private static bool initialized = false;
 
     public static GlobalAlloc getInstance() {
         if (!initialized) {
+            instance = new GlobalAlloc();
             initialized = true;
         }
-        return new GlobalAlloc();
+        return instance;
     }
 
+    /*
+     * 分配方案：在 malloc 得到的原始块头部预留 8 字节，保存原始基址，
+     * 返回对齐后的指针。deallocate 通过「返回指针 - 8」取回基址再 free，
+     * 避免释放「内部指针」导致的堆损坏。
+     */
     public long allocate(long size) {
-        long result;
-        __ir {
-            %p = call i8* @malloc(i64 %size)
-            %v = ptrtoint i8* %p to i64
-            store i64 %v, i64* %result
-        }
-        return result;
+        return this.allocateAligned(size, 8L);
     }
 
     public long allocateAligned(long size, long alignBytes) {
-        long total = size + alignBytes;
+        long sz = size;
+        long align = alignBytes;
+
+        if (sz < 0) {
+            return 0;
+        }
+        /* 头部需要容纳 8 字节原始指针，对齐至少为 8 */
+        if (align < 8L) {
+            align = 8L;
+        }
+        /* 溢出检查：sz + align + 8 必须可表示 */
+        if (sz > 9223372036854775807L - align - 8L) {
+            return 0;
+        }
+
+        long total = sz + align + 8L;
         long raw;
         __ir {
             %total_val = load i64, i64* %total
@@ -46,101 +66,176 @@ public final class GlobalAlloc implements Allocator {
             %v = ptrtoint i8* %p to i64
             store i64 %v, i64* %raw
         }
-        long mask = alignBytes - 1;
-        long aligned = (raw + mask) & ~mask;
+        if (raw == 0) {
+            return 0;
+        }
+
+        long mask = align - 1L;
+        long aligned = (raw + 8L + mask) & ~mask;
+
+        /* 在 aligned - 8 处写入原始基址 */
+        __ir {
+            %ap = load i64, i64* %aligned
+            %rp = load i64, i64* %raw
+            %hp = sub i64 %ap, 8
+            %slot = inttoptr i64 %hp to i64*
+            store i64 %rp, i64* %slot
+        }
+
         return aligned;
     }
 
     public void deallocate(long ptr) {
+        if (ptr == 0) {
+            return;
+        }
+        /* 从头部取回 malloc 原始基址 */
+        long base;
+        long p0 = ptr;
         __ir {
-            %p = inttoptr i64 %ptr to i8*
-            call void @free(i8* %p)
+            %pv = load i64, i64* %p0
+            %hp = sub i64 %pv, 8
+            %slot = inttoptr i64 %hp to i64*
+            %b = load i64, i64* %slot
+            store i64 %b, i64* %base
+        }
+        __ir {
+            %bp = load i64, i64* %base
+            %fp = inttoptr i64 %bp to i8*
+            call void @free(i8* %fp)
         }
     }
 }
 
 public final class Arena implements Allocator {
-    private static long buffer;
-    private static long current;
-    private static long end;
-    private static long capacity;
-    
-    public static Arena create(long cap) {
-        Arena arena = new Arena();
-        capacity = cap;
+    /* 实例字段（原为 static，导致多个 Arena 实例共享同一份状态） */
+    private long buffer;
+    private long current;
+    private long end;
+    private long capacity;
+
+    public Arena(long cap) {
+        long c = cap;
+        if (c <= 0) {
+            c = 1;
+        }
+        this.capacity = c;
+
+        long capv = c;
         long buf;
         __ir {
-            %p = call i8* @malloc(i64 %Arena.cap)
+            %cp = load i64, i64* %capv
+            %p = call i8* @malloc(i64 %cp)
             %v = ptrtoint i8* %p to i64
             store i64 %v, i64* %buf
         }
-        buffer = buf;
-        current = buf;
-        end = buf + cap;
-        return arena;
+
+        this.buffer = buf;
+        this.current = buf;
+        this.end = buf + c;
     }
-    
+
+    public static Arena create(long cap) {
+        return new Arena(cap);
+    }
+
     public long allocate(long size) {
         long alignment = 8;
-        return allocateAligned(size, alignment);
+        return this.allocateAligned(size, alignment);
     }
-    
+
     public long allocateAligned(long size, long alignBytes) {
-        long mask = alignBytes - 1;
-        long aligned = (current + mask) & ~mask;
-        long next = aligned + size;
-        
-        if (next > end) {
+        if (size < 0 || this.buffer == 0) {
             return 0;
         }
-        
-        current = next;
+        if (alignBytes < 1) {
+            alignBytes = 1;
+        }
+        long mask = alignBytes - 1;
+        long aligned = (this.current + mask) & ~mask;
+
+        /* 用「剩余空间」比较，避免 next = aligned + size 溢出变负绕过检查 */
+        if (aligned > this.end || size > this.end - aligned) {
+            return 0;
+        }
+
+        this.current = aligned + size;
         return aligned;
     }
-    
+
     public void deallocate(long ptr) {
+        /* Arena 不支持单独释放，随 release() 整体回收 */
     }
-    
+
     public void reset() {
-        current = buffer;
+        this.current = this.buffer;
     }
-    
+
     public long used() {
-        return current - buffer;
+        return this.current - this.buffer;
     }
-    
+
     public long remaining() {
-        return end - current;
+        return this.end - this.current;
+    }
+
+    /*
+     * 释放底层缓冲区。原实现没有任何释放入口，Arena 一旦创建即永久泄漏。
+     */
+    public void release() {
+        if (this.buffer == 0) {
+            return;
+        }
+        long b = this.buffer;
+        __ir {
+            %bp = load i64, i64* %b
+            %p = inttoptr i64 %bp to i8*
+            call void @free(i8* %p)
+        }
+        this.buffer = 0;
+        this.current = 0;
+        this.end = 0;
+        this.capacity = 0;
+    }
+
+    /* 兼容示例中的 dispose() 命名 */
+    public void dispose() {
+        this.release();
     }
 }
 
 public final class ScopeAlloc implements Allocator {
-    private static long marker;
-    
+    private long marker;
+    /* 作用域分配由 scope 关键字支持，此处的分配器回退到堆分配以保证可用性 */
+    private GlobalAlloc heap;
+
+    public ScopeAlloc() {
+        this.heap = new GlobalAlloc();
+        this.marker = 0;
+    }
+
     public static ScopeAlloc create() {
-        ScopeAlloc alloc = new ScopeAlloc();
-        marker = 0;
-        return alloc;
+        return new ScopeAlloc();
     }
-    
+
     public void setMarker(long m) {
-        marker = m;
+        this.marker = m;
     }
-    
+
     public long getMarker() {
-        return marker;
+        return this.marker;
     }
-    
+
     public long allocate(long size) {
-        /* 栈分配通过 scope 关键字支持 */
-        return 0;
+        return this.heap.allocate(size);
     }
-    
+
     public long allocateAligned(long size, long alignBytes) {
-        return 0;
+        return this.heap.allocateAligned(size, alignBytes);
     }
-    
+
     public void deallocate(long ptr) {
+        this.heap.deallocate(ptr);
     }
 }
 

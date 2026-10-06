@@ -106,6 +106,10 @@ namespace algo {
                 if (arr == null || n <= 0) {
                     return 0;
                 }
+                /* 把 n 钳制到实际数组长度，避免调用方传入过大 n 导致越界 */
+                if (n > arr.length) {
+                    n = arr.length;
+                }
 
                 int maxSoFar = arr[0];
                 int maxEndingHere = arr[0];
@@ -139,6 +143,10 @@ namespace algo {
             public static int houseRobber(int[] nums, int n) {
                 if (nums == null || n <= 0) {
                     return 0;
+                }
+                /* 把 n 钳制到实际数组长度，避免调用方传入过大 n 导致越界 */
+                if (n > nums.length) {
+                    n = nums.length;
                 }
                 if (n == 1) {
                     return nums[0];
@@ -276,6 +284,10 @@ namespace algo {
                 if (arr == null || n <= 0) {
                     return 0;
                 }
+                /* 把 n 钳制到实际数组长度，避免调用方传入过大 n 导致越界 */
+                if (n > arr.length) {
+                    n = arr.length;
+                }
 
                 int[] dp = new int[n];
                 for (int i = 0; i < n; i++) {
@@ -314,6 +326,13 @@ namespace algo {
             public static int knapsack01(int[] weights, int[] values, int n, int capacity) {
                 if (weights == null || values == null || n <= 0 || capacity <= 0) {
                     return 0;
+                }
+                /* 把 n 钳制到两个数组长度中的较小值，避免越界 */
+                if (n > weights.length) {
+                    n = weights.length;
+                }
+                if (n > values.length) {
+                    n = values.length;
                 }
 
                 int[] dp = new int[capacity + 1]();
@@ -355,6 +374,10 @@ namespace algo {
             public static int coinChange(int[] coins, int n, int amount) {
                 if (coins == null || n <= 0 || amount < 0) {
                     return -1;
+                }
+                /* 把 n 钳制到实际数组长度，避免调用方传入过大 n 导致越界 */
+                if (n > coins.length) {
+                    n = coins.length;
                 }
                 if (amount == 0) {
                     return 0;
@@ -489,6 +512,10 @@ namespace algo {
             public static boolean canPartition(int[] nums, int n) {
                 if (nums == null || n <= 0) {
                     return false;
+                }
+                /* 把 n 钳制到实际数组长度，避免调用方传入过大 n 导致越界 */
+                if (n > nums.length) {
+                    n = nums.length;
                 }
 
                 int total = 0;

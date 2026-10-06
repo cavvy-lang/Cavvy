@@ -96,16 +96,20 @@ public final class vector<T> implements Iterable<T> {
     }
 
     private int next_capacity(int minCapacity) {
-        int newCapacity = this.data.length;
-        if (newCapacity < 1) {
-            newCapacity = 1;
+        /* 用 long 累乘，避免容量翻倍时 int 溢出为负导致死循环 */
+        long newCapacity = (long)this.data.length;
+        if (newCapacity < 1L) {
+            newCapacity = 1L;
         }
 
-        while (newCapacity < minCapacity) {
-            newCapacity = newCapacity * 2;
+        while (newCapacity < (long)minCapacity) {
+            newCapacity = newCapacity * 2L;
+        }
+        if (newCapacity > 2147483647L) {
+            newCapacity = 2147483647L;
         }
 
-        return newCapacity;
+        return (int)newCapacity;
     }
 
     private void reallocate(int newCapacity) {
@@ -184,10 +188,18 @@ public final class vector<T> implements Iterable<T> {
     }
 
     public T front() {
+        if (this.size <= 0) {
+            T zero = 0;
+            return zero;
+        }
         return this.data[0];
     }
 
     public T back() {
+        if (this.size <= 0) {
+            T zero = 0;
+            return zero;
+        }
         return this.data[this.size - 1];
     }
 

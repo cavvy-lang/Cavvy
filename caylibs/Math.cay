@@ -43,6 +43,8 @@ namespace std {
 #define MATH_EPSILON    1e-10                    // 浮点精度容差
 #define MATH_MAX_INT    2147483647               // 最大int值
 #define MATH_MIN_INT    (-2147483647 - 1)        // 最小int值，避免字面量溢出
+#define MATH_MAX_LONG   9223372036854775807L     // 最大long值
+#define MATH_MIN_LONG   (-9223372036854775807L - 1L) // 最小long值，避免字面量溢出
 
 // RAND_MAX 定义 - 使用标准C库值
 #define MATH_RAND_MAX   2147483647               // 2^31 - 1
@@ -400,6 +402,9 @@ public class Math {
      * 时间复杂度: O(1)
      */
     public static long abs(long x) {
+        if (x == MATH_MIN_LONG) {
+            return MATH_MAX_LONG;  // LONG_MIN的绝对值溢出，返回MAX_LONG
+        }
         if (x < 0) {
             return -x;
         }
@@ -714,7 +719,16 @@ public class Math {
         if (a == 0 || b == 0) {
             return 0;
         }
-        return abs(a / gcd(a, b) * b);
+        /* 在 long 域计算，避免 (a/gcd)*b 的中间乘积在 int 域溢出 */
+        long g = (long)gcd(a, b);
+        long result = ((long)a / g) * (long)b;
+        if (result < 0L) {
+            result = -result;
+        }
+        if (result > (long)MATH_MAX_INT) {
+            return MATH_MAX_INT;  // 结果超出 int 范围时饱和
+        }
+        return (int)result;
     }
 }
 
@@ -777,7 +791,8 @@ public class Random {
         if (bound <= 0) {
             return 0;
         }
-        return nextInt() % bound;
+        /* 先按无符号解释 nextInt()，避免负值取模得到负结果 */
+        return (int)(((long)nextInt() & 0xFFFFFFFFL) % (long)bound);
     }
 
     /**

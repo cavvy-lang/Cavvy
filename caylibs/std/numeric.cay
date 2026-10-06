@@ -30,6 +30,9 @@ public final class numeric {
      * 空间复杂度: O(1)
      */
     public static int abs(int x) {
+        if (x == (-2147483647 - 1)) {
+            return 2147483647;  // INT_MIN 的绝对值溢出
+        }
         return x < 0 ? -x : x;
     }
 
@@ -39,6 +42,9 @@ public final class numeric {
      * 空间复杂度: O(1)
      */
     public static long absLong(long x) {
+        if (x == (-9223372036854775807L - 1L)) {
+            return 9223372036854775807L;  // LONG_MIN 的绝对值溢出
+        }
         return x < 0L ? -x : x;
     }
 
@@ -391,11 +397,15 @@ public final class numeric {
      */
     public static int digitCount(int n) {
         if (n == 0) return 1;
+        /* 在 long 域取绝对值，INT_MIN 也能精确处理 */
+        long x = (long)n;
+        if (x < 0L) {
+            x = -x;
+        }
         int count = 0;
-        int x = abs(n);
-        while (x > 0) {
+        while (x > 0L) {
             count = count + 1;
-            x = x / 10;
+            x = x / 10L;
         }
         return count;
     }
@@ -406,11 +416,15 @@ public final class numeric {
      * 空间复杂度: O(1)
      */
     public static int digitSum(int n) {
+        /* 在 long 域取绝对值，INT_MIN 也能精确处理 */
+        long x = (long)n;
+        if (x < 0L) {
+            x = -x;
+        }
         int sum = 0;
-        int x = abs(n);
-        while (x > 0) {
-            sum = sum + x % 10;
-            x = x / 10;
+        while (x > 0L) {
+            sum = sum + (int)(x % 10L);
+            x = x / 10L;
         }
         return sum;
     }
@@ -421,14 +435,18 @@ public final class numeric {
      * 空间复杂度: O(1)
      */
     public static int reverseInt(int n) {
-        int result = 0;
-        int x = n;
-        while (x != 0) {
-            int digit = x % 10;
-            result = result * 10 + digit;
-            x = x / 10;
+        /* 在 long 域计算，最后检测是否超出 int 范围 */
+        long result = 0L;
+        long x = (long)n;
+        while (x != 0L) {
+            long digit = x % 10L;
+            result = result * 10L + digit;
+            x = x / 10L;
         }
-        return result;
+        if (result > 2147483647L || result < (-2147483647L - 1L)) {
+            return 0;  // 反转后溢出 int，返回 0
+        }
+        return (int)result;
     }
 
     /**

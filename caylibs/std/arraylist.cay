@@ -155,15 +155,19 @@ public final class ArrayList<T, A: Allocator = GlobalAlloc> implements Iterable<
             return;
         }
 
-        int newCapacity = this.data.length;
-        if (newCapacity < 1) {
-            newCapacity = 1;
+        /* 用 long 累乘，避免容量翻倍时 int 溢出为负导致死循环 */
+        long newCapacity = (long)this.data.length;
+        if (newCapacity < 1L) {
+            newCapacity = 1L;
         }
-        while (newCapacity < minCapacity) {
-            newCapacity = newCapacity * 2;
+        while (newCapacity < (long)minCapacity) {
+            newCapacity = newCapacity * 2L;
+        }
+        if (newCapacity > 2147483647L) {
+            newCapacity = 2147483647L;
         }
 
-        this.reallocate(newCapacity);
+        this.reallocate((int)newCapacity);
     }
 
     /**

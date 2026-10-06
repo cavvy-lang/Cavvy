@@ -68,6 +68,109 @@ public class StringBuilder {
         }
     }
     
+    /*
+     * 逐字节读写助手。
+     * 内联 IR 的绑定约定：函数参数名绑定到原始 SSA 值，局部变量名绑定到 alloca 指针。
+     * 因此读取参数对应的内存时，必须先将其转存到局部变量，再 load 该局部变量的 alloca。
+     */
+    
+    /**
+     * 读取单字节，返回 0..255 的无符号值
+     * @param addr 字节地址
+     * @return 该地址处的字节值
+     */
+    private static int __load_byte(long addr) {
+        long a = addr;
+        int result = 0;
+        __ir {
+            %av = load i64, i64* %a
+            %p = inttoptr i64 %av to i8*
+            %b = load i8, i8* %p
+            %v = zext i8 %b to i32
+            store i32 %v, i32* %result
+        }
+        return result;
+    }
+    
+    /**
+     * 写入单字节（仅使用低 8 位）
+     * @param addr 字节地址
+     * @param value 要写入的值
+     */
+    private static void __store_byte(long addr, int value) {
+        long a = addr;
+        int v = value;
+        __ir {
+            %av = load i64, i64* %a
+            %vv = load i32, i32* %v
+            %b = trunc i32 %vv to i8
+            %p = inttoptr i64 %av to i8*
+            store i8 %b, i8* %p
+        }
+    }
+    
+    /**
+     * 重叠安全的内存块移动（memmove 语义）
+     * 当 dest < src 时按正向复制（memcpy 在重叠区间下仍然安全）；
+     * 当 dest > src 且区间重叠时必须从高地址向低地址反向复制，否则会破坏源数据。
+     * @param dest 目标地址
+     * @param src 源地址
+     * @param count 字节数
+     */
+    private static void __move_bytes(long dest, long src, int count) {
+        if (count <= 0 || dest == src) {
+            return;
+        }
+        if (dest < src) {
+            __cay_memcpy_byte(dest, src, count);
+            return;
+        }
+        int i = count - 1;
+        while (i >= 0) {
+            __store_byte(dest + i, __load_byte(src + i));
+            i = i - 1;
+        }
+    }
+    
+    /**
+     * 从内存块构造新 String（内容复制、NUL 结尾）
+     * @param src 源地址
+     * @param len 字节数（不含结尾 NUL）
+     * @return 新字符串；src 为空或 len<=0 时返回空串
+     */
+    private static String __new_string_from_bytes(long src, int len) {
+        if (src == 0 || len <= 0) {
+            return "";
+        }
+        
+        long result_ptr;
+        __ir {
+            %l = sext i32 %len to i64
+            %size = add i64 %l, 1
+            %p = call i8* @calloc(i64 1, i64 %size)
+            %v = ptrtoint i8* %p to i64
+            store i64 %v, i64* %result_ptr
+        }
+        
+        if (result_ptr == 0) {
+            return "";
+        }
+        
+        __cay_memcpy_byte(result_ptr, src, len);
+        __store_byte(result_ptr + (long)len, 0);
+        
+        String result;
+        __ir {
+            %rv = load i64, i64* %result_ptr
+            %sp = inttoptr i64 %rv to i8*
+            store i8* %sp, i8** %result
+        }
+        return result;
+    }
+    
+    /* int 可表示的最大容量，容量/长度计算一律在 long 域进行以避免溢出 */
+    private static final int MAX_CAPACITY = 2147483647;
+    
     /**
      * 默认构造函数
      */
@@ -142,8 +245,14 @@ public class StringBuilder {
             return;
         }
         
-        /* 计算新容量 */
-        int newCapacity = this.capacity * GROWTH_FACTOR;
+        /* 计算新容量：在 long 域运算，避免 int 溢出导致死循环或越界 */
+        long doubled = (long)this.capacity * (long)GROWTH_FACTOR;
+        int newCapacity;
+        if (doubled > (long)MAX_CAPACITY) {
+            newCapacity = MAX_CAPACITY;
+        } else {
+            newCapacity = (int)doubled;
+        }
         if (newCapacity < minCapacity) {
             newCapacity = minCapacity;
         }
@@ -183,8 +292,13 @@ public class StringBuilder {
             return this;
         }
         
-        /* 确保容量足够（包括null terminator） */
-        this.ensureCapacity(this.length + strLen + 1);
+        /* 确保容量足够（包括null terminator），在 long 域检测溢出 */
+        long needed = (long)this.length + (long)strLen + 1L;
+        if (needed > (long)MAX_CAPACITY) {
+            /* 所需容量超出 int 可表示范围，无法追加，保持现有内容不变 */
+            return this;
+        }
+        this.ensureCapacity((int)needed);
         
         /* 如果缓冲区分配失败，无法追加 */
         if (this.buffer == 0) {
@@ -208,7 +322,11 @@ public class StringBuilder {
      * @return this，支持链式调用
      */
     public StringBuilder append(char c) {
-        this.ensureCapacity(this.length + 2);
+        long needed = (long)this.length + 2L;
+        if (needed > (long)MAX_CAPACITY) {
+            return this;
+        }
+        this.ensureCapacity((int)needed);
         
         /* 如果缓冲区分配失败，无法追加 */
         if (this.buffer == 0) {
@@ -226,35 +344,51 @@ public class StringBuilder {
     }
     
     /**
+     * 以十进制追加长整数
+     * 逐位提取时保持在负数域取模，从而正确处理 LONG_MIN（取负会溢出）。
+     * @param n 要追加的长整数
+     * @return this，支持链式调用
+     */
+    private StringBuilder __appendLongValue(long n) {
+        if (n == 0) {
+            return this.append('0');
+        }
+        
+        boolean negative = n < 0L;
+        /* long 最多 19 位十进制数字，符号单独处理 */
+        char[] digits = new char[20]();
+        int pos = 0;
+        long value = n;
+        while (value != 0L) {
+            long digit = value % 10L;      /* 负数域：结果落在 0..-9 */
+            if (digit < 0L) {
+                digit = -digit;            /* 对单个十进制位取负是安全的 */
+            }
+            digits[pos] = (char)('0' + (int)digit);
+            pos = pos + 1;
+            value = value / 10L;
+        }
+        
+        if (negative) {
+            this.append('-');
+        }
+        
+        int i = pos - 1;
+        while (i >= 0) {
+            this.append(digits[i]);
+            i = i - 1;
+        }
+        
+        return this;
+    }
+    
+    /**
      * 追加整数
      * @param n 要追加的整数
      * @return this，支持链式调用
      */
     public StringBuilder append(int n) {
-        /* 使用字符串拼接转换整数为字符串 */
-        if (n == 0) {
-            return this.append("0");
-        }
-        
-        boolean negative = false;
-        if (n < 0) {
-            negative = true;
-            n = -n;
-        }
-        
-        String result = "";
-        while (n > 0) {
-            long digit = n % 10;
-            char c = (char)('0' + (int)digit);
-            result = c + result;
-            n = n / 10;
-        }
-        
-        if (negative) {
-            result = "-" + result;
-        }
-        
-        return this.append(result);
+        return this.__appendLongValue((long)n);
     }
     
     /**
@@ -263,30 +397,7 @@ public class StringBuilder {
      * @return this，支持链式调用
      */
     public StringBuilder append(long n) {
-        /* 使用字符串拼接转换长整数为字符串 */
-        if (n == 0) {
-            return this.append("0");
-        }
-        
-        boolean negative = false;
-        if (n < 0) {
-            negative = true;
-            n = -n;
-        }
-        
-        String result = "";
-        while (n > 0) {
-            long digit = n % 10;
-            char c = (char)('0' + digit);
-            result = c + result;
-            n = n / 10;
-        }
-        
-        if (negative) {
-            result = "-" + result;
-        }
-        
-        return this.append(result);
+        return this.__appendLongValue(n);
     }
     
     /**
@@ -384,56 +495,7 @@ public class StringBuilder {
         if (this.length == 0 || this.buffer == 0) {
             return "";
         }
-        
-        long buf = this.buffer;
-        int len = this.length;
-        long result_ptr;
-        
-        // Step 1: allocate memory via calloc
-        __ir {
-            %lv = load i32, i32* %len
-            %l = sext i32 %lv to i64
-            %size = add i64 %l, 1
-            %p = call i8* @calloc(i64 1, i64 %size)
-            %v = ptrtoint i8* %p to i64
-            store i64 %v, i64* %result_ptr
-        }
-        
-        if (result_ptr == 0) {
-            return "";
-        }
-        
-        // Step 2: copy buffer data to new memory
-        __cay_memcpy_byte(result_ptr, buf, len);
-        
-        // Step 3: add null terminator
-        __cay_memset_byte(result_ptr + len, 0, 1);
-        
-        // Step 4: convert i64 pointer back to String
-        String result;
-        __ir {
-            %rv = load i64, i64* %result_ptr
-            %sp = inttoptr i64 %rv to i8*
-            store i8* %sp, i8** %result
-        }
-        
-        return result;
-    }
-    
-    /**
-     * 将字符数组转换为字符串
-     * @param chars 字符数组
-     * @param len 字符数量
-     * @return 字符串
-     */
-    private static String charsToString(char[] chars, int len) {
-        String result = "";
-        int i = 0;
-        while (i < len) {
-            result = result + chars[i];
-            i = i + 1;
-        }
-        return result;
+        return __new_string_from_bytes(this.buffer, this.length);
     }
     
     /**
@@ -445,9 +507,7 @@ public class StringBuilder {
         if (index < 0 || index >= this.length || this.buffer == 0) {
             return '\0';
         }
-        long ptr = this.buffer + index;
-        int pi = (int)(ptr & 0xFF);
-        return (char)pi;
+        return (char)__load_byte(this.buffer + index);
     }
     
     /**
@@ -472,23 +532,17 @@ public class StringBuilder {
         
         int deleteLen = end - start;
         int moveLen = this.length - end;
-        
-        /* 移动后面的字符 */
-        int i = 0;
-        while (i < moveLen) {
-            long srcPtr = this.buffer + end + i;
-            long dstPtr = this.buffer + start + i;
-            int si = (int)(srcPtr & 0xFF);
-            dstPtr = si;
-            i = i + 1;
+
+        /* 移动后面的字符（区间可能重叠，使用 memmove 语义） */
+        if (moveLen > 0) {
+            __move_bytes(this.buffer + start, this.buffer + end, moveLen);
         }
-        
+
         this.length = this.length - deleteLen;
-        
+
         /* 更新null terminator */
-        long endPtr = this.buffer + this.length;
-        endPtr = 0;
-        
+        __store_byte(this.buffer + this.length, 0);
+
         return this;
     }
     
@@ -515,33 +569,32 @@ public class StringBuilder {
             return this;
         }
         
-        /* 确保容量 */
-        this.ensureCapacity(this.length + strLen + 1);
-        
+        /* 确保容量（包括null terminator），在 long 域检测溢出 */
+        long needed = (long)this.length + (long)strLen + 1L;
+        if (needed > (long)MAX_CAPACITY) {
+            return this;
+        }
+        this.ensureCapacity((int)needed);
+
         /* 如果缓冲区分配失败，无法插入 */
         if (this.buffer == 0) {
             return this;
         }
-        
-        /* 移动后面的字符 */
+
+        /* 移动后面的字符（目标区间在源区间之后，区间可能重叠） */
         int moveLen = this.length - offset;
-        int i = moveLen - 1;
-        while (i >= 0) {
-            long srcPtr = this.buffer + offset + i;
-            long dstPtr = this.buffer + offset + strLen + i;
-            int si = (int)(srcPtr & 0xFF);
-            dstPtr = si;
-            i = i - 1;
+        if (moveLen > 0) {
+            __move_bytes(this.buffer + offset + strLen, this.buffer + offset, moveLen);
         }
-        
+
         /* 插入新字符串 - 使用外部辅助函数 */
         __cay_memcpy_byte(this.buffer + offset, str.c_str(), strLen);
-        
+
         this.length = this.length + strLen;
-        
+
         /* 更新null terminator */
-        __cay_memset_byte(this.buffer + this.length, 0, 1);
-        
+        __store_byte(this.buffer + this.length, 0);
+
         return this;
     }
     
@@ -558,15 +611,11 @@ public class StringBuilder {
         int right = this.length - 1;
         
         while (left < right) {
-            long leftPtr = this.buffer + left;
-            long rightPtr = this.buffer + right;
-            
-            int li = (int)(leftPtr & 0xFF);
-            int ri = (int)(rightPtr & 0xFF);
-            char temp = (char)li;
-            leftPtr = ri;
-            rightPtr = (int)temp & 0xFF;
-            
+            int lv = __load_byte(this.buffer + left);
+            int rv = __load_byte(this.buffer + right);
+            __store_byte(this.buffer + left, rv);
+            __store_byte(this.buffer + right, lv);
+
             left = left + 1;
             right = right - 1;
         }
@@ -588,22 +637,28 @@ public class StringBuilder {
         }
         
         if (newLength > this.length) {
-            /* 扩展 - 填充null字符 */
-            this.ensureCapacity(newLength + 1);
+            /* 扩展 - 在 long 域检测容量溢出 */
+            long needed = (long)newLength + 1L;
+            if (needed > (long)MAX_CAPACITY) {
+                return;
+            }
+            this.ensureCapacity((int)needed);
+            if (this.buffer == 0) {
+                return;
+            }
+            /* 填充 NUL 字符 */
             int i = this.length;
             while (i < newLength) {
-                long ptr = this.buffer + i;
-                ptr = 0;
+                __store_byte(this.buffer + i, 0);
                 i = i + 1;
             }
         }
-        
+
         this.length = newLength;
-        
+
         /* 更新null terminator */
         if (this.buffer != 0) {
-            long endPtr = this.buffer + this.length;
-            endPtr = 0;
+            __store_byte(this.buffer + this.length, 0);
         }
     }
     
@@ -637,18 +692,7 @@ public class StringBuilder {
             return "";
         }
         
-        int len = end - start;
-        char[] chars = new char[len]();
-        
-        int i = 0;
-        while (i < len) {
-            long ptr = this.buffer + start + i;
-            int pi = (int)(ptr & 0xFF);
-            chars[i] = (char)pi;
-            i = i + 1;
-        }
-        
-        return charsToString(chars, len);
+        return __new_string_from_bytes(this.buffer + start, end - start);
     }
     
     /**
@@ -677,9 +721,7 @@ public class StringBuilder {
         while (i <= this.length - strLen) {
             int j = 0;
             while (j < strLen) {
-                long ptr1 = this.buffer + i + j;
-                int pi = (int)(ptr1 & 0xFF);
-                char c1 = (char)pi;
+                char c1 = (char)__load_byte(this.buffer + i + j);
                 char c2 = str.charAt(j);
                 if (c1 != c2) {
                     break;
@@ -745,13 +787,11 @@ public class StringBuilder {
         /* 复制C字符串内容 */
         int i = 0;
         while (true) {
-            long charPtr = ptr + i;
-            int ci = (int)(charPtr & 0xFF);
-            char c = (char)ci;
-            if (c == '\0') {
+            int ci = __load_byte(ptr + i);
+            if (ci == 0) {
                 break;
             }
-            sb.append(c);
+            sb.append((char)ci);
             i = i + 1;
         }
         

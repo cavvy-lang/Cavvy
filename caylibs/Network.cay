@@ -9,6 +9,11 @@
 
 namespace std {
 
+/* 运行时内存写字节，用于给 recv 得到的缓冲区补 NUL 终止符 */
+extern {
+    void __cay_memset_byte(long ptr, int value, int n);
+}
+
 /* ============================================================================
  * 平台特定的Socket函数声明
  * ============================================================================ */
@@ -554,26 +559,32 @@ public class TcpSocket {
             return null;
         }
         
-        c_void* buf = malloc(maxLen);
+        /* 多分配 1 字节用于 NUL 终止符，否则 __cay_ptr_to_string 会读过
+           received 之外未初始化的内存 */
+        c_void* buf = malloc(maxLen + 1);
         if (buf == null) {
             return null;
         }
-        
+
         #ifdef _WIN32
         c_int received = recv(this.handle, buf, maxLen, 0);
         #else
         c_int received = (c_int)recv((c_int)this.handle, buf, maxLen, 0);
         #endif
-        
+
         if (received <= 0) {
             free(buf);
             return null;
         }
-        
+
+        /* 按实际接收长度补 NUL 终止符 */
+        c_long base = (c_long)buf;
+        __cay_memset_byte(base + (c_long)received, 0, 1);
+
         /* 转换为String */
-        String result = __cay_ptr_to_string((c_long)buf);
+        String result = __cay_ptr_to_string(base);
         free(buf);
-        
+
         return result;
     }
     
@@ -1007,11 +1018,11 @@ public class UdpSocket {
             return null;
         }
         
-        c_void* buf = malloc(maxLen);
+        c_void* buf = malloc(maxLen + 1);
         if (buf == null) {
             return null;
         }
-        
+
         c_void* addrBuf = malloc(16);
         if (addrBuf == null) {
             free(buf);
@@ -1038,12 +1049,14 @@ public class UdpSocket {
         senderAddr.word2 = (c_int)__cay_read_ptr((c_long)addrBuf + 8);
         senderAddr.word3 = (c_int)__cay_read_ptr((c_long)addrBuf + 12);
         
-        /* 转换为String */
-        String result = __cay_ptr_to_string((c_long)buf);
-        
+        /* 按实际接收长度补 NUL 终止符，再转换为String */
+        c_long base = (c_long)buf;
+        __cay_memset_byte(base + (c_long)received, 0, 1);
+        String result = __cay_ptr_to_string(base);
+
         free(buf);
         free(addrBuf);
-        
+
         return result;
     }
     
@@ -1131,7 +1144,7 @@ public class HttpRequest {
      */
     public String build() {
         String request = this.method + " " + this.url + " HTTP/1.1\r\n";
-        request = request + "Host: localhost\r\n";
+        /* Host 由调用方通过 addHeader 提供，此处不再硬编码，避免重复 Host 头 */
         request = request + "User-Agent: CavvyHTTP/0.5\r\n";
         
         if (this.body.length() > 0) {
@@ -1278,7 +1291,8 @@ public class HttpClient {
         if (protocolEnd >= 0) {
             String protocol = url.substring(0, protocolEnd);
             url = url.substring(protocolEnd + 3);
-            if (protocol == "https") {
+            /* String 的 == 是引用比较；必须用 equals 比较内容 */
+            if (protocol.equals("https")) {
                 port = 443;
             }
         }
@@ -1314,7 +1328,7 @@ public class HttpClient {
         request.addHeader("Accept", "*/*");
         request.addHeader("Connection", "close");
 
-        if (method == "POST" && body.length() > 0) {
+        if (method.equals("POST") && body.length() > 0) {
             request.addHeader("Content-Type", "application/x-www-form-urlencoded");
             request.setBody(body);
         }

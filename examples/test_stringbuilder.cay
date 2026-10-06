@@ -1,0 +1,74 @@
+/*
+ * StringBuilder 回归测试
+ *
+ * 覆盖此前失效的字节级操作：charAt / substring / indexOf / delete /
+ * insert / reverse / setLength / fromCString，以及 INT_MIN 追加与容量增长。
+ */
+
+#include <StringBuilder.cay>
+using std::StringBuilder;
+
+public class TestStringBuilder {
+
+    public static void main(String[] args) {
+        int failures = 0;
+
+        /* --- charAt / substring / indexOf --- */
+        StringBuilder sb = new StringBuilder("Hello, World!");
+        if (sb.charAt(0) != 'H') { println("FAIL charAt(0)"); failures = failures + 1; }
+        if (sb.charAt(4) != 'o') { println("FAIL charAt(4)"); failures = failures + 1; }
+        if (!sb.substring(7).equals("World!")) { println("FAIL substring(7)"); failures = failures + 1; }
+        if (!sb.substring(0, 5).equals("Hello")) { println("FAIL substring(0,5)"); failures = failures + 1; }
+        if (sb.indexOf("World") != 7) { println("FAIL indexOf(World)"); failures = failures + 1; }
+        if (sb.indexOf("zzz") != -1) { println("FAIL indexOf(missing)"); failures = failures + 1; }
+
+        /* --- delete --- */
+        StringBuilder d = new StringBuilder("abcdef");
+        d.delete(1, 3);
+        if (!d.toString().equals("adef")) { println("FAIL delete -> " + d.toString()); failures = failures + 1; }
+
+        /* --- insert --- */
+        StringBuilder in = new StringBuilder("abc");
+        in.insert(1, "XY");
+        if (!in.toString().equals("aXYbc")) { println("FAIL insert -> " + in.toString()); failures = failures + 1; }
+
+        /* --- reverse --- */
+        StringBuilder rv = new StringBuilder("abcde");
+        rv.reverse();
+        if (!rv.toString().equals("edcba")) { println("FAIL reverse -> " + rv.toString()); failures = failures + 1; }
+
+        /* --- setLength --- */
+        StringBuilder sl = new StringBuilder("abc");
+        sl.setLength(5);
+        if (sl.length() != 5) { println("FAIL setLength length"); failures = failures + 1; }
+        sl.setLength(2);
+        if (!sl.toString().equals("ab")) { println("FAIL setLength shrink"); failures = failures + 1; }
+
+        /* --- fromCString --- */
+        StringBuilder src = new StringBuilder("XYZ");
+        StringBuilder fc = StringBuilder.fromCString(src.c_str());
+        if (!fc.toString().equals("XYZ")) { println("FAIL fromCString -> " + fc.toString()); failures = failures + 1; }
+
+        /* --- 整数追加边界 --- */
+        StringBuilder nmin = new StringBuilder();
+        nmin.append(-2147483648);
+        if (!nmin.toString().equals("-2147483648")) { println("FAIL append(INT_MIN)"); failures = failures + 1; }
+
+        StringBuilder lmin = new StringBuilder();
+        lmin.append(-9223372036854775807L - 1L);
+        if (!lmin.toString().equals("-9223372036854775808")) { println("FAIL append(LONG_MIN)"); failures = failures + 1; }
+
+        /* --- 大量追加触发扩容 --- */
+        StringBuilder big = new StringBuilder();
+        for (int i = 0; i < 1000; i++) {
+            big.append('x');
+        }
+        if (big.length() != 1000) { println("FAIL growth length"); failures = failures + 1; }
+
+        if (failures == 0) {
+            println("StringBuilder tests passed");
+        } else {
+            println("StringBuilder tests FAILED: " + String.valueOf(failures));
+        }
+    }
+}

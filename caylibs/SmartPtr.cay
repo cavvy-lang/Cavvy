@@ -87,6 +87,17 @@ public class UniquePtr<T> {
      * `release()` 取出后手动管理，或让旧 UniquePtr 离开作用域。
      */
     public void reset(T newPtr) {
+        /* 释放当前托管对象的内存（源码层无法泛型调用 T.__dtor） */
+        long old = this.__owned;
+        if (old != 0) {
+            long o0 = old;
+            __ir {
+                %ov = load i64, i64* %o0
+                %fp = inttoptr i64 %ov to i8*
+                call void @free(i8* %fp)
+            }
+        }
+
         long addr = 0;
         __ir {
             %v = ptrtoint i8* %newPtr to i64
@@ -312,32 +323,64 @@ public class WeakPtr<T> {
      */
     public Optional<Rc<T>> upgrade() {
         long rc = this.__refcount_ptr;
-        long count = 0;
+
+        /* CAS 结果暂存栈槽：在循环外分配一次，避免重试时 alloca 反复增长栈。
+           cmpxchg 返回 { i64, i1 }，而 extractvalue 不在内联 IR 白名单内，
+           故把整个结果存入此槽，再把首字段按 i64 读回。 */
+        long slotPtr = 0;
         __ir {
-            %rc_i64_a = load i64, i64* %rc
-            %rc_ptr_a = inttoptr i64 %rc_i64_a to i64*
-            %v = load i64, i64* %rc_ptr_a
-            store i64 %v, i64* %count
-        }
-        if (count == 0) {
-            return Optional<Rc<T>>.empty();
+            %slot0 = alloca { i64, i1 }
+            %sp0 = ptrtoint { i64, i1 }* %slot0 to i64
+            store i64 %sp0, i64* %slotPtr
         }
 
-        // 引用计数仍大于 0，安全地原子递增。
+        /* 首次读取强引用计数，作为 CAS 的期望值 */
+        long expected = 0;
         __ir {
-            %rc_i64_b = load i64, i64* %rc
-            %rc_ptr_b = inttoptr i64 %rc_i64_b to i64*
-            %old = atomicrmw add i64* %rc_ptr_b, i64 1 seq_cst
+            %rc_i64_l = load i64, i64* %rc
+            %rc_ptr_l = inttoptr i64 %rc_i64_l to i64*
+            %v_l = load i64, i64* %rc_ptr_l
+            store i64 %v_l, i64* %expected
         }
 
-        // 从控制块读取 object_ptr 构造新的 Rc。
+        /*
+         * 「判零 + 递增」必须在同一次原子比较交换中完成。
+         * 若先普通 load 判零再 atomicrmw add（原实现），两步之间其他线程可能
+         * 把计数减到 0 并释放对象，导致本线程复活/访问已释放对象（TOCTOU/UAF）。
+         */
+        while (true) {
+            if (expected == 0) {
+                return Optional<Rc<T>>.empty();
+            }
+            long observed = 0;
+            __ir {
+                %rc_i64_c = load i64, i64* %rc
+                %rc_ptr_c = inttoptr i64 %rc_i64_c to i64*
+                %exp = load i64, i64* %expected
+                %newc = add i64 %exp, 1
+                %spp = load i64, i64* %slotPtr
+                %slot = inttoptr i64 %spp to { i64, i1 }*
+                %res = cmpxchg i64* %rc_ptr_c, i64 %exp, i64 %newc seq_cst seq_cst
+                store { i64, i1 } %res, { i64, i1 }* %slot
+                %slot_i64 = bitcast { i64, i1 }* %slot to i64*
+                %old = load i64, i64* %slot_i64
+                store i64 %old, i64* %observed
+            }
+            if (observed == expected) {
+                break;
+            }
+            /* CAS 失败：计数被并发修改，用返回值作为新的期望值重试 */
+            expected = observed;
+        }
+
+        // 递增成功后对象一定存活，从控制块读取 object_ptr 构造新的 Rc。
         Rc<T> result = new Rc<T>();
         result.__refcount_ptr = this.__refcount_ptr;
         long owned = 0;
         __ir {
-            %rc_i64_c = load i64, i64* %rc
-            %rc_ptr_c = inttoptr i64 %rc_i64_c to i64*
-            %obj_field = getelementptr i8, i8* %rc_ptr_c, i64 16
+            %rc_i64_c2 = load i64, i64* %rc
+            %rc_ptr_c2 = inttoptr i64 %rc_i64_c2 to i64*
+            %obj_field = getelementptr i8, i8* %rc_ptr_c2, i64 16
             %obj_field_ptr = bitcast i8* %obj_field to i64*
             %obj_i64 = load i64, i64* %obj_field_ptr
             store i64 %obj_i64, i64* %owned

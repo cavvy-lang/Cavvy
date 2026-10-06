@@ -87,7 +87,12 @@ public final class Process {
 
 public final class Environment {
     public static String get(String name) {
-        return (String)sys_getenv((c_string)name);
+        c_string value = sys_getenv((c_string)name);
+        /* getenv 对环境变量不存在返回 NULL，直接强转 String 会得到非法指针 */
+        if (value == null) {
+            return "";
+        }
+        return (String)value;
     }
 }
 
@@ -111,6 +116,9 @@ public final class Args {
     }
 
     public String get(int index) {
+        if (index < 0 || index >= this.values.length) {
+            return "";
+        }
         return this.values[index];
     }
 

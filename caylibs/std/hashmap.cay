@@ -120,8 +120,14 @@ public class HashMap<K, V, A: Allocator = GlobalAlloc> {
     }
 
     public void put(K key, V value) {
-        if ((this.size + 1) > (int)(this.capacity * LOAD_FACTOR)) {
-            this.resize(this.capacity * 2);
+        /* 用 long 计算负载阈值与扩容目标，避免 int 乘法溢出 */
+        long threshold = ((long)this.capacity * 7L) / 10L; /* LOAD_FACTOR = 0.7 */
+        if ((long)this.size + 1L > threshold) {
+            long newCapacity = (long)this.capacity * 2L;
+            if (newCapacity > 1073741824L) { /* 2^30，防止 *2 溢出为负 */
+                newCapacity = 1073741824L;
+            }
+            this.resize((int)newCapacity);
         }
 
         int index = this.findInsertIndex(key);
@@ -178,10 +184,9 @@ public class HashMap<K, V, A: Allocator = GlobalAlloc> {
     }
 
     private int hash(K key) {
-        int h = key.hashCode();
-        if (h < 0) {
-            h = -h;
-        }
+        /* 清零符号位：对 INT_MIN 取负会溢出仍为负，导致后续取模得到负索引。
+           位与 0x7FFFFFFF 对任何 int 都可得到非负结果。 */
+        int h = key.hashCode() & 2147483647;
         return h;
     }
 
@@ -257,11 +262,15 @@ public class HashMap<K, V, A: Allocator = GlobalAlloc> {
         if (n < 1) {
             return 1;
         }
-        int power = 1;
-        while (power < n) {
-            power = power * 2;
+        /* 用 long 累乘，避免 n > 2^30 时 power * 2 溢出为负导致死循环 */
+        long power = 1;
+        while (power < (long)n) {
+            power = power * 2L;
         }
-        return power;
+        if (power > 1073741824L) {
+            return 1073741824;
+        }
+        return (int)power;
     }
 }
 
