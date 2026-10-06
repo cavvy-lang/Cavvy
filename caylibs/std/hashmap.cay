@@ -68,6 +68,10 @@ public class HashMap<K, V, A: Allocator = GlobalAlloc> {
     private int size;
     private int capacity;
     private A allocator;
+    /* 三个数组的分配基址（__cay_array_base），用于经 allocator 归还内存 */
+    private long keysBuf;
+    private long valuesBuf;
+    private long statesBuf;
 
     private static final float LOAD_FACTOR = 0.7f;
     private static final char EMPTY = 0;
@@ -77,9 +81,10 @@ public class HashMap<K, V, A: Allocator = GlobalAlloc> {
     public HashMap() {
         this.allocator = new A();
         this.capacity = 8;
-        this.keys = new K[this.capacity];
-        this.values = new V[this.capacity];
-        this.states = new char[this.capacity];
+        this.keysBuf = 0;
+        this.valuesBuf = 0;
+        this.statesBuf = 0;
+        this.allocArrays();
         this.size = 0;
     }
 
@@ -89,19 +94,57 @@ public class HashMap<K, V, A: Allocator = GlobalAlloc> {
             initialCapacity = 1;
         }
         this.capacity = this.nextPowerOfTwo(initialCapacity);
-        this.keys = new K[this.capacity];
-        this.values = new V[this.capacity];
-        this.states = new char[this.capacity];
+        this.keysBuf = 0;
+        this.valuesBuf = 0;
+        this.statesBuf = 0;
+        this.allocArrays();
         this.size = 0;
     }
 
     public HashMap(A allocator) {
         this.allocator = allocator;
         this.capacity = 8;
-        this.keys = new K[this.capacity];
-        this.values = new V[this.capacity];
-        this.states = new char[this.capacity];
+        this.keysBuf = 0;
+        this.valuesBuf = 0;
+        this.statesBuf = 0;
+        this.allocArrays();
         this.size = 0;
+    }
+
+    /**
+     * 经分配器申请三个数组，并记录分配基址供析构时归还。
+     *
+     * 三个数组都通过 __cay_alloc_array 走 `this.allocator`，因此
+     * `HashMap(A allocator)` 的分配器参数是真实生效的。
+     */
+    private void allocArrays() {
+        this.keys = __cay_alloc_array<K>(this.allocator, this.capacity);
+        this.keysBuf = __cay_array_base(this.keys);
+        this.values = __cay_alloc_array<V>(this.allocator, this.capacity);
+        this.valuesBuf = __cay_array_base(this.values);
+        this.states = __cay_alloc_array<char>(this.allocator, this.capacity);
+        this.statesBuf = __cay_array_base(this.states);
+    }
+
+    /**
+     * 归还三个数组的分配基址。
+     */
+    private void freeArrays() {
+        this.freeBuffer(this.keysBuf);
+        this.freeBuffer(this.valuesBuf);
+        this.freeBuffer(this.statesBuf);
+        this.keysBuf = 0;
+        this.valuesBuf = 0;
+        this.statesBuf = 0;
+    }
+
+    /**
+     * 归还一个分配基址（0 表示无需归还）。
+     */
+    private void freeBuffer(long base) {
+        if (base != 0) {
+            this.allocator.deallocate(base);
+        }
     }
 
     public int size() {
@@ -183,6 +226,25 @@ public class HashMap<K, V, A: Allocator = GlobalAlloc> {
         return new HashMapIterator<K, V>(this.keys, this.values, this.states, this.capacity);
     }
 
+    /**
+     * 析构函数：按 states 门控析构键值，并释放三个内部数组。
+     *
+     * 必须按状态遍历，不能用 __cay_destroy_array —— 槽位有 EMPTY/OCCUPIED/
+     * DELETED 三态，非 OCCUPIED 槽位的内容可能是陈旧值，逐个析构会二次析构。
+     */
+    ~HashMap() {
+        if (this.states != null) {
+            for (int i = 0; i < this.capacity; i = i + 1) {
+                if (this.states[i] == OCCUPIED) {
+                    __cay_destroy<K>(this.keys[i]);
+                    __cay_destroy<V>(this.values[i]);
+                }
+            }
+            this.freeArrays();
+        }
+    }
+
+
     private int hash(K key) {
         /* 清零符号位：对 INT_MIN 取负会溢出仍为负，导致后续取模得到负索引。
            位与 0x7FFFFFFF 对任何 int 都可得到非负结果。 */
@@ -245,10 +307,17 @@ public class HashMap<K, V, A: Allocator = GlobalAlloc> {
         V[] oldValues = this.values;
         char[] oldStates = this.states;
 
+        /* 旧数组的分配基址必须先留存：allocArrays 会覆盖三个 *_Buf 字段，
+           而重哈希仍要从 oldKeys/oldValues 读取，因此只能在重哈希完成后释放。 */
+        long oldKeysBuf = this.keysBuf;
+        long oldValuesBuf = this.valuesBuf;
+        long oldStatesBuf = this.statesBuf;
+
         this.capacity = this.nextPowerOfTwo(newCapacity);
-        this.keys = new K[this.capacity];
-        this.values = new V[this.capacity];
-        this.states = new char[this.capacity];
+        this.keysBuf = 0;
+        this.valuesBuf = 0;
+        this.statesBuf = 0;
+        this.allocArrays();
         this.size = 0;
 
         for (int i = 0; i < oldCapacity; i = i + 1) {
@@ -256,6 +325,10 @@ public class HashMap<K, V, A: Allocator = GlobalAlloc> {
                 this.put(oldKeys[i], oldValues[i]);
             }
         }
+
+        this.freeBuffer(oldKeysBuf);
+        this.freeBuffer(oldValuesBuf);
+        this.freeBuffer(oldStatesBuf);
     }
 
     private int nextPowerOfTwo(int n) {

@@ -524,17 +524,22 @@ impl IRGenerator {
                 LiteralValue::Null => "o".to_string(),
             },
             Expr::Identifier(ident) => {
-                // 查找变量类型
+                // 查找变量类型。必须按当前单态化上下文解析类型参数：
+                // 泛型类体内 `this.<字段>` / 形参的静态类型可能是 GenericParam("A")，
+                // 直接取签名会退化成 "gA"，使重载打分把 A 类型实参判为不匹配，
+                // 最终静默选中 (int) 之类的错误重载（见 infer_argument_type 文档）。
                 if let Some(cay_type) = self.var_cay_types.get(&ident.name) {
-                    self.type_to_signature(cay_type)
+                    let resolved = self.resolve_type_arg_concrete(cay_type);
+                    self.type_to_signature(&resolved)
                 } else {
                     "i".to_string() // 默认int
                 }
             }
             Expr::MemberAccess(member) => {
-                // 尝试推断成员访问的类型
+                // 尝试推断成员访问的类型（同样按当前上下文解析类型参数）
                 if let Some(cay_type) = self.infer_member_access_type(member) {
-                    self.type_to_signature(&cay_type)
+                    let resolved = self.resolve_type_arg_concrete(&cay_type);
+                    self.type_to_signature(&resolved)
                 } else {
                     "i".to_string() // 默认int
                 }
@@ -546,9 +551,10 @@ impl IRGenerator {
             Expr::Unary(unary) => self.infer_argument_type(&unary.operand),
             Expr::Cast(cast) => self.type_to_signature(&cast.target_type),
             Expr::Call(call) => {
-                // 尝试推断函数调用的返回类型
+                // 尝试推断函数调用的返回类型（同样按当前上下文解析类型参数）
                 if let Some(cay_type) = self.infer_call_return_type(call) {
-                    self.type_to_signature(&cay_type)
+                    let resolved = self.resolve_type_arg_concrete(&cay_type);
+                    self.type_to_signature(&resolved)
                 } else {
                     "i".to_string() // 默认int
                 }
@@ -587,6 +593,21 @@ impl IRGenerator {
                 if let Some(class_info) = class_layout {
                     if let Some(field) = class_info.fields.get(&member.member) {
                         return Some(field.field_type.clone());
+                    }
+                }
+                // 回退：class_layouts 尚未为该类建立（泛型类的布局只在其特化时
+                // 按需生成）。此时改查类型注册表里的**声明**字段类型，其类型参数
+                // 由调用方的 resolve_type_arg_concrete 按当前单态化上下文解析。
+                // 缺少这条回退会让本函数返回 None，调用方 infer_argument_type
+                // 遂默认按 int 处理，进而在重载打分里静默选错构造函数。
+                if let Some(ref registry) = self.type_registry {
+                    let info = registry
+                        .get_class(&class_name)
+                        .or_else(|| registry.get_class(&qualified_name));
+                    if let Some(ci) = info {
+                        if let Some(field) = ci.fields.get(&member.member) {
+                            return Some(field.field_type.clone());
+                        }
                     }
                 }
                 // 然后查找静态方法（如 MathUtils.multiply）
@@ -634,13 +655,16 @@ impl IRGenerator {
 
         match expr {
             Expr::Identifier(ident) => {
-                // 首先检查是否是变量
-                if let Some(var_type) = self.var_cay_types.get(&ident.name) {
-                    return Some(var_type.clone());
-                }
-                // 特殊处理 "this"
+                // `this` 必须优先判定：var_cay_types 里 this 的登记类型可能是
+                // 指针/auto 之类的非 Object 类型，先命中的话就会返回一个下游
+                // 无法处理的类型，使成员类型推断失败（进而让重载打分退回按
+                // int 猜测，静默选错构造函数）。
                 if ident.name == "this" {
                     return Some(Type::Object(self.current_class.clone()));
+                }
+                // 其次检查是否是变量
+                if let Some(var_type) = self.var_cay_types.get(&ident.name) {
+                    return Some(var_type.clone());
                 }
                 // 检查是否是类名（静态方法调用如 MathUtils.multiply）
                 if let Some(ref registry) = self.type_registry {

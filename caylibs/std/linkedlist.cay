@@ -395,6 +395,46 @@ public final class LinkedList<T> implements Iterable<T> {
         return new LinkedListIterator<T>(this.head);
     }
 
+    /**
+     * 析构函数：逐节析构元素并回收节点内存。
+     *
+     * 先取出后继再释放当前节点，避免读已释放的 next 指针；
+     * `new LNode<T>()` 由 calloc 分配，故用 free 回收。
+     */
+    ~LinkedList() {
+        LNode<T> cur = this.head;
+        while (cur != null) {
+            LNode<T> next = cur.getNext();
+            __cay_destroy<T>(cur.getValue());
+            __freeNode(cur);
+            cur = next;
+        }
+        this.head = null;
+        this.tail = null;
+        this.count = 0;
+    }
+
+    /**
+     * 释放单个链节（取节点地址后 free）。
+     */
+    private static void __freeNode(LNode<T> node) {
+        long addr = 0;
+        LNode<T> n = node;
+        __ir {
+            %lnv = load i8*, i8** %n
+            %lna = ptrtoint i8* %lnv to i64
+            store i64 %lna, i64* %addr
+        }
+        if (addr != 0) {
+            long b = addr;
+            __ir {
+                %lbv = load i64, i64* %b
+                %lbp = inttoptr i64 %lbv to i8*
+                call void @free(i8* %lbp)
+            }
+        }
+    }
+
 }
 
 } // namespace std

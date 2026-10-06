@@ -66,6 +66,23 @@ public final class PriorityQueue<T, A: Allocator = GlobalAlloc> {
     }
 
     /**
+     * 指定分配器构造：大顶堆（priority 大者先出）。
+     *
+     * 三个内部 ArrayList 的全部内存申请与释放都经过该分配器，
+     * 与 Stack/Queue/Deque 的分配器构造保持一致。
+     *
+     * @param allocator 内存分配器实例（不可为 null）
+     */
+    public PriorityQueue(A allocator) {
+        this.minHeap = false;
+        this.nextSeq = 0;
+        this.allocator = allocator;
+        this.values = new ArrayList<T, A>(this.allocator);
+        this.priorities = new ArrayList<int, A>(this.allocator);
+        this.seq = new ArrayList<int, A>(this.allocator);
+    }
+
+    /**
      * 指定初始容量构造：大顶堆（priority 大者先出），使用 GlobalAlloc。
      *
      * @param initialCapacity 三个内部 ArrayList 的初始容量提示；小于 1 时底层按 1 处理
@@ -215,12 +232,15 @@ public final class PriorityQueue<T, A: Allocator = GlobalAlloc> {
      * 插入序号 seq 同时归零，重新从 0 开始计数。
      */
     /**
-     * 析构函数：析构内部的 values 数组列表。
+     * 析构函数：析构三个内部 ArrayList。
      *
-     * priorities / seq 存放的是 int，无析构语义，无需处理。
+     * priorities / seq 的元素虽然是 int（无元素析构语义），但它们的
+     * **缓冲区**同样需要释放，因此三者都要析构。
      */
     ~PriorityQueue() {
         __cay_destroy<ArrayList<T, A>>(this.values);
+        __cay_destroy<ArrayList<int, A>>(this.priorities);
+        __cay_destroy<ArrayList<int, A>>(this.seq);
     }
 
     public void clear() {
