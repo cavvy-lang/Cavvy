@@ -250,6 +250,7 @@ impl IRGenerator {
                                             name: "value".to_string(),
                                             param_type: payload_type.clone(),
                                             is_varargs: false,
+                                            is_owning: false,
                                         };
                                         if let Some(mut inferred) = self
                                             .infer_type_args_from_call_args_codegen(

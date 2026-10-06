@@ -21,6 +21,17 @@
 
 #include <Optional.cay>
 
+#ifdef CAY_DETECT_CYCLES
+/*
+ * Rc 循环引用检测运行时函数。仅在 --detect-cycles 时由编译器下发
+ * CAY_DETECT_CYCLES 宏，此时才产生调用与链接依赖；未开启时零开销。
+ */
+extern {
+    void __cay_rc_unregister(c_void* block);
+    void __cay_rc_check_cycle(c_void* block);
+}
+#endif
+
 namespace std {
 
 // ============================================================
@@ -35,7 +46,7 @@ public class UniquePtr<T> {
      * 用对象引用构造 UniquePtr，获得该对象的所有权。
      * T 应为类类型；基本类型指针请使用 long 地址版本。
      */
-    public static UniquePtr<T> fromRaw(T value) {
+    public static UniquePtr<T> fromRaw(@owns T value) {
         UniquePtr<T> result = new UniquePtr<T>();
         long addr = 0;
         __ir {
@@ -114,10 +125,24 @@ public class UniquePtr<T> {
     }
 
     /**
-     * 析构函数体为空；编译器在特化 __dtor 末尾注入：
-     *   if (__owned != 0) { call T.__dtor; call free; }
+     * 析构函数：析构托管对象并释放其内存。
+     *
+     * __owned 保存的是 `new T()` 返回的堆地址；此处先用通用析构原语
+     * __cay_destroy<T> 调用 T 的析构函数（T 无析构时编译期展开为空操作），
+     * 再 free 释放对象本体。__owned 为 0 时整体跳过。
      */
     ~UniquePtr() {
+        if (this.__owned != 0) {
+            long addr = this.__owned;
+            __cay_destroy<T>(addr);
+            long raw = addr;
+            __ir {
+                %rv = load i64, i64* %raw
+                %p = inttoptr i64 %rv to i8*
+                call void @free(i8* %p)
+            }
+            this.__owned = 0;
+        }
     }
 }
 
@@ -133,7 +158,7 @@ public class ScopedPtr<T> {
     /**
      * 用对象引用构造 ScopedPtr。
      */
-    public static ScopedPtr<T> fromRaw(T value) {
+    public static ScopedPtr<T> fromRaw(@owns T value) {
         ScopedPtr<T> result = new ScopedPtr<T>();
         long addr = 0;
         __ir {
@@ -166,9 +191,20 @@ public class ScopedPtr<T> {
     }
 
     /**
-     * 析构函数体为空；编译器注入 T.__dtor + free。
+     * 析构函数：析构托管对象并释放其内存（语义同 UniquePtr，见其注释）。
      */
     ~ScopedPtr() {
+        if (this.__owned != 0) {
+            long addr = this.__owned;
+            __cay_destroy<T>(addr);
+            long raw = addr;
+            __ir {
+                %rv = load i64, i64* %raw
+                %p = inttoptr i64 %rv to i8*
+                call void @free(i8* %p)
+            }
+            this.__owned = 0;
+        }
     }
 }
 
@@ -185,7 +221,7 @@ public class Rc<T> {
     /**
      * 用对象引用构造 Rc，引用计数初始化为 1。
      */
-    public static Rc<T> fromRaw(T value) {
+    public static Rc<T> fromRaw(@owns T value) {
         Rc<T> result = new Rc<T>();
         long owned = 0;
         __ir {
@@ -269,10 +305,78 @@ public class Rc<T> {
     }
 
     /**
-     * 析构函数体为空；编译器注入 24 字节控制块 [refcount, weak_count, object_ptr] 的
-     * 引用计数递减、条件析构与弱引用感知释放。
+     * 析构函数：原子递减强引用计数；归零时析构托管对象、释放对象内存，
+     * 并在弱引用计数也为 0 时释放控制块。
+     *
+     * 控制块布局（24 字节）：[i64 refcount][i64 weak_count][i64 object_ptr]，
+     * 由 fromRaw 分配，是全类唯一的布局来源。
+     *
+     * 开启 --detect-cycles 时（预处理器定义 CAY_DETECT_CYCLES）额外通知
+     * 运行时注册表：释放对象前注销、未归零时做一次环检测。
      */
     ~Rc() {
+        long rc = this.__refcount_ptr;
+        if (rc != 0) {
+            long old = 0;
+            __ir {
+                %rv1 = load i64, i64* %rc
+                %b1 = inttoptr i64 %rv1 to i64*
+                %o1 = atomicrmw sub i64* %b1, i64 1 seq_cst
+                store i64 %o1, i64* %old
+            }
+
+            if (old == 1) {
+#ifdef CAY_DETECT_CYCLES
+                long rcu = rc;
+                __ir {
+                    %rv2 = load i64, i64* %rcu
+                    %b2 = inttoptr i64 %rv2 to i8*
+                    call void @__cay_rc_unregister(i8* %b2)
+                }
+#endif
+                /* 从控制块读出 object_ptr 与 weak_count */
+                long objAddr = 0;
+                long weakCnt = 0;
+                __ir {
+                    %rv3 = load i64, i64* %rc
+                    %b3 = inttoptr i64 %rv3 to i64*
+                    %op = getelementptr i64, i64* %b3, i64 2
+                    %oi = load i64, i64* %op
+                    store i64 %oi, i64* %objAddr
+                    %wp = getelementptr i64, i64* %b3, i64 1
+                    %wi = load i64, i64* %wp
+                    store i64 %wi, i64* %weakCnt
+                }
+
+                /* 析构托管对象（T 无析构时编译期空操作；null 自动跳过），
+                   再释放对象本体 */
+                __cay_destroy<T>(objAddr);
+                long objRaw = objAddr;
+                __ir {
+                    %ov = load i64, i64* %objRaw
+                    %op2 = inttoptr i64 %ov to i8*
+                    call void @free(i8* %op2)
+                }
+
+                if (weakCnt == 0) {
+                    long blockRaw = rc;
+                    __ir {
+                        %bv = load i64, i64* %blockRaw
+                        %bp = inttoptr i64 %bv to i8*
+                        call void @free(i8* %bp)
+                    }
+                }
+            } else {
+#ifdef CAY_DETECT_CYCLES
+                long rcc = rc;
+                __ir {
+                    %rv4 = load i64, i64* %rcc
+                    %b4 = inttoptr i64 %rv4 to i8*
+                    call void @__cay_rc_check_cycle(i8* %b4)
+                }
+#endif
+            }
+        }
     }
 }
 
@@ -390,10 +494,40 @@ public class WeakPtr<T> {
     }
 
     /**
-     * 析构函数体为空；编译器注入弱引用计数递减。
-     * 当弱引用计数归零且强引用计数为 0 时释放控制块。
+     * 析构函数：原子递减弱引用计数；归零且强引用计数为 0 时释放控制块。
+     *
+     * 弱引用不持有对象，因此这里不调用 T 的析构函数。
      */
     ~WeakPtr() {
+        long rc = this.__refcount_ptr;
+        if (rc != 0) {
+            long oldWeak = 0;
+            __ir {
+                %wv1 = load i64, i64* %rc
+                %wb1 = inttoptr i64 %wv1 to i64*
+                %wgp = getelementptr i64, i64* %wb1, i64 1
+                %wo1 = atomicrmw sub i64* %wgp, i64 1 seq_cst
+                store i64 %wo1, i64* %oldWeak
+            }
+
+            if (oldWeak == 1) {
+                long refc = 0;
+                __ir {
+                    %wv2 = load i64, i64* %rc
+                    %wb2 = inttoptr i64 %wv2 to i64*
+                    %wr2 = load i64, i64* %wb2
+                    store i64 %wr2, i64* %refc
+                }
+                if (refc == 0) {
+                    long blockRaw = rc;
+                    __ir {
+                        %wv3 = load i64, i64* %blockRaw
+                        %wb3 = inttoptr i64 %wv3 to i8*
+                        call void @free(i8* %wb3)
+                    }
+                }
+            }
+        }
     }
 }
 

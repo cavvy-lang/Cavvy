@@ -358,6 +358,52 @@ impl IRGenerator {
         None
     }
 
+    /// 按实参个数选择**重载后**的形参列表。
+    ///
+    /// `get_method_params` 固定返回第一个重载，用于 `@owns` 判定时会摘错实参
+    /// （例如 `ArrayList.add` 同时有 `(T)` 与 `(int, T)` 两个重载）。
+    pub fn get_method_params_for_arity(
+        &self,
+        class_name: &str,
+        method_name: &str,
+        arg_count: usize,
+    ) -> Option<Vec<crate::types::ParameterInfo>> {
+        let resolved = self.resolved_class_lookup_name(class_name);
+        let registry = self.type_registry.as_ref()?;
+        let mut current = resolved;
+        loop {
+            if let Some(class_info) = registry.get_class(&current) {
+                if let Some(methods) = class_info.methods.get(method_name) {
+                    return Self::pick_overload_by_arity(methods, arg_count);
+                }
+                if let Some(ref parent) = class_info.parent {
+                    current = parent.clone();
+                    continue;
+                }
+            }
+            break;
+        }
+        // 接口 / 枚举实现等回退到既有实现
+        self.get_method_params(class_name, method_name)
+    }
+
+    /// 在重载集合中挑选与实参个数匹配的一个：精确匹配优先，其次可变形参。
+    fn pick_overload_by_arity(
+        methods: &[crate::types::MethodInfo],
+        arg_count: usize,
+    ) -> Option<Vec<crate::types::ParameterInfo>> {
+        if let Some(m) = methods.iter().find(|m| m.params.len() == arg_count) {
+            return Some(m.params.clone());
+        }
+        if let Some(m) = methods.iter().find(|m| {
+            m.params.iter().any(|p| p.is_varargs)
+                && m.params.iter().filter(|p| !p.is_varargs).count() <= arg_count
+        }) {
+            return Some(m.params.clone());
+        }
+        methods.first().map(|m| m.params.clone())
+    }
+
     /// 获取方法形参个数
     pub fn get_method_param_count(&self, class_name: &str, method_name: &str) -> usize {
         self.get_method_params(class_name, method_name)

@@ -42,7 +42,7 @@ public class Optional<T> implements Try<T, Object> {
      * 时间复杂度: O(1)
      * 空间复杂度: O(1)
      */
-    public static Optional<T> of(T value) {
+    public static Optional<T> of(@owns T value) {
         Optional<T> opt = new Optional<T>();
         opt.hasValue = true;
         opt.value = value;
@@ -135,10 +135,18 @@ public class Optional<T> implements Try<T, Object> {
     }
 
     /**
-     * 析构函数：当 Optional 包含值时自动析构 value 字段。
-     * 具体 T 的析构调用由编译器在特化 __dtor 中注入。
+     * 析构函数：当 Optional 包含值时析构 value 字段。
+     *
+     * 使用通用析构原语 __cay_destroy<T>：
+     *   - T 为原始类型 / struct 时编译期展开为空操作；
+     *   - T 为带析构函数的类时调用其 __dtor，null 值自动跳过。
+     * 析构后清 hasValue，保证重复析构不会二次销毁同一对象。
      */
     ~Optional() {
+        if (this.hasValue) {
+            __cay_destroy<T>(this.value);
+            this.hasValue = false;
+        }
     }
 }
 } // namespace std

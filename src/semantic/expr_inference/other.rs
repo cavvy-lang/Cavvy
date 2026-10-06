@@ -92,6 +92,7 @@ impl SemanticAnalyzer {
                 name: p.name.clone(),
                 param_type: crate::types::substitute_type_params(&p.param_type, &mapping),
                 is_varargs: p.is_varargs,
+                is_owning: p.is_owning,
             })
             .collect()
     }

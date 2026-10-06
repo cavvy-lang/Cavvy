@@ -34,18 +34,6 @@ fn nesting_depth(ty: &Type, base: &str) -> usize {
     }
 }
 
-/// ROADMAP 5.3.x 智能指针种类，用于 `__dtor` 注入分发。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SmartPtrKind {
-    /// 独占/作用域指针：__dtor 直接释放 __owned 指向的对象。
-    Owned,
-    /// 引用计数指针：__dtor 原子递减引用计数，归零时释放对象与计数块。
-    Rc,
-    /// 弱引用指针：__dtor 递减弱引用计数，归零且强引用计数为 0 时释放计数块。
-    WeakPtr,
-    /// 可选值容器：__dtor 在 hasValue 为真时析构 value 字段。
-    Optional,
-}
 
 /// 从可能包含 `::` 的限定名中提取简单名（`a::b::C` -> `C`）
 fn simple_class_name(qualified: &str) -> &str {
@@ -1393,6 +1381,7 @@ impl IRGenerator {
                                     &type_param_infos,
                                 ),
                                 is_varargs: p.is_varargs,
+                                is_owning: p.is_owning,
                             })
                             .collect();
 
@@ -1419,6 +1408,7 @@ impl IRGenerator {
                                 &type_param_infos,
                             ),
                             is_varargs: p.is_varargs,
+                            is_owning: p.is_owning,
                         })
                         .collect();
                     self.generate_constructor(&specialized_name, &specialized_ctor)?;
@@ -1834,6 +1824,7 @@ impl IRGenerator {
                                     &type_param_infos,
                                 ),
                                 is_varargs: p.is_varargs,
+                                is_owning: p.is_owning,
                             })
                             .collect();
                         self.generate_method(&specialized_name, &specialized_method)?;
@@ -1852,6 +1843,7 @@ impl IRGenerator {
                                 &type_param_infos,
                             ),
                             is_varargs: p.is_varargs,
+                            is_owning: p.is_owning,
                         })
                         .collect();
                     self.generate_constructor(&specialized_name, &specialized_ctor)?;
@@ -1985,6 +1977,7 @@ impl IRGenerator {
                                     &type_param_infos,
                                 ),
                                 is_varargs: p.is_varargs,
+                                is_owning: p.is_owning,
                             })
                             .collect();
                         self.generate_struct_constructor(&specialized_name, &specialized_ctor)?;
@@ -2015,6 +2008,7 @@ impl IRGenerator {
                                     &type_param_infos,
                                 ),
                                 is_varargs: p.is_varargs,
+                                is_owning: p.is_owning,
                             })
                             .collect();
                         self.generate_method(&specialized_name, &specialized_method)?;
@@ -2127,6 +2121,7 @@ impl IRGenerator {
                                     &type_param_infos,
                                 ),
                                 is_varargs: p.is_varargs,
+                                is_owning: p.is_owning,
                             })
                             .collect();
                         self.generate_method(&specialized_name, &specialized_method)?;
@@ -3719,9 +3714,6 @@ impl IRGenerator {
         self.emit_line(&format!("  store i8* %this, i8** %{}", this_llvm_name));
         self.var_types.insert("this".to_string(), "i8*".to_string());
 
-        // ROADMAP 5.3.x 自动 RAII：对 ArrayList<T> 在调用用户析构体之前
-        // 先析构其中拥有的元素，避免嵌套容器内存泄漏。
-        self.emit_arraylist_dtor_injection(class_name)?;
 
         self.generate_block(&dtor.body)?;
 
@@ -3731,9 +3723,6 @@ impl IRGenerator {
         // ROADMAP 5.3.x 自动 RAII：析构函数返回前析构所有未退出作用域。
         self.emit_all_scope_dtors();
 
-        // ROADMAP 5.3.x 智能指针注入：特化 UniquePtr/ScopedPtr/Rc 的 __dtor
-        // 在返回前自动调用托管 T 的 __dtor 并释放内存。
-        self.emit_smart_ptr_dtor_injection(class_name)?;
 
         self.emit_line("  ret void");
 
@@ -3750,62 +3739,7 @@ impl IRGenerator {
     ///
     /// 注入逻辑在 `generate_destructor` 生成用户析构体之后、`ret void` 之前
     /// 执行。仅对泛型特化类生效；非泛型类或不在名单内的类无任何影响。
-    fn emit_smart_ptr_dtor_injection(
-        &mut self,
-        class_name: &str,
-    ) -> CayResult<()> {
-        // 仅处理泛型特化类；提取基础类名（去掉类型实参）。
-        let base_name = if let Some(pos) = class_name.find('<') {
-            &class_name[..pos]
-        } else {
-            return Ok(());
-        };
-
-        let kind = match base_name {
-            "UniquePtr" | "std::UniquePtr" => SmartPtrKind::Owned,
-            "ScopedPtr" | "std::ScopedPtr" => SmartPtrKind::Owned,
-            "Rc" | "std::Rc" => SmartPtrKind::Rc,
-            "WeakPtr" | "std::WeakPtr" => SmartPtrKind::WeakPtr,
-            "Optional" | "std::Optional" => SmartPtrKind::Optional,
-            _ => return Ok(()),
-        };
-
-        // 若当前基本块已被终止（如用户析构体以 return 结束），无法追加指令。
-        if self.current_block_terminated() {
-            return Ok(());
-        }
-
-        // 解析类型参数 T。
-        let t_type = self
-            .generic_type_args
-            .get("T")
-            .cloned()
-            .unwrap_or(crate::types::Type::Void);
-        if t_type == crate::types::Type::Void {
-            return Ok(());
-        }
-
-        // 确保 free 声明存在。
-        self.ensure_free_declared();
-
-        match kind {
-            SmartPtrKind::Owned => {
-                self.emit_owned_drop_injection(class_name, &t_type)?;
-            }
-            SmartPtrKind::Rc => {
-                self.emit_rc_drop_injection(class_name, &t_type)?;
-            }
-            SmartPtrKind::WeakPtr => {
-                self.emit_weakptr_drop_injection(class_name)?;
-            }
-            SmartPtrKind::Optional => {
-                self.emit_optional_drop_injection(class_name, &t_type)?;
-            }
-        }
-
-        Ok(())
-    }
-
+ 
     /// 为 `ArrayList<T, A>` 特化析构函数注入元素析构逻辑。
     ///
     /// 在调用用户编写的析构体之前执行：遍历 `this.data[0..this.size)`，对其中
@@ -3815,619 +3749,18 @@ impl IRGenerator {
     /// 安全性前提：调用方已经把 add 进 ArrayList 的局部对象变量从当前作用域
     /// 析构候选中移除（见 `codegen/expressions/call/main.rs` 中的 add 调用处理），
     /// 否则会出现 double-free。
-    fn emit_arraylist_dtor_injection(&mut self, class_name: &str) -> CayResult<()> {
-        // 仅对 ArrayList 特化生效。
-        let base_name = if let Some(pos) = class_name.find('<') {
-            &class_name[..pos]
-        } else {
-            return Ok(());
-        };
-        if base_name != "ArrayList" && base_name != "std::ArrayList" {
-            return Ok(());
-        }
-
-        if self.current_block_terminated() {
-            return Ok(());
-        }
-
-        let t_type = self
-            .generic_type_args
-            .get("T")
-            .cloned()
-            .unwrap_or(crate::types::Type::Void);
-        if t_type == crate::types::Type::Void {
-            return Ok(());
-        }
-
-        // 只有 T 带析构函数时才需要注入；原始类型直接跳过。
-        let Some(t_class) = self.type_has_destructor(&t_type) else {
-            return Ok(());
-        };
-
-        let dtor_fn = self.mangle_itanium_method(&t_class, "D1", &[], false, true, false);
-
-        let data_offset = self.get_field_offset(class_name, "data")?;
-        let size_offset = self.get_field_offset(class_name, "size")?;
-
-        // 加载 this.size
-        let size_gep = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = getelementptr i8, i8* %this, i64 {}",
-            size_gep, size_offset
-        ));
-        let size_ptr = self.new_temp();
-        self.emit_line(&format!("  {} = bitcast i8* {} to i32*", size_ptr, size_gep));
-        let size_val = self.new_temp();
-        self.emit_line(&format!("  {} = load i32, i32* {}", size_val, size_ptr));
-
-        // 加载 this.data（T[] 的 i8* 数组头指针）
-        let data_gep = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = getelementptr i8, i8* %this, i64 {}",
-            data_gep, data_offset
-        ));
-        let data_ptr_slot = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = bitcast i8* {} to i8**",
-            data_ptr_slot, data_gep
-        ));
-        let data_ptr = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = load i8*, i8** {}",
-            data_ptr, data_ptr_slot
-        ));
-
-        // data 为 null 则跳过。
-        let is_null = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = icmp eq i8* {}, null",
-            is_null, data_ptr
-        ));
-        let skip_label = self.new_label("arraylist.dtor.skip");
-        let loop_header_label = self.new_label("arraylist.dtor.loop.header");
-        self.emit_line(&format!(
-            "  br i1 {}, label %{}, label %{}",
-            is_null, skip_label, loop_header_label
-        ));
-        self.emit_line(&format!("{}:", skip_label));
-        let end_label = self.new_label("arraylist.dtor.end");
-        self.emit_line(&format!("  br label %{}", end_label));
-
-        // 循环：for (int i = 0; i < size; i++)
-        self.emit_line(&format!("{}:", loop_header_label));
-        let counter_ptr = self.new_temp();
-        self.emit_line(&format!("  {} = alloca i32", counter_ptr));
-        self.emit_line(&format!("  store i32 0, i32* {}", counter_ptr));
-        let loop_check_label = self.new_label("arraylist.dtor.loop.check");
-        let loop_body_label = self.new_label("arraylist.dtor.loop.body");
-        self.emit_line(&format!("  br label %{}", loop_check_label));
-
-        self.emit_line(&format!("{}:", loop_check_label));
-        let i_val = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = load i32, i32* {}",
-            i_val, counter_ptr
-        ));
-        let cmp = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = icmp slt i32 {}, {}",
-            cmp, i_val, size_val
-        ));
-        self.emit_line(&format!(
-            "  br i1 {}, label %{}, label %{}",
-            cmp, loop_body_label, end_label
-        ));
-
-        self.emit_line(&format!("{}:", loop_body_label));
-        // ArrayList 的 `data` 字段存储的是数组元素首地址（已跳过 [i32 length,
-        // i32 padding] 头），因此直接使用 data_ptr 作为元素基址即可。
-        let data_start = data_ptr;
-        // offset = i * sizeof(T)。T 带析构函数时必为对象/指针类型，槽位 8 字节。
-        let elem_size = t_type.size_in_bytes().max(1) as i64;
-        let i64_val = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = sext i32 {} to i64",
-            i64_val, i_val
-        ));
-        let byte_offset = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = mul i64 {}, {}",
-            byte_offset, i64_val, elem_size
-        ));
-        let elem_slot = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = getelementptr i8, i8* {}, i64 {}",
-            elem_slot, data_start, byte_offset
-        ));
-        let elem_ptr_slot = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = bitcast i8* {} to i8**",
-            elem_ptr_slot, elem_slot
-        ));
-        let elem_obj = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = load i8*, i8** {}",
-            elem_obj, elem_ptr_slot
-        ));
-
-        // 元素指针为 null 则跳过。
-        let elem_null = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = icmp eq i8* {}, null",
-            elem_null, elem_obj
-        ));
-        let elem_skip_label = self.new_label("arraylist.dtor.elem.skip");
-        let elem_done_label = self.new_label("arraylist.dtor.elem.done");
-        self.emit_line(&format!(
-            "  br i1 {}, label %{}, label %{}",
-            elem_null, elem_skip_label, elem_done_label
-        ));
-        self.emit_line(&format!("{}:", elem_skip_label));
-        self.emit_line(&format!("  br label %{}", elem_done_label));
-
-        self.emit_line(&format!("{}:", elem_done_label));
-        self.emit_line(&format!(
-            "  call void @{}(i8* {})",
-            dtor_fn, elem_obj
-        ));
-
-        // i++
-        let next_i = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = add i32 {}, 1",
-            next_i, i_val
-        ));
-        self.emit_line(&format!(
-            "  store i32 {}, i32* {}",
-            next_i, counter_ptr
-        ));
-        self.emit_line(&format!("  br label %{}", loop_check_label));
-
-        self.emit_line(&format!("{}:", end_label));
-
-        Ok(())
-    }
-
-    /// 为 `UniquePtr<T>` / `ScopedPtr<T>` 注入 `__owned` 字段的析构与释放。
-    ///
-    /// 生成 IR（概念）：
-    /// ```llvm
-    /// %obj_i64 = load i64, i64* %__owned_field
-    /// %obj     = inttoptr i64 %obj_i64 to i8*
-    /// %is_null = icmp eq i8* %obj, null
-    /// br i1 %is_null, label %drop.end, label %drop.body
-    /// drop.body:
-    ///   call void @T.__dtor(i8* %obj)   ; 若 T 有析构函数
-    ///   call void @free(i8* %obj)
-    ///   br label %drop.end
-    /// drop.end:
-    /// ```
-    fn emit_owned_drop_injection(
-        &mut self,
-        class_name: &str,
-        t_type: &Type,
-    ) -> CayResult<()> {
-        let owned_offset = self.get_field_offset(class_name, "__owned")?;
-
-        let field_gep = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = getelementptr i8, i8* %this, i64 {}",
-            field_gep, owned_offset
-        ));
-        let field_ptr = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = bitcast i8* {} to i64*",
-            field_ptr, field_gep
-        ));
-        let owned_i64 = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = load i64, i64* {}",
-            owned_i64, field_ptr
-        ));
-        let obj = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = inttoptr i64 {} to i8*",
-            obj, owned_i64
-        ));
-
-        let is_null = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = icmp eq i8* {}, null",
-            is_null, obj
-        ));
-        let drop_body = self.new_label("drop.body");
-        let drop_end = self.new_label("drop.end");
-        self.emit_line(&format!(
-            "  br i1 {}, label %{}, label %{}",
-            is_null, drop_end, drop_body
-        ));
-        self.emit_line(&format!("{}:", drop_body));
-
-        // 若 T 是带析构函数的类，调用其 __dtor。
-        if let Some(t_class) = self.type_has_destructor(t_type) {
-            let dtor_fn = self.mangle_itanium_method(&t_class, "D1", &[], false, true, false);
-            self.emit_line(&format!(
-                "  call void @{}(i8* {})",
-                dtor_fn, obj
-            ));
-        }
-
-        self.emit_line(&format!(
-            "  call void @free(i8* {})",
-            obj
-        ));
-        self.emit_line(&format!(
-            "  br label %{}",
-            drop_end
-        ));
-        self.emit_line(&format!("{}:", drop_end));
-
-        Ok(())
-    }
-
+ 
     /// 为 `Rc<T>` 注入引用计数递减与条件释放。
     ///
     /// 控制块布局：[i64 refcount, i64 weak_count, i64 object_ptr]。
     /// 当强引用计数归零时：调用 T.__dtor、free(obj)，并在 weak_count 为 0 时释放控制块。
     /// 当强引用计数仍大于 0 时：调用 `__cay_rc_check_cycle` 进行 best-effort 循环检测。
-    fn emit_rc_drop_injection(
-        &mut self,
-        class_name: &str,
-        t_type: &Type,
-    ) -> CayResult<()> {
-        let owned_offset = self.get_field_offset(class_name, "__owned")?;
-        let rc_offset = self.get_field_offset(class_name, "__refcount_ptr")?;
-
-        // 加载引用计数指针。
-        let rc_field_gep = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = getelementptr i8, i8* %this, i64 {}",
-            rc_field_gep, rc_offset
-        ));
-        let rc_field_ptr = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = bitcast i8* {} to i64*",
-            rc_field_ptr, rc_field_gep
-        ));
-        let rc_i64 = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = load i64, i64* {}",
-            rc_i64, rc_field_ptr
-        ));
-        let rc_ptr = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = inttoptr i64 {} to i64*",
-            rc_ptr, rc_i64
-        ));
-
-        // 若控制块指针为空（对象已被 move/置空），直接跳过析构逻辑。
-        let rc_null = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = icmp eq i64 {}, 0",
-            rc_null, rc_i64
-        ));
-        let do_drop_label = self.new_label("rc.drop");
-        let end_label = self.new_label("rc.end");
-        self.emit_line(&format!(
-            "  br i1 {}, label %{}, label %{}",
-            rc_null, end_label, do_drop_label
-        ));
-        self.emit_line(&format!("{}:", do_drop_label));
-
-        // 原子递减并获取旧值。
-        let old_count = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = atomicrmw sub i64* {}, i64 1 seq_cst",
-            old_count, rc_ptr
-        ));
-        let should_free = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = icmp eq i64 {}, 1",
-            should_free, old_count
-        ));
-        let free_label = self.new_label("rc.free");
-        let check_cycle_label = self.new_label("rc.check");
-        self.emit_line(&format!(
-            "  br i1 {}, label %{}, label %{}",
-            should_free, free_label, check_cycle_label
-        ));
-        self.emit_line(&format!("{}:", free_label));
-
-        // 强引用归零：注销运行时跟踪（仅在 --detect-cycles 时）。
-        let detect_enabled = self
-            .platform_config
-            .as_ref()
-            .map(|c| c.detect_cycles)
-            .unwrap_or(false);
-        if detect_enabled {
-            let rc_i8_for_unregister = self.new_temp();
-            self.emit_line(&format!(
-                "  {} = inttoptr i64 {} to i8*",
-                rc_i8_for_unregister, rc_i64
-            ));
-            self.emit_line(&format!(
-                "  call void @__cay_rc_unregister(i8* {})",
-                rc_i8_for_unregister
-            ));
-        }
-
-        // 将控制块指针转为 i8* 供后续释放与字段访问使用。
-        let rc_i8 = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = inttoptr i64 {} to i8*",
-            rc_i8, rc_i64
-        ));
-
-        // 加载托管对象指针（控制块 offset 16）。
-        let obj_i64 = self.new_temp();
-        self.emit_line(&format!(
-            "  %obj_field_ptr = bitcast i8* {} to i64*",
-            rc_i8
-        ));
-        let obj_field_gep2 = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = getelementptr i64, i64* %obj_field_ptr, i64 2",
-            obj_field_gep2
-        ));
-        self.emit_line(&format!(
-            "  {} = load i64, i64* {}",
-            obj_i64, obj_field_gep2
-        ));
-        let obj = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = inttoptr i64 {} to i8*",
-            obj, obj_i64
-        ));
-
-        // 若 T 有析构函数，先调用。
-        if let Some(t_class) = self.type_has_destructor(t_type) {
-            let dtor_fn = self.mangle_itanium_method(&t_class, "D1", &[], false, true, false);
-            self.emit_line(&format!(
-                "  call void @{}(i8* {})",
-                dtor_fn, obj
-            ));
-        }
-
-        // 释放托管对象。
-        self.emit_line(&format!(
-            "  call void @free(i8* {})",
-            obj
-        ));
-
-        // 读取 weak_count；为 0 时才释放控制块。
-        let weak_count_ptr = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = getelementptr i64, i64* %obj_field_ptr, i64 1",
-            weak_count_ptr
-        ));
-        let weak_count = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = load i64, i64* {}",
-            weak_count, weak_count_ptr
-        ));
-        let weak_zero = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = icmp eq i64 {}, 0",
-            weak_zero, weak_count
-        ));
-        let free_block_label = self.new_label("rc.free_block");
-        self.emit_line(&format!(
-            "  br i1 {}, label %{}, label %{}",
-            weak_zero, free_block_label, end_label
-        ));
-        self.emit_line(&format!("{}:", free_block_label));
-        self.emit_line(&format!(
-            "  call void @free(i8* {})",
-            rc_i8
-        ));
-        self.emit_line(&format!(
-            "  br label %{}",
-            end_label
-        ));
-
-        // 强引用未归零：best-effort 循环检测（仅在 --detect-cycles 时）。
-        self.emit_line(&format!("{}:", check_cycle_label));
-        if detect_enabled {
-            let rc_i8_for_check = self.new_temp();
-            self.emit_line(&format!(
-                "  {} = inttoptr i64 {} to i8*",
-                rc_i8_for_check, rc_i64
-            ));
-            self.emit_line(&format!(
-                "  call void @__cay_rc_check_cycle(i8* {})",
-                rc_i8_for_check
-            ));
-        }
-        self.emit_line(&format!(
-            "  br label %{}",
-            end_label
-        ));
-        self.emit_line(&format!("{}:", end_label));
-
-        Ok(())
-    }
-
+ 
     /// 为 `WeakPtr<T>` 注入弱引用计数递减与条件释放。
     ///
     /// 控制块布局：[i64 refcount, i64 weak_count, i64 object_ptr]。
     /// 当弱引用计数归零且强引用计数为 0 时释放控制块。
-    fn emit_weakptr_drop_injection(&mut self, class_name: &str) -> CayResult<()> {
-        let rc_offset = self.get_field_offset(class_name, "__refcount_ptr")?;
-
-        // 加载引用计数指针。
-        let rc_field_gep = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = getelementptr i8, i8* %this, i64 {}",
-            rc_field_gep, rc_offset
-        ));
-        let rc_field_ptr = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = bitcast i8* {} to i64*",
-            rc_field_ptr, rc_field_gep
-        ));
-        let rc_i64 = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = load i64, i64* {}",
-            rc_i64, rc_field_ptr
-        ));
-
-        // 若控制块指针为空，直接跳过。
-        let rc_null = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = icmp eq i64 {}, 0",
-            rc_null, rc_i64
-        ));
-        let do_drop_label = self.new_label("weak.drop");
-        let end_label = self.new_label("weak.end");
-        self.emit_line(&format!(
-            "  br i1 {}, label %{}, label %{}",
-            rc_null, end_label, do_drop_label
-        ));
-        self.emit_line(&format!("{}:", do_drop_label));
-
-        let rc_ptr = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = inttoptr i64 {} to i64*",
-            rc_ptr, rc_i64
-        ));
-
-        // 原子递减 weak_count 并获取旧值。
-        let weak_ptr = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = getelementptr i64, i64* {}, i64 1",
-            weak_ptr, rc_ptr
-        ));
-        let old_weak = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = atomicrmw sub i64* {}, i64 1 seq_cst",
-            old_weak, weak_ptr
-        ));
-        let weak_zero = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = icmp eq i64 {}, 1",
-            weak_zero, old_weak
-        ));
-        let check_ref_label = self.new_label("weak.check_ref");
-        self.emit_line(&format!(
-            "  br i1 {}, label %{}, label %{}",
-            weak_zero, check_ref_label, end_label
-        ));
-        self.emit_line(&format!("{}:", check_ref_label));
-
-        // weak_count 刚刚归零：若 refcount 也为 0 则释放控制块。
-        let refcount = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = load i64, i64* {}",
-            refcount, rc_ptr
-        ));
-        let ref_zero = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = icmp eq i64 {}, 0",
-            ref_zero, refcount
-        ));
-        let free_block_label = self.new_label("weak.free_block");
-        self.emit_line(&format!(
-            "  br i1 {}, label %{}, label %{}",
-            ref_zero, free_block_label, end_label
-        ));
-        self.emit_line(&format!("{}:", free_block_label));
-        let rc_i8 = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = inttoptr i64 {} to i8*",
-            rc_i8, rc_i64
-        ));
-        self.emit_line(&format!(
-            "  call void @free(i8* {})",
-            rc_i8
-        ));
-        self.emit_line(&format!(
-            "  br label %{}",
-            end_label
-        ));
-        self.emit_line(&format!("{}:", end_label));
-
-        Ok(())
-    }
-
-    /// 为 `Optional<T>` 注入条件析构：当 `hasValue` 为真时调用 `value` 字段的 `__dtor`。
-    ///
-    /// 生成 IR（概念）：
-    /// ```llvm
-    /// %has = load i1, i1* %hasValue_field
-    /// br i1 %has, label %opt.drop, label %opt.end
-    /// opt.drop:
-    ///   %val = load i8*, i8** %value_field
-    ///   call void @T.__dtor(i8* %val)
-    ///   br label %opt.end
-    /// opt.end:
-    /// ```
-    fn emit_optional_drop_injection(
-        &mut self,
-        class_name: &str,
-        t_type: &Type,
-    ) -> CayResult<()> {
-        // 仅当 T 是带析构函数的类时才需要注入。
-        let Some(t_class) = self.type_has_destructor(t_type) else {
-            return Ok(());
-        };
-
-        let has_value_offset = self.get_field_offset(class_name, "hasValue")?;
-        let value_offset = self.get_field_offset(class_name, "value")?;
-
-        let has_gep = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = getelementptr i8, i8* %this, i64 {}",
-            has_gep, has_value_offset
-        ));
-        let has_ptr = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = bitcast i8* {} to i1*",
-            has_ptr, has_gep
-        ));
-        let has_value = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = load i1, i1* {}",
-            has_value, has_ptr
-        ));
-
-        let drop_label = self.new_label("opt.drop");
-        let end_label = self.new_label("opt.end");
-        self.emit_line(&format!(
-            "  br i1 {}, label %{}, label %{}",
-            has_value, drop_label, end_label
-        ));
-        self.emit_line(&format!("{}:", drop_label));
-
-        let value_gep = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = getelementptr i8, i8* %this, i64 {}",
-            value_gep, value_offset
-        ));
-        let value_ptr = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = bitcast i8* {} to i8**",
-            value_ptr, value_gep
-        ));
-        let value = self.new_temp();
-        self.emit_line(&format!(
-            "  {} = load i8*, i8** {}",
-            value, value_ptr
-        ));
-
-        let dtor_fn = self.mangle_itanium_method(&t_class, "D1", &[], false, true, false);
-        self.emit_line(&format!(
-            "  call void @{}(i8* {})",
-            dtor_fn, value
-        ));
-        self.emit_line(&format!(
-            "  br label %{}",
-            end_label
-        ));
-        self.emit_line(&format!("{}:", end_label));
-
-        Ok(())
-    }
-
+ 
     /// 判断某个 Cavvy 类型是否是声明了析构函数的类，返回其可用于调用 __dtor 的类名。
     /// 对 Object 类型返回原类名；对 Generic 类型返回完整的 `Base<Args>` 字符串，
     /// 以便定位到正确的特化类析构函数。

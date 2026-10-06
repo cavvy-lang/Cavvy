@@ -1,0 +1,30 @@
+/*
+ * BUG-009：ArrayList<T> 元素析构注入的 null 守卫失效。
+ *
+ * 旧实现把 `call void @T.__dtor` 发射在两个分支的汇合点标签上，
+ * 于是无论元素指针是否为 null 都会执行 —— 元素为 null 时以 null
+ * 作为 this 调用 __dtor，解引用空指针导致 SIGSEGV。
+ *
+ * 正确行为：null 元素跳过析构，非 null 元素各自析构恰好一次。
+ */
+
+#include <std/arraylist.cay>
+#include <c/stdio.cay>
+
+using std::ArrayList;
+
+public class Box {
+    public int v;
+    public Box(int v) { this.v = v; }
+    ~Box() { println("~Box " + String.valueOf(this.v)); }
+}
+
+public int main() {
+    ArrayList<Box> list = new ArrayList<Box>();
+    list.add(new Box(1));
+    list.add(null);
+    list.add(new Box(2));
+    println("size = " + String.valueOf(list.size()));
+    println("BUG-009 OK");
+    return 0;
+}

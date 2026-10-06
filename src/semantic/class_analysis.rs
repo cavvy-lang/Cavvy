@@ -593,6 +593,7 @@ impl SemanticAnalyzer {
                 name: p.name.clone(),
                 param_type: self.replace_type_params(&p.param_type, type_params),
                 is_varargs: p.is_varargs,
+                is_owning: p.is_owning,
             })
             .collect()
     }
@@ -1028,6 +1029,7 @@ impl SemanticAnalyzer {
                             &type_args,
                         ),
                         is_varargs: p.is_varargs,
+                        is_owning: p.is_owning,
                     })
                     .collect();
                 let substituted_return = substitute_interface_type(

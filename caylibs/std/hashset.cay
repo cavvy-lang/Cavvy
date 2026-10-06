@@ -40,7 +40,7 @@ public final class HashSet<T, A: Allocator = GlobalAlloc> {
         return this.map.isEmpty();
     }
 
-    public void add(T value) {
+    public void add(@owns T value) {
         this.map.put(value, true);
     }
 
@@ -62,6 +62,13 @@ public final class HashSet<T, A: Allocator = GlobalAlloc> {
 
     public Iterator<T> iterator() {
         return this.map.iterator();
+    }
+
+    /**
+     * 析构函数：析构内部 HashMap（按 states 门控析构键值并释放缓冲区）。
+     */
+    ~HashSet() {
+        __cay_destroy<HashMap<T, bool, A>>(this.map);
     }
 }
 

@@ -119,7 +119,7 @@ public class HashMap<K, V, A: Allocator = GlobalAlloc> {
         this.size = 0;
     }
 
-    public void put(K key, V value) {
+    public void put(@owns K key, @owns V value) {
         /* 用 long 计算负载阈值与扩容目标，避免 int 乘法溢出 */
         long threshold = ((long)this.capacity * 7L) / 10L; /* LOAD_FACTOR = 0.7 */
         if ((long)this.size + 1L > threshold) {

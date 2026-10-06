@@ -358,7 +358,15 @@ impl Compiler {
         } else {
             preprocessor::Preprocessor::with_include_paths(base_dir, system_paths)
         };
-        pp.seed_defines(&self.options.defines);
+        // `--detect-cycles` 通过预处理宏下发到标准库：Rc/WeakPtr 的析构协议
+        // 已迁入 caylibs/SmartPtr.cay 源码，其中对循环检测运行时函数的调用由
+        // `#ifdef CAY_DETECT_CYCLES` 门控。未开启该选项时不产生任何调用，
+        // 也就不引入对 libcayrt 的额外链接依赖。
+        let mut defines = self.options.defines.clone();
+        if self.options.detect_cycles {
+            defines.push("CAY_DETECT_CYCLES=1".to_string());
+        }
+        pp.seed_defines(&defines);
         pp.seed_undefines(&self.options.undefines);
         let result = pp.process_with_source_map(&source, input_path)?;
 

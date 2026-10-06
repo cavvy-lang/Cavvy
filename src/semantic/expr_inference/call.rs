@@ -641,6 +641,7 @@ impl SemanticAnalyzer {
                                 args,
                             ),
                             is_varargs: p.is_varargs,
+                            is_owning: p.is_owning,
                         })
                         .collect();
                     signature.return_type = self.substitute_type_params(

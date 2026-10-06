@@ -729,7 +729,10 @@ pub struct FieldInfo {
 pub struct ParameterInfo {
     pub name: String,
     pub param_type: Type,
-    pub is_varargs: bool, // 是否为可变参数
+    pub is_varargs: bool,  // 是否为可变参数
+    /// `@owns` 注解：被调用方取得该实参的所有权。调用点据此把实参局部变量
+    /// 从作用域析构候选中摘除（见 codegen 的 generate_and_pack_args）。
+    pub is_owning: bool,
 }
 
 impl ParameterInfo {
@@ -738,6 +741,7 @@ impl ParameterInfo {
             name,
             param_type,
             is_varargs: false,
+            is_owning: false,
         }
     }
 
@@ -747,7 +751,14 @@ impl ParameterInfo {
             name,
             param_type: Type::Array(Box::new(param_type)),
             is_varargs: true,
+            is_owning: false,
         }
+    }
+
+    /// 标记该形参取得实参所有权（`@owns`）。
+    pub fn owning(mut self) -> Self {
+        self.is_owning = true;
+        self
     }
 }
 
@@ -1066,6 +1077,7 @@ impl TypeRegistry {
                 name: "other".to_string(),
                 param_type: Type::Object("Object".to_string()),
                 is_varargs: false,
+                is_owning: false,
             }],
             return_type: Type::Bool,
             is_static: false,
@@ -1145,6 +1157,7 @@ impl TypeRegistry {
                 name: "other".to_string(),
                 param_type: Type::Object("Object".to_string()),
                 is_varargs: false,
+                is_owning: false,
             }],
             return_type: Type::Bool,
             is_static: false,
@@ -1171,6 +1184,7 @@ impl TypeRegistry {
                 name: "value".to_string(),
                 param_type: Type::Int32,
                 is_varargs: false,
+                is_owning: false,
             }],
             return_type: Type::String,
             is_static: true,
@@ -1196,6 +1210,7 @@ impl TypeRegistry {
                 name: "value".to_string(),
                 param_type: Type::Int64,
                 is_varargs: false,
+                is_owning: false,
             }],
             return_type: Type::String,
             is_static: true,
@@ -1221,6 +1236,7 @@ impl TypeRegistry {
                 name: "value".to_string(),
                 param_type: Type::Float32,
                 is_varargs: false,
+                is_owning: false,
             }],
             return_type: Type::String,
             is_static: true,
@@ -1246,6 +1262,7 @@ impl TypeRegistry {
                 name: "value".to_string(),
                 param_type: Type::Float64,
                 is_varargs: false,
+                is_owning: false,
             }],
             return_type: Type::String,
             is_static: true,
@@ -1271,6 +1288,7 @@ impl TypeRegistry {
                 name: "value".to_string(),
                 param_type: Type::Bool,
                 is_varargs: false,
+                is_owning: false,
             }],
             return_type: Type::String,
             is_static: true,
@@ -1296,6 +1314,7 @@ impl TypeRegistry {
                 name: "value".to_string(),
                 param_type: Type::Char,
                 is_varargs: false,
+                is_owning: false,
             }],
             return_type: Type::String,
             is_static: true,
@@ -1321,6 +1340,7 @@ impl TypeRegistry {
                 name: "value".to_string(),
                 param_type: Type::String,
                 is_varargs: false,
+                is_owning: false,
             }],
             return_type: Type::String,
             is_static: true,
@@ -1370,6 +1390,7 @@ impl TypeRegistry {
                 name: "s".to_string(),
                 param_type: Type::String,
                 is_varargs: false,
+                is_owning: false,
             }],
             return_type: Type::Int32,
             is_static: true,

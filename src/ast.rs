@@ -475,7 +475,7 @@ pub enum Expr {
     InstanceOf(InstanceOfExpr), // instanceof 运算符: obj instanceof Type
     Alloc(AllocExpr),           // 0.5.0.0: 内存分配表达式: __cay_alloc(size)
     Dealloc(DeallocExpr),       // 0.5.0.0: 内存释放表达式: __cay_free(ptr)
-    AllocArray(AllocArrayExpr), // 0.5.2.x: 分配器-backed 数组: __cay_alloc_array<T>(allocator, count)
+    BuiltinTypeCall(BuiltinTypeCallExpr), // 带显式类型实参的编译器内建: __cay_xxx<T, ...>(args...)
     NamedArg(NamedArgExpr),     // 命名参数: name=value
     TypeOf(TypeOfExpr),         // 类型查询表达式: typeof(expr)
     SizeOf(SizeOfExpr),         // 大小查询表达式: sizeof(type) 或 sizeof(expr)
@@ -504,7 +504,7 @@ impl HasLocation for Expr {
             Expr::InstanceOf(instance) => &instance.loc,
             Expr::Alloc(alloc) => &alloc.loc,
             Expr::Dealloc(dealloc) => &dealloc.loc,
-            Expr::AllocArray(alloc_array) => &alloc_array.loc,
+            Expr::BuiltinTypeCall(builtin) => &builtin.loc,
             Expr::NamedArg(named) => &named.loc,
             Expr::TypeOf(type_of) => &type_of.loc,
             Expr::SizeOf(size_of) => &size_of.loc,
@@ -520,14 +520,41 @@ pub struct AllocExpr {
     pub loc: SourceLocation,
 }
 
-/// 0.5.2.x: 分配器-backed 数组分配表达式
-/// 源码形式: __cay_alloc_array<T>(allocator, count)
-/// 在单态化时由 codegen 按 T 的实际大小向 allocator 申请内存并包装成 T[]。
+/// 带显式类型实参的编译器内建表达式。
+///
+/// 源码形式: `__cay_<name><T, ...>(args...)`
+///
+/// 以往每新增一个这类内建都要复制一套 parser + AST + 多处穷举 match；
+/// 本结构把「内建名 + 类型实参 + 值实参」统一成一个节点，新增内建只需在
+/// parser 的内建名表、语义推断表、codegen 分派表各加一项。
+///
+/// 目前承载：
+///   - `__cay_alloc_array<T>(allocator, count)` —— 分配器-backed 数组
+///   - `__cay_destroy<T>(value)`               —— 析构一个 T 值（不释放本体）
+///   - `__cay_destroy_array<T>(array, count)`  —— 析构密集数组的元素
+/// 带类型实参的编译器内建名单：`(内建名, 类型实参个数, 值实参个数)`。
+///
+/// parser 依据它把 `__cay_xxx<T, ...>(args...)` 解析成 BuiltinTypeCall；
+/// 语义层与 codegen 各自按内建名分派具体行为。新增内建只需在
+/// 本表、语义推断表、codegen 分派表各加一项。
+pub const BUILTIN_TYPE_CALLS: &[(&str, usize, usize)] = &[
+    // 分配器-backed 数组分配：__cay_alloc_array<T>(allocator, count)
+    ("__cay_alloc_array", 1, 2),
+    // 析构一个 T 值（只调 T.__dtor，不释放对象本体）
+    ("__cay_destroy", 1, 1),
+    // 析构密集数组的每个元素：__cay_destroy_array<T>(array, count)
+    ("__cay_destroy_array", 1, 2),
+];
+
 #[derive(Debug, Clone, Serialize)]
-pub struct AllocArrayExpr {
-    pub element_type: Type,
-    pub allocator: Box<Expr>,
-    pub size: Box<Expr>,
+pub struct BuiltinTypeCallExpr {
+    /// 内建名（含 `__cay_` 前缀）
+    pub name: String,
+    /// 显式类型实参；泛型类体内允许出现类型参数（如 `T`、`ArrayList<T, A>`），
+    /// 由 codegen 在单态化后用具体类型替换
+    pub type_args: Vec<Type>,
+    /// 值实参
+    pub args: Vec<Expr>,
     pub loc: SourceLocation,
 }
 

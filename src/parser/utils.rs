@@ -295,6 +295,7 @@ pub fn get_token_name(token: &Token) -> String {
         Token::AtTest => "@Test".to_string(),
         Token::AtFreeFunction => "@FreeFunction".to_string(),
         Token::AtStackOnly => "@stack_only".to_string(),
+        Token::AtOwns => "@owns".to_string(),
         Token::At => "@".to_string(),
         Token::LParen => "(".to_string(),
         Token::RParen => ")".to_string(),

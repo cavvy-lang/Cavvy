@@ -1499,6 +1499,13 @@ impl IRGenerator {
                 // 接收者类型推断失败，字段读取整体退化为返回原始对象指针。
                 Some(cast.target_type.clone())
             }
+            Expr::BuiltinTypeCall(builtin) => match builtin.name.as_str() {
+                "__cay_alloc_array" => Some(Type::Array(Box::new(
+                    self.resolve_type_arg_concrete(&builtin.type_args[0]),
+                ))),
+                // 析构原语无返回值
+                _ => Some(Type::Void),
+            },
             _ => None,
         }
     }
