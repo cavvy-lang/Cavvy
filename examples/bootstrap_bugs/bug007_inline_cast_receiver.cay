@@ -1,0 +1,65 @@
+// BUG-007 回归：内联向下转型表达式作为字段访问接收者。
+//
+// `((B)a).x` 这种「内联 cast 结果直接做字段访问」的写法，旧实现的接收者
+// 类型推断只覆盖 Identifier/MemberAccess/ArrayAccess/Call，cast 表达式落到
+// 兜底分支：不读字段而是把接收者对象指针本身当作结果返回，
+// 且比较时产生 'i8*' 与 'i32' 类型不匹配的编译错误或错误值。
+// 修复后字段访问的接收者类型推断覆盖任意表达式（含 Cast 分支）并读取字段。
+//
+// 预期输出：BUG-007 OK
+
+public class Animal {
+    public int tag;
+
+    public Animal() { this.tag = 1; }
+}
+
+public class Dog extends Animal {
+    public int age;
+    public String name;
+
+    public Dog(int a, String n) {
+        super();
+        this.age = a;
+        this.name = n;
+    }
+}
+
+public class CastReceiverBug {
+    public static void check(boolean cond, String name) {
+        if (!cond) {
+            println("FAIL: " + name);
+            exit(1);
+        }
+    }
+
+    public static int main() {
+        Animal a = new Dog(42, "bee");
+
+        // 内联 cast 直接字段访问（原始触发形态）
+        int direct = ((Dog)a).age;
+        String dn = ((Dog)a).name;
+        // 内联 cast 字段参与比较（旧实现在此报 E5004 类型错误）
+        boolean cmp = ((Dog)a).age == 42;
+        // 内联 cast 字段参与算术与字符串方法调用
+        int plus = ((Dog)a).age + 1;
+        int len = ((Dog)a).name.length();
+
+        // 先赋变量再访问（既有正确路径，作对照）
+        Dog d = (Dog)a;
+        int viaVar = d.age;
+
+        check(direct == 42, "内联 cast 字段读取");
+        check(viaVar == 42, "变量 cast 字段读取(对照)");
+        check(direct == viaVar, "两条路径一致");
+        check(dn == "bee", "内联 cast String 字段");
+        check(cmp == true, "内联 cast 字段比较");
+        check(plus == 43, "内联 cast 字段算术");
+        check(len == 3, "内联 cast 字段方法调用");
+        // 向上转型后父类字段仍从正确偏移读取
+        check(((Animal)a).tag == 1, "向上转型字段读取");
+
+        println("BUG-007 OK");
+        return 0;
+    }
+}

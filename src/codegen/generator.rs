@@ -1055,16 +1055,33 @@ impl IRGenerator {
         Ok(())
     }
 
-    fn evaluate_const_int(&self, expr: &Expr) -> Option<i64> {
+    pub(crate) fn evaluate_const_int(&self, expr: &Expr) -> Option<i64> {
+        self.evaluate_const_int_impl(expr, 0)
+    }
+
+    /// 常量表达式求值的递归实现。
+    ///
+    /// `depth` 用于阻断常量间的循环引用（如 `A = B + 1; B = A + 1;`）：
+    /// 超过上限直接判为不可求值（None），由调用方给出编译错误，
+    /// 避免递归求值导致栈溢出。
+    fn evaluate_const_int_impl(&self, expr: &Expr, depth: usize) -> Option<i64> {
+        const MAX_DEPTH: usize = 32;
+        if depth > MAX_DEPTH {
+            return None;
+        }
         match expr {
             Expr::Literal(lit_expr) => match &lit_expr.value {
                 crate::ast::LiteralValue::Int32(n) => Some(*n as i64),
                 crate::ast::LiteralValue::Int64(n) => Some(*n),
                 _ => None,
             },
+            // 负常量（如 `static final int MIN = -1;` 的初始化器）
+            Expr::Unary(unary) if unary.op == crate::ast::UnaryOp::Neg => {
+                self.evaluate_const_int_impl(&unary.operand, depth + 1).map(|v| -v)
+            }
             Expr::Binary(binary) => {
-                let left = self.evaluate_const_int(&binary.left)?;
-                let right = self.evaluate_const_int(&binary.right)?;
+                let left = self.evaluate_const_int_impl(&binary.left, depth + 1)?;
+                let right = self.evaluate_const_int_impl(&binary.right, depth + 1)?;
                 match binary.op {
                     crate::ast::BinaryOp::Add => Some(left + right),
                     crate::ast::BinaryOp::Sub => Some(left - right),
@@ -1079,8 +1096,64 @@ impl IRGenerator {
                     _ => None,
                 }
             }
+            // 常量间引用：类内裸名（`static final int B = A + 1;`）
+            Expr::Identifier(name) => {
+                if self.current_class.is_empty() {
+                    return None;
+                }
+                let class_name = self
+                    .current_class_specialized
+                    .clone()
+                    .unwrap_or_else(|| self.current_class.clone());
+                self.lookup_static_const_int_class(&class_name, name.as_ref(), depth + 1)
+            }
+            // 常量间引用：限定名（`static final int C = Other.A + 1;`）
+            Expr::MemberAccess(member) => {
+                if let Expr::Identifier(class_obj) = member.object.as_ref() {
+                    self.lookup_static_const_int_class(
+                        class_obj.as_ref(),
+                        &member.member,
+                        depth + 1,
+                    )
+                } else {
+                    None
+                }
+            }
             _ => None,
         }
+    }
+
+    /// 查找 `类名.静态常量` 的编译期整型常量值（含类内裸名调用）。
+    ///
+    /// 仅接受 `static final` 字段：非 final 静态字段的值运行期可改，
+    /// 不能作为编译期常量。类名可为限定名或简单名（简单名经
+    /// `find_qualified_class` 优先按当前命名空间解析）。
+    pub(crate) fn lookup_static_const_int_class(
+        &self,
+        class_name: &str,
+        const_name: &str,
+        depth: usize,
+    ) -> Option<i64> {
+        let registry = self.type_registry.as_ref()?;
+        let base = class_name.rsplit("::").next().unwrap_or(class_name);
+        let qualified = if class_name.contains("::") {
+            class_name.to_string()
+        } else {
+            registry
+                .find_qualified_class(base)
+                .unwrap_or_else(|| base.to_string())
+        };
+        let class_info = registry
+            .get_class(&qualified)
+            .or_else(|| registry.get_class(base))?;
+        let field_info = class_info.fields.get(const_name)?;
+        if !field_info.is_static || !field_info.is_final {
+            return None;
+        }
+        let key = format!("{}.{}", base, const_name);
+        let static_field = self.static_field_map.get(&key)?;
+        let init = static_field.initializer.as_ref()?;
+        self.evaluate_const_int_impl(init, depth)
     }
 
     fn generate_class(&mut self, class: &ClassDecl) -> CayResult<()> {

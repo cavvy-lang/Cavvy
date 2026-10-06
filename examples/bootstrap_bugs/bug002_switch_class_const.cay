@@ -1,0 +1,67 @@
+// BUG-002 回归：switch 的 case 标签支持 `类名.静态常量`。
+//
+// parser 会把 case 标签中的点分名一律解析为 CaseValue::EnumVariant；
+// 当 `TokenType` 不是 enum 而是含 `static final int` 常量的类时，旧实现报
+//   E5004 未知的 enum 'TokenType' 在 case 标签中
+// 修复后回退到类静态常量查找（static final + 常量表达式求值）。
+// enum variant 标签行为保持不变（回归对照）。
+//
+// 预期输出：BUG-002 OK
+
+public class TokenType {
+    public static final int PUBLIC = 1;
+    public static final int PRIVATE = 2;
+    public static final int PROTECTED = TokenType.PUBLIC + 2; // 常量表达式 = 3
+    public static final int NEGATIVE = -3;                    // 负常量
+    // 非 final 静态字段不能作为 case 标签常量（不参与用例，仅说明语义）
+    public static int MUTABLE = 9;
+}
+
+public enum Color {
+    Red, Green, Blue
+}
+
+public class SwitchBug {
+    public static String typeName(int t) {
+        switch (t) {
+            case TokenType.PUBLIC: return "Public";
+            case TokenType.PRIVATE: return "Private";
+            case TokenType.PROTECTED: return "Protected";
+            case TokenType.NEGATIVE: return "Negative";
+            default: return "Unknown";
+        }
+    }
+
+    public static String colorName(int c) {
+        switch (c) {
+            case Color.Red: return "Red";
+            case Color.Green: return "Green";
+            case Color.Blue: return "Blue";
+            default: return "Unknown";
+        }
+    }
+
+    public static void check(boolean cond, String name) {
+        if (!cond) {
+            println("FAIL: " + name);
+            exit(1);
+        }
+    }
+
+    public static int main() {
+        check(typeName(TokenType.PUBLIC) == "Public", "直接常量标签 PUBLIC");
+        check(typeName(2) == "Private", "常量标签 PRIVATE");
+        check(typeName(3) == "Protected", "常量表达式标签 PROTECTED");
+        check(typeName(-3) == "Negative", "负常量标签 NEGATIVE");
+        check(typeName(9) == "Unknown", "default 分支");
+        check(typeName(TokenType.MUTABLE) == "Unknown", "非 final 字段不参与常量");
+
+        // enum variant 标签回归对照
+        check(colorName(0) == "Red", "enum variant Red");
+        check(colorName(2) == "Blue", "enum variant Blue");
+        check(colorName(7) == "Unknown", "enum default");
+
+        println("BUG-002 OK");
+        return 0;
+    }
+}

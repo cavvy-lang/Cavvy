@@ -27,10 +27,31 @@ impl IRGenerator {
         } else {
             0
         };
-        if arg_results.len() <= fixed_param_count + varargs_min_count {
-            // 参数数量不足，不需要打包
+
+        // 判断本次调用实际命中的重载是否为可变参数方法。
+        // 不能只用 is_varargs_method（同名重载中只要有一个 varargs 即为 true）：
+        // 例如 foo() 与 foo(int...) 并存时，foo() 调用会被错误打包。
+        // 优先按当前实参做重载解析；解析不到时回退到方法名级判断。
+        let resolved_is_varargs = match self.resolve_best_method(
+            class_name,
+            method_name,
+            arg_results,
+            false,
+        ) {
+            Some(method) => method.params.iter().any(|p| p.is_varargs),
+            None => self.is_varargs_method(class_name, method_name),
+        };
+        if !resolved_is_varargs {
+            // 非可变参数方法：实参原样传递
             return Ok(arg_results.to_vec());
         }
+        if arg_results.len() < fixed_param_count + varargs_min_count {
+            // 实参数少于固定参数（错误的调用），不做打包，交由后续校验报错
+            return Ok(arg_results.to_vec());
+        }
+        // 注意：即使可变参数个数为 0（如 sumVarArgs()），也必须继续走到下方
+        // 生成长度为 0 的数组并传递数组指针；否则调用缺少数组实参，
+        // 被调函数读取数组长度头（ptr-8）时读到垃圾指针而崩溃。
 
         // 分割：固定参数 | 可变参数 | 之后参数
         let fixed_args = &arg_results[..fixed_param_count];

@@ -299,21 +299,30 @@ impl IRGenerator {
             // 嵌套成员访问: 需要递归处理并获取字段类型
             // 先生成嵌套成员访问代码，然后从结果类型推断类名
             match self.generate_member_access_with_class_info(nested_member) {
-                Ok((_, Some(class_name))) => Some(class_name),
+                Ok((_, Some(class_name))) => {
+                    Some(self.canonicalize_receiver_class_name(&class_name))
+                }
                 _ => None,
             }
         } else if let Expr::ArrayAccess(arr_access) = &*member.object {
             // 数组元素访问: 获取元素类型，如果是对象类型则返回类名
             self.get_array_element_class_name(arr_access)
-        } else if let Expr::Call(call_expr) = &*member.object {
-            // 方法调用返回对象: 从调用返回类型推断类名
+                .map(|class_name| self.canonicalize_receiver_class_name(&class_name))
+        } else {
+            // 其他表达式接收者（方法调用返回对象、内联 cast、new 表达式等）：
+            // 从静态类型推断类名。缺失此分支会导致 `((B)a).field` 这类
+            // 「内联 cast 直接做字段访问接收者」的写法退化为返回原始对象
+            // 指针本身，而不是读取目标字段（BUG-007）。
             self.get_expression_type(&member.object)
                 .and_then(|ty| match ty {
-                    crate::types::Type::Object(class_name) => Some(class_name),
+                    crate::types::Type::Object(class_name) => {
+                        Some(self.canonicalize_receiver_class_name(&class_name))
+                    }
+                    crate::types::Type::Generic(class_name, _) => {
+                        Some(self.canonicalize_receiver_class_name(&class_name))
+                    }
                     _ => None,
                 })
-        } else {
-            None
         };
 
         // 特殊处理数组的 .length 属性（但优先检查是否是对象的字段）
@@ -535,21 +544,28 @@ impl IRGenerator {
         } else if let Expr::MemberAccess(nested_member) = &*member.object {
             // 递归处理嵌套成员访问
             match self.generate_member_access_with_class_info(nested_member) {
-                Ok((_, Some(class_name))) => Some(class_name),
+                Ok((_, Some(class_name))) => {
+                    Some(self.canonicalize_receiver_class_name(&class_name))
+                }
                 _ => None,
             }
         } else if let Expr::ArrayAccess(arr_access) = &*member.object {
             // 数组元素访问: 获取元素类型，如果是对象类型则返回类名
             self.get_array_element_class_name(arr_access)
-        } else if let Expr::Call(_) = &*member.object {
-            // 方法调用返回对象: 从调用返回类型推断类名
+                .map(|class_name| self.canonicalize_receiver_class_name(&class_name))
+        } else {
+            // 其他表达式接收者（方法调用返回对象、内联 cast 等）：从静态类型
+            // 推断类名，并规范化为注册表键（与 generate_member_access 一致）。
             self.get_expression_type(&member.object)
                 .and_then(|ty| match ty {
-                    crate::types::Type::Object(class_name) => Some(class_name),
+                    crate::types::Type::Object(class_name) => {
+                        Some(self.canonicalize_receiver_class_name(&class_name))
+                    }
+                    crate::types::Type::Generic(class_name, _) => {
+                        Some(self.canonicalize_receiver_class_name(&class_name))
+                    }
                     _ => None,
                 })
-        } else {
-            None
         };
 
         if let Some(ref class_name) = class_name_opt {

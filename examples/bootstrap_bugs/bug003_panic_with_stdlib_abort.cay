@@ -1,0 +1,22 @@
+// BUG-003 回归：panic() 与 c/stdlib.cay 的 abort 声明共存。
+//
+// c/stdlib.cay 的 `void abort();` 经 extern 声明路径生成带属性组的
+// `declare void @abort() #0`；panic 内置路径旧实现再发一条无属性组的
+// `declare void @abort()`，同一模块内 abort 被重复声明且属性组不同，
+// llc 报 "invalid redefinition of function 'abort'"。
+// 修复后两条路径共用签名键并统一属性组，只发射一条声明。
+//
+// 本用例只验证「能编译且运行时确实 abort」；测试驱动按运行失败（SIGABRT）
+// 断言，stderr 应包含 panic 消息。
+//
+// 预期（测试驱动）：编译成功；运行时以非零状态终止，stderr 含 expected-abort
+
+#include <c/stdlib.cay>
+
+public class PanicBug {
+    public static int main() {
+        println("before-panic");
+        panic("expected-abort");
+        return 0;
+    }
+}

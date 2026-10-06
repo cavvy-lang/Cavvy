@@ -1,0 +1,91 @@
+// BUG-005 回归：enum 作为 class/struct 字段的内存布局。
+//
+// enum 运行时为 `{ i32 tag, i64 payload }` 共 16 字节，但字段布局旧实现用
+// 语义类型尺寸（Type::Object → 8 字节），字段写入越过 8 字节边界：
+// - class 字段：破坏相邻字段/堆元数据 → malloc(): corrupted top size；
+// - struct 字段：相邻字段读出垃圾值、总尺寸错位。
+// 修复后布局统一使用 LLVM 类型真实尺寸（{ i32, i64 } → 16）。
+//
+// 大量新建/读取是为了让越界写入破坏 malloc 元数据（glibc 在 free/分配时
+// 立刻断言崩溃），确保回归可捕获。
+//
+// 预期输出：BUG-005 OK
+
+public enum Tk {
+    Plus,
+    Ident(string)
+}
+
+public class Tok {
+    public Tk kind;
+    public int tag;
+    public long stamp;
+
+    public Tok(Tk k, int t, long s) {
+        this.kind = k;
+        this.tag = t;
+        this.stamp = s;
+    }
+
+    public Tk getKind() { return this.kind; }
+    public int getTag() { return this.tag; }
+    public long getStamp() { return this.stamp; }
+}
+
+public struct SHolder {
+    public Tk kind;
+    public int tag;
+}
+
+public class EnumFieldBug {
+    public static int kindTag(Tk k) {
+        switch (k) {
+            case Tk.Plus: return 0;
+            case Tk.Ident(string s): return 1;
+            default: return -1;
+        }
+    }
+
+    public static String kindPayload(Tk k) {
+        switch (k) {
+            case Tk.Ident(string s): return s;
+            default: return "";
+        }
+    }
+
+    public static void check(boolean cond, String name) {
+        if (!cond) {
+            println("FAIL: " + name);
+            exit(1);
+        }
+    }
+
+    public static int main() {
+        // class 字段：1000 次构造，若字段越界写堆元数据会在分配/释放时崩溃
+        int i = 0;
+        while (i < 1000) {
+            Tok t = new Tok(Tk.Ident("hello"), i, (long)i * 1000000);
+            check(t.getTag() == i, "class 相邻 int 字段");
+            check(t.getStamp() == (long)i * 1000000, "class 相邻 long 字段");
+            check(kindTag(t.getKind()) == 1, "class enum 字段种类");
+            check(kindPayload(t.getKind()) == "hello", "class enum 字段载荷");
+            i = i + 1;
+        }
+
+        // struct 字段：enum 字段写入后相邻字段必须保持正确
+        SHolder h = new SHolder();
+        h.kind = Tk.Ident("world");
+        h.tag = 7;
+        check(h.tag == 7, "struct 相邻字段");
+        check(kindTag(h.kind) == 1, "struct enum 字段种类");
+        check(kindPayload(h.kind) == "world", "struct enum 字段载荷");
+
+        // 无载荷变体与 payload 变体混写
+        Tok p = new Tok(Tk.Plus, 1, 2);
+        check(kindTag(p.getKind()) == 0, "无载荷变体字段");
+        check(kindPayload(p.getKind()) == "", "无载荷变体取载荷");
+
+        println("BUG-005 OK");
+        return 0;
+    }
+}

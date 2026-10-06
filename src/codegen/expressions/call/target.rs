@@ -258,6 +258,19 @@ impl IRGenerator {
                             let ext = self.new_temp();
                             self.emit_line(&format!("  {} = sext i32 {} to i64", ext, pl_val));
                             ext
+                        } else if pl_type == "i1" || pl_type == "i8" || pl_type == "i16" {
+                            // 小于 32 位的整数载荷（char=i8、boolean=i1、c_short=i16）
+                            // 必须先扩展到 i64 再插入 payload 槽位。此前直接 insertvalue
+                            // 会把 i8 值写进 i64 槽位，llc 报
+                            // "'%t' defined with type 'i8' but expected 'i64'"（BUG-004）。
+                            // i1/i8 用零扩展（char 为无符号字节语义）；i16 用符号扩展。
+                            let ext = self.new_temp();
+                            let op = if pl_type == "i16" { "sext" } else { "zext" };
+                            self.emit_line(&format!(
+                                "  {} = {} {} {} to i64",
+                                ext, op, pl_type, pl_val
+                            ));
+                            ext
                         } else if pl_type == "{ i32, i64 }" {
                             // enum 值作为 payload（如 Token.Intliteral(Option<int>)）：
                             // 16 字节值类型放不进 i64 槽位，堆拷贝后存指针
@@ -359,6 +372,12 @@ impl IRGenerator {
         if let Some(obj_type) = self.get_expression_type(&member.object) {
             match obj_type {
                 crate::types::Type::Object(class_name) => {
+                    // 接收者类型来自返回类型推断时可能是裸类名（命名空间内的类
+                    // 其返回类型注册为 `StringBuilder` 而非 `std::StringBuilder`），
+                    // 先规范化为注册表键，避免解析结果依赖 current_namespace 的
+                    // 残留状态（BUG-006：生成顺序不同导致链式调用符号 mangling
+                    // 丢失命名空间）。
+                    let class_name = self.canonicalize_receiver_class_name(&class_name);
                     // 首先检查是否是函数指针字段
                     if let Some(field_type) = self.get_field_type(&class_name, &member.member) {
                         if matches!(field_type, crate::types::Type::Function(_)) {
@@ -382,6 +401,10 @@ impl IRGenerator {
                     ))
                 }
                 crate::types::Type::Generic(class_name, type_args) => {
+                    // 与 Object 分支同理：规范化裸类名到注册表中的命名空间限定名，
+                    // 使泛型链式调用（如 `std::Optional<T>.of(...).unwrap()`）
+                    // 的接收者解析与生成顺序无关。
+                    let class_name = self.canonicalize_receiver_class_name(&class_name);
                     // 链式调用的接收者泛型实参必须在当前上下文中可解析为具体类型。
                     // 典型反例：`r.map<U>(f).getValue()`——方法级类型参数 U 只在
                     // 内层 map 调用点可推断，外层接收者类型 Result<U, E> 中的 U

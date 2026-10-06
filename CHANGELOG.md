@@ -28,6 +28,36 @@
 
 ### Fixed
 
+- **引导编译器回归（CavvyN35 开发期发现的 8 个 bug，均附端到端回归测试）**：
+  - 三元表达式两个分支的 LLVM 类型不同（如 `cond ? 2147483647 : -2147483648`
+    的 i32/i64 字面量）时旧实现按 then 分支类型生成 phi，llc 报类型错误；
+    现按数值提升统一分支类型（与 if 表达式共用同一机制）。
+  - `switch` 的 `case 类名.静态常量:` 旧实现一律按 enum 变体解析并报
+    `E5004 未知的 enum`；现支持 `static final` 整型常量（含负常量与
+    +-* 常量表达式及常量间引用，带循环引用深度保护）。
+  - `panic()` 的 `declare void @abort()` 与 `c/stdlib.cay` extern 声明
+    （`declare void @abort() #0`）在同一模块内重复声明且属性组不同，llc 报
+    `invalid redefinition of function 'abort'`；现共用签名键并统一属性组。
+  - enum 的 `char`（i8）/`boolean`（i1）载荷未扩展就写入 i64 payload 槽，
+    llc 报 `defined with type 'i8' but expected 'i64'`；现零扩展
+    （i16 符号扩展）后再插入。
+  - enum 作为 class/struct 字段时按语义类型尺寸（8 字节）而非运行时
+    `{ i32, i64 }`（16 字节）布局，class 字段越界写堆（`malloc():
+    corrupted top size`）、struct 相邻字段读脏；现布局统一按 LLVM 类型真实
+    尺寸计算（`get_type_size` 同步补齐 i16/void 口径）。
+  - 命名空间类（如 `std::StringBuilder`）静态工厂返回值上的链式实例方法
+    调用丢失命名空间前缀，生成缺少 this 的 `@_ZN13StringBuilder8toStringEv`
+    未定义符号（且是否复现取决于类型注册表 `current_namespace` 残留状态）；
+    现接收者类名统一规范化为注册表键（唯一后缀匹配），与生成顺序无关。
+  - `((B)a).field` 内联向下转型直接做字段访问接收者时，接收者类型推断缺失
+    Cast 分支，字段读取退化为返回对象指针本身（比较时报 i8* 与 i32 类型错
+    误）；现补全 Cast 类型推断与通用表达式接收者分支。
+  - 局部/返回值为 null 的 `std::ArrayList` 在作用域退出时直接调用析构函数
+    （空 this 解引用）→ SIGSEGV；现析构前插入 null 守卫（等价
+    C++ `delete nullptr` 语义）。
+  - 可变参数方法零个可变参数的调用（如 `sumVarArgs()`）旧实现完全省略数组
+    实参，被调函数读取数组长度头时崩溃；现仍生成长度 0 的数组并传递，
+    且仅对实际命中的 varargs 重载打包（避免 `foo()`/`foo(int...)` 混用误打包）。
 - **构建**：`.verinfo` 为空或缺失 `[CAYC] version` 时 `build.rs` 回退到 `CARGO_PKG_VERSION`
   并打印警告（此前会静默缺失 `CAY*_VERSION` 宏导致编译失败）；移除对 `.git/index`
   的监听（任何 stage 操作都会触发全量重编）；16 段版本环境变量设置改为表驱动。

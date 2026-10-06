@@ -1,0 +1,76 @@
+// BUG-008 回归：std::ArrayList 局部变量/返回值为 null 时析构不得崩溃。
+//
+// 6.2 对局部 ArrayList 变量在作用域退出时自动调用 `~ArrayList()`；
+// 变量持有 null 时析构直接解引用空 this（cmpq $0x0, 0x28(%rdi)，rdi=0）
+// → SIGSEGV。两种触发形态：
+//   (a) 方法返回类型为 std::ArrayList<T> 时 `return null`；
+//   (b) 局部 `std::ArrayList<T> x = null;` 到作用域退出仍为空。
+// 修复后在析构调用前插入 null 守卫（等价 C++ `delete nullptr` 语义）。
+//
+// 预期输出：BUG-008 OK
+
+#include <std/arraylist.cay>
+
+public class ArrayListNullBug {
+    // 形态 (b)：局部 null ArrayList 到作用域退出
+    public static void nullLocal() {
+        std::ArrayList<int> x = null;
+        println("nullLocal:before-scope-exit");
+    }
+
+    // 形态 (a)：返回 null，调用方持有后作用域退出
+    public static std::ArrayList<int> maybeNull(boolean fail) {
+        if (fail) {
+            return null;
+        }
+        std::ArrayList<int> r = new std::ArrayList<int>();
+        r.add(7);
+        return r;
+    }
+
+    // 非 null 析构路径回归对照：局部 ArrayList 正常析构
+    public static void valuedLocal() {
+        std::ArrayList<int> x = new std::ArrayList<int>();
+        x.add(1);
+        x.add(2);
+        if (x.size() != 2) {
+            println("FAIL: valuedLocal size");
+            exit(1);
+        }
+    }
+
+    public static void check(boolean cond, String name) {
+        if (!cond) {
+            println("FAIL: " + name);
+            exit(1);
+        }
+    }
+
+    public static int main() {
+        nullLocal();
+
+        std::ArrayList<int> got = maybeNull(true);
+        check(got == null, "null 返回值");
+        println("after-null-return");
+
+        std::ArrayList<int> ok = maybeNull(false);
+        check(ok.size() == 1, "非 null 返回值");
+
+        valuedLocal();
+
+        // 循环内反复创建/丢弃，确认析构路径稳定（覆盖 null 与非 null 混合）
+        int i = 0;
+        while (i < 100) {
+            std::ArrayList<int> t = null;
+            if (i % 2 == 0) {
+                t = new std::ArrayList<int>();
+                t.add(i);
+                check(t.size() == 1, "循环内 ArrayList");
+            }
+            i = i + 1;
+        }
+
+        println("BUG-008 OK");
+        return 0;
+    }
+}

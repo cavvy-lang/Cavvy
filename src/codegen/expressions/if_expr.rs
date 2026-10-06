@@ -176,7 +176,7 @@ impl IRGenerator {
 
     /// 数值类型统一：相同则返回原类型；不同则取较宽类型。
     /// 非数值组合返回左操作数类型（与三元运算符一致，交由语义阶段把关）。
-    fn unify_numeric_type(a: &str, b: &str) -> String {
+    pub(crate) fn unify_numeric_type(a: &str, b: &str) -> String {
         if a == b {
             return a.to_string();
         }
@@ -198,7 +198,12 @@ impl IRGenerator {
     }
 
     /// 在 conv 块内把数值从 from_ty 转换到 target_ty（相同则不产生指令）。
-    fn emit_numeric_conversion(&mut self, from_ty: &str, val: &str, target_ty: &str) -> String {
+    pub(crate) fn emit_numeric_conversion(
+        &mut self,
+        from_ty: &str,
+        val: &str,
+        target_ty: &str,
+    ) -> String {
         if from_ty == target_ty {
             return val.to_string();
         }

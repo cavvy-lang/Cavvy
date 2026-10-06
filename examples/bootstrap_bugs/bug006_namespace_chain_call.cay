@@ -1,0 +1,61 @@
+// BUG-006 回归：命名空间类静态方法返回值上链式调用实例方法。
+//
+// 链式调用接收者的类型来自返回类型推断，而命名空间内声明的方法其返回类型
+// 注册为裸类名（`StringBuilder` / `Maker`）。旧实现直接拿裸类名解析方法，
+// 结果依赖类型注册表 current_namespace 的残留状态：
+// - 顶层 main 生成时侥幸命中（命名空间残留 ["std"]）→ 走 vtable 侥幸正确；
+// - 普通类方法体内生成时 current_namespace 为空 → 解析失败，退化为缺少
+//   this 的错误直调 `@_ZN13StringBuilder8toStringEv`，llc 报未定义符号。
+// 修复后接收者类名统一规范化为注册表键（唯一命名空间后缀匹配），
+// 与生成顺序无关。
+//
+// 预期输出：BUG-006 OK
+
+#include <StringBuilder.cay>
+
+namespace ns {
+    public class Maker {
+        private int v;
+
+        public Maker(int x) { this.v = x; }
+
+        public static Maker make(int x) { return new Maker(x); }
+
+        public int get() { return this.v; }
+    }
+}
+
+public class NsChainBug {
+    // 关键：在非命名空间的类方法内做链式调用。此处的生成上下文
+    // current_namespace 为空，旧实现下裸类名 "Maker"/"StringBuilder"
+    // 解析失败，退化为缺少 this 的错误直调。
+    public static int chained() {
+        return ns::Maker.make(42).get();
+    }
+
+    // ptr == 0 时 fromCString 直接返回空 StringBuilder（不读缓冲区），
+    // 结果确定：toString() 为空串。
+    public static String sbChain() {
+        return std::StringBuilder.fromCString(0).toString();
+    }
+
+    public static void check(boolean cond, String name) {
+        if (!cond) {
+            println("FAIL: " + name);
+            exit(1);
+        }
+    }
+
+    public static int main() {
+        check(chained() == 42, "自建命名空间类静态工厂链式调用");
+
+        String s = sbChain();
+        check(s.length() == 0, "std::StringBuilder 静态工厂链式调用");
+
+        // 链式调用结果直接参与算术（接收者规范化同样适用）
+        check(ns::Maker.make(7).get() + 1 == 8, "链式调用结果参与算术");
+
+        println("BUG-006 OK");
+        return 0;
+    }
+}

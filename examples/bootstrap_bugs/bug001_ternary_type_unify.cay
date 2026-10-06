@@ -1,0 +1,56 @@
+// BUG-001 回归：三元表达式两个分支的 LLVM 类型不一致时必须先统一再 phi。
+//
+// `sign == 1 ? 2147483647 : -2147483648` 的 then 分支是 i32 字面量，
+// else 分支（2147483648 超出 i32 范围）是 i64 字面量。旧实现直接用 then
+// 分支的类型作为 phi 类型，llc 报
+//   '%t' defined with type 'i64' but expected 'i32'
+//（或产生错误值）。修复后两分支数值提升到较宽类型再合并。
+//
+// 预期输出：BUG-001 OK
+
+public class TernaryBug {
+    // 该方法体内的三元是原始触发形态：int 方法返回 i32/i64 混合字面量
+    public static int pickInt(int sign) {
+        return sign == 1 ? 2147483647 : -2147483648;
+    }
+
+    // long 上下界（i64 与 i64，不触发提升，作为对照）
+    public static long pickLong(int sign) {
+        return sign == 1 ? 1 : 9223372036854775807;
+    }
+
+    // double 分支（同类型，作为对照）
+    public static double pickDouble(int flag) {
+        double d = 0.5;
+        return flag == 1 ? 2.5 : d;
+    }
+
+    // 指针分支（String，作为对照）
+    public static String pickString(int flag) {
+        return flag == 1 ? "one" : "other";
+    }
+
+    public static void check(boolean cond, String name) {
+        if (!cond) {
+            println("FAIL: " + name);
+            exit(1);
+        }
+    }
+
+    public static int main() {
+        check(pickInt(1) == 2147483647, "int 上界分支");
+        check(pickInt(-1) == -2147483648, "int 下界分支");
+        check(pickLong(1) == 1, "long 分支");
+        check(pickLong(-1) == 9223372036854775807, "long 上界分支");
+        check(pickDouble(0) == 0.5, "double 变量分支");
+        check(pickDouble(1) == 2.5, "double 字面量分支");
+        check(pickString(1) == "one", "String 分支");
+
+        // 三元结果作为实参参与运算
+        int sum = pickInt(1) + pickInt(-1);
+        check(sum == -1, "三元结果参与算术");
+
+        println("BUG-001 OK");
+        return 0;
+    }
+}

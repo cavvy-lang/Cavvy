@@ -57,6 +57,55 @@ impl IRGenerator {
         }
     }
 
+    /// 将方法调用接收者的类名规范化为类型注册表中真实注册的键。
+    ///
+    /// 链式调用接收者的类型来自返回类型推断，而函数体内声明在 `namespace`
+    /// 中的方法，其返回类型名会被注册为裸类名（如 `StringBuilder` 而非
+    /// `std::StringBuilder`）。若下游直接用裸类名查找成员/方法，结果取决于
+    /// 类型注册表当前 `current_namespace` 的残留状态——同一段代码在不同
+    /// 生成顺序下表现不同（类外方法体内解析失败，退化成缺少 this 的错误直调
+    /// `@_ZN13StringBuilder8toStringEv`）。
+    ///
+    /// 此处在裸名无法直接解析时，按「唯一后缀匹配」查找命名空间限定名，
+    /// 使解析结果与生成顺序无关。存在同名多个类（歧义）时不改写，保持原状
+    /// 交由 vtable 分派路径处理。
+    pub(crate) fn canonicalize_receiver_class_name(&self, class_name: &str) -> String {
+        let Some(registry) = self.type_registry.as_ref() else {
+            return class_name.to_string();
+        };
+        // 已可直接解析（全局名/限定名/当前命名空间/using 别名）→ 原样返回
+        if registry.get_class(class_name).is_some()
+            || registry.get_interface(class_name).is_some()
+            || registry.get_struct(class_name).is_some()
+            || registry.get_enum_by_name(class_name).is_some()
+        {
+            return class_name.to_string();
+        }
+        // 分离泛型实参：以基础名做后缀匹配，再原样拼回实参
+        let (base, type_args_suffix) = match class_name.find('<') {
+            Some(pos) => (&class_name[..pos], &class_name[pos..]),
+            None => (class_name, ""),
+        };
+        if base.contains("::") {
+            return class_name.to_string();
+        }
+        let suffix = format!("::{}", base);
+        let mut unique: Option<&String> = None;
+        for key in registry.classes.keys() {
+            if key.ends_with(&suffix) {
+                if unique.is_some() {
+                    // 多个命名空间同名 → 歧义，放弃改写
+                    return class_name.to_string();
+                }
+                unique = Some(key);
+            }
+        }
+        match unique {
+            Some(qualified) => format!("{}{}", qualified, type_args_suffix),
+            None => class_name.to_string(),
+        }
+    }
+
     /// 根据方法调用接收者表达式的具体泛型类型，将类型参数映射安装到
     /// `generic_type_args`，以便在调用点解析方法签名中的泛型参数
     /// （例如 `Box<int>.get()` 的返回类型 `T` 解析为 `int`）。

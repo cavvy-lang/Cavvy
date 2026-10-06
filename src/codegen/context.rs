@@ -973,8 +973,10 @@ impl IRGenerator {
     /// 获取 LLVM 类型的大小（字节）
     pub fn get_type_size(&self, llvm_type: &str) -> i64 {
         match llvm_type {
+            "void" => 0,
             "i1" => 1,
             "i8" => 1,
+            "i16" => 2,
             "i32" => 4,
             "i64" => 8,
             "float" => 4,
@@ -1072,7 +1074,22 @@ impl IRGenerator {
                 "  {} = load i8*, i8** %{}",
                 obj_temp, cand.llvm_name
             ));
+            // null 守卫：局部变量可能持有 null（`std::ArrayList<T> x = null;`
+            // 或方法失败路径 `return null` 后调用方继续进入作用域退出），
+            // 直接调用析构函数会解引用空 this（rdi=0）导致 SIGSEGV（BUG-008）。
+            // 与 C++ `delete nullptr` 语义一致：null 对象跳过析构。
+            let is_null = self.new_temp();
+            let skip_label = self.new_label("dtor.skip");
+            let call_label = self.new_label("dtor.call");
+            self.emit_line(&format!("  {} = icmp eq i8* {}, null", is_null, obj_temp));
+            self.emit_line(&format!(
+                "  br i1 {}, label %{}, label %{}",
+                is_null, skip_label, call_label
+            ));
+            self.emit_line(&format!("{}:", call_label));
             self.emit_line(&format!("  call void @{}(i8* {})", dtor_fn, obj_temp));
+            self.emit_line(&format!("  br label %{}", skip_label));
+            self.emit_line(&format!("{}:", skip_label));
         }
     }
 
@@ -1475,6 +1492,12 @@ impl IRGenerator {
             Expr::Call(call) => {
                 // 对于函数调用，尝试推断返回类型
                 self.infer_call_return_type(call)
+            }
+            Expr::Cast(cast) => {
+                // 转型表达式的类型即目标类型。缺失该分支会导致
+                // `((B)a).field` 这类「内联 cast 直接做字段访问接收者」的
+                // 接收者类型推断失败，字段读取整体退化为返回原始对象指针。
+                Some(cast.target_type.clone())
             }
             _ => None,
         }
@@ -2709,7 +2732,11 @@ impl IRGenerator {
             }
 
             let llvm_type = self.type_to_llvm(&field.field_type);
-            let size = field.field_type.size_in_bytes();
+            // 必须使用 LLVM 类型的真实尺寸，而不是语义类型尺寸：
+            // enum 运行时为 { i32, i64 } 共 16 字节，而 Type::Object 的
+            // size_in_bytes() 固定返回 8（引用大小），会导致 enum 字段写入
+            // 越界、破坏相邻字段/堆元数据（BUG-005）。
+            let size = self.type_size_in_bytes(&field.field_type) as usize;
 
             // 对齐处理
             let align = self.get_type_align(&llvm_type) as usize;
@@ -2762,7 +2789,10 @@ impl IRGenerator {
             }
 
             let llvm_type = self.type_to_llvm(&field.field_type);
-            let size = field.field_type.size_in_bytes();
+            // struct 值类型同理：enum 字段占 16 字节（{ i32, i64 }），
+            // 语义类型的 size_in_bytes 只给 8，会让相邻字段偏移/总尺寸错位，
+            // 读出垃圾值（BUG-005 struct 形态）。
+            let size = self.type_size_in_bytes(&field.field_type) as usize;
 
             // 对齐处理
             let align = self.get_type_align(&llvm_type) as usize;

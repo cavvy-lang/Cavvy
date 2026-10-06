@@ -232,10 +232,24 @@ impl IRGenerator {
             ));
         }
 
-        // 确保 abort 已声明
-        if !self.is_extern_emitted("abort@void") {
-            self.emit_raw("declare void @abort()");
+        // 确保 abort 已声明。
+        // 注意：用户代码（如 c/stdlib.cay 的 `void abort();`）可能已经通过
+        // extern 声明路径发射过 `declare void @abort() #0`，其时使用的签名键为
+        // `abort@void@void`（generate_extern_function 的键格式）。若此处不检查该键
+        // 而再发射一条无属性组的声明，同一模块内 abort 会被重复声明且属性组不同，
+        // llc 报 "invalid redefinition of function 'abort'"。因此两个键都要检查，
+        // 且本路径发射时带上与 cdecl 默认一致的属性组，保证声明唯一且属性一致。
+        let extern_decl_sig = "abort@void@void";
+        if !self.is_extern_emitted("abort@void") && !self.is_extern_emitted(extern_decl_sig) {
+            let cc_attr =
+                self.calling_convention_to_llvm_attr(crate::ast::CallingConvention::Cdecl);
+            if cc_attr.is_empty() {
+                self.emit_raw("declare void @abort()");
+            } else {
+                self.emit_raw(&format!("declare void @abort() {}", cc_attr));
+            }
             self.mark_extern_emitted("abort@void".to_string());
+            self.mark_extern_emitted(extern_decl_sig.to_string());
         }
 
         // 打印 "panic: message\n" 到 stderr

@@ -1,0 +1,68 @@
+// BUG-004 回归：enum 的 char 载荷（i8）必须零扩展后写入 i64 payload 槽。
+//
+// 旧实现：变量载荷直接 insertvalue `{ i32, i64 }` 的 i64 槽位，llc 报
+//   '%t' defined with type 'i8' but expected 'i64'
+// 修复后 i1/i8 零扩展、i16 符号扩展后再插入。
+//
+// 预期输出：BUG-004 OK
+
+public enum Tk {
+    Ch(char),
+    Num(int),
+    Flag(boolean)
+}
+
+public class EnumCharBug {
+    public static char unwrapCh(Tk t) {
+        switch (t) {
+            case Tk.Ch(char c): return c;
+            default: return '?';
+        }
+    }
+
+    public static int unwrapNum(Tk t) {
+        switch (t) {
+            case Tk.Num(int n): return n;
+            default: return -1;
+        }
+    }
+
+    public static boolean unwrapFlag(Tk t) {
+        switch (t) {
+            case Tk.Flag(boolean b): return b;
+            default: return false;
+        }
+    }
+
+    public static void check(boolean cond, String name) {
+        if (!cond) {
+            println("FAIL: " + name);
+            exit(1);
+        }
+    }
+
+    public static int main() {
+        // 变量载荷：触发 i8 -> i64 扩展路径（原始崩溃形态）
+        char c = 'a';
+        Tk t1 = Tk.Ch(c);
+        // 字面量载荷：常量路径
+        Tk t2 = Tk.Ch('Z');
+        // 其他小位宽载荷对照
+        boolean b = true;
+        Tk t3 = Tk.Flag(b);
+        Tk t4 = Tk.Num(42);
+
+        check(unwrapCh(t1) == 'a', "char 变量载荷");
+        check(unwrapCh(t2) == 'Z', "char 字面量载荷");
+        check(unwrapFlag(t3) == true, "boolean 变量载荷");
+        check(unwrapNum(t4) == 42, "int 载荷回归对照");
+
+        // 高字节字符（>127）确认零扩展不丢位
+        char hc = (char)200;
+        Tk t5 = Tk.Ch(hc);
+        check(unwrapCh(t5) == (char)200, "char 高字节载荷");
+
+        println("BUG-004 OK");
+        return 0;
+    }
+}

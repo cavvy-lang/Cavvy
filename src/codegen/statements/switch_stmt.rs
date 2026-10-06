@@ -33,6 +33,12 @@ impl IRGenerator {
                         ));
                     }
                 }
+                // 回退：parser 把 case 标签中的点分名一律解析为
+                // CaseValue::EnumVariant，但 `类名.静态常量`（static final int）
+                // 也是合法标签。此处按类静态常量查找其编译期常量值（BUG-002）。
+                if let Some(value) = self.resolve_class_const_case_value(enum_name, variant_name) {
+                    return Ok(value);
+                }
                 Err(codegen_error_at(
                     ErrorCodes::CODEGEN_INVALID_OPERATION,
                     case.loc.clone(),
@@ -40,6 +46,16 @@ impl IRGenerator {
                 ))
             }
         }
+    }
+
+    /// 解析 `case 类名.静态常量:` 形式的编译期整数常量标签。
+    ///
+    /// 仅接受 `static final` 且初始化值为整型常量表达式的字段；非 final 的
+    /// 静态字段运行期值可被修改，不能作为 case 标签常量。常量表达式支持
+    /// 字面量、负号与 +-* 运算（与静态字段全局初始化器的求值口径一致）。
+    /// 返回 None 让调用方给出原有的 "未知的 enum" 错误。
+    fn resolve_class_const_case_value(&self, class_name: &str, const_name: &str) -> Option<i64> {
+        self.lookup_static_const_int_class(class_name, const_name, 0)
     }
 
     /// 生成 switch 语句代码
