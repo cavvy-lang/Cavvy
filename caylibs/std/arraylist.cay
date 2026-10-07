@@ -134,6 +134,10 @@ public final class ArrayList<T, A: Allocator = GlobalAlloc> implements Iterable<
      */
     ~ArrayList() {
         if (this.buffer != 0) {
+            /* 先析构元素：data[0..size) 是密集存储，每个槽位都是有效元素；
+               T 为原始类型 / struct 时 __cay_destroy_array 编译期展开为空操作。
+               必须在释放 backing buffer 之前完成，否则会访问已释放内存。 */
+            __cay_destroy_array<T>(this.data, this.size);
             this.allocator.deallocate(this.buffer);
             this.buffer = 0;
         }
@@ -180,7 +184,7 @@ public final class ArrayList<T, A: Allocator = GlobalAlloc> implements Iterable<
     /**
      * 追加元素到末尾。
      */
-    public void add(T value) {
+    public void add(@owns T value) {
         this.ensureCapacity(this.size + 1);
         this.data[this.size] = value;
         this.size = this.size + 1;
@@ -189,7 +193,7 @@ public final class ArrayList<T, A: Allocator = GlobalAlloc> implements Iterable<
     /**
      * 在指定索引处插入元素。index 范围 [0, size]。
      */
-    public void add(int index, T value) {
+    public void add(int index, @owns T value) {
         if (index < 0 || index > this.size) {
             return;
         }

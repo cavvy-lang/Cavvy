@@ -1,0 +1,375 @@
+/*
+ * Cavvy 优先队列标准库 - 0.5.2.x
+ *
+ * 泛型单态化实现：PriorityQueue<T, A: Allocator = GlobalAlloc>
+ *
+ * 底层由三个并行 ArrayList 维护一个数组二叉堆：
+ *   values[i]     堆中第 i 个槽位保存的元素值
+ *   priorities[i] 该槽位的优先级
+ *   seq[i]        该槽位的插入序号（用于同优先级 FIFO 稳定性）
+ * 索引 0 为堆顶，索引 i 的左孩子为 2*i+1，右孩子为 2*i+2。
+ * 三个数组在 push 上浮 / pop 下沉过程中由 swapAt 同步交换，始终保持对齐。
+ *
+ * 排序规则：先比较 priority；priority 相等时比较 seq（seq 越小越先出），
+ * 因此相同优先级的元素严格按插入顺序出队（稳定排序）。
+ * 默认大顶堆（priority 大者先出）；构造时传入 minHeap=true 切换为小顶堆。
+ *
+ * 本类不实现 Iterable：堆序对遍历没有意义，因此不提供 iterator()。
+ * 需要按出队顺序遍历时，请反复调用 peek()/pop()。
+ */
+
+#pragma once
+
+#include <Allocator.cay>
+#include <std/arraylist.cay>
+
+namespace std {
+
+/**
+ * 泛型优先队列，支持类型参数 T 与分配器参数 A（默认 GlobalAlloc）。
+ *
+ * 采用数组二叉堆实现，push 为 sift-up，pop 为 sift-down，均为 O(log n)；
+ * peek/peekPriority 为 O(1)。同优先级元素按插入顺序 FIFO 出队。
+ *
+ * 注意：由于堆序对遍历没有意义，本类不实现 Iterable，不提供 iterator()。
+ *
+ * 【内存释放的当前限制】编译器只为「自身声明了析构函数」的类注册析构候选，
+ * 且不会为包装类的 __dtor 链式调用字段的析构函数。因此本类的局部变量离开
+ * 作用域时，三个内部 ArrayList 的缓冲区不会被释放（与基线 HashSet 相同的
+ * 系统性缺口，属编译器侧特性，无法在源码层补齐）。需要立即回收时请显式调用
+ * clear() 或让内部的 ArrayList 直接离开作用域。
+ *
+ * 【所有权转移的当前限制】编译器的 RAII 所有权转移只识别直接调用
+ * ArrayList.add 的场合。把局部对象经 push() 放入优先队列后，该局部变量仍会在
+ * 其作用域结束时被析构，容器将持有已析构对象的悬垂引用。存放对象类型时
+ * 请使用 new 表达式直接入队（不要先绑定到局部变量再 push），或使用
+ * UniquePtr/ScopedPtr 管理所有权。
+ */
+public final class PriorityQueue<T, A: Allocator = GlobalAlloc> {
+    private ArrayList<T, A> values;
+    private ArrayList<int, A> priorities;
+    private ArrayList<int, A> seq;
+    private bool minHeap;
+    private int nextSeq;
+    private A allocator;
+
+    /**
+     * 默认构造：大顶堆（priority 大者先出），使用 GlobalAlloc。
+     */
+    public PriorityQueue() {
+        this.minHeap = false;
+        this.nextSeq = 0;
+        this.allocator = new A();
+        this.values = new ArrayList<T, A>(this.allocator);
+        this.priorities = new ArrayList<int, A>(this.allocator);
+        this.seq = new ArrayList<int, A>(this.allocator);
+    }
+
+    /**
+     * 指定分配器构造：大顶堆（priority 大者先出）。
+     *
+     * 三个内部 ArrayList 的全部内存申请与释放都经过该分配器，
+     * 与 Stack/Queue/Deque 的分配器构造保持一致。
+     *
+     * @param allocator 内存分配器实例（不可为 null）
+     */
+    public PriorityQueue(A allocator) {
+        this.minHeap = false;
+        this.nextSeq = 0;
+        this.allocator = allocator;
+        this.values = new ArrayList<T, A>(this.allocator);
+        this.priorities = new ArrayList<int, A>(this.allocator);
+        this.seq = new ArrayList<int, A>(this.allocator);
+    }
+
+    /**
+     * 指定初始容量构造：大顶堆（priority 大者先出），使用 GlobalAlloc。
+     *
+     * @param initialCapacity 三个内部 ArrayList 的初始容量提示；小于 1 时底层按 1 处理
+     */
+    public PriorityQueue(int initialCapacity) {
+        this.minHeap = false;
+        this.nextSeq = 0;
+        this.allocator = new A();
+        this.values = new ArrayList<T, A>(initialCapacity);
+        this.priorities = new ArrayList<int, A>(initialCapacity);
+        this.seq = new ArrayList<int, A>(initialCapacity);
+    }
+
+    /**
+     * 指定堆序，使用 GlobalAlloc。
+     *
+     * @param minHeap true 为小顶堆（priority 小者先出）；
+     *                false 为大顶堆（priority 大者先出）。
+     */
+    public PriorityQueue(bool minHeap) {
+        this.minHeap = minHeap;
+        this.nextSeq = 0;
+        this.allocator = new A();
+        this.values = new ArrayList<T, A>(this.allocator);
+        this.priorities = new ArrayList<int, A>(this.allocator);
+        this.seq = new ArrayList<int, A>(this.allocator);
+    }
+
+    /**
+     * 指定堆序与分配器。
+     *
+     * @param minHeap   true 为小顶堆（priority 小者先出）；
+     *                  false 为大顶堆（priority 大者先出）。
+     * @param allocator 用于三个内部 ArrayList 的分配器实例。
+     */
+    public PriorityQueue(bool minHeap, A allocator) {
+        this.minHeap = minHeap;
+        this.nextSeq = 0;
+        this.allocator = allocator;
+        this.values = new ArrayList<T, A>(this.allocator);
+        this.priorities = new ArrayList<int, A>(this.allocator);
+        this.seq = new ArrayList<int, A>(this.allocator);
+    }
+
+    /**
+     * 入队：把 value 按优先级 priority 插入堆中。
+     *
+     * 相同 priority 的多个元素按插入顺序 FIFO 出队（内部以插入序号 seq 保证）。
+     * 元素追加到堆尾后执行 sift-up（上浮），维护堆性质。
+     *
+     * @param priority 优先级，越大越先出（小顶堆时越小越先出）。
+     * @param value    入队的元素值。
+     */
+    public void push(int priority, @owns T value) {
+        this.values.add(value);
+        this.priorities.add(priority);
+        this.seq.add(this.nextSeq);
+        this.nextSeq = this.nextSeq + 1;
+        this.siftUp(this.values.size() - 1);
+    }
+
+    /**
+     * 出队：取出并删除堆顶元素的值。
+     *
+     * 把堆尾元素搬到堆顶后执行 sift-down（下沉），维护堆性质。
+     * 空容器时不做任何删除，返回 T 的类型零值（例如 int 为 0）。
+     *
+     * @return 堆顶元素的值；容器为空时返回 T 零值。
+     */
+    public T pop() {
+        if (this.values.isEmpty()) {
+            T zero = 0;
+            return zero;
+        }
+
+        T top = this.values.get(0);
+        int last = this.values.size() - 1;
+
+        if (last == 0) {
+            this.values.removeLast();
+            this.priorities.removeLast();
+            this.seq.removeLast();
+            return top;
+        }
+
+        /* 堆尾补到堆顶，再删掉堆尾，最后自顶向下调整 */
+        this.values.set(0, this.values.get(last));
+        this.priorities.set(0, this.priorities.get(last));
+        this.seq.set(0, this.seq.get(last));
+        this.values.removeLast();
+        this.priorities.removeLast();
+        this.seq.removeLast();
+        this.siftDown(0);
+
+        return top;
+    }
+
+    /**
+     * 只读堆顶元素的值，不删除。
+     *
+     * 空容器时返回 T 的类型零值（例如 int 为 0）。
+     *
+     * @return 堆顶元素的值；容器为空时返回 T 零值。
+     */
+    public T peek() {
+        if (this.values.isEmpty()) {
+            T zero = 0;
+            return zero;
+        }
+        return this.values.get(0);
+    }
+
+    /**
+     * 只读堆顶元素的优先级，不删除。
+     *
+     * 空容器时返回 0。
+     *
+     * @return 堆顶元素的优先级；容器为空时返回 0。
+     */
+    public int peekPriority() {
+        if (this.values.isEmpty()) {
+            return 0;
+        }
+        return this.priorities.get(0);
+    }
+
+    /**
+     * 返回当前元素个数。
+     *
+     * @return 队列中的元素数量。
+     */
+    public int size() {
+        return this.values.size();
+    }
+
+    /**
+     * 判断队列是否为空。
+     *
+     * @return 空返回 true，否则返回 false。
+     */
+    public bool isEmpty() {
+        return this.values.isEmpty();
+    }
+
+    /**
+     * 清空队列。三个内部数组的容量保持不变，清空后可立即继续复用；
+     * 插入序号 seq 同时归零，重新从 0 开始计数。
+     */
+    /**
+     * 析构函数：析构三个内部 ArrayList。
+     *
+     * priorities / seq 的元素虽然是 int（无元素析构语义），但它们的
+     * **缓冲区**同样需要释放，因此三者都要析构。
+     */
+    ~PriorityQueue() {
+        __cay_destroy<ArrayList<T, A>>(this.values);
+        __cay_destroy<ArrayList<int, A>>(this.priorities);
+        __cay_destroy<ArrayList<int, A>>(this.seq);
+    }
+
+    public void clear() {
+        this.values.clear();
+        this.priorities.clear();
+        this.seq.clear();
+        this.nextSeq = 0;
+    }
+
+    /**
+     * 判断 a（priority=pa, seq=sa）是否比 b（priority=pb, seq=sb）更应排在堆顶。
+     *
+     * 排序规则：先比 priority；大顶堆时 priority 大者更高，小顶堆时 priority
+     * 小者更高；priority 相等时 seq 小者更高（插入更早者先出，FIFO 稳定）。
+     *
+     * @param pa a 的优先级
+     * @param sa a 的插入序号
+     * @param pb b 的优先级
+     * @param sb b 的插入序号
+     * @return a 比 b 更应该排在堆顶时返回 true，否则返回 false。
+     */
+    private bool higher(int pa, int sa, int pb, int sb) {
+        if (this.minHeap) {
+            if (pa != pb) {
+                return pa < pb;
+            }
+            return sa < sb;
+        }
+        if (pa != pb) {
+            return pa > pb;
+        }
+        return sa < sb;
+    }
+
+    /**
+     * 一次性交换三个数组中下标 i 与 j 处的元素，保证 values/priorities/seq
+     * 三者的堆槽位始终一一对应。
+     *
+     * 下标越界或 i == j 时不执行任何操作。
+     *
+     * @param i 第一个下标
+     * @param j 第二个下标
+     */
+    private void swapAt(int i, int j) {
+        if (i == j) {
+            return;
+        }
+        if (i < 0 || j < 0) {
+            return;
+        }
+        int n = this.values.size();
+        if (i >= n || j >= n) {
+            return;
+        }
+
+        T valueTmp = this.values.get(i);
+        this.values.set(i, this.values.get(j));
+        this.values.set(j, valueTmp);
+
+        int priorityTmp = this.priorities.get(i);
+        this.priorities.set(i, this.priorities.get(j));
+        this.priorities.set(j, priorityTmp);
+
+        int seqTmp = this.seq.get(i);
+        this.seq.set(i, this.seq.get(j));
+        this.seq.set(j, seqTmp);
+    }
+
+    /**
+     * sift-up（上浮）：把下标 index 处的元素向上调整到合适位置。
+     *
+     * 只要该元素比父节点 (index-1)/2 更应该排在堆顶，就与父节点交换，
+     * 直到到达堆顶或不再更高为止。
+     *
+     * @param index 待上浮元素的下标
+     */
+    private void siftUp(int index) {
+        int i = index;
+        while (i > 0) {
+            int parent = (i - 1) / 2;
+            if (this.higher(
+                    this.priorities.get(i), this.seq.get(i),
+                    this.priorities.get(parent), this.seq.get(parent))) {
+                this.swapAt(i, parent);
+                i = parent;
+            } else {
+                break;
+            }
+        }
+    }
+
+    /**
+     * sift-down（下沉）：把下标 index 处的元素向下调整到合适位置。
+     *
+     * 每次在左右孩子 2*i+1 / 2*i+2 中选出「更应该在堆顶」的一个，
+     * 若它比当前元素更高则交换并继续下沉，否则停止。
+     *
+     * @param index 待下沉元素的下标
+     */
+    private void siftDown(int index) {
+        int n = this.values.size();
+        int i = index;
+        while (true) {
+            int left = 2 * i + 1;
+            int right = 2 * i + 2;
+            int best = i;
+
+            if (left < n) {
+                if (this.higher(
+                        this.priorities.get(left), this.seq.get(left),
+                        this.priorities.get(best), this.seq.get(best))) {
+                    best = left;
+                }
+            }
+            if (right < n) {
+                if (this.higher(
+                        this.priorities.get(right), this.seq.get(right),
+                        this.priorities.get(best), this.seq.get(best))) {
+                    best = right;
+                }
+            }
+
+            if (best == i) {
+                break;
+            }
+            this.swapAt(i, best);
+            i = best;
+        }
+    }
+}
+
+} // namespace std

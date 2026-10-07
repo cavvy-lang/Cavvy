@@ -4,6 +4,7 @@
 
 use crate::ast::*;
 use crate::codegen::context::IRGenerator;
+use crate::miette_diagnostic::SourceLocation;
 use crate::miette_diagnostic::{CayResult, ErrorCodes, codegen_error_at};
 use crate::types::Type;
 
@@ -205,19 +206,230 @@ impl IRGenerator {
         Ok(format!("{}* {}", elem_type, result_temp))
     }
 
+    /// 生成带类型实参的编译器内建调用代码（按内建名分派）。
+    pub fn generate_builtin_type_call(
+        &mut self,
+        builtin: &BuiltinTypeCallExpr,
+    ) -> CayResult<String> {
+        match builtin.name.as_str() {
+            "__cay_alloc_array" => self.generate_alloc_array_expression(builtin),
+            "__cay_destroy" => self.generate_builtin_destroy(builtin),
+            "__cay_destroy_array" => self.generate_builtin_destroy_array(builtin),
+            other => Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
+                builtin.loc.clone(),
+                format!("unknown type-parameterized builtin '{}'", other),
+            )),
+        }
+    }
+
+    /// 把一个「对象引用」表达式规约为 i8* SSA 值。
+    ///
+    /// 实参可能是：
+    ///   - 类/数组字段读取 → 已是 `i8*`；
+    ///   - 数组类型字段的地址形式 → `i8**`，需 load 一次；
+    ///   - 以 long 形式保存的裸地址（如 `__owned`）→ inttoptr。
+    fn object_ref_to_i8_ptr(&mut self, value_expr: &str, loc: &SourceLocation) -> CayResult<String> {
+        let (ty, val) = self.parse_typed_value(value_expr);
+        if ty == "i8*" {
+            Ok(val.to_string())
+        } else if ty == "i8**" {
+            // 数组类型字段的读取结果：位模式就是元素基址，只是类型标注为 i8**，
+            // 因此 bitcast 即可，不能再 load 一层（会解引用到元素内容）。
+            let p = self.new_temp();
+            self.emit_line(&format!("  {} = bitcast i8** {} to i8*", p, val));
+            Ok(p)
+        } else if ty == "i64" {
+            let p = self.new_temp();
+            self.emit_line(&format!("  {} = inttoptr i64 {} to i8*", p, val));
+            Ok(p)
+        } else {
+            Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
+                loc.clone(),
+                format!("destruction target must be an object reference or i64 address, got {}", ty),
+            ))
+        }
+    }
+
+    /// 生成 `__cay_destroy<T>(value)`：析构一个 T 值，**不**释放对象本体。
+    ///
+    /// T 无析构函数（原始类型 / struct）时编译期展开为空操作；
+    /// 对象引用为 null 时运行期跳过（与 BUG-008 的守卫语义一致）。
+    pub fn generate_builtin_destroy(
+        &mut self,
+        builtin: &BuiltinTypeCallExpr,
+    ) -> CayResult<String> {
+        let t_type = self.resolve_type_arg_concrete(&builtin.type_args[0]);
+
+        // 先求值实参（即使 T 无析构也要保持求值副作用）
+        let value_expr = self.generate_expression(&builtin.args[0])?;
+
+        let Some(t_class) = self.type_has_destructor(&t_type) else {
+            return Ok("void".to_string());
+        };
+        let dtor_fn = self.mangle_itanium_method(&t_class, "D1", &[], false, true, false);
+        self.pending_dtor_declares.insert(dtor_fn.clone());
+
+        let obj = self.object_ref_to_i8_ptr(&value_expr, &builtin.loc)?;
+
+        let is_null = self.new_temp();
+        self.emit_line(&format!("  {} = icmp eq i8* {}, null", is_null, obj));
+        let skip_label = self.new_label("cay.destroy.skip");
+        let call_label = self.new_label("cay.destroy.call");
+        let done_label = self.new_label("cay.destroy.done");
+        self.emit_line(&format!(
+            "  br i1 {}, label %{}, label %{}",
+            is_null, skip_label, call_label
+        ));
+        self.emit_line(&format!("{}:", skip_label));
+        self.emit_line(&format!("  br label %{}", done_label));
+        self.emit_line(&format!("{}:", call_label));
+        self.emit_line(&format!("  call void @{}(i8* {})", dtor_fn, obj));
+        self.emit_line(&format!("  br label %{}", done_label));
+        self.emit_line(&format!("{}:", done_label));
+
+        Ok("void".to_string())
+    }
+
+    /// 生成 `__cay_destroy_array<T>(array, count)`：析构密集数组中每个元素。
+    ///
+    /// `array` 必须是元素基址（如 ArrayList 的 `data` 字段，已跳过长度头）。
+    /// 只适用于**密集存储**；带删除标记的容器（如 HashMap 的三态槽位）
+    /// 必须自行按状态遍历，不能使用本原语。
+    pub fn generate_builtin_destroy_array(
+        &mut self,
+        builtin: &BuiltinTypeCallExpr,
+    ) -> CayResult<String> {
+        let t_type = self.resolve_type_arg_concrete(&builtin.type_args[0]);
+
+        let arr_expr = self.generate_expression(&builtin.args[0])?;
+        let count_expr = self.generate_expression(&builtin.args[1])?;
+
+        // T 无析构函数时，参数仍求值（保持副作用），但不生成循环。
+        let Some(t_class) = self.type_has_destructor(&t_type) else {
+            return Ok("void".to_string());
+        };
+        let dtor_fn = self.mangle_itanium_method(&t_class, "D1", &[], false, true, false);
+        self.pending_dtor_declares.insert(dtor_fn.clone());
+
+        let arr = self.object_ref_to_i8_ptr(&arr_expr, &builtin.loc)?;
+        let (count_ty, count_val) = self.parse_typed_value(&count_expr);
+        if !count_ty.starts_with('i') {
+            return Err(codegen_error_at(
+                ErrorCodes::CODEGEN_INVALID_OPERATION,
+                builtin.loc.clone(),
+                format!("__cay_destroy_array count must be integer, got {}", count_ty),
+            ));
+        }
+        // 统一到 i32 计数器
+        let count_i32 = if count_ty == "i32" {
+            count_val.to_string()
+        } else {
+            let t = self.new_temp();
+            self.emit_line(&format!("  {} = trunc {} {} to i32", t, count_ty, count_val));
+            t
+        };
+
+        // 空基址或非正长度直接跳过。
+        let arr_is_null = self.new_temp();
+        self.emit_line(&format!("  {} = icmp eq i8* {}, null", arr_is_null, arr));
+        let count_nonpos = self.new_temp();
+        self.emit_line(&format!("  {} = icmp sle i32 {}, 0", count_nonpos, count_i32));
+        let skip_cond = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = or i1 {}, {}",
+            skip_cond, arr_is_null, count_nonpos
+        ));
+        let skip_label = self.new_label("cay.destroy_array.skip");
+        let setup_label = self.new_label("cay.destroy_array.setup");
+        let end_label = self.new_label("cay.destroy_array.end");
+        self.emit_line(&format!(
+            "  br i1 {}, label %{}, label %{}",
+            skip_cond, skip_label, setup_label
+        ));
+        self.emit_line(&format!("{}:", skip_label));
+        self.emit_line(&format!("  br label %{}", end_label));
+
+        self.emit_line(&format!("{}:", setup_label));
+        let counter_ptr = self.new_temp();
+        self.emit_line(&format!("  {} = alloca i32", counter_ptr));
+        self.emit_line(&format!("  store i32 0, i32* {}", counter_ptr));
+        let elem_size = t_type.size_in_bytes().max(1) as i64;
+        let loop_check = self.new_label("cay.destroy_array.check");
+        let loop_body = self.new_label("cay.destroy_array.body");
+        self.emit_line(&format!("  br label %{}", loop_check));
+
+        self.emit_line(&format!("{}:", loop_check));
+        let i_val = self.new_temp();
+        self.emit_line(&format!("  {} = load i32, i32* {}", i_val, counter_ptr));
+        let in_range = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = icmp slt i32 {}, {}",
+            in_range, i_val, count_i32
+        ));
+        self.emit_line(&format!(
+            "  br i1 {}, label %{}, label %{}",
+            in_range, loop_body, end_label
+        ));
+
+        self.emit_line(&format!("{}:", loop_body));
+        let i64_val = self.new_temp();
+        self.emit_line(&format!("  {} = sext i32 {} to i64", i64_val, i_val));
+        let byte_offset = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = mul i64 {}, {}",
+            byte_offset, i64_val, elem_size
+        ));
+        let elem_slot = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = getelementptr i8, i8* {}, i64 {}",
+            elem_slot, arr, byte_offset
+        ));
+        let slot_ptr = self.new_temp();
+        self.emit_line(&format!("  {} = bitcast i8* {} to i8**", slot_ptr, elem_slot));
+        let elem_obj = self.new_temp();
+        self.emit_line(&format!("  {} = load i8*, i8** {}", elem_obj, slot_ptr));
+
+        let elem_null = self.new_temp();
+        self.emit_line(&format!("  {} = icmp eq i8* {}, null", elem_null, elem_obj));
+        let elem_skip = self.new_label("cay.destroy_array.elem.skip");
+        let elem_call = self.new_label("cay.destroy_array.elem.call");
+        let elem_done = self.new_label("cay.destroy_array.elem.done");
+        self.emit_line(&format!(
+            "  br i1 {}, label %{}, label %{}",
+            elem_null, elem_skip, elem_call
+        ));
+        self.emit_line(&format!("{}:", elem_skip));
+        self.emit_line(&format!("  br label %{}", elem_done));
+        self.emit_line(&format!("{}:", elem_call));
+        self.emit_line(&format!("  call void @{}(i8* {})", dtor_fn, elem_obj));
+        self.emit_line(&format!("  br label %{}", elem_done));
+        self.emit_line(&format!("{}:", elem_done));
+
+        let next_i = self.new_temp();
+        self.emit_line(&format!("  {} = add i32 {}, 1", next_i, i_val));
+        self.emit_line(&format!("  store i32 {}, i32* {}", next_i, counter_ptr));
+        self.emit_line(&format!("  br label %{}", loop_check));
+
+        self.emit_line(&format!("{}:", end_label));
+
+        Ok("void".to_string())
+    }
+
     /// 生成分配器-backed 数组分配表达式代码
     /// __cay_alloc_array<T>(allocator, count)
     /// 内存布局与 new T[n] 相同: [长度:i32][填充:i32][元素0]...
     /// 通过 Allocator 接口 vtable slot 0 (allocate(long)) 申请内存。
     pub fn generate_alloc_array_expression(
         &mut self,
-        alloc_array: &AllocArrayExpr,
+        alloc_array: &BuiltinTypeCallExpr,
     ) -> CayResult<String> {
         // 单态化后解析出具体元素类型
-        let element_type = self.resolve_type_arg_concrete(&alloc_array.element_type);
+        let element_type = self.resolve_type_arg_concrete(&alloc_array.type_args[0]);
 
         // 生成大小表达式
-        let size_val_expr = self.generate_expression(&alloc_array.size)?;
+        let size_val_expr = self.generate_expression(&alloc_array.args[1])?;
         let (size_type, size_val) = self.parse_typed_value(&size_val_expr);
 
         if !size_type.starts_with("i") {
@@ -268,7 +480,7 @@ impl IRGenerator {
         );
 
         // 生成 allocator 表达式，得到 i8* 对象指针
-        let allocator_result = self.generate_expression(&alloc_array.allocator)?;
+        let allocator_result = self.generate_expression(&alloc_array.args[0])?;
         let (allocator_type, allocator_val) = self.parse_typed_value(&allocator_result);
 
         // 确保 allocator 是对象指针（i8*）

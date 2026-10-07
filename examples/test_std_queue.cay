@@ -1,0 +1,104 @@
+#include <std/queue.cay>
+#include <c/stdio.cay>
+
+using std::Queue;
+using std::GlobalAlloc;
+
+public int main() {
+    /* 空容器行为：取元素操作一律返回 T 的零值 */
+    Queue<int> q = new Queue<int>();
+    println("empty isEmpty = " + String.valueOf(q.isEmpty()));
+    println("empty size = " + String.valueOf(q.size()));
+    println("empty dequeue = " + String.valueOf(q.dequeue()));
+    println("empty pop = " + String.valueOf(q.pop()));
+    println("empty front = " + String.valueOf(q.front()));
+    println("empty back = " + String.valueOf(q.back()));
+
+    /* 基本增删：先进先出 (FIFO) */
+    q.enqueue(10);
+    q.enqueue(20);
+    q.enqueue(30);
+    println("size after 3 enqueue = " + String.valueOf(q.size()));
+    println("front after enqueue = " + String.valueOf(q.front()));
+    println("back after enqueue = " + String.valueOf(q.back()));
+    println("dequeue = " + String.valueOf(q.dequeue()));
+    println("size after dequeue = " + String.valueOf(q.size()));
+    println("front after dequeue = " + String.valueOf(q.front()));
+    println("back after dequeue = " + String.valueOf(q.back()));
+
+    /* push/pop 是 enqueue/dequeue 的别名 */
+    q.push(40);
+    println("pop via alias = " + String.valueOf(q.pop()));
+    println("size after pop = " + String.valueOf(q.size()));
+
+    /* clear 与空队列零值返回 */
+    q.clear();
+    println("after clear isEmpty = " + String.valueOf(q.isEmpty()));
+    println("after clear size = " + String.valueOf(q.size()));
+    println("after clear front = " + String.valueOf(q.front()));
+    println("after clear back = " + String.valueOf(q.back()));
+    q.enqueue(99);
+    println("reuse dequeue = " + String.valueOf(q.dequeue()));
+
+    /* 迭代器：增强 for 按「队头 -> 队尾」遍历 */
+    Queue<int> loopQueue = new Queue<int>();
+    loopQueue.enqueue(1);
+    loopQueue.enqueue(2);
+    loopQueue.enqueue(3);
+    loopQueue.dequeue();
+    int loopSum = 0;
+    int loopCount = 0;
+    for (int x : loopQueue) {
+        loopSum = loopSum + x;
+        loopCount = loopCount + 1;
+    }
+    println("foreach count = " + String.valueOf(loopCount));
+    println("foreach sum = " + String.valueOf(loopSum));
+
+    /* 200 次连续操作（100 次入队 + 100 次出队），期间触发惰性压缩，
+     * 校验出队顺序严格 FIFO */
+    Queue<int> batch = new Queue<int>();
+    for (int i = 1; i <= 100; i = i + 1) {
+        batch.enqueue(i);
+    }
+    println("batch size after 100 enqueue = " + String.valueOf(batch.size()));
+    int batchSum = 0;
+    bool batchOrdered = true;
+    for (int i = 1; i <= 100; i = i + 1) {
+        int v = batch.dequeue();
+        if (v != i) {
+            batchOrdered = false;
+        }
+        batchSum = batchSum + v;
+    }
+    println("batch ordered = " + String.valueOf(batchOrdered));
+    println("batch sum = " + String.valueOf(batchSum));
+    println("batch final size = " + String.valueOf(batch.size()));
+    println("batch empty front = " + String.valueOf(batch.front()));
+    println("batch empty back = " + String.valueOf(batch.back()));
+
+    /* 200 轮交替入队/出队（合计 400 次连续操作），持续触发压缩 */
+    Queue<int> alt = new Queue<int>();
+    int altOk = 0;
+    for (int i = 0; i < 200; i = i + 1) {
+        alt.enqueue(i);
+        int v = alt.dequeue();
+        if (v == i) {
+            altOk = altOk + 1;
+        }
+    }
+    println("alternating ok = " + String.valueOf(altOk));
+    println("alternating final size = " + String.valueOf(alt.size()));
+
+    /* 容量构造与分配器构造 */
+    Queue<int> capQueue = new Queue<int>(4);
+    capQueue.enqueue(7);
+    println("capacity ctor dequeue = " + String.valueOf(capQueue.dequeue()));
+
+    Queue<int, GlobalAlloc> allocQueue = new Queue<int, GlobalAlloc>(GlobalAlloc.getInstance());
+    allocQueue.enqueue(8);
+    println("allocator ctor dequeue = " + String.valueOf(allocQueue.dequeue()));
+
+    println("std::Queue tests passed");
+    return 0;
+}

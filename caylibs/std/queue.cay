@@ -1,0 +1,302 @@
+/*
+ * Cavvy 队列标准库 - 0.5.2.x
+ *
+ * 泛型单态化实现：Queue<T, A: Allocator = GlobalAlloc>
+ *
+ * 基于 ArrayList<T, A> 的先进先出（FIFO）队列。底层用 head 记录队头
+ * 在底层列表中的逻辑下标：元素逻辑位置 i 对应 items.get(head + i)，
+ * 逻辑长度等于 items.size() - head。enqueue 直接追加到列表末尾。
+ *
+ * 出队仅右移 head 下标；当被跳过的前缀足够大（head >= 32 且
+ * head * 2 >= items.size()）时执行一次惰性压缩：把前 head 个元素整体
+ * 移除并把 head 归零。压缩保证出队为摊销 O(1)，且不释放已分配容量
+ * （容量复用，避免反复扩缩容）。
+ *
+ * 配套迭代器 QueueIterator<T, A> 按「队头 -> 队尾」顺序遍历，
+ * 即元素出队的顺序，与增强 for 循环解糖兼容。
+ */
+
+#pragma once
+
+#include <Allocator.cay>
+#include <std/arraylist.cay>
+#include <std/iterator.cay>
+
+namespace std {
+
+/**
+ * Queue 迭代器实现。
+ *
+ * 按「队头 -> 队尾」顺序遍历，即元素出队的顺序。
+ * 创建时快照起始下标 head 与终点 end（构造时刻的 items.size()），
+ * 内部 index 从 head 递增到 end - 1，因此遍历期间的结构性修改
+ * （例如新入队的元素）不会扩展本次遍历的范围，与 ArrayListIterator
+ * 的快照语义一致。
+ *
+ * 迭代器持有底层 ArrayList 的引用而非副本，请勿在遍历过程中修改队列。
+ */
+public final class QueueIterator<T, A: Allocator = GlobalAlloc> implements Iterator<T> {
+    private ArrayList<T, A> items;
+    private int index;
+    private int end;
+
+    /**
+     * 构造一个从队头向队尾遍历的迭代器。
+     *
+     * @param items 底层数组列表的引用（Queue 内部持有，调用方不应为 null）
+     * @param head  起始逻辑下标；小于 0 时按 0 归一化处理
+     * @param end   遍历终点（不包含），构造时刻的 items.size() 快照；
+     *              若 end <= head 则 hasNext() 立即返回 false
+     */
+    public QueueIterator(ArrayList<T, A> items, int head, int end) {
+        this.items = items;
+        if (head < 0) {
+            head = 0;
+        }
+        this.index = head;
+        this.end = end;
+    }
+
+    /**
+     * 是否还有元素可遍历。
+     *
+     * @return 内部 index < end 时返回 true；空队列返回 false
+     */
+    public bool hasNext() {
+        return this.index < this.end;
+    }
+
+    /**
+     * 返回下一个元素（自队头向队尾）并将索引后移一位。
+     *
+     * 越界调用（hasNext() 为 false 时继续调用）不会崩溃，
+     * 返回 T 的零值 —— 与 Queue.dequeue()/front() 的空队列语义一致。
+     *
+     * @return 当前索引处的元素；迭代器已耗尽时返回 T 的零值
+     */
+    public T next() {
+        if (this.index < 0 || this.index >= this.end) {
+            T zero = 0;
+            return zero;
+        }
+        T value = this.items.get(this.index);
+        this.index = this.index + 1;
+        return value;
+    }
+}
+
+/**
+ * 泛型队列，先进先出（FIFO）容器。
+ *
+ * 支持泛型元素类型 T 与分配器参数 A（默认 GlobalAlloc）。
+ * 元素存储与内存管理委托给内部的 ArrayList<T, A>，容量按 2 倍自动增长。
+ *
+ * 【内存释放的当前限制】编译器只为「自身声明了析构函数」的类注册析构候选，
+ * 且不会为包装类的 __dtor 链式调用字段的析构函数。因此本类的局部变量离开
+ * 作用域时，内部 ArrayList 的缓冲区不会被释放（与基线 HashSet 相同的系统性
+ * 缺口，属编译器侧特性，无法在源码层补齐）。需要立即回收时请显式调用 clear()
+ * 或让内部的 ArrayList 直接离开作用域。
+ *
+ * 【所有权转移的当前限制】编译器的 RAII 所有权转移只识别直接调用
+ * ArrayList.add 的场合。把局部对象经 enqueue() 放入队列后，该局部变量仍会在
+ * 其作用域结束时被析构，容器将持有已析构对象的悬垂引用。存放对象类型时
+ * 请使用 new 表达式直接入队（不要先绑定到局部变量再 enqueue），或使用
+ * UniquePtr/ScopedPtr 管理所有权。
+ *
+ * 空队列安全：dequeue()/pop()/front()/back() 在空队列时不抛出异常，
+ * 返回 T 的零值。
+ */
+public final class Queue<T, A: Allocator = GlobalAlloc> implements Iterable<T> {
+    private ArrayList<T, A> items;
+    private int head;
+
+    /**
+     * 默认构造，使用 GlobalAlloc 作为底层分配器。
+     */
+    public Queue() {
+        this.items = new ArrayList<T, A>();
+        this.head = 0;
+    }
+
+    /**
+     * 指定初始容量构造，使用 GlobalAlloc 作为底层分配器。
+     *
+     * @param initialCapacity 初始容量提示；小于 1 时底层按 1 处理
+     */
+    public Queue(int initialCapacity) {
+        this.items = new ArrayList<T, A>(initialCapacity);
+        this.head = 0;
+    }
+
+    /**
+     * 指定分配器构造，底层 ArrayList 的全部内存申请与释放都经过该分配器。
+     *
+     * @param allocator 内存分配器实例（不可为 null）
+     */
+    public Queue(A allocator) {
+        this.items = new ArrayList<T, A>(allocator);
+        this.head = 0;
+    }
+
+    /**
+     * 入队：把元素追加到队尾。
+     *
+     * @param value 要入队的元素
+     */
+    public void enqueue(@owns T value) {
+        this.items.add(value);
+    }
+
+    /**
+     * push 是 enqueue 的别名，语义完全相同：把元素追加到队尾。
+     *
+     * @param value 要入队的元素
+     */
+    public void push(@owns T value) {
+        this.enqueue(value);
+    }
+
+    /**
+     * 出队：移除并返回队头元素。
+     *
+     * 空队列时不抛出异常，返回 T 的零值（int/long 为 0，bool 为 false，
+     * 对象引用为空引用），且队列保持为空。
+     *
+     * 出队仅右移 head 下标，必要时触发一次惰性压缩，摊销 O(1)。
+     *
+     * @return 原队头元素；空队列时返回 T 的零值
+     */
+    public T dequeue() {
+        if (this.isEmpty()) {
+            T zero = 0;
+            return zero;
+        }
+        T value = this.items.get(this.head);
+        /* 让出的槽位置零：避免死区仍持有已交还调用方的对象引用
+           （否则底层 ArrayList 注入的元素析构会二次析构该对象） */
+        T cleared = 0;
+        this.items.set(this.head, cleared);
+        this.head = this.head + 1;
+        this.compact();
+        return value;
+    }
+
+    /**
+     * pop 是 dequeue 的别名，语义完全相同：移除并返回队头元素。
+     *
+     * 空队列时返回 T 的零值。
+     *
+     * @return 原队头元素；空队列时返回 T 的零值
+     */
+    public T pop() {
+        return this.dequeue();
+    }
+
+    /**
+     * 只读访问队头元素，不出队、不改变队列内容。
+     *
+     * 空队列时不抛出异常，返回 T 的零值。
+     *
+     * @return 当前队头元素；空队列时返回 T 的零值
+     */
+    public T front() {
+        if (this.isEmpty()) {
+            T zero = 0;
+            return zero;
+        }
+        return this.items.get(this.head);
+    }
+
+    /**
+     * 只读访问队尾元素，不出队、不改变队列内容。
+     *
+     * 空队列时不抛出异常，返回 T 的零值。
+     *
+     * @return 当前队尾元素；空队列时返回 T 的零值
+     */
+    public T back() {
+        if (this.isEmpty()) {
+            T zero = 0;
+            return zero;
+        }
+        return this.items.get(this.items.size() - 1);
+    }
+
+    /**
+     * 判断队列是否为空。
+     *
+     * @return 队列内无元素时返回 true，否则返回 false
+     */
+    public bool isEmpty() {
+        return this.size() == 0;
+    }
+
+    /**
+     * 返回队列内元素数量。
+     *
+     * @return 元素个数（非负整数），等于 items.size() - head
+     */
+    public int size() {
+        return this.items.size() - this.head;
+    }
+
+    /**
+     * 清空队列，并把 head 归零。底层 ArrayList 的容量保持不变，
+     * 清空后可继续复用该队列。
+     */
+    public void clear() {
+        this.items.clear();
+        this.head = 0;
+    }
+
+    /**
+     * 返回按「队头 -> 队尾」顺序遍历的迭代器（即元素出队的顺序）。
+     *
+     * 迭代器在创建时快照队列的逻辑终点，遍历期间新入队的元素不会被访问。
+     * 空队列返回的迭代器 hasNext() 立即为 false。
+     *
+     * @return Iterator<T> 实例，供增强 for 循环或手动遍历使用
+     */
+    public Iterator<T> iterator() {
+        return new QueueIterator<T, A>(this.items, this.head, this.items.size());
+    }
+
+    /**
+     * 析构函数：析构内部 ArrayList（释放 backing buffer 并析构其中元素）。
+     *
+     * 注意此处只析构 [head, size) 窗口之外的死区已被 dequeue 置零，
+     * 因此元素不会被二次析构。
+     */
+    ~Queue() {
+        __cay_destroy<ArrayList<T, A>>(this.items);
+    }
+
+    /**
+     * 出队后的惰性压缩。
+     *
+     * 当已跳过的前缀足够大（head >= 32 且 head * 2 >= items.size()）时，
+     * 把前 head 个元素从底层 ArrayList 中整体移除并把 head 归零。
+     * 压缩使被跳过的元素占比保持在一个常数以内，从而保证出队为
+     * 摊销 O(1)；只移动元素、不释放已分配容量。
+     *
+     * 实现：先把幸存元素逐个左移到下标 0 开始的位置（每次 O(1)），
+     * 再从末尾调用 head 次 removeLast() 截掉多余尾部（每次 O(1)），
+     * 因此单次压缩为 Θ(剩余元素数)，而非逐次 remove(0) 的
+     * Θ(head × size)。容量不释放，后续可复用。
+     */
+    private void compact() {
+        /* 用 long 比较，避免极端容量下 head * 2 在 int 域溢出为负导致条件恒假 */
+        if (this.head >= 32 && (long)this.head * 2L >= (long)this.items.size()) {
+            int remaining = this.items.size() - this.head;
+            for (int i = 0; i < remaining; i = i + 1) {
+                this.items.set(i, this.items.get(this.head + i));
+            }
+            for (int i = 0; i < this.head; i = i + 1) {
+                this.items.removeLast();
+            }
+            this.head = 0;
+        }
+    }
+}
+
+} // namespace std

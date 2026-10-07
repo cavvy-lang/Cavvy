@@ -593,8 +593,23 @@ impl SemanticAnalyzer {
                 name: p.name.clone(),
                 param_type: self.replace_type_params(&p.param_type, type_params),
                 is_varargs: p.is_varargs,
+                is_owning: p.is_owning,
             })
             .collect()
+    }
+
+    /// `@owns` 的适用性判定：只有可能带析构函数的对象类型才谈得上「转移所有权」。
+    ///
+    /// 允许：类实例（`Object`）、泛型实例（`Generic`）、类/方法级类型参数
+    /// （`GenericParam`，其具体类型在单态化后才知道）。
+    /// 拒绝：原始类型、String、数组、指针、函数类型、struct —— 它们没有析构
+    /// 语义，标注 `@owns` 只会静默抑制调用方的析构（泄漏）而无任何接管，
+    /// 属于 API 作者笔误，应当报错而不是放过。
+    fn type_can_be_owned(ty: &Type) -> bool {
+        matches!(
+            ty,
+            Type::Object(_) | Type::Generic(_, _) | Type::GenericParam(_)
+        )
     }
 
     /// 获取类的限定查找名（包含命名空间路径）
@@ -701,6 +716,40 @@ impl SemanticAnalyzer {
                         self.replace_params_type_params(&method.params, &all_type_params);
                     let return_type =
                         self.replace_type_params(&method.return_type, &all_type_params);
+
+                    // 校验 @owns 用法：它声明「被调用方取得实参所有权」，
+                    // 只对可被析构的对象类型有意义。
+                    for p in &params {
+                        if !p.is_owning {
+                            continue;
+                        }
+                        if p.is_varargs {
+                            return Err(semantic_error_with_file(
+                                ErrorCodes::SEMANTIC_INVALID_OPERATION,
+                                self.current_file.clone(),
+                                method.loc.line,
+                                method.loc.column,
+                                format!(
+                                    "方法 '{}' 的可变参数 '{}' 不能标注 @owns\n提示: @owns 只能用于单个对象类型形参",
+                                    method.name, p.name
+                                ),
+                            ));
+                        }
+                        if !Self::type_can_be_owned(&p.param_type) {
+                            return Err(semantic_error_with_file(
+                                ErrorCodes::SEMANTIC_INVALID_OPERATION,
+                                self.current_file.clone(),
+                                method.loc.line,
+                                method.loc.column,
+                                format!(
+                                    "方法 '{}' 的形参 '{}'（类型 {}）不能标注 @owns\n提示: @owns 只适用于类类型或类型参数（原始类型/数组/struct 没有析构语义）",
+                                    method.name,
+                                    p.name,
+                                    p.param_type.display_name()
+                                ),
+                            ));
+                        }
+                    }
 
                     let method_info = MethodInfo {
                         name: method.name.clone(),
@@ -1028,6 +1077,7 @@ impl SemanticAnalyzer {
                             &type_args,
                         ),
                         is_varargs: p.is_varargs,
+                        is_owning: p.is_owning,
                     })
                     .collect();
                 let substituted_return = substitute_interface_type(

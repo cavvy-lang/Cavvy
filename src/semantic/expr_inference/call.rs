@@ -411,6 +411,52 @@ impl SemanticAnalyzer {
         selected_return_type.map(Ok)
     }
 
+    /// 用接收者的类型实参替换方法形参中的类级类型参数。
+    ///
+    /// 例：接收者 `Stack<ArrayList<int>, CAlloc>` 上调用 `push(T value)` 时，
+    /// 把形参类型 `T` 替换为 `ArrayList<int>`，这样比较时才能真正校验
+    /// 「推入的元素是否就是声明的元素类型」。
+    ///
+    /// 仅在方法所属类就是接收者类时替换：方法可能继承自父类，父类的类型参数
+    /// 与接收者的类型实参并不一一对应，那时保持原形参（即既有行为）。
+    fn substitute_receiver_type_args(
+        &self,
+        obj_type: &Type,
+        owner_class: &str,
+        params: &[crate::types::ParameterInfo],
+    ) -> Vec<crate::types::ParameterInfo> {
+        let Type::Generic(base, args) = &obj_type else {
+            return params.to_vec();
+        };
+        // 接收者类与方法所属类必须是同一个（比较基础名，容忍命名空间前缀差异）
+        let base_simple = base.rsplit("::").next().unwrap_or(base.as_str());
+        let owner_simple = owner_class.rsplit("::").next().unwrap_or(owner_class);
+        if base_simple != owner_simple {
+            return params.to_vec();
+        }
+        let Some(class_info) = self.type_registry.get_class(base.as_str()) else {
+            return params.to_vec();
+        };
+        if class_info.type_params.len() != args.len() {
+            return params.to_vec();
+        }
+        let mapping: std::collections::HashMap<String, Type> = class_info
+            .type_params
+            .iter()
+            .zip(args.iter())
+            .map(|(tp, arg)| (tp.name.clone(), arg.clone()))
+            .collect();
+        params
+            .iter()
+            .map(|p| crate::types::ParameterInfo {
+                name: p.name.clone(),
+                param_type: crate::types::substitute_type_params(&p.param_type, &mapping),
+                is_varargs: p.is_varargs,
+                is_owning: p.is_owning,
+            })
+            .collect()
+    }
+
     /// 尝试将标识符调用解析为顶层函数
     fn try_infer_top_level_call(
         &mut self,
@@ -475,7 +521,13 @@ impl SemanticAnalyzer {
             }
         }
 
-        // 处理基本类型的 toString() 方法调用
+        // 处理基本类型的 Object 协议方法
+        //
+        // 原始类型没有类，但它们同样承载语言的对象协议：toString 早已在此支持，
+        // 这里补齐 equals / hashCode —— 否则 `HashMap<int, V>` 会在
+        // `key.equals(other)` 处把**变量名**当成类名去 mangle，生成
+        // `_ZN1a6equalsEi` 这种不存在的符号，直到链接期才以
+        // "use of undefined value" 暴露。
         if matches!(
             obj_type,
             Type::Int32 | Type::Int64 | Type::Float32 | Type::Float64 | Type::Bool | Type::Char
@@ -483,6 +535,27 @@ impl SemanticAnalyzer {
             if member.member == "toString" && call.args.is_empty() {
                 return Ok(Some(Type::String));
             }
+            // equals(other) -> bool：原始类型按值比较
+            if member.member == "equals" && call.args.len() == 1 {
+                // 先求值实参以保留其副作用与错误检查
+                self.infer_expr_type_internal(&call.args[0])?;
+                return Ok(Some(Type::Bool));
+            }
+            // hashCode() -> int
+            if member.member == "hashCode" && call.args.is_empty() {
+                return Ok(Some(Type::Int32));
+            }
+            // 其余成员访问到此为止：继续往下走会把**变量名当成类名**解析
+            // （报出 "in class 'x'" 这种误导信息，泛型上下文里更会生成
+            // `_ZN1a6equalsEi` 这类以变量名命名的假符号，直到链接期才暴露）。
+            return Err(semantic_error_at_loc(
+                &call.loc,
+                format!(
+                    "原始类型 {} 没有方法 '{}'\n提示: 原始类型只提供 Object 协议方法 toString() / equals() / hashCode()",
+                    obj_type.display_name(),
+                    member.member
+                ),
+            ));
         }
 
         // 处理类实例方法调用 - 支持方法重载
@@ -518,7 +591,15 @@ impl SemanticAnalyzer {
                 &self.type_registry,
                 &member.loc,
             )?;
-            // 检查参数类型兼容性（支持可变参数）
+            // 检查参数类型兼容性（支持可变参数）。
+            //
+            // 形参类型必须先按**接收者的类型实参**替换：方法声明里的形参类型
+            // 可能是类级类型参数（如 `Stack<T, A>.push(T value)` 的 `T`），
+            // 直接拿未替换的 `GenericParam("T")` 去比较会命中
+            // types_compatible 中「GenericParam 匹配任何类型」的放行规则，
+            // 于是 `Stack<ArrayList<int>, A>.push(ArrayList<int, B>())` 这类
+            // 泛型实参不匹配的调用被静默接受，直到运行期才以内存错误暴露。
+            let params = self.substitute_receiver_type_args(&obj_type, &owner_class, &params);
             if let Err(msg) = self.check_arguments_compatible(
                 &call.args,
                 &params,
@@ -641,6 +722,7 @@ impl SemanticAnalyzer {
                                 args,
                             ),
                             is_varargs: p.is_varargs,
+                            is_owning: p.is_owning,
                         })
                         .collect();
                     signature.return_type = self.substitute_type_params(

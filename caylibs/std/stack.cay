@@ -1,0 +1,212 @@
+/*
+ * Cavvy 栈标准库 - 0.5.2.x
+ *
+ * 泛型单态化实现：Stack<T, A: Allocator = GlobalAlloc>
+ *
+ * 底层完全委托给 ArrayList<T, A>：栈顶对应底层列表的末尾元素，
+ * 因此 push/pop 均为均摊 O(1)。语义为后进先出（LIFO）。
+ *
+ * 配套迭代器 StackIterator<T, A> 按「栈顶 -> 栈底」顺序遍历，
+ * 即元素被 pop 的顺序，与增强 for 循环解糖兼容。
+ */
+
+#pragma once
+
+#include <Allocator.cay>
+#include <std/arraylist.cay>
+#include <std/iterator.cay>
+
+namespace std {
+
+/**
+ * Stack 迭代器实现。
+ *
+ * 按「栈顶 -> 栈底」顺序遍历，即元素被 pop 的顺序。
+ * 创建时快照栈内元素数量 size，内部 index 从 size - 1 递减到 0，
+ * hasNext 以 index >= 0 判定。
+ *
+ * 迭代器持有底层 ArrayList 的引用而非副本，遍历期间对栈的
+ * 结构性修改（push/pop/clear）不会改变本次遍历的范围，
+ * 但底层数组内容的变化可能被观察到，请勿在遍历中修改栈。
+ */
+public final class StackIterator<T, A: Allocator = GlobalAlloc> implements Iterator<T> {
+    private ArrayList<T, A> items;
+    private int index;
+
+    /**
+     * 构造一个从栈顶向栈底遍历的迭代器。
+     *
+     * @param items 底层数组列表的引用（Stack 内部持有，调用方不应为 null）
+     * @param size  构造时刻栈内元素数量；迭代器内部 index 初始化为 size - 1，
+     *              若 size <= 0 则 hasNext() 立即返回 false
+     */
+    public StackIterator(ArrayList<T, A> items, int size) {
+        this.items = items;
+        this.index = size - 1;
+    }
+
+    /**
+     * 是否还有元素可遍历。
+     *
+     * @return 内部 index >= 0 时返回 true；空栈（index 初始为 -1）返回 false
+     */
+    public bool hasNext() {
+        return this.index >= 0;
+    }
+
+    /**
+     * 返回下一个元素（自栈顶向栈底）并将索引前移一位。
+     *
+     * 越界调用（hasNext() 为 false 时继续调用）不会崩溃，
+     * 返回 T 的零值 —— 与 Stack.pop()/peek() 的空栈语义一致。
+     *
+     * @return 当前索引处的元素；迭代器已耗尽时返回 T 的零值
+     */
+    public T next() {
+        if (this.index < 0) {
+            T zero = 0;
+            return zero;
+        }
+        T value = this.items.get(this.index);
+        this.index = this.index - 1;
+        return value;
+    }
+}
+
+/**
+ * 泛型栈，后进先出（LIFO）容器。
+ *
+ * 支持泛型元素类型 T 与分配器参数 A（默认 GlobalAlloc）。
+ * 所有元素存储与内存管理完全委托给内部的 ArrayList<T, A>，
+ * 容量按 2 倍自动增长。
+ *
+ * 【内存释放的当前限制】编译器只为「自身声明了析构函数」的类注册析构候选，
+ * 且不会为包装类的 __dtor 链式调用字段的析构函数。因此本类的局部变量离开
+ * 作用域时，内部 ArrayList 的缓冲区不会被释放（与基线 HashSet 相同的系统性
+ * 缺口，属编译器侧特性，无法在源码层补齐）。需要立即回收时请显式调用 clear()
+ * 或让内部的 ArrayList 直接离开作用域。
+ *
+ * 【所有权转移的当前限制】编译器的 RAII 所有权转移只识别直接调用
+ * ArrayList.add 的场合。把局部对象经 push() 放入栈后，该局部变量仍会在
+ * 其作用域结束时被析构，容器将持有已析构对象的悬垂引用。存放对象类型时
+ * 请使用 new 表达式直接入栈（不要先绑定到局部变量再 push），或使用
+ * UniquePtr/ScopedPtr 管理所有权。
+ *
+ * 空栈安全：pop()/peek() 在空栈时不抛出异常，返回 T 的零值。
+ */
+public final class Stack<T, A: Allocator = GlobalAlloc> implements Iterable<T> {
+    private ArrayList<T, A> items;
+
+    /**
+     * 默认构造，使用 GlobalAlloc 作为底层分配器。
+     */
+    public Stack() {
+        this.items = new ArrayList<T, A>();
+    }
+
+    /**
+     * 指定初始容量构造，使用 GlobalAlloc 作为底层分配器。
+     *
+     * @param initialCapacity 初始容量；小于 1 时按底层 ArrayList 的规则取 1
+     */
+    public Stack(int initialCapacity) {
+        this.items = new ArrayList<T, A>(initialCapacity);
+    }
+
+    /**
+     * 指定分配器构造，底层 ArrayList 的全部内存申请与释放都经过该分配器。
+     *
+     * @param allocator 内存分配器实例（不可为 null）
+     */
+    public Stack(A allocator) {
+        this.items = new ArrayList<T, A>(allocator);
+    }
+
+    /**
+     * 入栈：把元素压入栈顶（底层列表末尾）。
+     *
+     * @param value 要压入栈顶的元素
+     */
+    public void push(@owns T value) {
+        this.items.add(value);
+    }
+
+    /**
+     * 出栈并返回栈顶元素。
+     *
+     * 空栈时不抛出异常，返回 T 的零值（int/long 为 0，bool 为 false，
+     * 对象引用为空引用），且栈保持为空。
+     *
+     * @return 原栈顶元素；空栈时返回 T 的零值
+     */
+    public T pop() {
+        if (this.items.isEmpty()) {
+            T zero = 0;
+            return zero;
+        }
+        return this.items.removeLast();
+    }
+
+    /**
+     * 只读访问栈顶元素，不改变栈内容。
+     *
+     * 空栈时不抛出异常，返回 T 的零值。
+     *
+     * @return 当前栈顶元素；空栈时返回 T 的零值
+     */
+    public T peek() {
+        if (this.items.isEmpty()) {
+            T zero = 0;
+            return zero;
+        }
+        return this.items.get(this.items.size() - 1);
+    }
+
+    /**
+     * 判断栈是否为空。
+     *
+     * @return 栈内无元素时返回 true，否则返回 false
+     */
+    public bool isEmpty() {
+        return this.items.isEmpty();
+    }
+
+    /**
+     * 返回栈内元素数量。
+     *
+     * @return 元素个数（非负整数）
+     */
+    public int size() {
+        return this.items.size();
+    }
+
+    /**
+     * 清空栈。容量保持不变，清空后可继续复用该栈。
+     */
+    public void clear() {
+        this.items.clear();
+    }
+
+    /**
+     * 返回按「栈顶 -> 栈底」顺序遍历的迭代器（即元素被 pop 的顺序）。
+     *
+     * 空栈返回的迭代器 hasNext() 立即为 false。
+     *
+     * @return Iterator<T> 实例，供增强 for 循环或手动遍历使用
+     */
+    public Iterator<T> iterator() {
+        return new StackIterator<T, A>(this.items, this.items.size());
+    }
+
+    /**
+     * 析构函数：析构内部 ArrayList。
+     *
+     * 用通用析构原语 __cay_destroy 调用 ArrayList<T, A> 的析构函数，
+     * 由它负责析构元素并释放 backing buffer。T 为原始类型时元素析构为空操作。
+     */
+    ~Stack() {
+        __cay_destroy<ArrayList<T, A>>(this.items);
+    }
+}
+
+} // namespace std

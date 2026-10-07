@@ -61,6 +61,9 @@ pub enum Token {
     AtFreeFunction,
     #[token("@stack_only")]
     AtStackOnly,
+    // 参数级注解：声明该形参取得实参的所有权（调用方不再在作用域退出时析构）
+    #[token("@owns")]
+    AtOwns,
     #[token("@")]
     At,
     #[token("class")]
@@ -1134,6 +1137,7 @@ pub fn token_name(token: &Token) -> &'static str {
         Token::AtTest => "@Test",
         Token::AtFreeFunction => "@FreeFunction",
         Token::AtStackOnly => "@stack_only",
+        Token::AtOwns => "@owns",
         Token::At => "@",
         Token::Class => "class",
         Token::Struct => "struct",

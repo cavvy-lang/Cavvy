@@ -1,17 +1,51 @@
+/*
+ * 所有权转移（RAII）基线测试。
+ *
+ * 固定住「局部对象经容器存储方法入容器后，其析构责任转移给容器」这一语义，
+ * 且保证每个对象恰好析构一次：
+ *   - 进入容器的局部对象：作用域退出时不析构，由容器元素析构释放（计 1 次）
+ *   - 未进入容器的局部对象：作用域退出时析构（计 1 次）
+ * 任何双重析构或泄漏都会让计数偏离期望值。
+ */
+
 #include <std/arraylist.cay>
 #include <c/stdio.cay>
 
 using std::ArrayList;
 
+public class Tracked {
+    public static int dtors = 0;
+    public int v;
+
+    public Tracked(int v) { this.v = v; }
+
+    ~Tracked() {
+        Tracked.dtors = Tracked.dtors + 1;
+        println("dtor " + String.valueOf(this.v));
+    }
+}
+
 public int main() {
-    ArrayList<int> row = new ArrayList<int>();
-    row.add(1);
-    row.add(2);
+    /* 1) 局部对象交给容器：只应由容器析构一次 */
+    scope {
+        ArrayList<Tracked> list = new ArrayList<Tracked>();
+        Tracked a = new Tracked(1);
+        list.add(a);
+        println("list size = " + String.valueOf(list.size()));
+    }
+    println("after block dtors = " + String.valueOf(Tracked.dtors));
 
-    ArrayList<ArrayList<int>> matrix = new ArrayList<ArrayList<int>>();
-    matrix.add(row);
+    /* 2) 未交给容器的局部对象：只应由作用域析构一次 */
+    scope {
+        Tracked b = new Tracked(2);
+        println("b.v = " + String.valueOf(b.v));
+    }
+    println("after standalone dtors = " + String.valueOf(Tracked.dtors));
 
-    println("matrix[0][0] = " + String.valueOf(matrix.get(0).get(0)));
-    println("matrix[0][1] = " + String.valueOf(matrix.get(0).get(1)));
+    if (Tracked.dtors == 2) {
+        println("ownership transfer tests passed");
+    } else {
+        println("ownership transfer FAILED: dtors = " + String.valueOf(Tracked.dtors));
+    }
     return 0;
 }

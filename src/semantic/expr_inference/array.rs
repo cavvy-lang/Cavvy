@@ -75,44 +75,92 @@ impl SemanticAnalyzer {
         Ok(Type::Array(Box::new(arr.element_type.clone())))
     }
 
-    /// 推断分配器-backed 数组分配表达式类型
-    /// __cay_alloc_array<T>(allocator, count) 返回 T[]
-    pub(crate) fn infer_alloc_array_type(
+    /// 推断带类型实参的编译器内建调用类型。
+    ///
+    /// 名单与类型实参个数由 `ast::BUILTIN_TYPE_CALLS` 统一维护，此处只负责
+    /// 各内建的参数类型检查与返回类型。
+    pub(crate) fn infer_builtin_type_call_type(
         &mut self,
-        alloc_array: &AllocArrayExpr,
+        builtin: &BuiltinTypeCallExpr,
     ) -> crate::miette_diagnostic::CayResult<Type> {
-        // 检查 allocator 表达式是否为对象/接口类型（Allocator 接口）
-        // 在泛型类体内，allocator 可能是类型参数 A，此时也允许，
-        // 具体类型在单态化后的 codegen 阶段解析。
-        let allocator_type = self.infer_expr_type_internal(&alloc_array.allocator)?;
-        match allocator_type {
-            Type::Object(_) | Type::Generic(_, _) | Type::GenericParam(_) => {
-                // 接受任何类/接口实例或类型参数作为分配器。
-            }
-            _ => {
-                return Err(semantic_error_at_loc(
-                    &alloc_array.loc,
-                    format!(
-                        "__cay_alloc_array allocator must be an object, got {}",
-                        allocator_type
-                    ),
-                ));
-            }
-        }
+        match builtin.name.as_str() {
+            // __cay_alloc_array<T>(allocator, count) 返回 T[]
+            "__cay_alloc_array" => {
+                // 检查 allocator 表达式是否为对象/接口类型（Allocator 接口）
+                // 在泛型类体内，allocator 可能是类型参数 A，此时也允许，
+                // 具体类型在单态化后的 codegen 阶段解析。
+                let allocator_type = self.infer_expr_type_internal(&builtin.args[0])?;
+                match allocator_type {
+                    Type::Object(_) | Type::Generic(_, _) | Type::GenericParam(_) => {
+                        // 接受任何类/接口实例或类型参数作为分配器。
+                    }
+                    _ => {
+                        return Err(semantic_error_at_loc(
+                            &builtin.loc,
+                            format!(
+                                "__cay_alloc_array allocator must be an object, got {}",
+                                allocator_type
+                            ),
+                        ));
+                    }
+                }
 
-        // 检查 count 是否为整数
-        let size_type = self.infer_expr_type_internal(&alloc_array.size)?;
-        if !size_type.is_integer() {
-            return Err(semantic_error_at_loc(
-                &alloc_array.loc,
-                format!(
-                    "__cay_alloc_array count must be integer, got {}",
-                    size_type
-                ),
-            ));
-        }
+                // 检查 count 是否为整数
+                let size_type = self.infer_expr_type_internal(&builtin.args[1])?;
+                if !size_type.is_integer() {
+                    return Err(semantic_error_at_loc(
+                        &builtin.loc,
+                        format!(
+                            "__cay_alloc_array count must be integer, got {}",
+                            size_type
+                        ),
+                    ));
+                }
 
-        Ok(Type::Array(Box::new(alloc_array.element_type.clone())))
+                Ok(Type::Array(Box::new(builtin.type_args[0].clone())))
+            }
+
+            // __cay_destroy<T>(value)：析构一个 T 值，无返回值。
+            // 是否真正需要析构（T 是否为带析构函数的类）在 codegen 阶段判定，
+            // 原始类型/struct 静默 no-op。
+            "__cay_destroy" => {
+                self.infer_expr_type_internal(&builtin.args[0])?;
+                Ok(Type::Void)
+            }
+
+            // __cay_destroy_array<T>(array, count)：析构密集数组的元素，无返回值。
+            "__cay_destroy_array" => {
+                let arr_type = self.infer_expr_type_internal(&builtin.args[0])?;
+                match arr_type {
+                    Type::Array(_) | Type::GenericParam(_) => {}
+                    _ => {
+                        return Err(semantic_error_at_loc(
+                            &builtin.loc,
+                            format!(
+                                "__cay_destroy_array first argument must be an array, got {}",
+                                arr_type
+                            ),
+                        ));
+                    }
+                }
+                let count_type = self.infer_expr_type_internal(&builtin.args[1])?;
+                if !count_type.is_integer() {
+                    return Err(semantic_error_at_loc(
+                        &builtin.loc,
+                        format!(
+                            "__cay_destroy_array count must be integer, got {}",
+                            count_type
+                        ),
+                    ));
+                }
+                Ok(Type::Void)
+            }
+
+            other => Err(semantic_error_at_loc(
+                &builtin.loc,
+                format!("unknown type-parameterized builtin '{}'", other),
+            )),
+        }
     }
 
     /// 推断数组初始化表达式类型

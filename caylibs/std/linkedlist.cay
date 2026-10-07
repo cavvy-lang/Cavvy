@@ -1,0 +1,440 @@
+/*
+ * Cavvy 双向链表标准库 - 0.5.2.x
+ *
+ * 泛型单态化实现：LinkedList<T>
+ *
+ * 内部由 LNode<T> 节点串成双向链，head/tail 双端指针 + count 计数，
+ * addFirst/addLast/removeFirst/removeLast/getFirst/getLast 均为 O(1)，
+ * get(index)/indexOf 需要线性扫描，为 O(n)。
+ *
+ * 节点类 LNode<T> 的 value/prev/next 全部为 private 字段，必须通过
+ * getter/setter 访问：编译器对公开的自引用泛型字段（LNode<T> next 等）
+ * 的嵌套访问存在已知缺陷，直接做 a.next.value 会静默读到错误值。
+ *
+ * 本类不持有 ArrayList 字段，因此不需要分配器参数，保持 LinkedList<T>。
+ *
+ * 【内存释放的当前限制】编译器只为「自身声明了析构函数」的类注册析构候选，
+ * 且不会为包装类的 __dtor 链式调用字段的析构函数。本类未声明析构函数，
+ * 因此局部 LinkedList 离开作用域时不会释放任何链节：clear() 只断开链接、
+ * 不回收 LNode（节点由 new 分配，其归属依赖作用域析构，无法在源码层逐节释放）。
+ * 这是与基线 HashSet 同类的系统性缺口，属编译器侧特性。
+ *
+ * 【所有权转移的当前限制】编译器的 RAII 所有权转移只识别直接调用
+ * ArrayList.add 的场合。把局部对象经 addFirst()/addLast() 放入链表后，
+ * 该局部变量仍会在其作用域结束时被析构，链表将持有已析构对象的悬垂引用。
+ * 存放对象类型时请使用 new 表达式直接加入（不要先绑定到局部变量再 add），
+ * 或使用 UniquePtr/ScopedPtr 管理所有权。
+ */
+
+#pragma once
+
+#include <Allocator.cay>
+#include <std/arraylist.cay>
+#include <std/iterator.cay>
+
+namespace std {
+
+/**
+ * 双向链表节点。
+ *
+ * 字段全部为 private，只允许通过访问器读写，以规避编译器对公开的
+ * 自引用泛型字段嵌套访问的已知缺陷。
+ */
+public final class LNode<T> {
+    private T value;
+    private LNode<T> prev;
+    private LNode<T> next;
+
+    /**
+     * 构造一个独立节点，前后指针均初始化为 null。
+     *
+     * @param v 节点携带的值
+     */
+    public LNode(T v) {
+        this.value = v;
+        this.prev = null;
+        this.next = null;
+    }
+
+    /**
+     * 读取节点值。
+     *
+     * @return 该节点携带的值
+     */
+    public T getValue() {
+        return this.value;
+    }
+
+    /**
+     * 修改节点值。
+     *
+     * @param v 新的节点值
+     */
+    public void setValue(T v) {
+        this.value = v;
+    }
+
+    /**
+     * 读取前驱节点。
+     *
+     * @return 前驱节点；该节点是头节点时返回 null
+     */
+    public LNode<T> getPrev() {
+        return this.prev;
+    }
+
+    /**
+     * 设置前驱节点。
+     *
+     * @param n 新的前驱节点，传 null 表示断开前向链接
+     */
+    public void setPrev(LNode<T> n) {
+        this.prev = n;
+    }
+
+    /**
+     * 读取后继节点。
+     *
+     * @return 后继节点；该节点是尾节点时返回 null
+     */
+    public LNode<T> getNext() {
+        return this.next;
+    }
+
+    /**
+     * 设置后继节点。
+     *
+     * @param n 新的后继节点，传 null 表示断开后向链接
+     */
+    public void setNext(LNode<T> n) {
+        this.next = n;
+    }
+}
+
+/**
+ * LinkedList 正向迭代器。
+ *
+ * 创建时快照起始节点并持有当前位置的 LNode<T>：
+ * hasNext 以 current != null 判定；next 先取出当前值，再把 current
+ * 推进到后继节点。遍历期间对链表的修改不保证反映到已创建的迭代器上。
+ */
+public final class LinkedListIterator<T> implements Iterator<T> {
+    private LNode<T> current;
+
+    /**
+     * 构造迭代器。
+     *
+     * @param start 起始节点；空链表传 null，此时 hasNext 立即返回 false
+     */
+    public LinkedListIterator(LNode<T> start) {
+        this.current = start;
+    }
+
+    /**
+     * 是否还有下一个元素。
+     *
+     * @return 当前位置非 null 时返回 true
+     */
+    public bool hasNext() {
+        return this.current != null;
+    }
+
+    /**
+     * 返回当前元素并把迭代器推进到下一个节点。
+     *
+     * 调用前应先用 hasNext 判定；在已耗尽（current 为 null）的迭代器上
+     * 调用属于未定义行为。
+     *
+     * @return 当前节点的值
+     */
+    public T next() {
+        T value = this.current.getValue();
+        this.current = this.current.getNext();
+        return value;
+    }
+}
+
+/**
+ * 双向链表，支持泛型类型参数 T。
+ *
+ * API 风格贴近 Java LinkedList：addFirst/addLast 双端插入，
+ * removeFirst/removeLast 双端删除，getFirst/getLast/get(index) 访问，
+ * indexOf/contains 线性查找，iterator 支持增强 for 循环。
+ *
+ * 空容器或索引越界时，所有返回 T 的取值方法都返回类型零值
+ * （int 为 0、bool 为 false、对象引用为 null），不抛异常、不崩溃。
+ */
+public final class LinkedList<T> implements Iterable<T> {
+    private LNode<T> head;
+    private LNode<T> tail;
+    private int count;
+
+    /**
+     * 构造空链表，head/tail 均为 null，count 为 0。
+     */
+    public LinkedList() {
+        this.head = null;
+        this.tail = null;
+        this.count = 0;
+    }
+
+    /**
+     * 在链表头部插入元素。
+     *
+     * 空链表时新节点同时成为 head 与 tail；非空时新节点成为新 head，
+     * 原 head 的 prev 指向新节点。
+     *
+     * @param value 要插入的值
+     */
+    public void addFirst(@owns T value) {
+        LNode<T> node = new LNode<T>(value);
+        if (this.head == null) {
+            this.head = node;
+            this.tail = node;
+        } else {
+            node.setNext(this.head);
+            this.head.setPrev(node);
+            this.head = node;
+        }
+        this.count = this.count + 1;
+    }
+
+    /**
+     * 在链表尾部插入元素。
+     *
+     * 空链表时新节点同时成为 head 与 tail；非空时新节点成为新 tail，
+     * 原 tail 的 next 指向新节点，新节点的 prev 指向原 tail。
+     *
+     * @param value 要插入的值
+     */
+    public void addLast(@owns T value) {
+        LNode<T> node = new LNode<T>(value);
+        if (this.tail == null) {
+            this.head = node;
+            this.tail = node;
+        } else {
+            node.setPrev(this.tail);
+            this.tail.setNext(node);
+            this.tail = node;
+        }
+        this.count = this.count + 1;
+    }
+
+    /**
+     * 移除并返回头部元素。
+     *
+     * 空链表返回 T 类型零值。删除后新 head 的 prev 置 null；
+     * 若删除的是唯一节点，head 与 tail 都置 null。
+     *
+     * @return 被移除的头元素；链表为空时返回类型零值
+     */
+    public T removeFirst() {
+        if (this.head == null) {
+            T zero = 0;
+            return zero;
+        }
+
+        T value = this.head.getValue();
+        LNode<T> next = this.head.getNext();
+        this.head.setNext(null);
+        if (next == null) {
+            this.head = null;
+            this.tail = null;
+        } else {
+            next.setPrev(null);
+            this.head = next;
+        }
+        this.count = this.count - 1;
+        return value;
+    }
+
+    /**
+     * 移除并返回尾部元素。
+     *
+     * 空链表返回 T 类型零值。删除后新 tail 的 next 置 null；
+     * 若删除的是唯一节点，head 与 tail 都置 null。
+     *
+     * @return 被移除的尾元素；链表为空时返回类型零值
+     */
+    public T removeLast() {
+        if (this.tail == null) {
+            T zero = 0;
+            return zero;
+        }
+
+        T value = this.tail.getValue();
+        LNode<T> prev = this.tail.getPrev();
+        this.tail.setPrev(null);
+        if (prev == null) {
+            this.head = null;
+            this.tail = null;
+        } else {
+            prev.setNext(null);
+            this.tail = prev;
+        }
+        this.count = this.count - 1;
+        return value;
+    }
+
+    /**
+     * 读取头部元素（不出队）。
+     *
+     * @return 头元素；链表为空时返回类型零值
+     */
+    public T getFirst() {
+        if (this.head == null) {
+            T zero = 0;
+            return zero;
+        }
+        return this.head.getValue();
+    }
+
+    /**
+     * 读取尾部元素（不出队）。
+     *
+     * @return 尾元素；链表为空时返回类型零值
+     */
+    public T getLast() {
+        if (this.tail == null) {
+            T zero = 0;
+            return zero;
+        }
+        return this.tail.getValue();
+    }
+
+    /**
+     * 按下标读取元素，下标从 0 开始，从头节点线性扫描。
+     *
+     * @param index 目标下标，有效范围 [0, size)
+     * @return 下标处的元素；index 越界（含负数）时返回类型零值
+     */
+    public T get(int index) {
+        if (index < 0 || index >= this.count) {
+            T zero = 0;
+            return zero;
+        }
+
+        LNode<T> cur = this.head;
+        for (int i = 0; i < index; i = i + 1) {
+            cur = cur.getNext();
+        }
+        return cur.getValue();
+    }
+
+    /**
+     * 返回元素数量。
+     *
+     * @return 当前链表长度
+     */
+    public int size() {
+        return this.count;
+    }
+
+    /**
+     * 是否为空链表。
+     *
+     * @return 元素数量为 0 时返回 true
+     */
+    public bool isEmpty() {
+        return this.count == 0;
+    }
+
+    /**
+     * 清空链表：逐节断开 prev/next 链接，head/tail 置 null，count 归零。
+     * 清空后链表可继续复用。
+     */
+    public void clear() {
+        LNode<T> cur = this.head;
+        while (cur != null) {
+            LNode<T> next = cur.getNext();
+            cur.setNext(null);
+            cur.setPrev(null);
+            cur = next;
+        }
+        this.head = null;
+        this.tail = null;
+        this.count = 0;
+    }
+
+    /**
+     * 返回 value 第一次出现的下标，比较使用 `==`
+     * （与 ArrayList.indexOf 一致：primitive 为值比较，对象为引用比较）。
+     *
+     * @param value 要查找的值
+     * @return 首个匹配元素的下标；未找到时返回 -1
+     */
+    public int indexOf(T value) {
+        LNode<T> cur = this.head;
+        int i = 0;
+        while (cur != null) {
+            if (cur.getValue() == value) {
+                return i;
+            }
+            cur = cur.getNext();
+            i = i + 1;
+        }
+        return -1;
+    }
+
+    /**
+     * 是否包含 value（使用 `==` 比较，语义同 indexOf）。
+     *
+     * @param value 要查找的值
+     * @return 存在相等元素时返回 true，否则返回 false
+     */
+    public bool contains(T value) {
+        return this.indexOf(value) >= 0;
+    }
+
+    /**
+     * 返回从头节点开始的正向迭代器，支持增强 for 循环。
+     *
+     * @return Iterator<T> 实例；空链表返回的迭代器 hasNext 立即为 false
+     */
+    public Iterator<T> iterator() {
+        return new LinkedListIterator<T>(this.head);
+    }
+
+    /**
+     * 析构函数：逐节析构元素并回收节点内存。
+     *
+     * 先取出后继再释放当前节点，避免读已释放的 next 指针；
+     * `new LNode<T>()` 由 calloc 分配，故用 free 回收。
+     */
+    ~LinkedList() {
+        LNode<T> cur = this.head;
+        while (cur != null) {
+            LNode<T> next = cur.getNext();
+            __cay_destroy<T>(cur.getValue());
+            __freeNode(cur);
+            cur = next;
+        }
+        this.head = null;
+        this.tail = null;
+        this.count = 0;
+    }
+
+    /**
+     * 释放单个链节（取节点地址后 free）。
+     */
+    private static void __freeNode(LNode<T> node) {
+        long addr = 0;
+        LNode<T> n = node;
+        __ir {
+            %lnv = load i8*, i8** %n
+            %lna = ptrtoint i8* %lnv to i64
+            store i64 %lna, i64* %addr
+        }
+        if (addr != 0) {
+            long b = addr;
+            __ir {
+                %lbv = load i64, i64* %b
+                %lbp = inttoptr i64 %lbv to i8*
+                call void @free(i8* %lbp)
+            }
+        }
+    }
+
+}
+
+} // namespace std

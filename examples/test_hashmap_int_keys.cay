@@ -1,0 +1,20 @@
+#include <std/hashmap.cay>
+#include <c/stdio.cay>
+using std::HashMap;
+public class Main {
+    public static int main(String[] a) {
+        HashMap<int, int> m = new HashMap<int, int>();
+        m.put(1, 10);
+        m.put(2, 20);
+        m.put(3, 30);
+        println("get(2) = " + String.valueOf(m.get(2)) + " (expect 20)");
+        println("contains(3) = " + String.valueOf(m.containsKey(3)) + " (expect true)");
+        println("contains(9) = " + String.valueOf(m.containsKey(9)) + " (expect false)");
+        m.put(2, 99);
+        println("after overwrite get(2) = " + String.valueOf(m.get(2)) + " (expect 99)");
+        m.remove(1);
+        println("after remove contains(1) = " + String.valueOf(m.containsKey(1)) + " (expect false)");
+        println("size = " + String.valueOf(m.size()) + " (expect 2)");
+        return 0;
+    }
+}

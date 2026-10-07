@@ -739,6 +739,39 @@ public class Main {
 }
 ```
 
+### `@owns` —— 参数所有权转移
+
+标注在**形参**上，声明被调用方取得该实参的所有权。若实参是当前作用域中带析构函数的局部对象变量，编译器把它从作用域析构候选中摘除，改由被调用方负责最终析构：
+
+```cay
+public class Box {
+    public int v;
+    public Box(int v) { this.v = v; }
+    ~Box() { println("~Box"); }
+}
+
+public class Holder {
+    private Box slot;
+    public Holder() { this.slot = null; }
+    /* @owns：被调方接管实参的生命周期 */
+    public void put(@owns Box b) { this.slot = b; }
+    public Box get() { return this.slot; }
+}
+
+public class Main {
+    public static void main() {
+        Holder h = new Holder();
+        Box b = new Box(1);
+        h.put(b);
+        println("held = " + String.valueOf(h.get().v));
+    }
+}
+```
+
+`@owns` 可用于普通方法、自由函数与**构造函数**（`new Holder(b)` 同样按形参声明转移所有权）。它只对「实参是局部变量」生效；字段赋值、条件分支内的转移、同一对象重复转移不在其保障范围内。标准库的容器存储方法（`ArrayList.add`、`Stack.push`、`HashMap.put` 等）与取得托管对象的静态工厂（`Optional.of`、`UniquePtr.fromRaw` 等）都以该注解声明所有权转移。
+
+校验：`@owns` 只能用于类类型或类型参数形参；标在原始类型、数组、struct 或可变参数上会报错（它们没有析构语义，标注只会静默抑制调用方的析构）。
+
 ---
 
 ## 预处理器指令

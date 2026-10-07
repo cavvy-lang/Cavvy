@@ -136,36 +136,54 @@ pub fn parse_primary(parser: &mut Parser) -> CayResult<Expr> {    let loc = pars
             let loc = parser.current_loc();
             parser.advance();
 
-            // 0.5.2.x: 处理内建分配器数组表达式 __cay_alloc_array<T>(allocator, count)
-            if name == "__cay_alloc_array" {
-                if parser.check(&crate::lexer::Token::Lt) {
-                    let type_args = crate::parser::classes::parse_generic_type_args(parser)?;
-                    if type_args.len() != 1 {
-                        return Err(parser.error(
-                            "__cay_alloc_array 需要恰好一个泛型类型参数\n提示: 用法为 __cay_alloc_array<T>(allocator, count)"));
-                    }
-                    parser.consume(
-                        &crate::lexer::Token::LParen,
-                        "期望 '('\n提示: __cay_alloc_array<T> 后应跟 (allocator, count)",
-                    )?;
-                    let args = parse_arguments(parser)?;
-                    parser.consume(
-                        &crate::lexer::Token::RParen,
-                        "期望 ')'\n提示: __cay_alloc_array 参数列表应以 ')' 结束",
-                    )?;
-                    if args.len() != 2 {
-                        return Err(parser.error(
-                            "__cay_alloc_array 需要恰好两个参数\n提示: 用法为 __cay_alloc_array<T>(allocator, count)"));
-                    }
-                    return Ok(Expr::AllocArray(AllocArrayExpr {
-                        element_type: type_args.into_iter().next().unwrap(),
-                        allocator: Box::new(args[0].clone()),
-                        size: Box::new(args[1].clone()),
-                        loc,
-                    }));
+            // 带显式类型实参的编译器内建：__cay_xxx<T, ...>(args...)
+            // 名单只列编译器内建（与 print/println/__cay_read_ptr 同类的原语），
+            // 不涉及任何用户可见的类名/方法名语义。
+            if let Some(&(builtin_name, type_arity, arg_arity)) = BUILTIN_TYPE_CALLS
+                .iter()
+                .find(|(n, _, _)| *n == name.as_str())
+            {
+                if !parser.check(&crate::lexer::Token::Lt) {
+                    let msg = format!(
+                        "{} 必须指定泛型类型参数\n提示: 用法为 {}<...>(...)",
+                        builtin_name, builtin_name
+                    );
+                    return Err(parser.error(&msg));
                 }
-                return Err(parser.error(
-                    "__cay_alloc_array 必须指定泛型类型参数\n提示: 用法为 __cay_alloc_array<T>(allocator, count)"));
+                let type_args = crate::parser::classes::parse_generic_type_args(parser)?;
+                if type_args.len() != type_arity {
+                    let msg = format!(
+                        "{} 需要恰好 {} 个泛型类型参数，实际 {} 个",
+                        builtin_name,
+                        type_arity,
+                        type_args.len()
+                    );
+                    return Err(parser.error(&msg));
+                }
+                parser.consume(
+                    &crate::lexer::Token::LParen,
+                    &format!("期望 '('\n提示: {}<...> 后应跟参数列表", builtin_name),
+                )?;
+                let args = parse_arguments(parser)?;
+                parser.consume(
+                    &crate::lexer::Token::RParen,
+                    "期望 ')'\n提示: 内建调用参数列表应以 ')' 结束",
+                )?;
+                if args.len() != arg_arity {
+                    let msg = format!(
+                        "{} 需要恰好 {} 个参数，实际 {} 个",
+                        builtin_name,
+                        arg_arity,
+                        args.len()
+                    );
+                    return Err(parser.error(&msg));
+                }
+                return Ok(Expr::BuiltinTypeCall(BuiltinTypeCallExpr {
+                    name: builtin_name.to_string(),
+                    type_args,
+                    args,
+                    loc,
+                }));
             }
 
             // 检查是否是方法引用或命名空间限定名: A::B 或 A::B::C

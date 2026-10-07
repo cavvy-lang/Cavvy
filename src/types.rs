@@ -729,7 +729,10 @@ pub struct FieldInfo {
 pub struct ParameterInfo {
     pub name: String,
     pub param_type: Type,
-    pub is_varargs: bool, // 是否为可变参数
+    pub is_varargs: bool,  // 是否为可变参数
+    /// `@owns` 注解：被调用方取得该实参的所有权。调用点据此把实参局部变量
+    /// 从作用域析构候选中摘除（见 codegen 的 generate_and_pack_args）。
+    pub is_owning: bool,
 }
 
 impl ParameterInfo {
@@ -738,6 +741,7 @@ impl ParameterInfo {
             name,
             param_type,
             is_varargs: false,
+            is_owning: false,
         }
     }
 
@@ -747,7 +751,14 @@ impl ParameterInfo {
             name,
             param_type: Type::Array(Box::new(param_type)),
             is_varargs: true,
+            is_owning: false,
         }
+    }
+
+    /// 标记该形参取得实参所有权（`@owns`）。
+    pub fn owning(mut self) -> Self {
+        self.is_owning = true;
+        self
     }
 }
 
@@ -1066,6 +1077,7 @@ impl TypeRegistry {
                 name: "other".to_string(),
                 param_type: Type::Object("Object".to_string()),
                 is_varargs: false,
+                is_owning: false,
             }],
             return_type: Type::Bool,
             is_static: false,
@@ -1145,6 +1157,7 @@ impl TypeRegistry {
                 name: "other".to_string(),
                 param_type: Type::Object("Object".to_string()),
                 is_varargs: false,
+                is_owning: false,
             }],
             return_type: Type::Bool,
             is_static: false,
@@ -1171,6 +1184,7 @@ impl TypeRegistry {
                 name: "value".to_string(),
                 param_type: Type::Int32,
                 is_varargs: false,
+                is_owning: false,
             }],
             return_type: Type::String,
             is_static: true,
@@ -1196,6 +1210,7 @@ impl TypeRegistry {
                 name: "value".to_string(),
                 param_type: Type::Int64,
                 is_varargs: false,
+                is_owning: false,
             }],
             return_type: Type::String,
             is_static: true,
@@ -1221,6 +1236,7 @@ impl TypeRegistry {
                 name: "value".to_string(),
                 param_type: Type::Float32,
                 is_varargs: false,
+                is_owning: false,
             }],
             return_type: Type::String,
             is_static: true,
@@ -1246,6 +1262,7 @@ impl TypeRegistry {
                 name: "value".to_string(),
                 param_type: Type::Float64,
                 is_varargs: false,
+                is_owning: false,
             }],
             return_type: Type::String,
             is_static: true,
@@ -1271,6 +1288,7 @@ impl TypeRegistry {
                 name: "value".to_string(),
                 param_type: Type::Bool,
                 is_varargs: false,
+                is_owning: false,
             }],
             return_type: Type::String,
             is_static: true,
@@ -1296,6 +1314,7 @@ impl TypeRegistry {
                 name: "value".to_string(),
                 param_type: Type::Char,
                 is_varargs: false,
+                is_owning: false,
             }],
             return_type: Type::String,
             is_static: true,
@@ -1321,6 +1340,7 @@ impl TypeRegistry {
                 name: "value".to_string(),
                 param_type: Type::String,
                 is_varargs: false,
+                is_owning: false,
             }],
             return_type: Type::String,
             is_static: true,
@@ -1370,6 +1390,7 @@ impl TypeRegistry {
                 name: "s".to_string(),
                 param_type: Type::String,
                 is_varargs: false,
+                is_owning: false,
             }],
             return_type: Type::Int32,
             is_static: true,
@@ -2017,12 +2038,31 @@ impl TypeRegistry {
                 }
                 self.is_subtype_of(from_base, to_base)
             }
-            (Type::Generic(from_name, _), Type::Generic(to_name, _)) => {
-                // 两个泛型类型：检查基础类名是否相同
-                if from_name == to_name {
-                    return true;
+            (Type::Generic(from_name, from_args), Type::Generic(to_name, to_args)) => {
+                // 两个泛型类型：先按基础类名判子类型。
+                if from_name != to_name {
+                    // 跨类（如 ArrayListIterator<T> -> Iterator<T>）需要接口声明
+                    // 才能把类实参对应到接口实参，保持既有行为。
+                    return self.is_subtype_of(from_name, to_name);
                 }
-                self.is_subtype_of(from_name, to_name)
+                // 同一个泛型类：类型实参必须逐个兼容。
+                // 早期实现只比较基础名（`if from_name == to_name { return true }`），
+                // 于是 `ArrayList<int, CAlloc>` 被当作 `ArrayList<int, GlobalAlloc>`
+                // 接受 —— 泛型实参不匹配却能编译，直到运行期以内存错误暴露。
+                let from_full = self.fill_default_type_args(from_name, from_args);
+                let to_full = self.fill_default_type_args(to_name, to_args);
+                match (from_full, to_full) {
+                    // 两边都能补齐（或本来就等长）：逐参比较
+                    (Some(f), Some(t)) => {
+                        f.len() == t.len()
+                            && f.iter()
+                                .zip(t.iter())
+                                .all(|(a, b)| self.types_compatible(a, b))
+                    }
+                    // 无法补齐（类未注册/缺默认值）：保持既有宽松行为，
+                    // 避免在信息不足时误报。
+                    _ => true,
+                }
             }
             (Type::Object(from_name), Type::Object(to_name)) => {
                 // 解析泛型类名: "Optional<T>" -> "Optional"
@@ -2523,6 +2563,27 @@ impl TypeRegistry {
 
     fn generic_base_name(name: &str) -> &str {
         name.find('<').map(|pos| &name[..pos]).unwrap_or(name)
+    }
+
+    /// 把省略的泛型实参按类声明的默认值补齐。
+    ///
+    /// 例如源码写 `ArrayList<int>` 时类型实参只有一个，而类声明为
+    /// `ArrayList<T, A: Allocator = GlobalAlloc>`；补齐后为
+    /// `ArrayList<int, GlobalAlloc>`，才能与写成全的 `ArrayList<int, GlobalAlloc>`
+    /// 正确判定为同一类型，而与 `ArrayList<int, 其它分配器>` 判定为不同。
+    ///
+    /// 实参多于声明、类未注册、或某个类型参数没有默认值时返回 None，
+    /// 调用方据此保持宽松判定，避免在信息不足时误报。
+    fn fill_default_type_args(&self, base: &str, args: &[Type]) -> Option<Vec<Type>> {
+        let class_info = self.get_class(base)?;
+        if args.len() > class_info.type_params.len() {
+            return None;
+        }
+        let mut out = args.to_vec();
+        for tp in &class_info.type_params[args.len()..] {
+            out.push(tp.default_type.clone()?);
+        }
+        Some(out)
     }
 
     fn generic_arg_count_in_name(name: &str) -> Option<usize> {

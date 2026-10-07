@@ -87,6 +87,10 @@ impl IRGenerator {
         let ptr_i8 = self.new_temp();
         self.emit_line(&format!("  {} = inttoptr i64 {} to i8*", ptr_i8, ptr));
 
+        // 显式确保 `declare void @free(i8*)` 存在。不能依赖其它代码路径
+        // 的副作用（幂等，且会尊重用户 extern 声明，见 context.rs 实现）。
+        self.ensure_free_declared();
+
         // 调用 free 释放内存
         self.emit_line(&format!("  call void @free(i8* {})", ptr_i8));
 

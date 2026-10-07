@@ -879,6 +879,14 @@ pub fn parse_parameters(parser: &mut Parser) -> CayResult<Vec<ParameterInfo>> {
 
     if !parser.check(&Token::RParen) {
         loop {
+            // 参数级注解 @owns：声明该形参取得实参所有权。
+            // 只能用于类/struct 对象类型参数，不能用于可变参数（语义层校验）。
+            let mut is_owning = false;
+            if parser.check(&Token::AtOwns) {
+                parser.advance();
+                is_owning = true;
+            }
+
             // 检查是否是裸可变参数 ...（C 风格 extern 函数声明，如 int printf(const char* fmt, ...);）
             if parser.check(&Token::DotDotDot) {
                 parser.advance(); // 消费 ...
@@ -902,9 +910,11 @@ pub fn parse_parameters(parser: &mut Parser) -> CayResult<Vec<ParameterInfo>> {
                     parser.advance(); // 消费冒号
                     let param_type = parser.parse_type_or_fn_ptr()?;
                     if parser.match_token(&Token::DotDotDot) {
-                        params.push(ParameterInfo::new_varargs(param_name, param_type));
+                        let info = ParameterInfo::new_varargs(param_name, param_type);
+                        params.push(if is_owning { info.owning() } else { info });
                     } else {
-                        params.push(ParameterInfo::new(param_name, param_type));
+                        let info = ParameterInfo::new(param_name, param_type);
+                        params.push(if is_owning { info.owning() } else { info });
                     }
                     if !parser.match_token(&Token::Comma) {
                         break;
@@ -925,7 +935,8 @@ pub fn parse_parameters(parser: &mut Parser) -> CayResult<Vec<ParameterInfo>> {
                 // type... 形式的可变参数，需要一个名称
                 let name = parser
                     .consume_identifier("期望参数名\n提示: 可变参数需要名称，例如: int... args")?;
-                params.push(ParameterInfo::new_varargs(name, param_type));
+                let info = ParameterInfo::new_varargs(name, param_type);
+                params.push(if is_owning { info.owning() } else { info });
                 // 可变参数之后可以有更多参数（通过命名参数指定）
                 if parser.match_token(&Token::Comma) {
                     continue;
@@ -934,7 +945,8 @@ pub fn parse_parameters(parser: &mut Parser) -> CayResult<Vec<ParameterInfo>> {
             } else {
                 let name =
                     parser.consume_identifier("期望参数名\n提示: 参数需要名称，例如: int count")?;
-                params.push(ParameterInfo::new(name, param_type));
+                let info = ParameterInfo::new(name, param_type);
+                params.push(if is_owning { info.owning() } else { info });
             }
 
             if !parser.match_token(&Token::Comma) {

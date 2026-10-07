@@ -70,22 +70,30 @@ impl IRGenerator {
             self.pending_lambda_expected_fn = None;
         }
 
-        // ROADMAP 5.3.x 自动 RAII：ArrayList.add 视为所有权转移。
-        // 若实参是带析构函数的局部对象变量，将其从当前作用域析构候选中移除，
-        // 避免容器析构元素时再次析构该局部变量（double-free）。
-        if method_name == "add" {
-            let base_class = class_name
-                .find('<')
-                .map_or(class_name, |pos| &class_name[..pos]);
-            if base_class == "ArrayList" || base_class == "std::ArrayList" {
-                for arg in actual_args {
-                    if let Expr::Identifier(ident) = arg {
-                        let var_name = &ident.name;
-                        if let Some(var_type) = self.get_variable_type(var_name) {
-                            if self.type_has_destructor(&var_type).is_some() {
-                                self.scope_manager
-                                    .remove_dtor_candidate_by_var_name(var_name);
-                            }
+        // 自动 RAII 所有权转移：由**被调方声明的 `@owns` 形参**驱动，
+        // 不依赖任何硬编码的类名/方法名。
+        //
+        // 语义：标了 `@owns` 的形参表示被调用方接管实参的生命周期，因此实参
+        // 若是当前作用域中带析构函数的局部对象变量，就把它从析构候选中摘除，
+        // 否则作用域退出时会析构一次、容器再析构一次（double-free / 悬垂引用）。
+        if let Some(params) =
+            self.get_method_params_for_arity(class_name, method_name, actual_args.len())
+        {
+            for (idx, arg) in actual_args.iter().enumerate() {
+                let owning = match params.get(idx) {
+                    Some(p) => p.is_owning,
+                    // 超出固定形参个数的实参归入可变形参
+                    None => params.last().map_or(false, |p| p.is_varargs && p.is_owning),
+                };
+                if !owning {
+                    continue;
+                }
+                if let Expr::Identifier(ident) = arg {
+                    let var_name = &ident.name;
+                    if let Some(var_type) = self.get_variable_type(var_name) {
+                        if self.type_has_destructor(&var_type).is_some() {
+                            self.scope_manager
+                                .remove_dtor_candidate_by_var_name(var_name);
                         }
                     }
                 }

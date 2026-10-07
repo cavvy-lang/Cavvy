@@ -846,6 +846,372 @@ public int main() {
 
 ---
 
+## 容器适配器 (Stack / Queue / Deque / PriorityQueue / LinkedList)
+
+6.3.0 起标准库新增 5 个泛型容器，均位于 `std` 命名空间下。其中 `Stack`、`Queue`、`Deque`、`LinkedList` 实现 `Iterable<T>`，支持增强 for 循环；`PriorityQueue` 的堆序对遍历没有意义，因此不实现 `Iterable`。所有容器在空容器上调用取值方法均不抛异常，返回 `T` 的类型零值。
+
+### Stack<T, A: Allocator = GlobalAlloc>
+
+**文件**: `caylibs/std/stack.cay`
+
+后进先出（LIFO）栈，底层完全委托 `ArrayList<T, A>`：栈顶对应底层列表末尾，`push`/`pop` 均为均摊 O(1)。配套迭代器按「栈顶 -> 栈底」顺序遍历，即元素出栈的顺序。
+
+**头文件**:
+```cay,ignore
+#include <std/stack.cay>
+```
+
+**泛型参数**: `T` 为元素类型；`A: Allocator` 为内存分配器类型，默认 `GlobalAlloc`，也可通过 `Stack(A allocator)` 构造传入自定义分配器实例。
+
+**方法**:
+
+| 方法 | 说明 |
+|---|---|
+| `Stack()` | 创建空栈，使用 `GlobalAlloc` |
+| `Stack(int initialCapacity)` | 创建空栈，可指定初始容量提示 |
+| `Stack(A allocator)` | 使用指定分配器创建空栈 |
+| `void push(T value)` | 入栈：压入栈顶，均摊 O(1) |
+| `T pop()` | 出栈并返回原栈顶元素；空栈返回 `T` 零值 |
+| `T peek()` | 只读访问栈顶元素，不出栈；空栈返回 `T` 零值 |
+| `bool isEmpty()` | 栈是否为空 |
+| `int size()` | 元素个数 |
+| `void clear()` | 清空栈，容量保持不变 |
+| `Iterator<T> iterator()` | 返回按「栈顶 -> 栈底」顺序遍历的迭代器 |
+
+**使用示例**:
+```cay
+#include <std/stack.cay>
+
+using std::Stack;
+
+public int main() {
+    Stack<int> s = new Stack<int>();
+    s.push(10);
+    s.push(20);
+    s.push(30);
+
+    println(s.peek());     // 30
+    println(s.pop());      // 30
+    println(s.size());     // 2
+    println(s.isEmpty());  // false
+
+    /* 增强 for 循环：按「栈顶 -> 栈底」顺序遍历 */
+    int sum = 0;
+    for (int x : s) {
+        sum = sum + x;
+    }
+    println(sum);          // 30（20 + 10）
+
+    s.clear();
+    println(s.isEmpty());  // true
+    return 0;
+}
+```
+
+### Queue<T, A: Allocator = GlobalAlloc>
+
+**文件**: `caylibs/std/queue.cay`
+
+先进先出（FIFO）队列，基于 `ArrayList<T, A>` 实现：底层用 `head` 下标记录队头位置，并在被跳过的前缀足够大时执行惰性压缩，出队为摊销 O(1)。迭代器按「队头 -> 队尾」顺序遍历（即出队顺序），构造时快照终点，遍历期间新入队的元素不会被访问。
+
+**头文件**:
+```cay,ignore
+#include <std/queue.cay>
+```
+
+**泛型参数**: `T` 为元素类型；`A: Allocator` 为内存分配器类型，默认 `GlobalAlloc`。
+
+**方法**:
+
+| 方法 | 说明 |
+|---|---|
+| `Queue()` | 创建空队列，使用 `GlobalAlloc` |
+| `Queue(int initialCapacity)` | 创建空队列，可指定初始容量提示 |
+| `Queue(A allocator)` | 使用指定分配器创建空队列 |
+| `void enqueue(T value)` | 入队：追加到队尾，均摊 O(1) |
+| `void push(T value)` | `enqueue` 的别名 |
+| `T dequeue()` | 出队并返回队头元素；空队列返回 `T` 零值 |
+| `T pop()` | `dequeue` 的别名 |
+| `T front()` | 只读访问队头元素；空队列返回 `T` 零值 |
+| `T back()` | 只读访问队尾元素；空队列返回 `T` 零值 |
+| `bool isEmpty()` | 队列是否为空 |
+| `int size()` | 元素个数 |
+| `void clear()` | 清空队列并把 `head` 归零，容量保持不变 |
+| `Iterator<T> iterator()` | 返回按「队头 -> 队尾」顺序遍历的迭代器 |
+
+**使用示例**:
+```cay
+#include <std/queue.cay>
+
+using std::Queue;
+
+public int main() {
+    Queue<int> q = new Queue<int>();
+    q.enqueue(1);
+    q.enqueue(2);
+    q.enqueue(3);          // 队列: [1, 2, 3]
+
+    println(q.front());    // 1（队头）
+    println(q.back());     // 3（队尾）
+    println(q.dequeue());  // 1
+    println(q.size());     // 2
+
+    q.push(4);             // push 是 enqueue 的别名
+
+    /* 增强 for 循环：按「队头 -> 队尾」顺序遍历 */
+    for (int x : q) {
+        println(x);        // 2, 3, 4
+    }
+
+    q.clear();
+    println(q.isEmpty());  // true
+    return 0;
+}
+```
+
+### Deque<T, A: Allocator = GlobalAlloc>
+
+**文件**: `caylibs/std/deque.cay`
+
+双端队列，支持两端插入与删除。元素存放在底层 `ArrayList<T, A>` 的滑动窗口 `[head, size)` 中，逻辑下标 0 为队头、`size() - 1` 为队尾；两端操作在窗口前端有空槽可复用时为 O(1)，否则触发一次 O(n) 搬移（相对 `ArrayList` 的头部操作，均摊 O(1)）。迭代器按「队头 -> 队尾」顺序遍历。
+
+**头文件**:
+```cay,ignore
+#include <std/deque.cay>
+```
+
+**泛型参数**: `T` 为元素类型；`A: Allocator` 为内存分配器类型，默认 `GlobalAlloc`。
+
+**方法**:
+
+| 方法 | 说明 |
+|---|---|
+| `Deque()` | 创建空双端队列，使用 `GlobalAlloc` |
+| `Deque(int initialCapacity)` | 创建空双端队列，可指定初始容量提示 |
+| `Deque(A allocator)` | 使用指定分配器创建空双端队列 |
+| `void pushFront(T value)` | 在队头插入元素 |
+| `void pushBack(T value)` | 在队尾插入元素 |
+| `T popFront()` | 移除并返回队头元素；空队列返回 `T` 零值 |
+| `T popBack()` | 移除并返回队尾元素；空队列返回 `T` 零值 |
+| `T peekFront()` | 只读访问队头元素；空队列返回 `T` 零值 |
+| `T peekBack()` | 只读访问队尾元素；空队列返回 `T` 零值 |
+| `T front()` | `peekFront` 的别名，便于从 `Queue` 迁移 |
+| `T back()` | `peekBack` 的别名，便于从 `Queue` 迁移 |
+| `T get(int index)` | 按下标访问（0 为队头）；越界返回 `T` 零值 |
+| `bool isEmpty()` | 队列是否为空 |
+| `int size()` | 元素个数 |
+| `void clear()` | 清空队列，容量保持不变 |
+| `Iterator<T> iterator()` | 返回按「队头 -> 队尾」顺序遍历的迭代器 |
+
+**使用示例**:
+```cay
+#include <std/deque.cay>
+
+using std::Deque;
+
+public int main() {
+    Deque<int> d = new Deque<int>();
+    d.pushBack(2);
+    d.pushBack(3);
+    d.pushFront(1);        // 队列: [1, 2, 3]
+
+    println(d.peekFront()); // 1
+    println(d.peekBack());  // 3
+    println(d.get(1));      // 2（下标 0 为队头）
+
+    println(d.popFront());  // 1
+    println(d.popBack());   // 3
+    println(d.size());      // 1
+
+    d.pushFront(0);
+    d.pushBack(9);          // 队列: [0, 2, 9]
+
+    /* 增强 for 循环：按「队头 -> 队尾」顺序遍历 */
+    for (int x : d) {
+        println(x);         // 0, 2, 9
+    }
+    return 0;
+}
+```
+
+### PriorityQueue<T, A: Allocator = GlobalAlloc>
+
+**文件**: `caylibs/std/priorityqueue.cay`
+
+带优先级的队列，采用数组二叉堆实现：`push`/`pop` 为 O(log n)，`peek`/`peekPriority` 为 O(1)。默认大顶堆（`priority` 大者先出），构造时传入 `minHeap = true` 切换为小顶堆；相同 `priority` 的元素严格按插入顺序 FIFO 出队。堆序对遍历没有意义，因此本类不实现 `Iterable`，需要按出队顺序遍历时请反复调用 `peek()`/`pop()`。
+
+**头文件**:
+```cay,ignore
+#include <std/priorityqueue.cay>
+```
+
+**泛型参数**: `T` 为元素类型；`A: Allocator` 为内存分配器类型，默认 `GlobalAlloc`。优先级固定为 `int`。
+
+**方法**:
+
+| 方法 | 说明 |
+|---|---|
+| `PriorityQueue()` | 创建大顶堆（`priority` 大者先出），使用 `GlobalAlloc` |
+| `PriorityQueue(int initialCapacity)` | 创建大顶堆，可指定初始容量提示 |
+| `PriorityQueue(bool minHeap)` | 指定堆序：`true` 为小顶堆，`false` 为大顶堆 |
+| `PriorityQueue(bool minHeap, A allocator)` | 指定堆序与分配器 |
+| `void push(int priority, T value)` | 入队：按优先级插入，O(log n)；同优先级保持 FIFO |
+| `T pop()` | 出队并返回堆顶元素；空队列返回 `T` 零值 |
+| `T peek()` | 只读访问堆顶元素；空队列返回 `T` 零值 |
+| `int peekPriority()` | 只读访问堆顶优先级；空队列返回 `0` |
+| `bool isEmpty()` | 队列是否为空 |
+| `int size()` | 元素个数 |
+| `void clear()` | 清空队列，容量保持不变，插入序号归零 |
+
+**使用示例**:
+```cay
+#include <std/priorityqueue.cay>
+
+using std::PriorityQueue;
+
+public int main() {
+    /* 默认大顶堆：priority 越大越先出 */
+    PriorityQueue<int> pq = new PriorityQueue<int>();
+    pq.push(3, 30);
+    pq.push(1, 10);
+    pq.push(5, 50);
+
+    println(pq.peek());         // 50
+    println(pq.peekPriority()); // 5
+    println(pq.pop());          // 50
+    println(pq.size());         // 2
+
+    /* minHeap = true 时为小顶堆：priority 越小越先出 */
+    PriorityQueue<int> minQ = new PriorityQueue<int>(true);
+    minQ.push(3, 30);
+    minQ.push(1, 10);
+    println(minQ.peek());       // 10
+
+    /* 相同优先级按插入顺序 FIFO 出队 */
+    PriorityQueue<int> stable = new PriorityQueue<int>();
+    stable.push(7, 100);
+    stable.push(7, 101);
+    stable.push(7, 102);
+    println(stable.pop());      // 100
+    println(stable.pop());      // 101
+    return 0;
+}
+```
+
+### LinkedList<T>
+
+**文件**: `caylibs/std/linkedlist.cay`
+
+双向链表，API 风格贴近 Java `LinkedList`。`addFirst`/`addLast`、`removeFirst`/`removeLast`、`getFirst`/`getLast` 均为 O(1)；`get(index)`/`indexOf`/`contains` 需线性扫描，为 O(n)。元素比较使用 `==`（primitive 为值比较，对象为引用比较）；空容器或下标越界时取值方法返回 `T` 的类型零值。迭代器按「头 -> 尾」顺序遍历。
+
+**头文件**:
+```cay,ignore
+#include <std/linkedlist.cay>
+```
+
+**泛型参数**: 仅 `T` 为元素类型；本类不持有 `ArrayList` 字段，因此不接受分配器参数。
+
+**方法**:
+
+| 方法 | 说明 |
+|---|---|
+| `LinkedList()` | 创建空链表 |
+| `void addFirst(T value)` | 头部插入，O(1) |
+| `void addLast(T value)` | 尾部插入，O(1) |
+| `T removeFirst()` | 移除并返回头元素；空链表返回 `T` 零值 |
+| `T removeLast()` | 移除并返回尾元素；空链表返回 `T` 零值 |
+| `T getFirst()` | 只读访问头元素；空链表返回 `T` 零值 |
+| `T getLast()` | 只读访问尾元素；空链表返回 `T` 零值 |
+| `T get(int index)` | 按下标访问（从 0 开始）；越界返回 `T` 零值 |
+| `int size()` | 元素个数 |
+| `bool isEmpty()` | 链表是否为空 |
+| `void clear()` | 清空链表，可继续复用 |
+| `int indexOf(T value)` | 返回 `value` 首次出现的下标；未找到返回 `-1` |
+| `bool contains(T value)` | 是否包含 `value`（`==` 比较） |
+| `Iterator<T> iterator()` | 返回从头节点开始的正向迭代器 |
+
+**使用示例**:
+```cay
+#include <std/linkedlist.cay>
+
+using std::LinkedList;
+
+public int main() {
+    LinkedList<int> list = new LinkedList<int>();
+    list.addLast(10);
+    list.addLast(20);
+    list.addFirst(5);            // 链表: [5, 10, 20]
+
+    println(list.getFirst());    // 5
+    println(list.getLast());     // 20
+    println(list.get(1));        // 10
+    println(list.indexOf(20));   // 2
+    println(list.contains(99));  // false
+
+    println(list.removeFirst()); // 5
+    println(list.removeLast());  // 20
+    println(list.size());        // 1
+
+    /* 增强 for 循环：按「头 -> 尾」顺序遍历 */
+    for (int x : list) {
+        println(x);              // 10
+    }
+
+    list.clear();
+    println(list.isEmpty());     // true
+    return 0;
+}
+```
+
+### 所有权转移：`@owns` 参数注解
+
+容器要把元素"存进去"，就必须取得该实参的所有权 —— 否则实参所属的局部变量会在其作用域结束时被析构，而容器还持有它的引用（悬垂引用 / 二次析构）。
+
+这件事由**参数级注解 `@owns`** 表达，语法为在形参前加 `@owns`：
+
+```cay,ignore
+public void add(@owns T value) { ... }
+```
+
+语义：标了 `@owns` 的形参表示被调用方接管实参的生命周期。调用点若该实参是带析构函数的局部对象变量，编译器就把它从作用域析构候选中摘除，改由被调用方（通常是容器）负责最终析构。
+
+标准库中带 `@owns` 的存储方法：
+
+| 类 | 方法 |
+|---|---|
+| `ArrayList<T, A>` | `add(T)`、`add(int, T)` |
+| `HashMap<K, V, A>` | `put(K, V)` |
+| `HashSet<T, A>` | `add(T)` |
+| `Stack<T, A>` | `push(T)` |
+| `Queue<T, A>` | `enqueue(T)`、`push(T)` |
+| `Deque<T, A>` | `pushFront(T)`、`pushBack(T)` |
+| `PriorityQueue<T, A>` | `push(int, T)` |
+| `LinkedList<T>` | `addFirst(T)`、`addLast(T)` |
+| `Optional<T>` | `of(T)` |
+| `UniquePtr<T>` / `ScopedPtr<T>` / `Rc<T>` | `fromRaw(T)` |
+
+因此下面两种写法都正确，对象都只析构一次：
+
+```cay,ignore
+q.enqueue(new Box(1));   /* 临时量，直接交给容器 */
+
+Box b = new Box(2);
+q.enqueue(b);            /* b 的所有权转移给队列，作用域退出时不再析构 b */
+```
+
+**约束**：`@owns` 只对「实参是局部变量」生效。字段赋值（`obj.list = b`）、条件分支内的转移、同一对象重复转移、以及来自字段的实参都不在其保障范围内 —— 这些场景请显式管理生命周期。
+
+### 容器的析构
+
+5 个容器都声明了析构函数：`Stack`/`Queue`/`Deque`/`PriorityQueue` 析构其内部 `ArrayList`，`HashSet` 析构其内部 `HashMap`，`LinkedList` 逐节析构并回收。因此局部容器离开作用域时会：
+
+1. 析构容器持有的元素（`T` 为原始类型或 struct 时为空操作）；
+2. 释放底层缓冲区。
+
+`Queue`/`Deque` 出队时会把让出的槽位置零，因此不会二次析构已交还给调用方的元素。
+
+---
+
 ## 可选值类型 (Optional)
 
 **文件**: `caylibs/Optional.cay`
@@ -1191,6 +1557,11 @@ extern {
 | `Result<T,E>` | 6.1.0 | 显式成功/错误分支和错误传播 |
 | `Error` / `IOError` / `ParseError` | 6.1.0 | 统一错误类型层级 |
 | `Into<T>` | 6.2.0 | `?` 运算符的错误类型自动转换（6.2.0 起 `File`/`Mmap` 返回 `Result<_, IOError>`） |
+| `std::Stack<T, A>` | 6.3.0 | 后进先出（LIFO）栈，底层基于 `ArrayList` |
+| `std::Queue<T, A>` | 6.3.0 | 先进先出（FIFO）队列，出队摊销 O(1) |
+| `std::Deque<T, A>` | 6.3.0 | 双端队列，两端均可插入/删除 |
+| `std::PriorityQueue<T, A>` | 6.3.0 | 数组二叉堆优先队列，同优先级 FIFO 稳定 |
+| `std::LinkedList<T>` | 6.3.0 | 双向链表，不接受分配器参数 |
 
 详细 API 以 `caylibs/` 源码为准；版本演进和示例见[版本演进总览](release/version-history-5.2-to-6.1.md)。
 
