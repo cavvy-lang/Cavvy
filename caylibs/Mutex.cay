@@ -53,10 +53,10 @@ extern {
     void DeleteCriticalSection(c_void* cs);
     void InitializeSRWLock(c_void* lock);
     void AcquireSRWLockShared(c_void* lock);
-    c_int TryAcquireSRWLockShared(c_void* lock);
+    c_bool TryAcquireSRWLockShared(c_void* lock);
     void ReleaseSRWLockShared(c_void* lock);
     void AcquireSRWLockExclusive(c_void* lock);
-    c_int TryAcquireSRWLockExclusive(c_void* lock);
+    c_bool TryAcquireSRWLockExclusive(c_void* lock);
     void ReleaseSRWLockExclusive(c_void* lock);
 }
 #else
@@ -302,26 +302,25 @@ public class RwLock<T> {
 
     /** 内部：尝试读加锁 */
     public boolean __tryReadLockRaw() {
-        c_int rc = 0;
 #ifdef _WIN32
-        // TryAcquireSRWLockShared 成功返回非零（与 pthread 相反）
-        rc = TryAcquireSRWLockShared(this.lockCell);
-        return rc != 0;
+        // TryAcquireSRWLockShared 返回 BOOLEAN：只有低 8 位有效，其余位是未定义值。
+        // 先转 int 再判断，否则失败（AL=0）也会被高位垃圾值误判为成功。
+        c_bool ok = TryAcquireSRWLockShared(this.lockCell);
+        return (int)ok != 0;
 #else
-        rc = pthread_rwlock_tryrdlock(this.lockCell);
+        c_int rc = pthread_rwlock_tryrdlock(this.lockCell);
         return rc == 0;
 #endif
     }
 
     /** 内部：尝试写加锁 */
     public boolean __tryWriteLockRaw() {
-        c_int rc = 0;
 #ifdef _WIN32
-        // TryAcquireSRWLockExclusive 成功返回非零（与 pthread 相反）
-        rc = TryAcquireSRWLockExclusive(this.lockCell);
-        return rc != 0;
+        // 同上：BOOLEAN 返回值必须按 8 位解释后再判断
+        c_bool ok = TryAcquireSRWLockExclusive(this.lockCell);
+        return (int)ok != 0;
 #else
-        rc = pthread_rwlock_trywrlock(this.lockCell);
+        c_int rc = pthread_rwlock_trywrlock(this.lockCell);
         return rc == 0;
 #endif
     }
