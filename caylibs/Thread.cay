@@ -195,7 +195,8 @@ public class Thread {
             // 先用 MultiByteToWideChar（CP_UTF8=65001）转宽字符
             c_int wlen = MultiByteToWideChar(65001, 0, name.c_str(), -1, null, 0);
             if (wlen > 0) {
-                c_void* wbuf = malloc(wlen * 2);
+                // c_int 不能隐式转换为 size_t，先转 long 再计算字节数
+                c_void* wbuf = malloc((long)wlen * 2);
                 MultiByteToWideChar(65001, 0, name.c_str(), -1, wbuf, wlen);
                 c_void* hv2 = null;
                 __ir {
