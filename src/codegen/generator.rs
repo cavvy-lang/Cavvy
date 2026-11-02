@@ -2474,16 +2474,27 @@ impl IRGenerator {
 
         // 生成 vtable 全局常量
         // 类型：[N x i8*]
-        // 头文件引入的类可能在多个 TU 生成 vtable，使用 linkonce_odr + COMDAT
-        // 去重；当前源文件自身定义的类使用外部链接，避免为未引用的头文件类
-        // 保留多余副本，同时仍能被其它 TU 引用。
+        //
+        // 链接方式按「本 TU 是否掌握该类的实现」区分：
+        // - 当前源文件定义的类：强符号，由本 TU 唯一定义；
+        // - 头文件类且本 TU 有方法体（实现随 include 一起编进本 TU）：各 TU
+        //   内容一致，用 linkonce_odr + COMDAT 去重；
+        // - 头文件类且本 TU 完全没有该类的任何方法体（只有声明，实现体在
+        //   另一个 .cay 里）：本 TU 只发外部声明。此前这里仍发 linkonce_odr +
+        //   COMDAT，会与定义处的强符号同名冲突，导致 lld 报
+        //   duplicate symbol: X (.vtable)。
         let vtable_is_header = !self.class_belongs_to_current_unit(class_name);
-        if vtable_is_header {
-            self.emit_comdat(&vtable_name);
-        }
         let vtable_type = format!("[{} x i8*]", entries.len());
-        if vtable_is_header {
-            // 头文件类：linkonce_odr + COMDAT，允许链接器去重并删除未引用副本。
+
+        if vtable_is_header && !self.class_has_method_impl(class_name) {
+            // 只有声明没有实现：仅引用，不定义。
+            self.emit_line(&format!(
+                "@{} = external global {}",
+                vtable_name, vtable_type
+            ));
+        } else if vtable_is_header {
+            // 头文件内联定义的类：linkonce_odr + COMDAT，允许链接器去重。
+            self.emit_comdat(&vtable_name);
             self.emit_line(&format!(
                 "@{} = linkonce_odr global {} [{}], comdat(${})",
                 vtable_name,
@@ -2742,6 +2753,41 @@ impl IRGenerator {
             &method.return_type,
             &mapping,
         ))
+    }
+
+    /// 判断类在本编译单元里是否带有实现（而非只有 .cayh 里的声明）。
+    ///
+    /// 用于决定 vtable 是否在本 TU 定义：来自头文件的纯声明类（实现体在另一个
+    /// .cay 中）只能发外部声明，否则会与定义处的强符号同名冲突
+    /// （ld.lld: duplicate symbol: X (.vtable)）。
+    ///
+    /// 判据是「是否存在非 native 的成员」：.cayh 里的声明一律带 `native`
+    /// 修饰符，而任何真正写在本 TU 里的方法/构造/析构/初始化块都不带。
+    /// 不能改用「vtable 槽位能否解析出函数」来判断——泛型库类（如
+    /// std::HashSet<String>）的槽位签名可能解析失败，但实现体确实在本 TU；
+    /// 也不能只看方法体——像 http::ParsedUrl 这种只有构造函数和字段的类同样
+    /// 需要在本 TU 定义 vtable。
+    ///
+    /// 查不到类声明时保守返回 true——宁可重复定义，也不要链接期未定义符号。
+    fn class_has_method_impl(&self, class_name: &str) -> bool {
+        let bare = if let Some(pos) = class_name.find('<') {
+            &class_name[..pos]
+        } else if let Some(pos) = class_name.rfind("::") {
+            &class_name[pos + 2..]
+        } else {
+            class_name
+        };
+        let Some(class_decl) = self.classes_cache.get(bare) else {
+            return true;
+        };
+        class_decl.members.iter().any(|m| match m {
+            ClassMember::Method(md) => !md.modifiers.contains(&Modifier::Native),
+            ClassMember::Constructor(c) => !c.modifiers.contains(&Modifier::Native),
+            ClassMember::Destructor(d) => !d.modifiers.contains(&Modifier::Native),
+            ClassMember::InstanceInitializer(_) | ClassMember::StaticInitializer(_) => true,
+            // 字段不构成实现：纯声明的头文件里也会出现字段
+            ClassMember::Field(_) => false,
+        })
     }
 
     /// 判断类/struct 定义是否来自当前正在编译的源文件（而非通过 #include 引入的头文件）。
