@@ -1014,6 +1014,15 @@ fn build_clang_link_cmd(
     if !is_bundled_clang {
         // 系统 clang 可以使用 -fuse-ld=lld
         cmd.arg("-fuse-ld=lld");
+    } else {
+        // 内置 clang 会按 PATH 查找名为 "lld" 的链接器，随包工具链目录通常不在
+        // PATH 上，于是报 "unable to execute command: program not executable"。
+        // 这里直接指定随包的 ld.lld，避免依赖调用方环境。
+        let llvm_bin = exe_dir.join("llvm-minimal").join("bin");
+        let bundled_lld = llvm_bin.join("ld.lld.exe");
+        if bundled_lld.exists() {
+            cmd.arg(format!("--ld-path={}", bundled_lld.display()));
+        }
     }
 
     // 根据目标平台选择正确的 Cavvy 运行时库
@@ -1246,9 +1255,7 @@ fn build_lld_link_cmd(
         if options.static_link {
             cmd.arg("-static");
         }
-        if options.debug {
-            cmd.arg("-g");
-        }
+        // 调试信息已由 llc 写入 .obj；ld.lld 不识别 -g，传了会导致链接失败
     } else if is_darwin {
         // macOS: 使用 ld64 风格参数
         cmd.arg("-flavor").arg("darwin");
@@ -1279,9 +1286,7 @@ fn build_lld_link_cmd(
         if options.static_link {
             cmd.arg("-static");
         }
-        if options.debug {
-            cmd.arg("-g");
-        }
+        // 调试信息已由 llc 写入 .obj；ld64 不识别 -g
     } else if is_wasm {
         // WebAssembly
         cmd.arg("-o").arg(output_file);
@@ -1417,9 +1422,7 @@ fn build_lld_link_cmd(
         if options.static_link {
             cmd.arg("-static");
         }
-        if options.debug {
-            cmd.arg("-g");
-        }
+        // 调试信息已由 llc 写入 .obj；ld.lld 不识别 -g
     }
 
     // 其他链接器标志
