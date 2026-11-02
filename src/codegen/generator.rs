@@ -2477,16 +2477,15 @@ impl IRGenerator {
         //
         // 链接方式按「本 TU 是否掌握该类的实现」区分：
         // - 当前源文件定义的类：强符号，由本 TU 唯一定义；
-        // - 头文件类且本 TU 有方法体（实现随 include 一起编进本 TU）：各 TU
-        //   内容一致，用 linkonce_odr + COMDAT 去重；
-        // - 头文件类且本 TU 完全没有该类的任何方法体（只有声明，实现体在
-        //   另一个 .cay 里）：本 TU 只发外部声明。此前这里仍发 linkonce_odr +
-        //   COMDAT，会与定义处的强符号同名冲突，导致 lld 报
-        //   duplicate symbol: X (.vtable)。
+        // - 其它 TU 里的完整实现（随 include 编进本 TU）：各 TU 内容一致，
+        //   用 linkonce_odr + COMDAT 去重；
+        // - .cayh 里的纯声明（实现体在另一个 .cay 中）：本 TU 只发外部声明。
+        //   此前这里仍发 linkonce_odr + COMDAT，会与定义处的强符号同名冲突，
+        //   导致 lld 报 duplicate symbol: X (.vtable)。
         let vtable_is_header = !self.class_belongs_to_current_unit(class_name);
         let vtable_type = format!("[{} x i8*]", entries.len());
 
-        if vtable_is_header && !self.class_has_method_impl(class_name) {
+        if vtable_is_header && self.class_is_declaration_only(class_name) {
             // 只有声明没有实现：仅引用，不定义。
             self.emit_line(&format!(
                 "@{} = external global {}",
@@ -2755,21 +2754,21 @@ impl IRGenerator {
         ))
     }
 
-    /// 判断类在本编译单元里是否带有实现（而非只有 .cayh 里的声明）。
+    /// 判断类是否「只有 .cayh 里的声明，实现体在别的 .cay 中」。
     ///
-    /// 用于决定 vtable 是否在本 TU 定义：来自头文件的纯声明类（实现体在另一个
-    /// .cay 中）只能发外部声明，否则会与定义处的强符号同名冲突
-    /// （ld.lld: duplicate symbol: X (.vtable)）。
+    /// 只有这种类才允许在本 TU 只发 vtable 的外部声明；否则会与定义处的强符号
+    /// 同名冲突（ld.lld: duplicate symbol: X (.vtable)）。
     ///
-    /// 判据是「是否存在非 native 的成员」：.cayh 里的声明一律带 `native`
-    /// 修饰符，而任何真正写在本 TU 里的方法/构造/析构/初始化块都不带。
-    /// 不能改用「vtable 槽位能否解析出函数」来判断——泛型库类（如
-    /// std::HashSet<String>）的槽位签名可能解析失败，但实现体确实在本 TU；
-    /// 也不能只看方法体——像 http::ParsedUrl 这种只有构造函数和字段的类同样
-    /// 需要在本 TU 定义 vtable。
+    /// 判据有两层：
+    /// 1. 类声明来自 `.cayh` 声明文件；
+    /// 2. 类里没有任何非 `native` 成员（.cayh 的声明成员一律带 `native`）。
     ///
-    /// 查不到类声明时保守返回 true——宁可重复定义，也不要链接期未定义符号。
-    fn class_has_method_impl(&self, class_name: &str) -> bool {
+    /// 不能只看「有没有方法体」：像 CavvyN 的 BinaryExpr/ReturnStmt 这类
+    /// **只有字段、没有方法和构造函数** 的类，是完整定义在 `.cay` 里的，
+    /// 必须在本 TU 定义 vtable，否则会报 undefined symbol: BinaryExpr (.vtable)。
+    /// 也不能按「vtable 槽位能否解析出函数」判断：泛型库类（如
+    /// std::HashSet<String>）的槽位签名可能解析失败，但实现体确实在本 TU。
+    fn class_is_declaration_only(&self, class_name: &str) -> bool {
         let bare = if let Some(pos) = class_name.find('<') {
             &class_name[..pos]
         } else if let Some(pos) = class_name.rfind("::") {
@@ -2777,15 +2776,31 @@ impl IRGenerator {
         } else {
             class_name
         };
+        // 查不到类声明时保守返回 false——宁可重复定义，也不要链接期未定义符号
         let Some(class_decl) = self.classes_cache.get(bare) else {
-            return true;
+            return false;
         };
-        class_decl.members.iter().any(|m| match m {
+        let in_cayh = class_decl
+            .loc
+            .file
+            .as_deref()
+            .map(|f| {
+                std::path::Path::new(f)
+                    .extension()
+                    .map(|e| e.eq_ignore_ascii_case("cayh"))
+                    .unwrap_or(false)
+            })
+            .unwrap_or(false);
+        if !in_cayh {
+            return false;
+        }
+        // .cayh 也可能内联实现：只要有一个非 native 成员就说明本 TU 掌握实现
+        !class_decl.members.iter().any(|m| match m {
             ClassMember::Method(md) => !md.modifiers.contains(&Modifier::Native),
             ClassMember::Constructor(c) => !c.modifiers.contains(&Modifier::Native),
             ClassMember::Destructor(d) => !d.modifiers.contains(&Modifier::Native),
             ClassMember::InstanceInitializer(_) | ClassMember::StaticInitializer(_) => true,
-            // 字段不构成实现：纯声明的头文件里也会出现字段
+            // 字段在声明文件里也可能出现，不能据此判断有实现
             ClassMember::Field(_) => false,
         })
     }
