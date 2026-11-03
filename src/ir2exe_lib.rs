@@ -1017,11 +1017,23 @@ fn build_clang_link_cmd(
     } else {
         // 内置 clang 会按 PATH 查找名为 "lld" 的链接器，随包工具链目录通常不在
         // PATH 上，于是报 "unable to execute command: program not executable"。
-        // 这里直接指定随包的 ld.lld，避免依赖调用方环境。
-        let llvm_bin = exe_dir.join("llvm-minimal").join("bin");
-        let bundled_lld = llvm_bin.join("ld.lld.exe");
+        // 这里直接指定随包的 ld.lld，避免依赖调用方环境；Linux 的随包目录是
+        // bin-linux，且 LTO 必须走 lld 内置插件，不能回退到 GNU ld。
+        let llvm_bin = exe_dir.join("llvm-minimal").join(if cfg!(target_os = "windows") {
+            "bin"
+        } else {
+            "bin-linux"
+        });
+        let lld_name = if cfg!(target_os = "windows") {
+            "ld.lld.exe"
+        } else {
+            "ld.lld"
+        };
+        let bundled_lld = llvm_bin.join(lld_name);
         if bundled_lld.exists() {
             cmd.arg(format!("--ld-path={}", bundled_lld.display()));
+        } else {
+            cmd.arg("-fuse-ld=lld");
         }
     }
 
