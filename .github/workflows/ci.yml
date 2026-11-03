@@ -151,7 +151,7 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install -y libxml2-dev libzstd-dev zlib1g-dev libedit-dev libffi-dev
+          sudo apt-get install -y libxml2 libzstd1 zlib1g libedit2 libffi8 libtinfo6 libxml2-dev libzstd-dev zlib1g-dev libedit-dev libffi-dev
 
       - name: Setup LLVM
         shell: bash
@@ -161,14 +161,23 @@ jobs:
           python setup-llvm.py
           echo "LLVM_SYS_221_PREFIX=$PWD/llvm-minimal" >> "$GITHUB_ENV"
           echo "$PWD/llvm-minimal/bin" >> "$GITHUB_PATH"
+          echo "LD_LIBRARY_PATH=$PWD/llvm-minimal/lib:$PWD/target/release/llvm-minimal/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
           test -d llvm-minimal/lib
           llvm-minimal/bin/llvm-config --version
 
       - name: Full cargo test (release)
         shell: bash
         run: |
+          set -o pipefail
           export LLVM_SYS_221_PREFIX="$PWD/llvm-minimal"
-          cargo test --release --verbose
+          cargo test --release --verbose 2>&1 | tee cargo-test.log
+
+      - name: Report test failure
+        if: failure()
+        shell: bash
+        run: |
+          tail -n 150 cargo-test.log || true
+          echo "::error::$(tail -n 60 cargo-test.log | tr '\n' ' ' | cut -c1-6000)"
 
       - name: Build release
         shell: bash
