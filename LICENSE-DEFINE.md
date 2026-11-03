@@ -6,7 +6,7 @@
 
 | 路径 | 内容 | 许可证 |
 |---|---|---|
-| 仓库根目录及除 `caylibs/` 外的所有文件 | 编译器源码、工具链、文档等 | GPL-3.0-only |
+| 仓库根目录及除 `caylibs/` 和 `third-party` 里的说明的所有第三方文件外的所有文件 | 编译器源码、工具链、文档等 | GPL-3.0-only |
 | `caylibs/bin/` | 运行时二进制、构建脚本、静态库（如 `cayrt`, `build.sh`, `libcayrt.a` 等） | GPL-3.0-only + Cavvy Runtime Library Exception (Cavvy-RLE) |
 | `caylibs/` 下除 `bin/` 外的其他文件 | Cavvy 标准库源码（如 `string_ops`, `vector` 等） | MIT |
 
