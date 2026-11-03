@@ -6,6 +6,44 @@ use crate::ast::*;
 use crate::miette_diagnostic::{CayResult, SourceLocation};
 use crate::types::Type;
 
+/// 判断语句树中是否至少存在一个 `return`。
+///
+/// 这里只做「完全没有 return」的快速检查，用于把缺少返回值的函数挡在
+/// codegen 之前；完整的控制流可达性分析（每个分支都 return）留待后续。
+fn stmt_contains_return(stmt: &Stmt) -> bool {
+    match stmt {
+        Stmt::Return(_) => true,
+        Stmt::Block(block) => block.statements.iter().any(stmt_contains_return),
+        Stmt::Scope(scope) => block_contains_return(&scope.body),
+        Stmt::If(if_stmt) => {
+            stmt_contains_return(&if_stmt.then_branch)
+                || if_stmt
+                    .else_branch
+                    .as_deref()
+                    .is_some_and(stmt_contains_return)
+        }
+        Stmt::While(while_stmt) => stmt_contains_return(&while_stmt.body),
+        Stmt::For(for_stmt) => stmt_contains_return(&for_stmt.body),
+        Stmt::ForEach(for_each) => stmt_contains_return(&for_each.body),
+        Stmt::DoWhile(do_while) => stmt_contains_return(&do_while.body),
+        Stmt::Switch(switch_stmt) => {
+            switch_stmt
+                .cases
+                .iter()
+                .any(|case| case.body.iter().any(stmt_contains_return))
+                || switch_stmt
+                    .default
+                    .as_ref()
+                    .is_some_and(|stmts| stmts.iter().any(stmt_contains_return))
+        }
+        _ => false,
+    }
+}
+
+fn block_contains_return(block: &Block) -> bool {
+    block.statements.iter().any(stmt_contains_return)
+}
+
 impl SemanticAnalyzer {
     /// 类型检查程序
     pub fn type_check_program(&mut self, program: &mut Program) -> CayResult<()> {
@@ -44,6 +82,16 @@ impl SemanticAnalyzer {
                 if let Some(inferred) = self.current_inferring_return.take() {
                     func.return_type = inferred;
                 }
+            } else if func.return_type != Type::Void && !block_contains_return(&func.body) {
+                self.errors.push(crate::semantic::analyzer::SemanticErrorInfo {
+                    line: func.loc.line,
+                    column: func.loc.column,
+                    message: format!(
+                        "函数 '{}' 的返回类型为 {}，但函数体中没有 return 语句\n提示: 返回一个 {} 类型的值，或把返回类型改为 void",
+                        func.name, func.return_type, func.return_type
+                    ),
+                    file: self.current_file.clone(),
+                });
             }
 
             self.symbol_table.exit_scope();
@@ -141,6 +189,18 @@ impl SemanticAnalyzer {
                                         inferred,
                                     );
                                 }
+                            } else if return_type != Type::Void && !block_contains_return(body) {
+                                self.errors.push(
+                                    crate::semantic::analyzer::SemanticErrorInfo {
+                                        line: method.loc.line,
+                                        column: method.loc.column,
+                                        message: format!(
+                                            "方法 '{}' 的返回类型为 {}，但函数体中没有 return 语句\n提示: 返回一个 {} 类型的值，或把返回类型改为 void",
+                                            method.name, return_type, return_type
+                                        ),
+                                        file: self.current_file.clone(),
+                                    },
+                                );
                             }
                         }
 

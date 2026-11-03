@@ -778,6 +778,27 @@ mod tests {
     }
 
     #[test]
+    fn reports_missing_return_diagnostic() {
+        let analysis = analyze(
+            r#"
+            public class Foo {
+                public static int[] values() {
+                    int x = 1;
+                }
+            }
+            "#,
+        );
+        assert!(
+            analysis
+                .diagnostics
+                .iter()
+                .any(|d| d.message.contains("没有 return")),
+            "诊断: {:?}",
+            analysis.diagnostics
+        );
+    }
+
+    #[test]
     fn finds_include_directives() {
         let inc = find_include_directives("#include \"foo.cay\"\n#include <std/vector.cay>\n");
         assert_eq!(inc.len(), 2);
