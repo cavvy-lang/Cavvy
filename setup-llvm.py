@@ -38,7 +38,7 @@ CONFIG = {
     "github_repo": "cavvy-lang/Cavvy-src-Assets",
     "verinfo_path": ".verinfo",
     "install_dir": "llvm-minimal",
-    "timeout_seconds": 300,
+    "timeout_seconds": 900,
 }
 
 # LLVM官方发布URL模板 (用于完整开发包下载)
@@ -49,7 +49,7 @@ LLVM_OFFICIAL_URLS = {
         "x86_64": "https://github.com/llvm/llvm-project/releases/download/llvmorg-{version}/clang+llvm-{version}-x86_64-pc-windows-msvc.tar.xz",
     },
     "linux": {
-        "x86_64": "https://github.com/llvm/llvm-project/releases/download/llvmorg-{version}/clang+llvm-{version}-x86_64-linux-gnu-ubuntu-22.04.tar.xz",
+        "x86_64": "https://github.com/llvm/llvm-project/releases/download/llvmorg-{version}/LLVM-{version}-Linux-X64.tar.xz",
     },
 }
 
@@ -252,9 +252,23 @@ def extract_tar_xz(archive_path: Path, extract_to: Path) -> bool:
     log_info(f"目标目录: {extract_to}")
 
     try:
-        # 确保bin目标目录存在
+        # 确保bin目标目录存在，并清掉上一次失败/缓存留下的符号链接。
         bin_dir = extract_to / "bin"
+        if bin_dir.is_symlink() or bin_dir.is_file():
+            bin_dir.unlink()
+        elif bin_dir.exists():
+            shutil.rmtree(bin_dir, ignore_errors=True)
         bin_dir.mkdir(parents=True, exist_ok=True)
+
+        if sys.platform != "win32":
+            # 系统 tar 能正确处理 LLVM 包里的符号链接（Python tarfile 在某些
+            # 符号链接布局下会报 ELOOP）。
+            subprocess.run(
+                ["tar", "-xJf", str(archive_path), "-C", str(bin_dir)],
+                check=True,
+            )
+            log_success("解压完成")
+            return True
 
         # 打开并解压tar.xz文件到bin目录
         with tarfile.open(archive_path, "r:xz") as tar:
@@ -293,8 +307,23 @@ def verify_installation(install_dir: Path, os_name: str, full_llvm: bool = False
     """
     log_info("验证安装...")
 
-    # 关键二进制文件列表
-    essential_bins = ["clang", "ld.lld", "ld64.lld", "llc", "lld-link", "lld", "llvm-ar", "llvm-profdata", "llvm-profgen", "wasm-ld"]
+    # 关键二进制文件列表。Linux 官方包不一定包含 Windows 链接器
+    # （lld-link/ld64.lld/llvm-profgen），按平台分别检查，避免误报。
+    if os_name == "win":
+        essential_bins = [
+            "clang",
+            "ld.lld",
+            "ld64.lld",
+            "llc",
+            "lld-link",
+            "lld",
+            "llvm-ar",
+            "llvm-profdata",
+            "llvm-profgen",
+            "wasm-ld",
+        ]
+    else:
+        essential_bins = ["clang", "ld.lld", "llc", "llvm-ar"]
 
     # 完整LLVM开发包额外需要的工具
     if full_llvm:
@@ -381,22 +410,30 @@ def extract_tar_xz_with_structure(archive_path: Path, extract_to: Path) -> bool:
     log_info(f"目标目录: {extract_to}")
 
     try:
-        # 创建临时解压目录
+        # 创建临时解压目录（清掉上一次失败留下的内容）
         temp_extract = extract_to / "_temp_tar_extract"
+        if temp_extract.exists():
+            shutil.rmtree(temp_extract, ignore_errors=True)
         temp_extract.mkdir(parents=True, exist_ok=True)
 
-        # 解压tar.xz到临时目录
-        with tarfile.open(archive_path, "r:xz") as tar:
-            # 安全检查：防止路径遍历攻击
-            for member in tar.getmembers():
-                member_path = temp_extract / member.name
-                try:
-                    member_path.resolve().relative_to(temp_extract.resolve())
-                except ValueError:
-                    log_error(f"检测到不安全的路径遍历: {member.name}")
-                    return False
+        if sys.platform != "win32":
+            subprocess.run(
+                ["tar", "-xJf", str(archive_path), "-C", str(temp_extract)],
+                check=True,
+            )
+        else:
+            # 解压tar.xz到临时目录
+            with tarfile.open(archive_path, "r:xz") as tar:
+                # 安全检查：防止路径遍历攻击
+                for member in tar.getmembers():
+                    member_path = temp_extract / member.name
+                    try:
+                        member_path.resolve().relative_to(temp_extract.resolve())
+                    except ValueError:
+                        log_error(f"检测到不安全的路径遍历: {member.name}")
+                        return False
 
-            tar.extractall(path=temp_extract)
+                tar.extractall(path=temp_extract)
 
         # 检查解压后的目录结构
         # LLVM官方包通常包含一个子目录
@@ -468,7 +505,7 @@ def download_and_install_llvm(
         if os_name == "win":
             archive_name = f"clang+llvm-{version}-x86_64-pc-windows-msvc.tar.xz"
         else:
-            archive_name = f"clang+llvm-{version}-{arch}-linux-gnu-ubuntu-22.04.tar.xz"
+            archive_name = f"LLVM-{version}-Linux-X64.tar.xz"
         archive_path = install_dir / archive_name
     else:
         archive_name = f"llvm-minimal-{version}-{os_name}-{arch}.tar.xz"
