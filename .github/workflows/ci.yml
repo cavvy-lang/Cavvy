@@ -126,7 +126,9 @@ jobs:
   linux:
     name: Linux build & full test
     needs: version
-    runs-on: ubuntu-latest
+    # 官方 LLVM 22.1.6 Linux 包面向 Ubuntu 22.04，固定 runner 以避免
+    # 24.04 的 libxml2 soname 变化导致 ld.lld 启动失败。
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
