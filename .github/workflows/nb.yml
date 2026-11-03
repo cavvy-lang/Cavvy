@@ -13,209 +13,282 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  RUSTFLAGS: "-A warnings"  # 允许所有警告，灵魂保留
+  RUSTFLAGS: "-A warnings"
+
+permissions:
+  contents: read
 
 jobs:
-  build-and-release:
+  version:
+    name: Read .verinfo
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.verinfo.outputs.tag }}
+      version: ${{ steps.verinfo.outputs.version }}
+      build: ${{ steps.verinfo.outputs.build }}
+      date: ${{ steps.verinfo.outputs.date }}
+      basename: ${{ steps.verinfo.outputs.basename }}
+      short_sha: ${{ steps.verinfo.outputs.short_sha }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Parse .verinfo
+        id: verinfo
+        shell: bash
+        run: python scripts/verinfo.py --github-output
+
+  build-windows:
+    name: Windows build & test
+    needs: version
     runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: x86_64-pc-windows-gnu
+
+      - name: Cache LLVM
+        uses: actions/cache@v4
+        with:
+          path: llvm-minimal
+          key: llvm-${{ runner.os }}-${{ hashFiles('.verinfo', 'setup-llvm.py') }}
+
+      - name: Setup LLVM
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $env:CAVVY_USE_FULL_LLVM = "1"
+          python setup-llvm.py
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "setup-llvm.py failed with exit code $LASTEXITCODE"
+            exit 1
+          }
+          $llvmPath = Join-Path $pwd "llvm-minimal"
+          "LLVM_SYS_221_PREFIX=$llvmPath" >> $env:GITHUB_ENV
+          "$llvmPath\bin" >> $env:GITHUB_PATH
+          Write-Host "LLVM installed at: $llvmPath"
+          & "$llvmPath\bin\llvm-config.exe" --version
+
+      - name: Run cargo test
+        if: github.event.inputs.skip_tests != 'true'
+        shell: pwsh
+        run: |
+          $env:LLVM_SYS_221_PREFIX = Join-Path $pwd "llvm-minimal"
+          cargo test --release --verbose
+
+      - name: Build release
+        shell: pwsh
+        run: |
+          $env:LLVM_SYS_221_PREFIX = Join-Path $pwd "llvm-minimal"
+          cargo build --release --verbose
+
+      - name: Package artifacts
+        id: package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $baseName = "${{ needs.version.outputs.basename }}"
+          $buildDir = "target/release"
+
+          if (-not (Test-Path "$buildDir/cayc.exe")) {
+            Write-Error "Release build not found"
+            exit 1
+          }
+
+          Remove-Item -Recurse -Force packaging -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path "packaging/full/caylibs" | Out-Null
+          New-Item -ItemType Directory -Force -Path "packaging/core" | Out-Null
+          New-Item -ItemType Directory -Force -Path "packaging/core/caylibs" | Out-Null
+
+          Copy-Item -Path "caylibs/*" -Destination "packaging/full/caylibs/" -Recurse -Force
+          Copy-Item -Path "caylibs/*" -Destination "packaging/core/caylibs/" -Recurse -Force
+
+          if (Test-Path "lib") {
+            New-Item -ItemType Directory -Force -Path "packaging/full/lib" | Out-Null
+            Copy-Item -Path "lib/*" -Destination "packaging/full/lib/" -Recurse -Force
+          }
+          if (Test-Path "mingw-minimal") {
+            New-Item -ItemType Directory -Force -Path "packaging/full/mingw-minimal" | Out-Null
+            Copy-Item -Path "mingw-minimal/*" -Destination "packaging/full/mingw-minimal/" -Recurse -Force
+          }
+          if (Test-Path "llvm-minimal") {
+            New-Item -ItemType Directory -Force -Path "packaging/full/llvm-minimal" | Out-Null
+            Copy-Item -Path "llvm-minimal/*" -Destination "packaging/full/llvm-minimal/" -Recurse -Force
+          }
+          if (Test-Path "third-party") {
+            New-Item -ItemType Directory -Force -Path "packaging/full/third-party" | Out-Null
+            Copy-Item -Path "third-party/*" -Destination "packaging/full/third-party/" -Recurse -Force
+          }
+          if (Test-Path "examples") {
+            New-Item -ItemType Directory -Force -Path "packaging/full/examples" | Out-Null
+            Copy-Item -Path "examples/*" -Destination "packaging/full/examples/" -Recurse -Force
+          }
+
+          Copy-Item -Path "$buildDir/*.exe" -Destination "packaging/full/" -Force
+          Copy-Item -Path "$buildDir/*.exe" -Destination "packaging/core/" -Force
+
+          $fullName = "${baseName}-win-x86_64-mingw64-llvm22.zip"
+          $coreName = "${baseName}-win-x86_64-core.zip"
+          Compress-Archive -Path "packaging/full/*" -DestinationPath $fullName -Force
+          Compress-Archive -Path "packaging/core/*" -DestinationPath $coreName -Force
+
+          Write-Host "Created: $fullName"
+          Write-Host "Created: $coreName"
+          "FULL_ARCHIVE=$fullName" >> $env:GITHUB_OUTPUT
+          "CORE_ARCHIVE=$coreName" >> $env:GITHUB_OUTPUT
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cavvy-nightly-windows
+          path: |
+            ${{ steps.package.outputs.FULL_ARCHIVE }}
+            ${{ steps.package.outputs.CORE_ARCHIVE }}
+          if-no-files-found: error
+
+  build-linux:
+    name: Linux build & test
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Cache LLVM
+        uses: actions/cache@v4
+        with:
+          path: llvm-minimal
+          key: llvm-${{ runner.os }}-${{ hashFiles('.verinfo', 'setup-llvm.py') }}
+
+      - name: Install LLVM runtime dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxml2-dev libzstd-dev zlib1g-dev libedit-dev libffi-dev
+
+      - name: Setup LLVM
+        shell: bash
+        run: |
+          set -euo pipefail
+          export CAVVY_USE_FULL_LLVM=1
+          python setup-llvm.py
+          echo "LLVM_SYS_221_PREFIX=$PWD/llvm-minimal" >> "$GITHUB_ENV"
+          echo "$PWD/llvm-minimal/bin" >> "$GITHUB_PATH"
+          test -d llvm-minimal/lib
+          llvm-minimal/bin/llvm-config --version
+
+      - name: Run cargo test
+        if: github.event.inputs.skip_tests != 'true'
+        shell: bash
+        run: |
+          export LLVM_SYS_221_PREFIX="$PWD/llvm-minimal"
+          cargo test --release --verbose
+
+      - name: Build release
+        shell: bash
+        run: |
+          export LLVM_SYS_221_PREFIX="$PWD/llvm-minimal"
+          cargo build --release --verbose
+
+      - name: Package artifacts
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${{ needs.version.outputs.basename }}"
+          rm -rf packaging
+          mkdir -p packaging/full packaging/core
+
+          cp -a caylibs packaging/full/
+          cp -a caylibs packaging/core/
+          cp -a llvm-minimal packaging/full/
+          [ -d third-party ] && cp -a third-party packaging/full/ || true
+          [ -d examples ] && cp -a examples packaging/full/ || true
+
+          for bin in cayc cay-ir ir2exe cay-check cay-run cay-rcpl cay-bcgen cay-lsp cavly cay-dt cay-dp cay-ast cay-pl cay-sir cay-pre; do
+            if [ -f "target/release/$bin" ]; then
+              cp "target/release/$bin" packaging/full/
+              cp "target/release/$bin" packaging/core/
+            fi
+          done
+
+          full="${base}-linux-x86_64-llvm22.tar.gz"
+          core="${base}-linux-x86_64-core.tar.gz"
+          tar -C packaging/full -czf "$full" .
+          tar -C packaging/core -czf "$core" .
+          echo "FULL_ARCHIVE=$full" >> "$GITHUB_OUTPUT"
+          echo "CORE_ARCHIVE=$core" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cavvy-nightly-linux
+          path: |
+            ${{ steps.package.outputs.FULL_ARCHIVE }}
+            ${{ steps.package.outputs.CORE_ARCHIVE }}
+          if-no-files-found: error
+
+  release:
+    name: Publish nightly pre-release
+    needs: [version, build-windows, build-linux]
+    runs-on: ubuntu-latest
     permissions:
       contents: write
-    
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-        submodules: recursive
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
 
-    - name: Setup Rust toolchain
-      uses: actions-rust-lang/setup-rust-toolchain@v1
-      with:
-        toolchain: stable
-        target: x86_64-pc-windows-gnu
+      - name: Delete previous nightly release and tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          gh release delete nightly-latest --yes 2>/dev/null || true
+          gh api -X DELETE "repos/${GITHUB_REPOSITORY}/git/refs/tags/nightly-latest" 2>/dev/null || true
 
-    - name: Setup LLVM
-      run: |
-        # 设置CAVVY_USE_FULL_LLVM=1下载完整LLVM开发包（约2GB，供llvm-sys使用）
-        $env:CAVVY_USE_FULL_LLVM = "1"
-        python setup-llvm.py
-        if ($LASTEXITCODE -ne 0) {
-          Write-Error "setup-llvm.py failed with exit code $LASTEXITCODE"
-          exit 1
-        }
-        $llvmPath = Join-Path $pwd "llvm-minimal"
-        $env:PATH = "$llvmPath\bin;$env:PATH"
-        "LLVM_SYS_221_PREFIX=$llvmPath" >> $env:GITHUB_ENV
-        # 验证LLVM安装
-        Write-Host "LLVM installed at: $llvmPath"
-        Write-Host "LLVM bin contents:"
-        Get-ChildItem "$llvmPath\bin" | Select-Object -First 20
-        if (Test-Path "$llvmPath\include") {
-          Write-Host "LLVM include directory exists"
-        } else {
-          Write-Warning "LLVM include directory NOT found"
-        }
-        if (Test-Path "$llvmPath\lib") {
-          Write-Host "LLVM lib directory exists"
-        } else {
-          Write-Warning "LLVM lib directory NOT found"
-        }
-      shell: pwsh
+      - name: Create nightly pre-release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly-latest
+          name: "Cavvy Nightly ${{ needs.version.outputs.tag }} build${{ needs.version.outputs.build }} (${{ needs.version.outputs.date }})"
+          body: |
+            **预发布版本** | Pre-release Build
 
-    - name: Extract version and date
-      id: version
-      shell: pwsh
-      run: |
-        $ErrorActionPreference = "Stop"
+            - 版本: `${{ needs.version.outputs.version }}`
+            - 构建号: `${{ needs.version.outputs.build }}`（来自 `.verinfo`）
+            - 日期: `${{ needs.version.outputs.date }}`
+            - 提交: `${{ github.sha }}`
 
-        $tag = git describe --tags --abbrev=0 2>$null
-        if (-not $tag) {
-          $shortSha = $env:GITHUB_SHA.Substring(0,7)
-          $tag = "v0.0.0+$shortSha"
-          Write-Host "No tags found, using: $tag"
-        } else {
-          Write-Host "Found tag: $tag"
-        }
+            ## 文件说明
 
-        $date = Get-Date -Format "yyyyMMdd"
-        $baseName = "cavvy-$tag-build$date"
-
-        "TAG=$tag" >> $env:GITHUB_OUTPUT
-        "DATE=$date" >> $env:GITHUB_OUTPUT
-        "BASENAME=$baseName" >> $env:GITHUB_OUTPUT
-
-    - name: Run cargo test
-      if: github.event.inputs.skip_tests != 'true'
-      shell: pwsh
-      run: |
-        $env:LLVM_SYS_221_PREFIX = Join-Path $pwd "llvm-minimal"
-        Write-Host "LLVM_SYS_221_PREFIX = $env:LLVM_SYS_221_PREFIX"
-        # 验证llvm-config存在
-        $llvmConfig = Join-Path $env:LLVM_SYS_221_PREFIX "bin\llvm-config.exe"
-        if (Test-Path $llvmConfig) {
-          Write-Host "Found llvm-config.exe"
-          & $llvmConfig --version
-        } else {
-          Write-Warning "llvm-config.exe not found at $llvmConfig"
-        }
-        cargo test --release --verbose
-
-    - name: Build Release
-      shell: pwsh
-      run: |
-        $env:LLVM_SYS_221_PREFIX = Join-Path $pwd "llvm-minimal"
-        Write-Host "LLVM_SYS_221_PREFIX = $env:LLVM_SYS_221_PREFIX"
-        cargo build --release --verbose
-
-    - name: Package artifacts
-      id: package
-      shell: pwsh
-      run: |
-        $ErrorActionPreference = "Stop"
-        $baseName = "${{ steps.version.outputs.BASENAME }}"
-        
-        # 确定构建目录（优先 release）
-        $buildDir = "target/release"
-        if (-not (Test-Path "$buildDir/cayc.exe")) {
-          Write-Host "Error: Release build not found"
-          exit 1
-        }
-        
-        Write-Host "Packaging from: $buildDir"
-        
-        # 创建临时目录结构
-        New-Item -ItemType Directory -Force -Path "packaging/full/lib"
-        New-Item -ItemType Directory -Force -Path "packaging/full/caylibs"
-        New-Item -ItemType Directory -Force -Path "packaging/full/mingw-minimal"
-        New-Item -ItemType Directory -Force -Path "packaging/full/llvm-minimal"
-        New-Item -ItemType Directory -Force -Path "packaging/core"
-        
-        # 复制完整版内容
-        Copy-Item -Path "lib/*" -Destination "packaging/full/lib/" -Recurse -Force
-        Copy-Item -Path "caylibs/*" -Destination "packaging/full/caylibs/" -Recurse -Force
-        if (Test-Path "mingw-minimal") {
-            Copy-Item -Path "mingw-minimal/*" -Destination "packaging/full/mingw-minimal/" -Recurse -Force
-        } else {
-            Write-Warning "mingw-minimal 目录不存在，已跳过复制（新版工具链不再需要）"
-        }
-        Copy-Item -Path "llvm-minimal/*" -Destination "packaging/full/llvm-minimal/" -Recurse -Force
-        Copy-Item -Path "$buildDir/cayc.exe" -Destination "packaging/full/" -Force
-        Copy-Item -Path "$buildDir/cay-ir.exe" -Destination "packaging/full/" -Force
-        Copy-Item -Path "$buildDir/ir2exe.exe" -Destination "packaging/full/" -Force
-        Copy-Item -Path "$buildDir/cay-check.exe" -Destination "packaging/full/" -Force
-        Copy-Item -Path "$buildDir/cay-run.exe" -Destination "packaging/full/" -Force
-        Copy-Item -Path "$buildDir/cay-rcpl.exe" -Destination "packaging/full/" -Force
-        Copy-Item -Path "$buildDir/cay-bcgen.exe" -Destination "packaging/full/" -Force
-        Copy-Item -Path "$buildDir/cay-lsp.exe" -Destination "packaging/full/" -Force
-        Copy-Item -Path "$buildDir/cavly.exe" -Destination "packaging/full/" -Force
-        Copy-Item -Path "$buildDir/cay-dt.exe" -Destination "packaging/full/" -Force
-        Copy-Item -Path "$buildDir/cay-dp.exe" -Destination "packaging/full/" -Force
-        
-        # 复制核心版内容（仅 exe和标准库）
-        Copy-Item -Path "caylibs/*" -Destination "packaging/full/caylibs/" -Recurse -Force
-        Copy-Item -Path "$buildDir/cayc.exe" -Destination "packaging/core/" -Force
-        Copy-Item -Path "$buildDir/cay-ir.exe" -Destination "packaging/core/" -Force
-        Copy-Item -Path "$buildDir/ir2exe.exe" -Destination "packaging/core/" -Force
-        Copy-Item -Path "$buildDir/cay-check.exe" -Destination "packaging/core/" -Force
-        Copy-Item -Path "$buildDir/cay-run.exe" -Destination "packaging/core/" -Force
-        Copy-Item -Path "$buildDir/cay-rcpl.exe" -Destination "packaging/core/" -Force
-        Copy-Item -Path "$buildDir/cay-bcgen.exe" -Destination "packaging/core/" -Force
-        Copy-Item -Path "$buildDir/cay-lsp.exe" -Destination "packaging/core/" -Force
-        Copy-Item -Path "$buildDir/cavly.exe" -Destination "packaging/core/" -Force
-        Copy-Item -Path "$buildDir/cay-dt.exe" -Destination "packaging/core/" -Force
-        Copy-Item -Path "$buildDir/cay-dp.exe" -Destination "packaging/core/" -Force
-        # 创建 zip 文件
-        $fullName = "${baseName}-win86-64-mingw64-llvm21.zip"
-        $coreName = "${baseName}-win86-64-core.zip"
-        
-        Compress-Archive -Path "packaging/full/*" -DestinationPath $fullName -Force
-        Compress-Archive -Path "packaging/core/*" -DestinationPath $coreName -Force
-        
-        Write-Host "Created: $fullName"
-        Write-Host "Created: $coreName"
-        
-        "FULL_ZIP=$fullName" >> $env:GITHUB_OUTPUT
-        "CORE_ZIP=$coreName" >> $env:GITHUB_OUTPUT
-
-    - name: Delete previous nightly release and tag (if exists)
-      shell: pwsh
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        $ErrorActionPreference = "Stop"
-        # 删除已存在的 nightly-latest release（避免旧 release 的 draft 状态被继承）
-        try {
-          gh release delete nightly-latest --yes 2>$null
-          Write-Host "Deleted existing nightly-latest release"
-        } catch {
-          Write-Host "No existing nightly-latest release to delete"
-        }
-        # 删除本地和远程 tag
-        git tag -d nightly-latest 2>$null
-        git push origin :refs/tags/nightly-latest 2>$null
-        Write-Host "Cleaned up old nightly tag"
-
-    - name: Create Pre-Release
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: nightly-latest
-        name: "Cavvy Nightly ${{ steps.version.outputs.TAG }} (${{ steps.version.outputs.DATE }})"
-        body: |
-          **预发布版本** | Pre-release Build
-          
-          - 版本: `${{ steps.version.outputs.TAG }}`
-          - 日期: `${{ steps.version.outputs.DATE }}`
-          - 提交: `${{ github.sha }}`
-          
-          ## 文件说明
-          | 文件名 | 说明 |
-          |--------|------|
-          | `*-win86-64-mingw64-llvm21.zip` | **完整版**：含 lib, mingw-minimal, llvm-minimal 工具链 |
-          | `*-win86-64-core.zip` | **核心版**：仅 exe |
-          
-        files: |
-          cavvy-*.zip
-        prerelease: true
-        fail_on_unmatched_files: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            | 文件名 | 说明 |
+            |--------|------|
+            | `*-win-x86_64-mingw64-llvm22.zip` | Windows 完整版：含 lib、MinGW、LLVM 工具链 |
+            | `*-win-x86_64-core.zip` | Windows 核心版：仅 exe + caylibs |
+            | `*-linux-x86_64-llvm22.tar.gz` | Linux 完整版：含 LLVM 工具链 |
+            | `*-linux-x86_64-core.tar.gz` | Linux 核心版：仅二进制 + caylibs |
+          files: artifacts/*
+          prerelease: true
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
