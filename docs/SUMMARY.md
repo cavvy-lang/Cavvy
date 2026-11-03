@@ -54,6 +54,7 @@
 
 - [Cavly 包管理器](cavly.md)
 - [标准库参考](standard-library.md)
+- [内置声明约定](builtins.md)
 
 # 运行时
 

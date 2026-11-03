@@ -1,0 +1,13 @@
+// @builtin Integer
+// Cavvy 内置包装类型 Integer 的签名存根。
+//
+// 说明：
+//   - `Integer` 不是词法关键字，但为避免与用户自定义类混淆，存根类名使用 `CayInteger`。
+//   - index.json 把内建名 "Integer" 映射到本文件的存根符号 "CayInteger"。
+//   - 编译器目前只支持 parseInt 这一个 Integer 静态方法，因此这里只声明它。
+//   - 本文件使用 UTF-8（无 BOM）编码。
+public final class CayInteger {
+    /// 将字符串 s 解析为 int 并返回。
+    /// s 必须是合法的十进制整数字面量，否则行为由编译器运行时定义。
+    public static native int parseInt(CayString s);
+}

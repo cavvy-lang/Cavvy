@@ -1,0 +1,13 @@
+// @builtin bool
+// Cavvy 基本（primitive）类型 bool 的签名存根：布尔值 true / false。
+//
+// 说明：
+//   - `bool` 是词法关键字，不能直接作为类名，因此存根类名使用 `CayBool`。
+//   - index.json 把内建名 "bool" 映射到本文件的存根符号 "CayBool"。
+//   - 本文件仅作为编辑器 / 分析器读取的签名存根，不参与编译。
+//   - 方法为 native（仅声明签名，无方法体），以 ';' 结束。
+//   - 本文件使用 UTF-8（无 BOM）编码。
+public final class CayBool {
+    /// 将当前 bool 值转换为字符串表示（"true" 或 "false"）。
+    public native CayString toString();
+}

@@ -41,7 +41,7 @@
 | **字节码混淆** | ✅ 实现 | `src/bytecode/obfuscator.rs` |
 | **包管理器 Cavly** | ✅ 完整实现 | `src/cavly/`（6+ 文件） |
 | **RCPL 交互式环境** | ✅ 完整实现 | `src/rcpl/`（4 文件） |
-| **LSP 语言服务器** | ✅ 实现 | `src/bin/cay-lsp.rs` |
+| **LSP 语言服务器** | ✅ 实现 | `src/lsp/`（入口 `src/bin/cay-lsp.rs`） |
 | **文档工具 cay-dt** | ✅ 实现 | `src/bin/cay-dt.rs` |
 | **依赖分析 cay-dp** | ✅ 实现 | `src/bin/cay-dp.rs` |
 | **独立预处理器 cay-pre** | ✅ 实现 | `src/bin/cay-pre.rs` |

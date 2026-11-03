@@ -1,0 +1,79 @@
+// @builtin functions
+// Cavvy 内置全局函数的签名存根。
+//
+// 说明：
+//   - Cavvy 没有顶层自由函数；内置全局函数统一声明为 `Builtins` 类的
+//     `public static native` 方法。
+//   - index.json 的 "functions" 字段把 `Builtins` 映射为全局函数集合；
+//     例如用户代码中的 `print(x)` 应解析为 `Builtins.print(x)`。
+//   - 所有方法均为 native（仅声明签名，无方法体），以 ';' 结束。
+//   - printf 使用 Cavvy 的可变参数语法 `Type... name`（type... 后跟参数名）。
+//   - 本文件使用 UTF-8（无 BOM）编码。
+public class Builtins {
+    /// 无参数形式：不输出任何内容。
+    public static native void print();
+
+    /// 将 value 的字符串表示输出到标准输出（不换行）。
+    public static native void print(Object value);
+
+    /// 按格式字符串 format 输出（不换行），args 为可变参数。
+    public static native void print(CayString format, Object... args);
+
+    /// 无参数形式：输出一个换行。
+    public static native void println();
+
+    /// 将 value 的字符串表示输出到标准输出并换行。
+    public static native void println(Object value);
+
+    /// 按格式字符串 format 输出并换行，args 为可变参数。
+    public static native void println(CayString format, Object... args);
+
+    /// 无参数形式：不输出任何内容。
+    public static native void eprint();
+
+    /// 将 value 的字符串表示输出到标准错误（不换行）。
+    public static native void eprint(Object value);
+
+    /// 按格式字符串 format 输出到标准错误（不换行）。
+    public static native void eprint(CayString format, Object... args);
+
+    /// 无参数形式：向标准错误输出一个换行。
+    public static native void eprintln();
+
+    /// 将 value 的字符串表示输出到标准错误并换行。
+    public static native void eprintln(Object value);
+
+    /// 按格式字符串 format 输出到标准错误并换行。
+    public static native void eprintln(CayString format, Object... args);
+
+    /// 按格式字符串 format 输出，args 为可变参数。
+    /// 格式占位符由运行时解释，数量与类型需与 args 匹配。
+    public static native void printf(CayString format, Object... args);
+
+    /// 从标准输入读取一个 int。
+    public static native int readInt();
+
+    /// 从标准输入读取一个 long。
+    public static native long readLong();
+
+    /// 从标准输入读取一个 float。
+    public static native float readFloat();
+
+    /// 从标准输入读取一个 double。
+    public static native double readDouble();
+
+    /// 从标准输入读取一行文本。
+    public static native CayString readLine();
+
+    /// 从标准输入读取一个 char。
+    public static native char readChar();
+
+    /// 以状态码 code 终止程序。
+    public static native void exit(int code);
+
+    /// 输出错误信息 message 并终止程序（panic）。
+    public static native void panic(CayString message);
+
+    /// 输出错误信息 message 并立即中止程序（abort）。
+    public static native void abort(CayString message);
+}

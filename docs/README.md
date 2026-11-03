@@ -25,6 +25,7 @@
 | [ffi.md](ffi.md)                                     | FFI 外部函数接口                |
 | [toolchain.md](toolchain.md)                         | 构建与测试指南                  |
 | [cavly.md](cavly.md)                                 | 包管理器指南                    |
+| [builtins.md](builtins.md)                           | 内置类型/函数的声明存根约定     |
 | [bytecode-format.md](bytecode-format.md)             | CayBC 字节码格式                |
 | [lsp-protocol.md](lsp-protocol.md)                   | LSP 语言服务器协议              |
 | [testing.md](testing.md)                             | 测试指南                        |
@@ -40,7 +41,7 @@
 - **后端**：捆绑 clang（`llvm-minimal/`）将 LLVM IR 编译为机器码
 - **字节码**：CayBC 格式（`src/bytecode/`），支持 JIT/AOT
 - **包管理**：Cavly（`src/cavly/`），内置依赖解析和工作区管理
-- **LSP**：内置语言服务器（`src/bin/cay-lsp.rs`）
+- **LSP**：内置语言服务器（`src/lsp/`，可执行文件 `src/bin/cay-lsp.rs`）
 
 ---
 

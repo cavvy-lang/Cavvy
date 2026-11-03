@@ -1,0 +1,94 @@
+// @builtin String
+// Cavvy 内置字符串类型 String 的签名存根。
+//
+// 说明：
+//   - `String` 是词法关键字，不能直接作为类名，因此存根类名使用 `CayString`。
+//   - index.json 把内建名 "String" 映射到本文件的存根符号 "CayString"。
+//   - 下面列出的方法签名与编译器内建 String 方法一一对应；未列出的方法编译器不支持。
+//   - 所有方法均为 native（仅声明签名，无方法体），以 ';' 结束。
+//   - 本文件使用 UTF-8（无 BOM）编码。
+public final class CayString {
+    /// 返回字符串的长度（字符数）。
+    public native int length();
+
+    /// 返回从 beginIndex 开始到字符串末尾的子串。
+    /// beginIndex 从 0 开始计数。
+    public native CayString substring(int beginIndex);
+
+    /// 返回 [beginIndex, endIndex) 区间的子串。
+    /// endIndex 不包含在结果中。
+    public native CayString substring(int beginIndex, int endIndex);
+
+    /// 返回 str 第一次出现的下标；不存在时返回 -1。
+    public native int indexOf(CayString str);
+
+    /// 从 fromIndex 开始查找，返回 str 第一次出现的下标；不存在时返回 -1。
+    public native int indexOf(CayString str, int fromIndex);
+
+    /// 返回 str 最后一次出现的下标；不存在时返回 -1。
+    public native int lastIndexOf(CayString str);
+
+    /// 返回下标 index 处的字符。
+    public native char charAt(int index);
+
+    /// 将 target 全部替换为 replacement，返回替换后的新字符串。
+    public native CayString replace(CayString target, CayString replacement);
+
+    /// 判断字符串是否为空（长度为 0）。
+    public native bool isEmpty();
+
+    /// 判断与 other 的内容是否完全相同（区分大小写）。
+    public native bool equals(CayString other);
+
+    /// 判断与 other 的内容是否相同（忽略大小写）。
+    public native bool equalsIgnoreCase(CayString other);
+
+    /// 返回指向内部字符数据的 C 字符串指针（以 NUL 结尾）。
+    /// 返回的指针指向字符串内部缓冲区，调用方不应修改或释放。
+    public native c_char* c_str();
+
+    /// 判断字符串是否以 prefix 开头。
+    public native bool startsWith(CayString prefix);
+
+    /// 判断字符串是否以 suffix 结尾。
+    public native bool endsWith(CayString suffix);
+
+    /// 去除首尾空白字符，返回新字符串。
+    public native CayString trim();
+
+    /// 返回转换为小写后的新字符串。
+    public native CayString toLowerCase();
+
+    /// 返回转换为大写后的新字符串。
+    public native CayString toUpperCase();
+
+    /// 判断字符串是否包含子串 str。
+    public native bool contains(CayString str);
+
+    /// 按字典序与 other 比较：负数表示小于，0 表示相等，正数表示大于。
+    public native int compareTo(CayString other);
+
+    /// 返回字符串的哈希码。
+    public native int hashCode();
+
+    /// 将 int 转换为字符串。
+    public static native CayString valueOf(int value);
+
+    /// 将 long 转换为字符串。
+    public static native CayString valueOf(long value);
+
+    /// 将 float 转换为字符串。
+    public static native CayString valueOf(float value);
+
+    /// 将 double 转换为字符串。
+    public static native CayString valueOf(double value);
+
+    /// 将 bool 转换为字符串。
+    public static native CayString valueOf(bool value);
+
+    /// 将 char 转换为字符串。
+    public static native CayString valueOf(char value);
+
+    /// 原样返回字符串自身。
+    public static native CayString valueOf(CayString value);
+}

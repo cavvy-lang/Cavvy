@@ -1,0 +1,14 @@
+// @builtin array
+// Cavvy 数组类型：T[] 等价于 array<T>。
+//
+// 说明：
+//   - 本文件仅作为编辑器 / 分析器读取的签名存根，不参与编译，也不会链接进用户程序。
+//   - 编译器内部的 T[] 与 array<T> 是同一个类型；分析器应把 T[] 归一化为 array<T>。
+//   - 编译器只保证 length 字段（与 T[].length 完全一致），不提供 get/set 等方法，
+//     因此这里也不要声明任何 get/set。
+//   - 本文件使用 UTF-8（无 BOM）编码。
+public final class array<T> {
+    /// Number of elements in the array (same as the compiler's T[].length).
+    /// 数组中元素的数量，与编译器 T[].length 的语义一致。
+    public int length;
+}

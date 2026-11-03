@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "types": [
+    { "builtin": "String", "stub": "CayString", "file": "String.cay" },
+    { "builtin": "int", "stub": "CayInt", "file": "int.cay" },
+    { "builtin": "long", "stub": "CayLong", "file": "long.cay" },
+    { "builtin": "float", "stub": "CayFloat", "file": "float.cay" },
+    { "builtin": "double", "stub": "CayDouble", "file": "double.cay" },
+    { "builtin": "bool", "stub": "CayBool", "file": "bool.cay" },
+    { "builtin": "char", "stub": "CayChar", "file": "char.cay" },
+    { "builtin": "array", "stub": "array", "file": "array.cay", "note": "T[] is equivalent to array<T>" },
+    { "builtin": "Object", "stub": "Object", "file": "Object.cay" },
+    { "builtin": "Integer", "stub": "CayInteger", "file": "Integer.cay" }
+  ],
+  "functions": {
+    "stub": "Builtins",
+    "file": "functions.cay"
+  }
+}

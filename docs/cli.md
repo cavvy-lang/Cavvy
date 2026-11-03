@@ -15,7 +15,7 @@ Cavvy 6.2.0 提供 16 个 CLI 入口；其中 `cay-setup` 是可独立构建和�
 | `cay-run` | 编译 + 运行一步完成 | `src/bin/cay-run.rs` |
 | `cay-rcpl` | 交互式编程环境 | `src/bin/cay-rcpl.rs` |
 | `cay-bcgen` | CayBC 字节码生成 | `src/bin/cay-bcgen.rs` |
-| `cay-lsp` | LSP 语言服务器 | `src/bin/cay-lsp.rs` |
+| `cay-lsp` | LSP 语言服务器 | `src/lsp/`（入口 `src/bin/cay-lsp.rs`） |
 | `cavly` | 包管理器 | `src/bin/cavly.rs` |
 | `cay-dt` | Token显示工具 | `src/bin/cay-dt.rs` |
 | `cay-dp` | Parser显示工具 | `src/bin/cay-dp.rs` |
@@ -331,16 +331,22 @@ cay-bcgen input.cay --obfuscate --obfuscate-level deep
 cay-lsp
 ```
 
-**选项**：无命令行选项（通过 LSP 协议通信）。
+**选项**：
+
+| 选项 | 说明 |
+|---|---|
+| `-h`, `--help` | 显示帮助 |
+| `-v`, `--version` | 显示版本 |
 
 **编辑器配置**（VS Code 扩展位于 `vscode-extension/`）：
 
-工具链中包含 VS Code 扩展，提供：
-- 语法高亮
-- 自动补全
-- 诊断信息（错误和警告）
-- 跳转到定义
-- 悬停信息
+工具链中包含 VS Code 扩展。启用 `cavvyAnalyzer.enableLSP`（默认开启）时，
+补全、悬停、跳转、引用、重命名、签名帮助、大纲、语义高亮、折叠、内联提示、
+文档链接、快速修复和诊断全部由 `cay-lsp` 提供；关闭 LSP 时才使用扩展内置的
+旧版本地 provider。
+
+**内置类型与方法**来自 `caylibs/__builtins__/`（见[内置声明约定](builtins.md)），
+LSP 不在代码里硬编码 `String`、数组 `.length` 等签名。
 
 ---
 
