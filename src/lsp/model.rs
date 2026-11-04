@@ -2348,11 +2348,7 @@ impl<'a> ModelBuilder<'a> {
                 for size in &creation.sizes {
                     self.visit_expr(file, size, ctx);
                 }
-                let mut ty = creation.element_type.clone();
-                for _ in &creation.sizes {
-                    ty = Type::Array(Box::new(ty));
-                }
-                Some(ty)
+                Some(Type::Array(Box::new(creation.element_type.clone())))
             }
             Expr::ArrayAccess(access) => {
                 let array_ty = self.visit_expr(file, &access.array, ctx);

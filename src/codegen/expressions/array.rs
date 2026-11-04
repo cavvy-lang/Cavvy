@@ -16,11 +16,27 @@ impl IRGenerator {
         // 单态化上下文下，将泛型参数 T 替换为实际类型
         let element_type = self.resolve_type_arg_concrete(&arr.element_type);
         if arr.sizes.len() == 1 {
-            // 一维数组
+            // 一维数组：element_type 就是元素类型
             self.generate_1d_array_creation(&element_type, &arr.sizes[0], &arr.loc)
         } else {
-            // 多维数组
-            self.generate_md_array_creation(&element_type, &arr.sizes, &arr.loc)
+            // 多维数组：parser 把 element_type 保存为“去掉第一维后的类型”，
+            // 例如 new int[a][b] 的 element_type 是 int[]。底层分配需要的是
+            // 基础元素类型 int，否则行会按 int[]（指针，8 字节）而不是 int
+            // （4 字节）分配，导致 graph[t][j] 越界/读到错误数据。
+            let mut base_element_type = element_type;
+            for _ in 1..arr.sizes.len() {
+                base_element_type = match base_element_type {
+                    Type::Array(inner) => *inner,
+                    _ => {
+                        return Err(codegen_error_at(
+                            ErrorCodes::CODEGEN_INVALID_OPERATION,
+                            arr.loc.clone(),
+                            "多维数组的元素类型与维度数不一致".to_string(),
+                        ));
+                    }
+                };
+            }
+            self.generate_md_array_creation(&base_element_type, &arr.sizes, &arr.loc)
         }
     }
 
@@ -512,24 +528,52 @@ impl IRGenerator {
             format!("{}*", self.get_md_array_type(element_type, sub_sizes.len()))
         };
 
-        // 分配指针数组 (elem_type** 用于存储子数组指针)
+        // 分配指针数组。外层数组同样需要 8 字节长度头：
+        //   [i32 length][i32 padding][ptr0][ptr1]...
+        // 否则 graph.length 会读取分配块之前的无效内存。
         let ptr_array_bytes = self.new_temp();
         self.emit_line(&format!(
             "  {} = mul i64 {}, 8",
             ptr_array_bytes, first_size_i64
         ));
+        let total_bytes = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = add i64 {}, 8",
+            total_bytes, ptr_array_bytes
+        ));
 
         let calloc_ptr_array = self.new_temp();
         self.emit_line(&format!(
             "  {} = call i8* @calloc(i64 1, i64 {})",
-            calloc_ptr_array, ptr_array_bytes
+            calloc_ptr_array, total_bytes
         ));
 
-        // 转换为正确的指针类型
+        let first_size_i32 = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = trunc i64 {} to i32",
+            first_size_i32, first_size_i64
+        ));
+        let len_ptr = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = bitcast i8* {} to i32*",
+            len_ptr, calloc_ptr_array
+        ));
+        self.emit_line(&format!(
+            "  store i32 {}, i32* {}, align 4",
+            first_size_i32, len_ptr
+        ));
+
+        let data_ptr = self.new_temp();
+        self.emit_line(&format!(
+            "  {} = getelementptr i8, i8* {}, i64 8",
+            data_ptr, calloc_ptr_array
+        ));
+
+        // 转换为正确的指针类型（指向数据区，长度头在 -8）
         let ptr_array = self.new_temp();
         self.emit_line(&format!(
             "  {} = bitcast i8* {} to {}*",
-            ptr_array, calloc_ptr_array, sub_array_llvm_type
+            ptr_array, data_ptr, sub_array_llvm_type
         ));
 
         // 如果不规则数组（有空维度），不分配子数组，直接返回

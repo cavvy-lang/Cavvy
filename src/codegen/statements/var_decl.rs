@@ -50,12 +50,9 @@ impl IRGenerator {
                 Self::promote_inferred_types(then_t, else_t)
             }
             Expr::ArrayCreation(arr) => {
-                // new Type[size] / 多维数组：按维度数包裹 Array 层数
-                let mut ty = arr.element_type.clone();
-                for _ in 0..arr.sizes.len().max(1) {
-                    ty = Type::Array(Box::new(ty));
-                }
-                Some(ty)
+                // ArrayCreationExpr.element_type 已经是“去掉第一维后的元素类型”，
+                // 只需要再包一层第一维；重复按 sizes 包层会把 int[][] 推成 int[][][]。
+                Some(Type::Array(Box::new(arr.element_type.clone())))
             }
             Expr::ArrayInit(arr) => arr
                 .elements
