@@ -1,3 +1,10 @@
+#warning "STANDARD LIBRARY WARNING"
+#warning "------------------------"
+#warning "<c/ctype.cay> is deprecated and will be removed in 7.0"
+#warning "use <cctype.cay> and std::cctype instead"
+#warning "标准库警告"
+#warning "<c/ctype.cay> 已弃用，将在 7.0 移除"
+#warning "请改用 <cctype.cay> 和 std::cctype"
 extern {
     c_int isalnum(c_int c);
     c_int isalpha(c_int c);

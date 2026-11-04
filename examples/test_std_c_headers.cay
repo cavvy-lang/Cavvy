@@ -1,0 +1,24 @@
+// C++ 风格 C 标准库包装回归测试：
+// 所有 API 必须通过 std::c* 命名空间访问，不污染全局作用域。
+#include <cstdio.cay>
+#include <cstdlib.cay>
+#include <cstring.cay>
+#include <cctype.cay>
+#include <cmath.cay>
+#include <ctime.cay>
+
+public class Main {
+    public static void main() {
+        std::cstdio::puts("std c headers");
+
+        c_int value = std::cstdlib::abs(-7);
+        c_int digit = std::cctype::isdigit(55);
+        c_double root = std::cmath::sqrt(9.0);
+        size_t len = std::cstring::strlen("cavvy");
+        c_int64_t ticks = std::ctime::clock();
+
+        if (value != 7 || digit == 0 || root != 3.0 || len != 5 || ticks < 0) {
+            std::cstdio::puts("std c headers failed");
+        }
+    }
+}

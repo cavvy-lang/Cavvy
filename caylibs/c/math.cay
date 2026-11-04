@@ -2,6 +2,13 @@
 // 标准 C 库函数 - math.h
 // ============================================
 
+#warning "STANDARD LIBRARY WARNING"
+#warning "------------------------"
+#warning "<c/math.cay> is deprecated and will be removed in 7.0"
+#warning "use <cmath.cay> and std::cmath instead"
+#warning "标准库警告"
+#warning "<c/math.cay> 已弃用，将在 7.0 移除"
+#warning "请改用 <cmath.cay> 和 std::cmath"
 extern {
     // 三角函数
     c_double sin(c_double x);

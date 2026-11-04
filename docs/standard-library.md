@@ -36,6 +36,33 @@ Cavvy 标准库提供全面的系统编程能力，涵盖内存管理、字符�
 #include <std/vector.cay>
 ```
 
+### C 标准库的 C++ 风格包装
+
+为避免 `printf`、`malloc`、`strlen` 等 C 标识符污染全局作用域，新增以下 C++ 头文件风格的包装：
+
+```cay
+#include <cstdio.cay>
+#include <cstdlib.cay>
+#include <cstring.cay>
+#include <cctype.cay>
+#include <cmath.cay>
+#include <ctime.cay>
+```
+
+它们把 C 函数放进对应命名空间：
+
+```cay
+std::cstdio::puts("hello");
+c_int n = std::cstdlib::abs(-1);
+size_t len = std::cstring::strlen("cavvy");
+c_double x = std::cmath::sqrt(2.0);
+```
+
+旧的 `c/stdio.cay`、`c/stdlib.cay`、`c/string.cay`、`c/ctype.cay`、
+`c/math.cay`、`c/time.cay` 和 `c/usual/memory.cay` **在 7.0 之前继续保留**，
+以维持源码兼容；包含它们会收到弃用警告。新代码应使用上面的 `std::c*` 包装，
+不要依赖旧的全局 C 名字。
+
 ---
 
 ## 内存管理 (Allocator)

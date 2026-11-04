@@ -1,4 +1,11 @@
 
+#warning "STANDARD LIBRARY WARNING"
+#warning "------------------------"
+#warning "<c/string.cay> is deprecated and will be removed in 7.0"
+#warning "use <cstring.cay> and std::cstring instead"
+#warning "标准库警告"
+#warning "<c/string.cay> 已弃用，将在 7.0 移除"
+#warning "请改用 <cstring.cay> 和 std::cstring"
 extern {
     // 内存操作
     c_void* memcpy(c_void* dest, c_void* src, size_t n);

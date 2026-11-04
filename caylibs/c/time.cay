@@ -4,6 +4,13 @@
 
 // 数学常量 (在代码中直接使用数值)
 
+#warning "STANDARD LIBRARY WARNING"
+#warning "------------------------"
+#warning "<c/time.cay> is deprecated and will be removed in 7.0"
+#warning "use <ctime.cay> and std::ctime instead"
+#warning "标准库警告"
+#warning "<c/time.cay> 已弃用，将在 7.0 移除"
+#warning "请改用 <ctime.cay> 和 std::ctime"
 extern {
     c_int64_t time(c_int64_t* timer);
     c_double difftime(c_int64_t end, c_int64_t start);

@@ -1,0 +1,21 @@
+/**
+ * C++ 风格 C 标准库包装：<ctime>
+ *
+ * 所有名字都位于 std::ctime 命名空间。旧的 <c/time.cay> 在 7.0 前
+ * 继续保留，但已弃用。
+ */
+
+#pragma once
+
+namespace std {
+namespace ctime {
+
+extern {
+    c_int64_t time(c_int64_t* timer);
+    c_double difftime(c_int64_t end, c_int64_t start);
+    c_int64_t clock();
+    c_string ctime(c_int64_t* timer);
+}
+
+} // namespace ctime
+} // namespace std

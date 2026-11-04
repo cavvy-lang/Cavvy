@@ -1,0 +1,57 @@
+/**
+ * C++ 风格 C 标准库包装：<cstdio>
+ *
+ * 所有名字都位于 std::cstdio 命名空间，不再向全局作用域注入 printf /
+ * fopen 等常见 C 标识符。旧的 <c/stdio.cay> 在 7.0 前继续保留，但已弃用。
+ */
+
+#pragma once
+
+namespace std {
+namespace cstdio {
+
+extern {
+    // 格式化输出
+    c_int printf(c_string fmt, ...);
+    c_int fprintf(c_void* stream, c_string fmt, ...);
+    c_int sprintf(c_char* str, c_string fmt, ...);
+    c_int snprintf(c_char* str, size_t size, c_string fmt, ...);
+
+    // 格式化输入
+    c_int scanf(c_string fmt, ...);
+    c_int fscanf(c_void* stream, c_string fmt, ...);
+    c_int sscanf(c_string str, c_string fmt, ...);
+
+    // 字符 I/O
+    c_int getchar();
+    c_int putchar(c_int c);
+    c_int puts(c_string str);
+    c_string fgets(c_char* str, c_int n, c_void* stream);
+    c_int fputs(c_string str, c_void* stream);
+
+    // 文件操作
+    c_void* fopen(c_string filename, c_string mode);
+    c_int fclose(c_void* stream);
+    c_int fflush(c_void* stream);
+    c_void* freopen(c_string filename, c_string mode, c_void* stream);
+
+    // 文件读写
+    size_t fread(c_void* ptr, size_t size, size_t nmemb, c_void* stream);
+    size_t fwrite(c_void* ptr, size_t size, size_t nmemb, c_void* stream);
+    c_int fgetc(c_void* stream);
+    c_int fputc(c_int c, c_void* stream);
+
+    // 文件定位
+    c_int fseek(c_void* stream, c_long offset, c_int whence);
+    c_long ftell(c_void* stream);
+    c_void rewind(c_void* stream);
+
+    // 错误处理
+    void clearerr(c_void* stream);
+    c_int feof(c_void* stream);
+    c_int ferror(c_void* stream);
+    void perror(c_string s);
+}
+
+} // namespace cstdio
+} // namespace std
