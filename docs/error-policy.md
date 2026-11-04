@@ -28,9 +28,9 @@
 | `src/codegen/expressions/call/function_name.rs`（`generate_function_name`） | 方法定义缺失时用实参推断类型，失败回退 `Type::Int32`；顶层函数找不到时回退 `__toplevel_<name>` | 错误的方法/函数名会一路带到链接阶段，或把类型冲突掩盖成 `int` | 顶层函数名改用 Itanium ABI 并从中查找定义；类型推断失败返回诊断 |
 | `src/codegen/expressions/call/method_generic.rs`（泛型方法推断） | 泛型类型推断失败回退 `Type::Int32` | 泛型实参错误被静默实例化为 `int` | 返回“无法推断泛型实参”的 codegen 错误 |
 | `src/codegen/statements/var_decl.rs`（`var`/`let` 推断） | 初始化表达式或返回表达式类型推断失败回退 `Type::Int32` | 变量类型错误被伪装成 `int`，后续重载/布局判断全部偏移 | 返回带位置的类型推断错误 |
-| `src/codegen/expressions/lambda.rs`（lambda 返回类型） | 返回表达式推断失败回退 `Type::Int32` | lambda 被错误特化为 `int` 返回 | 返回“无法推断 lambda 返回类型” |
-| `src/bin/cay-run.rs`（读取源文件） | `fs::read_to_string(...).unwrap_or_default()` | 文件不存在/不可读时以空程序继续 | 返回 I/O 错误，不启动编译 |
-| `src/bin/cay-bcgen.rs`（读取输出文件大小） | `metadata(...).map(...).unwrap_or(0)` | 产物读取失败被当成 0 字节 | 输出错误并让命令失败 |
+| `src/codegen/expressions/lambda.rs`（lambda 捕获变量类型） | 捕获变量查不到 Cavvy 类型时回退 `Type::Int32` | 捕获变量被错误按 `int` 布局/传参 | 已改为返回带位置的 codegen 错误 |
+| `src/bin/cay-run.rs`（读取源文件） | `fs::read_to_string(...).unwrap_or_default()` | 文件不存在/不可读时以空程序继续 | 已改为输出 I/O 错误并退出 |
+| `src/bin/cay-bcgen.rs`（读取输出文件大小） | `metadata(...).map(...).unwrap_or(0)` | 产物读取失败被当成 0 字节 | 已改用待写入字节数，成功路径不再读取 metadata |
 | `src/codegen/expressions/call/helpers.rs` / `new.rs` / `try_op.rs` 等 | vtable 槽位、类型 ID 缺失时 `unwrap_or(0)` | 运行期派发/类型判断静默走错误分支 | 逐项区分“确实为 0”和“缺失”，缺失时返回诊断 |
 
 > 清单不是“允许回退”的白名单，而是待偿还的技术债。新增代码不得扩大该清单。

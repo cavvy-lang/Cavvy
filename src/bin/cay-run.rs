@@ -634,7 +634,17 @@ fn main() {
                 match compile_cay_to_ir(&input_path, &options) {
                     Ok(ir) => ir,
                     Err(e) => {
-                        let source = fs::read_to_string(&input_path).unwrap_or_default();
+                        let source = match fs::read_to_string(&input_path) {
+                            Ok(source) => source,
+                            Err(read_err) => {
+                                print_tool_error(
+                                    "读取源文件",
+                                    &read_err.to_string(),
+                                    Some("请确认源文件存在且可读"),
+                                );
+                                process::exit(1);
+                            }
+                        };
                         print_error_with_context(&e, &source, &input_path);
                         process::exit(1);
                     }
