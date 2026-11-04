@@ -51,7 +51,7 @@ Cavvy 标准库提供全面的系统编程能力，涵盖内存管理、字符�
 
 它们把 C 函数放进对应命名空间：
 
-```cay
+```cay,ignore
 std::cstdio::puts("hello");
 c_int n = std::cstdlib::abs(-1);
 size_t len = std::cstring::strlen("cavvy");
