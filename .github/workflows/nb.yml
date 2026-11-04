@@ -216,35 +216,29 @@ jobs:
           set -euo pipefail
           base="${{ needs.version.outputs.basename }}"
           rm -rf packaging
-          mkdir -p packaging/full packaging/core
+          mkdir -p packaging/linux
 
-          cp -a caylibs packaging/full/
-          cp -a caylibs packaging/core/
-          cp -a llvm-minimal packaging/full/
-          [ -d third-party ] && cp -a third-party packaging/full/ || true
-          [ -d examples ] && cp -a examples packaging/full/ || true
+          # Linux 不打包 LLVM / lib：发行版包管理器可直接安装 LLVM，
+          # 完整 LLVM 包会超过 GitHub Release 的 2GB 单文件限制。
+          cp -a caylibs packaging/linux/
+          [ -d third-party ] && cp -a third-party packaging/linux/ || true
+          [ -d examples ] && cp -a examples packaging/linux/ || true
 
           for bin in cayc cay-ir ir2exe cay-check cay-run cay-rcpl cay-bcgen cay-lsp cavly cay-dt cay-dp cay-ast cay-pl cay-sir cay-pre; do
             if [ -f "target/release/$bin" ]; then
-              cp "target/release/$bin" packaging/full/
-              cp "target/release/$bin" packaging/core/
+              cp "target/release/$bin" packaging/linux/
             fi
           done
 
-          full="${base}-linux-x86_64-llvm22.tar.gz"
-          core="${base}-linux-x86_64-core.tar.gz"
-          tar -C packaging/full -czf "$full" .
-          tar -C packaging/core -czf "$core" .
-          echo "FULL_ARCHIVE=$full" >> "$GITHUB_OUTPUT"
-          echo "CORE_ARCHIVE=$core" >> "$GITHUB_OUTPUT"
+          archive="${base}-linux-x86_64.tar.gz"
+          tar -C packaging/linux -czf "$archive" .
+          echo "ARCHIVE=$archive" >> "$GITHUB_OUTPUT"
 
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
         with:
           name: cavvy-nightly-linux
-          path: |
-            ${{ steps.package.outputs.FULL_ARCHIVE }}
-            ${{ steps.package.outputs.CORE_ARCHIVE }}
+          path: ${{ steps.package.outputs.ARCHIVE }}
           if-no-files-found: error
 
   release:
@@ -288,8 +282,7 @@ jobs:
             |--------|------|
             | `*-win-x86_64-mingw64-llvm22.zip` | Windows 完整版：含 lib、MinGW、LLVM 工具链 |
             | `*-win-x86_64-core.zip` | Windows 核心版：仅 exe + caylibs |
-            | `*-linux-x86_64-llvm22.tar.gz` | Linux 完整版：含 LLVM 工具链 |
-            | `*-linux-x86_64-core.tar.gz` | Linux 核心版：仅二进制 + caylibs |
+            | `*-linux-x86_64.tar.gz` | Linux 版：仅二进制 + caylibs（LLVM 由系统包管理器提供） |
           files: artifacts/*
           prerelease: true
           fail_on_unmatched_files: true
