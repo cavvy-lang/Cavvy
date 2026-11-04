@@ -6,6 +6,39 @@ use crate::ast::*;
 use crate::miette_diagnostic::semantic_error;
 use crate::types::Type;
 
+/// extern 函数在 Cavvy 代码中的完整可调用名。
+///
+/// 无命名空间时就是别名/原名；有命名空间时必须是
+/// `namespace::...::name`，不能退化成全局短名。
+pub(crate) fn extern_function_export_name(
+    decl: &ExternDecl,
+    func: &ExternFunction,
+) -> String {
+    let local = func.alias.as_deref().unwrap_or(&func.name);
+    if decl.namespace_path.is_empty() {
+        local.to_string()
+    } else {
+        format!("{}::{}", decl.namespace_path.join("::"), local)
+    }
+}
+
+/// 匹配 extern 调用名。
+///
+/// `std::ffi.cay` 在命名空间修复前曾经可以用短名调用；为了兼容这个历史
+/// 行为，只对直接位于 `std` 的 extern 保留短名匹配。更深的命名空间
+/// （如 `std::cstdio`）必须使用完整限定名，避免重新污染全局。
+pub(crate) fn extern_function_matches(
+    decl: &ExternDecl,
+    func: &ExternFunction,
+    name: &str,
+) -> bool {
+    let local = func.alias.as_deref().unwrap_or(&func.name);
+    if extern_function_export_name(decl, func) == name {
+        return true;
+    }
+    decl.namespace_path.len() == 1 && decl.namespace_path[0] == "std" && local == name
+}
+
 impl SemanticAnalyzer {
     /// 推断函数调用类型
     ///
@@ -256,11 +289,11 @@ impl SemanticAnalyzer {
             let mut found_func = None;
             for extern_decl in &prog.extern_declarations {
                 for extern_func in &extern_decl.functions {
-                    // 检查是否匹配：有别名的按别名匹配，没别名的按原名匹配
-                    let is_match = match &extern_func.alias {
-                        Some(alias) => alias == name.as_ref(),
-                        None => extern_func.name == name.as_ref(),
-                    };
+                    // 检查是否匹配：有别名的按别名匹配，没别名的按原名匹配。
+                    // 命名空间必须参与比较，否则 std::cstdio::printf 会被当成
+                    // 全局 printf，或者完全找不到。
+                    let is_match =
+                        extern_function_matches(extern_decl, extern_func, name.as_ref());
 
                     if is_match {
                         // 检查参数数量（不包括可变参数）
@@ -1062,11 +1095,7 @@ impl SemanticAnalyzer {
         if let Some(ref prog) = self.program {
             for extern_decl in &prog.extern_declarations {
                 for extern_func in &extern_decl.functions {
-                    let is_match = match &extern_func.alias {
-                        Some(alias) => alias == name,
-                        None => extern_func.name == name,
-                    };
-                    if is_match {
+                    if extern_function_matches(extern_decl, extern_func, name) {
                         return true;
                     }
                 }
