@@ -655,17 +655,13 @@ impl IRGenerator {
 
     /// 检查是否是顶层函数
     pub fn is_top_level_function(&self, func_name: &str) -> bool {
-        self.top_level_functions.iter().any(|f| f.name == func_name)
+        self.find_top_level_function(func_name).is_some()
     }
 
     /// 获取顶层函数的类型
     /// 时间复杂度: O(n)，n为顶层函数数量
     pub fn get_top_level_function_type(&self, func_name: &str) -> crate::types::Type {
-        if let Some(func) = self
-            .top_level_functions
-            .iter()
-            .find(|f| f.name == func_name)
-        {
+        if let Some(func) = self.find_top_level_function(func_name) {
             crate::types::Type::Function(Box::new(crate::types::FunctionType {
                 params: func.params.iter().map(|p| p.param_type.clone()).collect(),
                 return_type: Box::new(func.return_type.clone()),
@@ -2615,10 +2611,38 @@ impl IRGenerator {
         }
     }
 
-    /// 生成顶层函数名称
-    /// 格式: __toplevel_function_name
-    pub fn generate_top_level_function_name(&self, name: &str) -> String {
-        format!("__toplevel_{}", name)
+    /// 顶层函数在 Cavvy 代码中的完整名字（含命名空间）。
+    pub fn top_level_function_qualified_name(func: &crate::ast::TopLevelFunction) -> String {
+        if func.namespace_path.is_empty() {
+            func.name.clone()
+        } else {
+            format!("{}::{}", func.namespace_path.join("::"), func.name)
+        }
+    }
+
+    /// 查找顶层函数，支持短名和 `namespace::name` 限定名。
+    pub fn find_top_level_function(&self, name: &str) -> Option<&crate::ast::TopLevelFunction> {
+        self.top_level_functions.iter().find(|func| {
+            func.name == name || Self::top_level_function_qualified_name(func) == name
+        })
+    }
+
+    /// 生成顶层函数的 Itanium C++ ABI 名称。
+    pub fn generate_top_level_function_name(
+        &self,
+        name: &str,
+        namespace_path: &[String],
+        params: &[crate::types::ParameterInfo],
+    ) -> String {
+        let param_types: Vec<crate::types::Type> =
+            params.iter().map(|p| p.param_type.clone()).collect();
+        let is_variadic = params.iter().any(|p| p.is_varargs);
+        let mut mangler = crate::codegen::itanium_mangle::ItaniumMangler::new(
+            self.type_registry.as_ref(),
+            &self.class_namespaces,
+            self.is_windows_target(),
+        );
+        mangler.mangle_function(namespace_path, name, &param_types, is_variadic)
     }
 
     /// 注册类型标识符

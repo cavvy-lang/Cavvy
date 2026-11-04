@@ -574,7 +574,11 @@ impl IRGenerator {
 
             self.generate_static_array_initialization();
             self.generate_static_string_initialization()?;
-            let main_fn_name = self.generate_top_level_function_name(&func.name);
+            let main_fn_name = self.generate_top_level_function_name(
+                &func.name,
+                &func.namespace_path,
+                &func.params,
+            );
 
             if has_args {
                 // 将 argc, argv 转换为 String[]
@@ -4773,7 +4777,11 @@ impl IRGenerator {
         &mut self,
         func: &crate::ast::TopLevelFunction,
     ) -> CayResult<()> {
-        let fn_name = self.generate_top_level_function_name(&func.name);
+        let fn_name = self.generate_top_level_function_name(
+            &func.name,
+            &func.namespace_path,
+            &func.params,
+        );
         self.current_function = fn_name.clone();
         self.current_class = String::new(); // 顶层函数没有类
         self.current_return_type = self.type_to_llvm(&func.return_type);

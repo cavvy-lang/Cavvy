@@ -415,7 +415,7 @@ public int square(int x) {
         let module = build_ir(source);
         let ir = verify_and_emit(&module);
 
-        assert!(ir.contains("__toplevel_square"));
+        assert!(ir.contains("_Z6squarei"));
         assert!(ir.contains("define i32"));
     }
 
@@ -440,8 +440,8 @@ public int main() {
 
         // 验证生成了完整模块
         assert!(ir.contains("target triple"));
-        assert!(ir.contains("define i32 @__toplevel_main()"));
-        assert!(ir.contains("__toplevel_main"));
+        assert!(ir.contains("define i32 @_Z4mainv()"));
+        assert!(ir.contains("_Z4mainv"));
     }
 
     // ============================================================
