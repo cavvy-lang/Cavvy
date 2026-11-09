@@ -1,0 +1,19 @@
+// Error测试：返回 int[] 的方法缺少 return 语句
+// 回归：以前会生成没有 ret 的非法 LLVM IR，只在 llc 阶段报
+// "expected instruction opcode"；现在应在语义阶段报 E4007。
+public class TestMissingReturnArray {
+    private static final int INF = 0x3f3f3f3f;
+
+    public static int[] dijkstra(int[][] graph, int source) {
+        int n = graph.length - 1;
+        int[] dist = new int[n + 1]();
+        bool[] vis = new bool[n + 1]();
+        for (int i = 0; i <= n; i++) {
+            dist[i] = INF;
+        }
+        dist[source] = 0;
+    }
+
+    public static void main() {
+    }
+}

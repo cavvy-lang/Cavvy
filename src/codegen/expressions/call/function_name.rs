@@ -158,7 +158,15 @@ impl IRGenerator {
         // 回退：类型注册表中找不到方法定义时，直接用实参类型按 Itanium ABI 生成函数名
         // 顶层函数（class_name 为空）使用 __toplevel_ 前缀（非 C++ 互操作场景）
         if class_name.is_empty() {
-            // 顶层函数命名：__toplevel_func_name
+            if let Some(func) = self.find_top_level_function(method_name) {
+                return self.generate_top_level_function_name(
+                    &func.name,
+                    &func.namespace_path,
+                    &func.params,
+                );
+            }
+            // TODO(error-policy): 找不到顶层函数定义时这里仍然回退到旧前缀。
+            // 已登记在 docs/error-policy.md，后续应改为返回诊断。
             format!("__toplevel_{}", method_name)
         } else {
             let param_types: Vec<crate::types::Type> = processed_args

@@ -1,0 +1,16 @@
+// @builtin Object
+// Cavvy 所有引用类型的根类 Object 的签名存根。
+//
+// 说明：
+//   - `Object` 不是词法关键字，可以直接作为类名。
+//   - 本文件仅作为编辑器 / 分析器读取的签名存根，不参与编译。
+//   - 方法均为 native（仅声明签名，无方法体），以 ';' 结束。
+//   - 本文件使用 UTF-8（无 BOM）编码。
+public class Object {
+    /// 返回对象的哈希码。
+    public native int hashCode();
+
+    /// 判断当前对象与 other 是否相等。
+    /// 默认语义为引用相等；子类可重写以实现内容相等。
+    public native bool equals(Object other);
+}

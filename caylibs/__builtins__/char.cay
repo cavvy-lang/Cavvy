@@ -1,0 +1,13 @@
+// @builtin char
+// Cavvy 基本（primitive）类型 char 的签名存根：单个字符。
+//
+// 说明：
+//   - `char` 是词法关键字，不能直接作为类名，因此存根类名使用 `CayChar`。
+//   - index.json 把内建名 "char" 映射到本文件的存根符号 "CayChar"。
+//   - 本文件仅作为编辑器 / 分析器读取的签名存根，不参与编译。
+//   - 方法为 native（仅声明签名，无方法体），以 ';' 结束。
+//   - 本文件使用 UTF-8（无 BOM）编码。
+public final class CayChar {
+    /// 将当前 char 值转换为单字符字符串表示。
+    public native CayString toString();
+}

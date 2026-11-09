@@ -104,6 +104,10 @@ pub struct Preprocessor {
     include_stack: Vec<String>,
     /// 系统包含路径列表
     system_include_paths: Vec<PathBuf>,
+    /// 是否抑制向 stderr 输出 `#warning`（LSP 等库调用方使用）
+    suppress_warnings: bool,
+    /// 收集到的 `#warning`：(文件, 行号, 消息)，供 LSP 转成诊断。
+    warnings: Vec<(String, usize, String)>,
 }
 
 /// 条件编译状态
@@ -215,7 +219,21 @@ impl Preprocessor {
             skipping: false,
             include_stack: Vec::new(),
             system_include_paths: include_paths,
+            suppress_warnings: false,
+            warnings: Vec::new(),
         }
+    }
+
+    /// 抑制 `#warning` 的 stderr 输出。
+    ///
+    /// 编译器 CLI 需要这些提示；LSP 等嵌入式消费者应关闭它，避免污染日志通道。
+    pub fn set_suppress_warnings(&mut self, suppress: bool) {
+        self.suppress_warnings = suppress;
+    }
+
+    /// 取出并清空收集到的 `#warning` 列表。
+    pub fn take_warnings(&mut self) -> Vec<(String, usize, String)> {
+        std::mem::take(&mut self.warnings)
     }
 
     /// 从命令行风格的定义字符串中解析 (name, value)
@@ -653,6 +671,10 @@ impl Preprocessor {
             }
             Directive::Warning(message) => {
                 if !self.skipping {
+                    self.warnings
+                        .push((file_path.to_string(), line_num, message.clone()));
+                }
+                if !self.skipping && !self.suppress_warnings {
                     emit_preprocessor_warning(
                         Some(file_path),
                         line_num,
@@ -719,11 +741,13 @@ impl Preprocessor {
             Ok(result) => result != 0,
             Err(_) => {
                 // 解析失败按 C 预处理语义回退为 false，但必须告知用户而非静默吞错
-                emit_preprocessor_warning(
-                    Some(file_path),
-                    line_num,
-                    format_args!("#if 条件表达式 '{}' 解析失败，按 false 处理", trimmed),
-                );
+                if !self.suppress_warnings {
+                    emit_preprocessor_warning(
+                        Some(file_path),
+                        line_num,
+                        format_args!("#if 条件表达式 '{}' 解析失败，按 false 处理", trimmed),
+                    );
+                }
                 false
             }
         }
@@ -948,11 +972,15 @@ impl Preprocessor {
             let extract =
                 c_header::extract_c_header_text(&canon, &content, &self.defines)?;
             for w in &extract.warnings {
-                emit_preprocessor_warning(
-                    Some(&canon),
-                    1,
-                    format_args!("#include_c {}: {}", path, w),
-                );
+                let message = format!("#include_c {}: {}", path, w);
+                self.warnings.push((canon.clone(), 1, message.clone()));
+                if !self.suppress_warnings {
+                    emit_preprocessor_warning(
+                        Some(&canon),
+                        1,
+                        format_args!("{}", message),
+                    );
+                }
             }
             // 自动链接：提取器推断 + 头名映射（去重）
             let mut libs = extract.link_libraries;

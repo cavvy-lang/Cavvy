@@ -54,6 +54,7 @@
 
 - [Cavly 包管理器](cavly.md)
 - [标准库参考](standard-library.md)
+- [内置声明约定](builtins.md)
 
 # 运行时
 
@@ -62,6 +63,7 @@
 # 编译器
 
 - [编译器架构](compiler-architecture.md)
+- [错误处理规范](error-policy.md)
 - [CayBC 字节码格式](bytecode-format.md)
 - [测试指南](testing.md)
 - [实现状态](current-status.md)

@@ -1,0 +1,20 @@
+// 多维数组回归：int[][] 的每一行必须按 int（4 字节）分配，
+// 而不是按 int[]（指针，8 字节）分配；否则 graph[t][j] 会越界。
+public class Main {
+    public static void main() {
+        int n = 2;
+        int[][] graph = new int[n + 1][n + 1]();
+        for (int i = 0; i <= n; i++) {
+            for (int j = 0; j <= n; j++) {
+                graph[i][j] = i * 10 + j;
+            }
+        }
+        int sum = 0;
+        for (int i = 0; i <= n; i++) {
+            for (int j = 0; j <= n; j++) {
+                sum = sum + graph[i][j];
+            }
+        }
+        println("sum=" + String.valueOf(sum));
+    }
+}

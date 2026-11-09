@@ -354,7 +354,27 @@ impl IrBuilder {
     }
 
     fn build_top_level_function(&mut self, func: &TopLevelFunction) -> CayResult<()> {
-        let fn_name = format!("__toplevel_{}", func.name);
+        // 顶层函数同样遵循 Itanium ABI；main 的 C 入口由独立的 `main`
+        // 包装函数负责，内部 Cavvy main 仍然使用 mangled 名称。
+        let class_namespaces = HashMap::new();
+        let mut mangler = crate::codegen::itanium_mangle::ItaniumMangler::new(
+            None,
+            &class_namespaces,
+            false,
+        );
+        let param_types: Vec<Type> = func
+            .params
+            .iter()
+            .filter(|p| !p.is_varargs)
+            .map(|p| p.param_type.clone())
+            .collect();
+        let is_variadic = func.params.iter().any(|p| p.is_varargs);
+        let fn_name = mangler.mangle_function(
+            &func.namespace_path,
+            &func.name,
+            &param_types,
+            is_variadic,
+        );
         let return_type = IrType::from(&func.return_type);
         let params: Vec<IrParam> = func
             .params

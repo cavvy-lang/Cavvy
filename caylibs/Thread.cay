@@ -195,15 +195,12 @@ public class Thread {
             // 先用 MultiByteToWideChar（CP_UTF8=65001）转宽字符
             c_int wlen = MultiByteToWideChar(65001, 0, name.c_str(), -1, null, 0);
             if (wlen > 0) {
-                c_void* wbuf = malloc(wlen * 2);
+                // c_int 不能隐式转换为 size_t，先转 long 再计算字节数
+                c_void* wbuf = malloc((long)wlen * 2);
                 MultiByteToWideChar(65001, 0, name.c_str(), -1, wbuf, wlen);
-                c_void* hv2 = null;
-                __ir {
-                    %c2 = load i8*, i8** %cell
-                    %t2 = load i8*, i8** %c2
-                    store i8* %t2, i8** %hv2
-                }
-                SetThreadDescription(hv2, wbuf);
+                // h 即 CreateThread 返回的 HANDLE，与写入 cell 的值相同，直接使用；
+                // 不再用 __ir 从 cell 回读：手写的 %t2 会和编译器临时值 %t<N> 撞名
+                SetThreadDescription(h, wbuf);
                 free(wbuf);
             }
         }

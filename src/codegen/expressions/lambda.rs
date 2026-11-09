@@ -12,7 +12,10 @@ use std::collections::HashSet;
 impl IRGenerator {
     /// 收集 Lambda 表达式中引用的外部变量（自由变量）
     /// 返回: Vec<(变量名, LLVM类型, Cayvy类型)>
-    fn collect_free_variables(&self, lambda: &LambdaExpr) -> Vec<(String, String, Type)> {
+    fn collect_free_variables(
+        &self,
+        lambda: &LambdaExpr,
+    ) -> CayResult<Vec<(String, String, Type)>> {
         let mut free_vars = Vec::new();
         let mut param_names: HashSet<String> =
             lambda.params.iter().map(|p| p.name.clone()).collect();
@@ -37,16 +40,21 @@ impl IRGenerator {
             }
             // 检查是否是当前作用域中的变量
             if let Some(llvm_type) = self.scope_manager.get_var_type(&name) {
-                let cay_type = self
-                    .var_cay_types
-                    .get(&name)
-                    .cloned()
-                    .unwrap_or(Type::Int32);
+                let Some(cay_type) = self.var_cay_types.get(&name).cloned() else {
+                    return Err(codegen_error_at(
+                        ErrorCodes::CODEGEN_INVALID_OPERATION,
+                        lambda.loc.clone(),
+                        format!(
+                            "无法确定 lambda 捕获变量 '{}' 的 Cavvy 类型；拒绝回退为 int",
+                            name
+                        ),
+                    ));
+                };
                 free_vars.push((name, llvm_type, cay_type));
             }
         }
 
-        free_vars
+        Ok(free_vars)
     }
 
     /// 从表达式中收集标识符
@@ -190,7 +198,7 @@ impl IRGenerator {
         let llvm_return_type = self.type_to_llvm(&return_type);
 
         // 收集闭包捕获的外部变量
-        let captures = self.collect_free_variables(lambda);
+        let captures = self.collect_free_variables(lambda)?;
         let has_captures = !captures.is_empty();
 
         // 保存当前代码缓冲区

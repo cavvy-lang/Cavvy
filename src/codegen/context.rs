@@ -561,15 +561,49 @@ impl IRGenerator {
         self.preprocessor_source_map = Some(source_map);
     }
 
+    /// extern 函数在 Cavvy 代码中的完整可调用名（含命名空间）。
+    fn extern_export_name(
+        decl: &crate::ast::ExternDecl,
+        func: &crate::ast::ExternFunction,
+    ) -> String {
+        let local = func.alias.as_deref().unwrap_or(&func.name);
+        if decl.namespace_path.is_empty() {
+            local.to_string()
+        } else {
+            format!("{}::{}", decl.namespace_path.join("::"), local)
+        }
+    }
+
+    /// 兼容 `std/ffi.cay` 的历史短名调用；更深的命名空间必须用限定名。
+    fn extern_matches(
+        decl: &crate::ast::ExternDecl,
+        func: &crate::ast::ExternFunction,
+        name: &str,
+    ) -> bool {
+        let local = func.alias.as_deref().unwrap_or(&func.name);
+        if Self::extern_export_name(decl, func) == name {
+            return true;
+        }
+        decl.namespace_path.len() == 1 && decl.namespace_path[0] == "std" && local == name
+    }
+
     /// 设置 extern 声明并构建索引
     /// 支持别名：如果extern函数有alias，则只能通过alias调用，原名不再识别
     pub fn set_extern_declarations(&mut self, extern_declarations: Vec<crate::ast::ExternDecl>) {
         self.extern_function_map.clear();
         for (decl_idx, extern_decl) in extern_declarations.iter().enumerate() {
             for func in &extern_decl.functions {
-                // 如果函数有别名，使用别名作为映射键；否则使用原名
-                let key = func.alias.as_ref().unwrap_or(&func.name).clone();
+                // 命名空间内的 extern 必须用限定名索引，避免 std::cstdio::printf
+                // 和全局 printf 互相覆盖。
+                let key = Self::extern_export_name(extern_decl, func);
                 self.extern_function_map.insert(key, decl_idx);
+                // 兼容 std/ffi.cay 旧调用点：历史上命名空间被忽略，短名也可用。
+                if extern_decl.namespace_path.len() == 1
+                    && extern_decl.namespace_path[0] == "std"
+                {
+                    let local = func.alias.as_deref().unwrap_or(&func.name).to_string();
+                    self.extern_function_map.insert(local, decl_idx);
+                }
             }
         }
         self.extern_declarations = extern_declarations;
@@ -581,6 +615,16 @@ impl IRGenerator {
         self.extern_function_map.contains_key(func_name)
     }
 
+    /// 是否存在使用指定 C 符号名的 extern 声明（不论命名空间）。
+    ///
+    /// 运行时预声明需要用它判断 `printf` 等是否已经由用户声明，避免
+    /// `std::cstdio::printf` 和运行时 `declare @printf` 重复。
+    pub fn has_extern_c_symbol(&self, c_name: &str) -> bool {
+        self.extern_declarations
+            .iter()
+            .any(|decl| decl.functions.iter().any(|func| func.name == c_name))
+    }
+
     /// 获取 extern 函数的信息（使用HashMap O(1)查找）
     /// 注意：如果extern函数有别名，只能通过别名获取
     pub fn get_extern_function(&self, func_name: &str) -> Option<&crate::ast::ExternFunction> {
@@ -588,11 +632,9 @@ impl IRGenerator {
             .get(func_name)
             .and_then(|&decl_idx| {
                 self.extern_declarations.get(decl_idx).and_then(|decl| {
-                    // 查找匹配的函数：有别名的按别名匹配，没别名的按原名匹配
-                    decl.functions.iter().find(|f| match &f.alias {
-                        Some(alias) => alias == func_name,
-                        None => f.name == func_name,
-                    })
+                    decl.functions
+                        .iter()
+                        .find(|f| Self::extern_matches(decl, f, func_name))
                 })
             })
     }
@@ -613,17 +655,13 @@ impl IRGenerator {
 
     /// 检查是否是顶层函数
     pub fn is_top_level_function(&self, func_name: &str) -> bool {
-        self.top_level_functions.iter().any(|f| f.name == func_name)
+        self.find_top_level_function(func_name).is_some()
     }
 
     /// 获取顶层函数的类型
     /// 时间复杂度: O(n)，n为顶层函数数量
     pub fn get_top_level_function_type(&self, func_name: &str) -> crate::types::Type {
-        if let Some(func) = self
-            .top_level_functions
-            .iter()
-            .find(|f| f.name == func_name)
-        {
+        if let Some(func) = self.find_top_level_function(func_name) {
             crate::types::Type::Function(Box::new(crate::types::FunctionType {
                 params: func.params.iter().map(|p| p.param_type.clone()).collect(),
                 return_type: Box::new(func.return_type.clone()),
@@ -2580,10 +2618,38 @@ impl IRGenerator {
         }
     }
 
-    /// 生成顶层函数名称
-    /// 格式: __toplevel_function_name
-    pub fn generate_top_level_function_name(&self, name: &str) -> String {
-        format!("__toplevel_{}", name)
+    /// 顶层函数在 Cavvy 代码中的完整名字（含命名空间）。
+    pub fn top_level_function_qualified_name(func: &crate::ast::TopLevelFunction) -> String {
+        if func.namespace_path.is_empty() {
+            func.name.clone()
+        } else {
+            format!("{}::{}", func.namespace_path.join("::"), func.name)
+        }
+    }
+
+    /// 查找顶层函数，支持短名和 `namespace::name` 限定名。
+    pub fn find_top_level_function(&self, name: &str) -> Option<&crate::ast::TopLevelFunction> {
+        self.top_level_functions.iter().find(|func| {
+            func.name == name || Self::top_level_function_qualified_name(func) == name
+        })
+    }
+
+    /// 生成顶层函数的 Itanium C++ ABI 名称。
+    pub fn generate_top_level_function_name(
+        &self,
+        name: &str,
+        namespace_path: &[String],
+        params: &[crate::types::ParameterInfo],
+    ) -> String {
+        let param_types: Vec<crate::types::Type> =
+            params.iter().map(|p| p.param_type.clone()).collect();
+        let is_variadic = params.iter().any(|p| p.is_varargs);
+        let mut mangler = crate::codegen::itanium_mangle::ItaniumMangler::new(
+            self.type_registry.as_ref(),
+            &self.class_namespaces,
+            self.is_windows_target(),
+        );
+        mangler.mangle_function(namespace_path, name, &param_types, is_variadic)
     }
 
     /// 注册类型标识符

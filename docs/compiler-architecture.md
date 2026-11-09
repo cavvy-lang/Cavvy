@@ -243,5 +243,8 @@ Compiler::compile() 调用链：
 - `code_generator.rs` — 交互式代码生成（代码包装、输出注入）
 - `context.rs` — 持久化上下文（变量、类型、导入跟踪）
 
-### LSP 语言服务器（`src/bin/cay-lsp.rs`）
-内置 LSP 服务器，与 `vscode-extension/` 配合使用，提供语法高亮、自动补全、诊断、跳转定义、悬停信息。
+### LSP 语言服务器（`src/lsp/`，入口 `src/bin/cay-lsp.rs`）
+内置 LSP 服务器，与 `vscode-extension/` 配合使用。核心在 `src/lsp/`：`analysis.rs` 负责
+预处理/词法/语法/语义流水线，`model.rs` 构建符号/引用/类型索引，`server.rs` 实现补全、
+悬停、诊断、跳转、引用、重命名、签名帮助、语义高亮、折叠、内联提示、文档链接和快速修复；
+内置类型与函数签名来自 `caylibs/__builtins__/`。

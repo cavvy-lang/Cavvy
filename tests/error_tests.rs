@@ -246,6 +246,22 @@ fn test_error_missing_return() {
 }
 
 #[test]
+fn test_error_missing_return_array_type() {
+    let error = compile_eol_expect_error("examples/errors/error_missing_return_array.cay")
+        .expect("missing return in int[] method should fail to compile");
+    assert!(
+        error.contains("没有 return") || error.contains("E4007"),
+        "Should report semantic missing-return error for int[], got: {}",
+        error
+    );
+    assert!(
+        !error.contains("expected instruction opcode"),
+        "Should fail before LLVM IR, got llc error: {}",
+        error
+    );
+}
+
+#[test]
 fn test_error_return_type_mismatch() {
     let error = compile_eol_expect_error("examples/errors/error_return_type_mismatch.cay")
         .expect("return type mismatch should fail to compile");

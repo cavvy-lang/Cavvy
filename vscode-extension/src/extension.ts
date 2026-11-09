@@ -28,10 +28,11 @@ export function activate(context: vscode.ExtensionContext): void {
     log('Cavvy Analyzer 插件正在激活...');
 
     const config = vscode.workspace.getConfiguration('cavvyAnalyzer');
+    const enableLSP = config.get<boolean>('enableLSP', true);
 
     try {
         // 初始化 LSP 客户端（使用 await 处理异步错误）
-        if (config.get<boolean>('enableLSP', true)) {
+        if (enableLSP) {
             try {
                 lspClient = new CavvyLSPClient();
                 lspClient.activate(context).catch(err => {
@@ -45,47 +46,51 @@ export function activate(context: vscode.ExtensionContext): void {
         // 初始化运行器
         runner = new CavvyRunner();
 
-        // 注册跳转到定义提供器
-        const definitionProvider = vscode.languages.registerDefinitionProvider(
-            'cavvy',
-            new CavvyDefinitionProvider()
-        );
-        context.subscriptions.push(definitionProvider);
+        // LSP 已启用时，补全 / 悬停 / 跳转 / 引用 / 大纲 / 诊断全部由语言服务器提供，
+        // 不再注册旧的本地 provider，避免重复结果和两套分析逻辑。
+        if (!enableLSP) {
+            // 注册跳转到定义提供器
+            const definitionProvider = vscode.languages.registerDefinitionProvider(
+                'cavvy',
+                new CavvyDefinitionProvider()
+            );
+            context.subscriptions.push(definitionProvider);
 
-        // 注册文档符号提供器（用于大纲视图）
-        const documentSymbolProvider = vscode.languages.registerDocumentSymbolProvider(
-            'cavvy',
-            new CavvyDocumentSymbolProvider()
-        );
-        context.subscriptions.push(documentSymbolProvider);
+            // 注册文档符号提供器（用于大纲视图）
+            const documentSymbolProvider = vscode.languages.registerDocumentSymbolProvider(
+                'cavvy',
+                new CavvyDocumentSymbolProvider()
+            );
+            context.subscriptions.push(documentSymbolProvider);
 
-        // 注册查找引用提供器
-        const referenceProvider = vscode.languages.registerReferenceProvider(
-            'cavvy',
-            new CavvyReferenceProvider()
-        );
-        context.subscriptions.push(referenceProvider);
+            // 注册查找引用提供器
+            const referenceProvider = vscode.languages.registerReferenceProvider(
+                'cavvy',
+                new CavvyReferenceProvider()
+            );
+            context.subscriptions.push(referenceProvider);
 
-        // 注册代码补全提供器
-        const completionProvider = vscode.languages.registerCompletionItemProvider(
-            'cavvy',
-            new CavvyCompletionProvider(),
-            '.',  // 触发字符：点号
-            '(',  // 触发字符：左括号
-            ':'   // 触发字符：冒号（用于方法引用）
-        );
-        context.subscriptions.push(completionProvider);
+            // 注册代码补全提供器
+            const completionProvider = vscode.languages.registerCompletionItemProvider(
+                'cavvy',
+                new CavvyCompletionProvider(),
+                '.',  // 触发字符：点号
+                '(',  // 触发字符：左括号
+                ':'   // 触发字符：冒号（用于方法引用）
+            );
+            context.subscriptions.push(completionProvider);
 
-        // 注册 Hover 提供器
-        const hoverProvider = vscode.languages.registerHoverProvider(
-            'cavvy',
-            new CavvyHoverProvider()
-        );
-        context.subscriptions.push(hoverProvider);
+            // 注册 Hover 提供器
+            const hoverProvider = vscode.languages.registerHoverProvider(
+                'cavvy',
+                new CavvyHoverProvider()
+            );
+            context.subscriptions.push(hoverProvider);
 
-        // 初始化诊断提供器
-        diagnosticProvider = new CavvyDiagnosticProvider();
-        diagnosticProvider.activate(context);
+            // 初始化本地诊断提供器
+            diagnosticProvider = new CavvyDiagnosticProvider();
+            diagnosticProvider.activate(context);
+        }
 
         // 注册命令：运行代码（非调试模式）
         const runCodeNoDebugCommand = vscode.commands.registerCommand(
@@ -214,10 +219,12 @@ export function activate(context: vscode.ExtensionContext): void {
                 }
 
                 const position = editor.selection.active;
-                const locations = await new CavvyDefinitionProvider().provideDefinition(
-                    editor.document,
-                    position,
-                    new vscode.CancellationTokenSource().token
+                // 使用 VS Code 的通用定义命令：LSP 启用时由 cay-lsp 响应，
+                // 关闭 LSP 时才落到本地 provider，避免命令绕过语言服务器。
+                const locations = await vscode.commands.executeCommand<vscode.Location[]>(
+                    'vscode.executeDefinitionProvider',
+                    editor.document.uri,
+                    position
                 );
 
                 if (locations && locations.length > 0) {

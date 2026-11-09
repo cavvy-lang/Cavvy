@@ -143,6 +143,43 @@ impl<'a> ItaniumMangler<'a> {
         result
     }
 
+    /// 生成顶层函数的 Itanium C++ ABI 名称。
+    ///
+    /// - 全局函数：`square(int)` -> `_Z6squarei`
+    /// - 命名空间函数：`demo::twice(int)` -> `_ZN4demo5twiceEi`
+    /// - 无参数：追加 `v`；可变参数：固定参数后追加 `z`
+    pub fn mangle_function(
+        &mut self,
+        namespace_path: &[String],
+        name: &str,
+        param_types: &[Type],
+        is_variadic: bool,
+    ) -> String {
+        let mut result = String::from("_Z");
+        if !namespace_path.is_empty() {
+            result.push('N');
+            for ns in namespace_path {
+                result.push_str(&format!("{}{}", ns.len(), ns));
+            }
+        }
+        result.push_str(&format!("{}{}", name.len(), name));
+        if !namespace_path.is_empty() {
+            result.push('E');
+        }
+
+        if param_types.is_empty() && !is_variadic {
+            result.push('v');
+        } else {
+            for ty in param_types {
+                result.push_str(&self.mangle_type(ty));
+            }
+            if is_variadic {
+                result.push('z');
+            }
+        }
+        result
+    }
+
     /// 将 Cavvy 类型编码为 Itanium ABI 参数类型字符串（对象类型按指针处理）。
     pub fn mangle_type(&mut self, ty: &Type) -> String {
         self.mangle_type_impl(ty, false)
@@ -467,6 +504,22 @@ mod tests {
 
     fn new_mangler<'a>(namespaces: &'a HashMap<String, Vec<String>>) -> ItaniumMangler<'a> {
         ItaniumMangler::new(None, namespaces, false)
+    }
+
+    #[test]
+    fn test_top_level_function_mangling() {
+        let namespaces = HashMap::new();
+        let mut m = new_mangler(&namespaces);
+        assert_eq!(m.mangle_function(&[], "square", &[Type::Int32], false), "_Z6squarei");
+        assert_eq!(m.mangle_function(&[], "main", &[], false), "_Z4mainv");
+        assert_eq!(
+            m.mangle_function(&["demo".to_string()], "twice", &[Type::Int32], false),
+            "_ZN4demo5twiceEi"
+        );
+        assert_eq!(
+            m.mangle_function(&[], "log", &[Type::String], true),
+            "_Z3logPcz"
+        );
     }
 
     #[test]

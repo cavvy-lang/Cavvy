@@ -1472,7 +1472,7 @@ public class HttpRequest {
      */
     private long currentTimeMillis() {
         /* 使用C标准库time函数获取秒数，转换为毫秒 */
-        return time(0) * 1000;
+        return http::time(0) * 1000;
     }
 }
 

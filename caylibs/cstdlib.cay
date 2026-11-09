@@ -1,0 +1,49 @@
+/**
+ * C++ 风格 C 标准库包装：<cstdlib>
+ *
+ * 所有名字都位于 std::cstdlib 命名空间。旧的 <c/stdlib.cay> 在 7.0 前
+ * 继续保留，但已弃用。
+ */
+
+#pragma once
+
+namespace std {
+namespace cstdlib {
+
+alias CompareFn = fn(c_void*, c_void*) -> c_int;
+
+extern {
+    // 内存分配
+    c_void* malloc(size_t size);
+    c_void* calloc(size_t nmemb, size_t size);
+    c_void* realloc(c_void* ptr, size_t size);
+    void free(c_void* ptr);
+
+    // 程序控制
+    void exit(c_int status);
+    void abort();
+    void _Exit(c_int status);
+
+    // 搜索和排序
+    void qsort(c_void* base, size_t nmemb, size_t size, CompareFn compar);
+    c_void* bsearch(c_void* key, c_void* base, size_t nmemb, size_t size, CompareFn compar);
+
+    // 随机数
+    c_int rand();
+    void srand(c_uint seed);
+
+    // 整数算术
+    c_int abs(c_int n);
+    c_long labs(c_long n);
+
+    // 字符串转换
+    c_int atoi(c_string nptr);
+    c_long atol(c_string nptr);
+    c_double atof(c_string nptr);
+    c_long strtol(c_string nptr, c_char** endptr, c_int base);
+    c_ulong strtoul(c_string nptr, c_char** endptr, c_int base);
+    c_double strtod(c_string nptr, c_char** endptr);
+}
+
+} // namespace cstdlib
+} // namespace std

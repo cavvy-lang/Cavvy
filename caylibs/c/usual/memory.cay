@@ -1,5 +1,12 @@
 #pragma once
 
+#warning "STANDARD LIBRARY WARNING"
+#warning "------------------------"
+#warning "<c/usual/memory.cay> is deprecated and will be removed in 7.0"
+#warning "use <cstdlib.cay> and std::cstdlib instead"
+#warning "标准库警告"
+#warning "<c/usual/memory.cay> 已弃用，将在 7.0 移除"
+#warning "请改用 <cstdlib.cay> 和 std::cstdlib"
 extern {
     // 内存分配
     c_void* malloc(size_t size);

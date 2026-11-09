@@ -7,6 +7,7 @@ import argparse
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -246,7 +247,10 @@ def main() -> int:
     tested = [block for block in blocks if not block.ignored]
     skipped = len(blocks) - len(tested)
 
-    with tempfile.TemporaryDirectory(prefix="cavvy_doc_tests_", delete=not args.keep_temp) as temp_dir_name:
+    # ``TemporaryDirectory(delete=...)`` 需要 Python 3.12；Ubuntu 22.04 自带
+    # Python 3.10，因此用 mkdtemp + 显式清理保持兼容。
+    temp_dir_name = tempfile.mkdtemp(prefix="cavvy_doc_tests_")
+    try:
         temp_dir = Path(temp_dir_name)
         start = time.time()
         for index, block in enumerate(tested, start=1):
@@ -257,6 +261,11 @@ def main() -> int:
 
         elapsed = time.time() - start
         print(f"doc tests passed: {len(tested)} tested, {skipped} skipped, {elapsed:.1f}s")
+    finally:
+        if args.keep_temp:
+            print(f"保留临时目录: {temp_dir_name}")
+        else:
+            shutil.rmtree(temp_dir_name, ignore_errors=True)
 
     return 0
 

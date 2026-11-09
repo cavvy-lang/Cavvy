@@ -3,7 +3,7 @@
 //! 测试基本的 "Hello World"、乘法表、操作符等基础功能
 
 mod common;
-use common::compile_and_run_eol;
+use common::{compile_and_run_eol, compile_and_run_eol_with_timeout};
 
 #[test]
 fn test_hello_example() {
@@ -50,8 +50,14 @@ fn test_string_concat() {
 
 #[test]
 fn test_billion() {
-    let output = compile_and_run_eol("examples/billion.cay")
-        .expect("billion example should compile and run");
+    // 10 亿次整数除法（-O2 下本机约 17s），默认 10s 超时不够；
+    // 这里给足余量，避免较慢的机器/CI 因性能抖动而误报超时。
+    let output = compile_and_run_eol_with_timeout(
+        "examples/billion.cay",
+        &[],
+        std::time::Duration::from_secs(60),
+    )
+    .expect("billion example should compile and run");
     // 大数字测试应该输出数字
     assert!(
         output.chars().any(|c| c.is_ascii_digit()),

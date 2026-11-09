@@ -27,10 +27,14 @@ impl IRGenerator {
         }
 
         // 检查是否是顶层函数 - 返回函数指针（打包成闭包格式）
-        if self.is_top_level_function(name) {
+        if let Some(func) = self.find_top_level_function(name) {
             // 顶层函数作为函数指针使用
             let func_ptr_type = self.get_top_level_function_type(name);
-            let func_name = format!("__toplevel_{}", name);
+            let func_name = self.generate_top_level_function_name(
+                &func.name,
+                &func.namespace_path,
+                &func.params,
+            );
 
             // 将顶层函数打包成闭包格式（环境指针为 null）
             // 确保 malloc 已声明

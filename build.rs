@@ -337,17 +337,34 @@ fn main() {
         );
     } else if is_linux {
         // Linux平台：只复制Linux版LLVM工具
-        // 创建 llvm-minimal 目录结构，但只复制 bin-linux
+        // 创建 llvm-minimal 目录结构，但只复制 Linux 可执行文件。
         let llvm_dst = target_dir.join("llvm-minimal");
         fs::create_dir_all(&llvm_dst).expect("Failed to create llvm-minimal directory");
 
-        // 复制 bin-linux 到目标目录
-        copy_dir_all("llvm-minimal/bin-linux", &llvm_dst.join("bin-linux"))
-            .expect("Failed to copy llvm-minimal/bin-linux directory");
+        // 发布包使用 bin-linux；官方完整 LLVM 开发包使用 bin。两者都兼容。
+        let bin_linux = PathBuf::from("llvm-minimal/bin-linux");
+        let bin_dir = if bin_linux.is_dir() {
+            bin_linux
+        } else {
+            PathBuf::from("llvm-minimal/bin")
+        };
+        if bin_dir.is_dir() {
+            copy_dir_all(&bin_dir, &llvm_dst.join("bin-linux"))
+                .expect("Failed to copy Linux LLVM binaries");
+        } else {
+            println!(
+                "cargo:warning=llvm-minimal/bin(-linux) not found; Linux compiler will use system LLVM"
+            );
+        }
 
-        // 复制 lib 目录（LLVM库是跨平台的）
-        copy_dir_all("llvm-minimal/lib", &llvm_dst.join("lib"))
-            .expect("Failed to copy llvm-minimal/lib directory");
+        // 完整 LLVM 开发包包含 lib；minimal 仅含二进制时允许缺席。
+        let llvm_lib = PathBuf::from("llvm-minimal/lib");
+        if llvm_lib.is_dir() {
+            copy_dir_all(&llvm_lib, &llvm_dst.join("lib"))
+                .expect("Failed to copy llvm-minimal/lib directory");
+        } else {
+            println!("cargo:warning=llvm-minimal/lib not found; skipping bundled LLVM libraries");
+        }
 
         println!(
             "cargo:warning=Copied Linux toolchain (LLVM Linux binaries) to {}",

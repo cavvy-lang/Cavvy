@@ -1237,6 +1237,9 @@ fn main() {
     let bytecode = serializer::serialize(&module);
 
     // 写入文件
+    // 获取文件大小：直接使用即将写入的字节数，避免 metadata 失败时回退到 0。
+    let file_size = bytecode.len();
+
     if let Err(e) = fs::write(&output_path, bytecode) {
         print_miette_error(
             "cavvy::io_error",
@@ -1247,7 +1250,7 @@ fn main() {
     }
 
     // 获取文件大小
-    let file_size = fs::metadata(&output_path).map(|m| m.len()).unwrap_or(0);
+    // 已在写入前用 bytecode.len() 取得，metadata 不再参与成功路径。
 
     if options.verbose {
         println!();

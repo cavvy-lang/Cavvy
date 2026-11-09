@@ -1,0 +1,213 @@
+name: CI
+
+on:
+  push:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-A warnings"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  version:
+    name: Read .verinfo
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.verinfo.outputs.tag }}
+      version: ${{ steps.verinfo.outputs.version }}
+      build: ${{ steps.verinfo.outputs.build }}
+      date: ${{ steps.verinfo.outputs.date }}
+      basename: ${{ steps.verinfo.outputs.basename }}
+      short_sha: ${{ steps.verinfo.outputs.short_sha }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Parse .verinfo
+        id: verinfo
+        shell: bash
+        run: python scripts/verinfo.py --github-output
+
+  windows:
+    name: Windows build & full test
+    needs: version
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: x86_64-pc-windows-gnu
+
+      - name: Cache LLVM
+        uses: actions/cache@v4
+        with:
+          path: llvm-minimal
+          key: llvm-${{ runner.os }}-${{ hashFiles('.verinfo', 'setup-llvm.py') }}
+
+      - name: Setup LLVM
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $env:CAVVY_USE_FULL_LLVM = "1"
+          python setup-llvm.py
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "setup-llvm.py failed with exit code $LASTEXITCODE"
+            exit 1
+          }
+          $llvmPath = Join-Path $pwd "llvm-minimal"
+          "LLVM_SYS_221_PREFIX=$llvmPath" >> $env:GITHUB_ENV
+          "$llvmPath\bin" >> $env:GITHUB_PATH
+          & "$llvmPath\bin\llvm-config.exe" --version
+
+      - name: Full cargo test (release)
+        shell: pwsh
+        run: |
+          $env:LLVM_SYS_221_PREFIX = Join-Path $pwd "llvm-minimal"
+          cargo test --release --verbose
+
+      - name: Build release
+        shell: pwsh
+        run: |
+          $env:LLVM_SYS_221_PREFIX = Join-Path $pwd "llvm-minimal"
+          cargo build --release --verbose
+
+      - name: Package artifact
+        id: package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $base = "${{ needs.version.outputs.basename }}-${{ needs.version.outputs.short_sha }}"
+          $buildDir = "target/release"
+          if (-not (Test-Path "$buildDir/cayc.exe")) {
+            Write-Error "Release build not found"
+            exit 1
+          }
+
+          Remove-Item -Recurse -Force dist -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path "dist/caylibs" | Out-Null
+          Copy-Item -Path "caylibs/*" -Destination "dist/caylibs/" -Recurse -Force
+          if (Test-Path "lib") {
+            New-Item -ItemType Directory -Force -Path "dist/lib" | Out-Null
+            Copy-Item -Path "lib/*" -Destination "dist/lib/" -Recurse -Force
+          }
+          if (Test-Path "mingw-minimal") {
+            New-Item -ItemType Directory -Force -Path "dist/mingw-minimal" | Out-Null
+            Copy-Item -Path "mingw-minimal/*" -Destination "dist/mingw-minimal/" -Recurse -Force
+          }
+          Copy-Item -Path "$buildDir/*.exe" -Destination "dist/" -Force
+
+          $archive = "${base}-win-x86_64.zip"
+          Compress-Archive -Path "dist/*" -DestinationPath $archive -Force
+          "ARCHIVE=$archive" >> $env:GITHUB_OUTPUT
+          Write-Host "Created: $archive"
+
+      - name: Upload Windows build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cavvy-ci-windows
+          path: ${{ steps.package.outputs.ARCHIVE }}
+          if-no-files-found: error
+          retention-days: 14
+
+  linux:
+    name: Linux build & full test
+    needs: version
+    # 官方 LLVM 22.1.6 Linux 包面向 Ubuntu 22.04，固定 runner 以避免
+    # 24.04 的 libxml2 soname 变化导致 ld.lld 启动失败。
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Cache LLVM
+        uses: actions/cache@v4
+        with:
+          path: llvm-minimal
+          key: llvm-${{ runner.os }}-${{ hashFiles('.verinfo', 'setup-llvm.py') }}
+
+      - name: Install LLVM runtime dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxml2 libzstd1 zlib1g libedit2 libffi8 libtinfo6 libxml2-dev libzstd-dev zlib1g-dev libedit-dev libffi-dev
+
+      - name: Setup LLVM
+        shell: bash
+        run: |
+          set -euo pipefail
+          export CAVVY_USE_FULL_LLVM=1
+          python setup-llvm.py
+          echo "LLVM_SYS_221_PREFIX=$PWD/llvm-minimal" >> "$GITHUB_ENV"
+          echo "$PWD/llvm-minimal/bin" >> "$GITHUB_PATH"
+          echo "LD_LIBRARY_PATH=$PWD/llvm-minimal/lib:$PWD/target/release/llvm-minimal/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+          test -d llvm-minimal/lib
+          llvm-minimal/bin/llvm-config --version
+
+      - name: Full cargo test (release)
+        shell: bash
+        run: |
+          set -o pipefail
+          export LLVM_SYS_221_PREFIX="$PWD/llvm-minimal"
+          cargo test --release --verbose 2>&1 | tee cargo-test.log
+
+      - name: Report test failure
+        if: failure()
+        shell: bash
+        run: |
+          tail -n 150 cargo-test.log || true
+          echo "::error::$(tail -n 60 cargo-test.log | tr '\n' ' ' | cut -c1-6000)"
+
+      - name: Build release
+        shell: bash
+        run: |
+          export LLVM_SYS_221_PREFIX="$PWD/llvm-minimal"
+          cargo build --release --verbose
+
+      - name: Package artifact
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${{ needs.version.outputs.basename }}-${{ needs.version.outputs.short_sha }}"
+          rm -rf dist
+          mkdir -p dist/caylibs
+          cp -a caylibs/. dist/caylibs/
+          for bin in cayc cay-ir ir2exe cay-check cay-run cay-rcpl cay-bcgen cay-lsp cavly cay-dt cay-dp cay-ast cay-pl cay-sir cay-pre; do
+            if [ -f "target/release/$bin" ]; then
+              cp "target/release/$bin" dist/
+            fi
+          done
+          archive="${base}-linux-x86_64.tar.gz"
+          tar -C dist -czf "$archive" .
+          echo "ARCHIVE=$archive" >> "$GITHUB_OUTPUT"
+          echo "Created: $archive"
+
+      - name: Upload Linux build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cavvy-ci-linux
+          path: ${{ steps.package.outputs.ARCHIVE }}
+          if-no-files-found: error
+          retention-days: 14

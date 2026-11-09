@@ -4,7 +4,13 @@
  * stdio.h
  */
 
-
+#warning "STANDARD LIBRARY WARNING"
+#warning "------------------------"
+#warning "<c/stdio.cay> is deprecated and will be removed in 7.0"
+#warning "use <cstdio.cay> and std::cstdio instead"
+#warning "标准库警告"
+#warning "<c/stdio.cay> 已弃用，将在 7.0 移除"
+#warning "请改用 <cstdio.cay> 和 std::cstdio"
 extern {
     // 格式化输出
     c_int printf(c_string fmt, ...);
