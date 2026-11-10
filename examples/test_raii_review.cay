@@ -1,0 +1,109 @@
+/*
+ * RAII / @owns / @borrow 回归测试。
+ *
+ * 覆盖：
+ *   - @borrow 只读访问不得让调用方析构容器内对象；
+ *   - clear() 必须析构元素；
+ *   - HashMap 覆盖已有键时析构旧键值，keySet()/values() 借用视图不重复析构；
+ *   - HashMap.remove/clear 析构键值；
+ *   - LinkedList.removeFirst() 释放节点但把值所有权交给调用方；
+ *   - LinkedList.clear 析构值并释放节点；
+ *   - ArrayList.add(index, value) 索引非法时由被调方析构已接管的 value。
+ *
+ * 最终 Box 析构次数必须恰好等于创建次数（13 次）；任何双重析构/泄漏都会
+ * 让计数偏离。
+ */
+
+#include <std/stack.cay>
+#include <std/linkedlist.cay>
+#include <std/hashmap.cay>
+#include <std/arraylist.cay>
+#include <c/stdio.cay>
+
+using std::Stack;
+using std::LinkedList;
+using std::HashMap;
+using std::ArrayList;
+
+public class Box {
+    public static int dtors = 0;
+    public int v;
+    public Box(int v) { this.v = v; }
+    ~Box() { Box.dtors = Box.dtors + 1; }
+}
+
+public int main() {
+    /* 1) @borrow peek：Box 只由 Stack 析构一次 */
+    scope {
+        Stack<Box> s = new Stack<Box>();
+        s.push(new Box(1));
+        Box b = s.peek();
+        println("peek v=" + String.valueOf(b.v));
+    }
+    println("after peek dtors=" + String.valueOf(Box.dtors));
+
+    /* 2) clear() 在清零 size 前析构元素 */
+    scope {
+        Stack<Box> s = new Stack<Box>();
+        s.push(new Box(2));
+        s.push(new Box(3));
+        s.clear();
+    }
+    println("after clear dtors=" + String.valueOf(Box.dtors));
+
+    /* 3) HashMap 覆盖旧值 + values() 借用视图 */
+    scope {
+        HashMap<int, Box> m = new HashMap<int, Box>();
+        m.put(1, new Box(4));
+        m.put(1, new Box(5)); /* 旧 Box(4) 此时析构 */
+        ArrayList<Box> vals = m.values();
+        println("vals size=" + String.valueOf(vals.size()));
+    }
+    println("after map values scope dtors=" + String.valueOf(Box.dtors));
+
+    /* 4) LinkedList.removeFirst 释放节点，值所有权交给调用方 */
+    scope {
+        LinkedList<Box> l = new LinkedList<Box>();
+        l.addLast(new Box(6));
+        l.addLast(new Box(7));
+        Box first = l.removeFirst();
+        println("removed v=" + String.valueOf(first.v));
+    }
+    println("after linkedlist remove dtors=" + String.valueOf(Box.dtors));
+
+    /* 5) 非法索引的 ArrayList.add(index, value) 由被调方析构 value */
+    scope {
+        ArrayList<Box> a = new ArrayList<Box>();
+        a.add(new Box(8));
+        Box b = new Box(9);
+        a.add(99, b);
+    }
+    println("after invalid add dtors=" + String.valueOf(Box.dtors));
+
+    /* 6) HashMap.remove/clear 必须析构旧值 */
+    scope {
+        HashMap<int, Box> m = new HashMap<int, Box>();
+        m.put(2, new Box(10));
+        m.remove(2);
+        m.put(3, new Box(11));
+        m.clear();
+    }
+    println("after map remove/clear dtors=" + String.valueOf(Box.dtors));
+
+    /* 7) LinkedList.clear 必须析构值并释放节点 */
+    scope {
+        LinkedList<Box> l = new LinkedList<Box>();
+        l.addLast(new Box(12));
+        l.addLast(new Box(13));
+        l.clear();
+    }
+    println("after linkedlist clear dtors=" + String.valueOf(Box.dtors));
+
+    if (Box.dtors != 13) {
+        println("FAILED final: dtors=" + String.valueOf(Box.dtors));
+        return 1;
+    }
+
+    println("raii review tests passed");
+    return 0;
+}

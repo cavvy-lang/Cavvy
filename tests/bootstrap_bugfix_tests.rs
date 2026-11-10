@@ -98,3 +98,17 @@ fn test_bug008_arraylist_null_dtor() {
         .expect("BUG-008: null ArrayList 析构不应崩溃");
     assert_output_contains(&output, &["BUG-008 OK"], "test_bug008_arraylist_null_dtor");
 }
+
+/// BUG-009：ArrayList 元素析构注入的 null 守卫发射在分支汇合点上，
+/// 使 `call void @T.__dtor` 无条件执行 —— 元素为 null 时以 null 作 this
+/// 调用析构，SIGSEGV。修复后 null 元素跳过，非 null 元素各析构一次。
+#[test]
+fn test_bug009_arraylist_null_element() {
+    let output = compile_and_run_eol("examples/bootstrap_bugs/bug009_arraylist_null_element.cay")
+        .expect("BUG-009: ArrayList 含 null 元素时析构不应崩溃");
+    assert_output_contains(
+        &output,
+        &["size = 3", "~Box 1", "~Box 2", "BUG-009 OK"],
+        "test_bug009_arraylist_null_element",
+    );
+}

@@ -729,7 +729,10 @@ pub struct FieldInfo {
 pub struct ParameterInfo {
     pub name: String,
     pub param_type: Type,
-    pub is_varargs: bool, // 是否为可变参数
+    pub is_varargs: bool,  // 是否为可变参数
+    /// `@owns` 注解：被调用方取得该实参的所有权。调用点据此把实参局部变量
+    /// 从作用域析构候选中摘除（见 codegen 的 generate_and_pack_args）。
+    pub is_owning: bool,
 }
 
 impl ParameterInfo {
@@ -738,6 +741,7 @@ impl ParameterInfo {
             name,
             param_type,
             is_varargs: false,
+            is_owning: false,
         }
     }
 
@@ -747,7 +751,14 @@ impl ParameterInfo {
             name,
             param_type: Type::Array(Box::new(param_type)),
             is_varargs: true,
+            is_owning: false,
         }
+    }
+
+    /// 标记该形参取得实参所有权（`@owns`）。
+    pub fn owning(mut self) -> Self {
+        self.is_owning = true;
+        self
     }
 }
 
@@ -986,6 +997,10 @@ pub struct TypeRegistry {
     /// 用于检测跨类同名冲突
     pub free_functions:
         HashMap<String, (String, MethodInfo, crate::miette_diagnostic::SourceLocation)>,
+    /// `@borrow` 方法集合：(类/接口名, 方法名)。
+    ///
+    /// 返回值是指向被调方内部对象的借用，调用方不得在作用域退出时析构它。
+    pub borrow_methods: std::collections::HashSet<(String, String)>,
     /// 当前命名空间上下文 (由语义分析器在处理每个类时设置)
     pub current_namespace: Vec<String>,
 }
@@ -1001,6 +1016,7 @@ impl TypeRegistry {
             namespace_aliases: HashMap::new(),
             class_namespace_paths: HashMap::new(),
             free_functions: HashMap::new(),
+            borrow_methods: std::collections::HashSet::new(),
             current_namespace: Vec::new(),
         };
 
@@ -1066,6 +1082,7 @@ impl TypeRegistry {
                 name: "other".to_string(),
                 param_type: Type::Object("Object".to_string()),
                 is_varargs: false,
+                is_owning: false,
             }],
             return_type: Type::Bool,
             is_static: false,
@@ -1145,6 +1162,7 @@ impl TypeRegistry {
                 name: "other".to_string(),
                 param_type: Type::Object("Object".to_string()),
                 is_varargs: false,
+                is_owning: false,
             }],
             return_type: Type::Bool,
             is_static: false,
@@ -1171,6 +1189,7 @@ impl TypeRegistry {
                 name: "value".to_string(),
                 param_type: Type::Int32,
                 is_varargs: false,
+                is_owning: false,
             }],
             return_type: Type::String,
             is_static: true,
@@ -1196,6 +1215,7 @@ impl TypeRegistry {
                 name: "value".to_string(),
                 param_type: Type::Int64,
                 is_varargs: false,
+                is_owning: false,
             }],
             return_type: Type::String,
             is_static: true,
@@ -1221,6 +1241,7 @@ impl TypeRegistry {
                 name: "value".to_string(),
                 param_type: Type::Float32,
                 is_varargs: false,
+                is_owning: false,
             }],
             return_type: Type::String,
             is_static: true,
@@ -1246,6 +1267,7 @@ impl TypeRegistry {
                 name: "value".to_string(),
                 param_type: Type::Float64,
                 is_varargs: false,
+                is_owning: false,
             }],
             return_type: Type::String,
             is_static: true,
@@ -1271,6 +1293,7 @@ impl TypeRegistry {
                 name: "value".to_string(),
                 param_type: Type::Bool,
                 is_varargs: false,
+                is_owning: false,
             }],
             return_type: Type::String,
             is_static: true,
@@ -1296,6 +1319,7 @@ impl TypeRegistry {
                 name: "value".to_string(),
                 param_type: Type::Char,
                 is_varargs: false,
+                is_owning: false,
             }],
             return_type: Type::String,
             is_static: true,
@@ -1321,6 +1345,7 @@ impl TypeRegistry {
                 name: "value".to_string(),
                 param_type: Type::String,
                 is_varargs: false,
+                is_owning: false,
             }],
             return_type: Type::String,
             is_static: true,
@@ -1370,6 +1395,7 @@ impl TypeRegistry {
                 name: "s".to_string(),
                 param_type: Type::String,
                 is_varargs: false,
+                is_owning: false,
             }],
             return_type: Type::Int32,
             is_static: true,
@@ -1692,6 +1718,55 @@ impl TypeRegistry {
     }
 
     /// 获取类的可变引用
+    /// 登记一个 `@borrow` 方法（类/接口名使用注册表中的查找名）。
+    pub fn mark_borrow_method(&mut self, class_name: &str, method_name: &str) {
+        self.borrow_methods
+            .insert((class_name.to_string(), method_name.to_string()));
+    }
+
+    /// 判断方法返回值是否为对被调方内部对象的借用。
+    ///
+    /// 查询会向上遍历父类与实现的接口：接口方法声明 `@borrow` 时，
+    /// 经接口类型发起的调用同样按借用处理。
+    pub fn is_borrow_method(&self, class_name: &str, method_name: &str) -> bool {
+        let mut current = Self::generic_base_name(class_name).to_string();
+        let mut visited = std::collections::HashSet::new();
+        loop {
+            if !visited.insert(current.clone()) {
+                return false;
+            }
+            let simple = Self::simple_name(&current);
+            if self.borrow_methods.iter().any(|(class, method)| {
+                method == method_name
+                    && (class == &current
+                        || class == class_name
+                        || class == simple
+                        || class.ends_with(&format!("::{}", simple)))
+            }) {
+                return true;
+            }
+            if let Some(class_info) = self.get_class(&current) {
+                for interface in &class_info.interfaces {
+                    let interface_name = interface_bare_name(interface);
+                    if self
+                        .borrow_methods
+                        .contains(&(interface_name.to_string(), method_name.to_string()))
+                        || self.borrow_methods.iter().any(|(class, method)| {
+                            method == method_name && class.ends_with(&format!("::{}", interface_name))
+                        })
+                    {
+                        return true;
+                    }
+                }
+                if let Some(parent) = class_info.parent.clone() {
+                    current = parent;
+                    continue;
+                }
+            }
+            return false;
+        }
+    }
+
     pub fn get_class_mut(&mut self, name: &str) -> Option<&mut ClassInfo> {
         if self.classes.contains_key(name) {
             return self.classes.get_mut(name);
@@ -1898,14 +1973,13 @@ impl TypeRegistry {
             (Type::Object(param_name), Type::Object(arg_name)) => {
                 self.class_names_compatible(param_name, arg_name)
             }
-            (Type::Generic(param_name, param_args), Type::Generic(arg_name, arg_args)) => {
-                self.class_names_compatible(param_name, arg_name)
-                    && param_args.len() == arg_args.len()
-                    && param_args
-                        .iter()
-                        .zip(arg_args.iter())
-                        .all(|(p, a)| self.types_compatible_with_namespace(p, a))
-            }
+            (Type::Generic(param_name, param_args), Type::Generic(arg_name, arg_args)) => self
+                .generic_types_assignable(
+                    Self::generic_base_name(arg_name),
+                    arg_args,
+                    Self::generic_base_name(param_name),
+                    param_args,
+                ),
             (Type::Generic(param_name, param_args), Type::Object(arg_name)) => {
                 self.class_names_compatible(param_name, arg_name)
                     && Self::generic_arg_count_in_name(arg_name)
@@ -2017,12 +2091,17 @@ impl TypeRegistry {
                 }
                 self.is_subtype_of(from_base, to_base)
             }
-            (Type::Generic(from_name, _), Type::Generic(to_name, _)) => {
-                // 两个泛型类型：检查基础类名是否相同
-                if from_name == to_name {
-                    return true;
-                }
-                self.is_subtype_of(from_name, to_name)
+            (Type::Generic(from_name, from_args), Type::Generic(to_name, to_args)) => {
+                // 泛型实参是不变的：`ArrayList<Derived>` 不能赋给
+                // `ArrayList<Base>`（调用方可能经后者写入 Base 实例，破坏元素
+                // 类型/布局）。跨类子类型（如 ArrayListIterator<T> -> Iterator<T>）
+                // 必须依据实现的接口声明把类实参映射到接口实参后逐位比较。
+                self.generic_types_assignable(
+                    Self::generic_base_name(from_name),
+                    from_args,
+                    Self::generic_base_name(to_name),
+                    to_args,
+                )
             }
             (Type::Object(from_name), Type::Object(to_name)) => {
                 // 解析泛型类名: "Optional<T>" -> "Optional"
@@ -2159,6 +2238,109 @@ impl TypeRegistry {
                 false
             }
         }
+    }
+
+    /// 泛型实参的不变性比较。
+    ///
+    /// 可变容器（`ArrayList<T>`、`HashMap<K, V>` 等）不能把 `Container<Derived>`
+    /// 当作 `Container<Base>`：调用方可能经后者写入 Base 实例，破坏元素类型
+    /// 或布局。因此同一泛型类的实参必须逐位匹配（类型参数仍作为通配）。
+    fn generic_args_invariant(&self, from_args: &[Type], to_args: &[Type]) -> bool {
+        from_args.len() == to_args.len()
+            && from_args
+                .iter()
+                .zip(to_args.iter())
+                .all(|(a, b)| self.types_match_exact_with_namespace(a, b))
+    }
+
+    /// 判断 `from_base<from_args>` 能否赋给 `to_base<to_args>`。
+    ///
+    /// - 同一泛型类：类型实参按不变性比较；
+    /// - 跨类子类型：沿类声明的接口/父类链找到 `to_base`，把类类型参数
+    ///   替换进接口实参后再按不变性比较，禁止只按裸类名放行。
+    fn generic_types_assignable(
+        &self,
+        from_base: &str,
+        from_args: &[Type],
+        to_base: &str,
+        to_args: &[Type],
+    ) -> bool {
+        if from_base == to_base || self.is_same_class(from_base, to_base) {
+            let from_full = self
+                .fill_default_type_args(from_base, from_args)
+                .unwrap_or_else(|| from_args.to_vec());
+            let to_full = self
+                .fill_default_type_args(to_base, to_args)
+                .unwrap_or_else(|| to_args.to_vec());
+            return self.generic_args_invariant(&from_full, &to_full);
+        }
+
+        if !self.is_subtype_of(from_base, to_base) {
+            return false;
+        }
+
+        let mut visited = std::collections::HashSet::new();
+        let Some(mapped) =
+            self.map_generic_supertype_args(from_base, from_args, to_base, &mut visited)
+        else {
+            // 是子类型但无法建立实参映射（例如缺少接口声明）：不能只凭
+            // 裸类名就接受一次可能不安全的泛型转换。
+            return false;
+        };
+        let to_full = self
+            .fill_default_type_args(to_base, to_args)
+            .unwrap_or_else(|| to_args.to_vec());
+        self.generic_args_invariant(&mapped, &to_full)
+    }
+
+    /// 沿继承/接口链把 `from_base<from_args>` 映射为目标泛型父类型的实参。
+    fn map_generic_supertype_args(
+        &self,
+        from_base: &str,
+        from_args: &[Type],
+        to_base: &str,
+        visited: &mut std::collections::HashSet<String>,
+    ) -> Option<Vec<Type>> {
+        if !visited.insert(from_base.to_string()) {
+            return None;
+        }
+        let class_info = self.get_class(from_base)?;
+        let mapping: std::collections::HashMap<String, Type> = class_info
+            .type_params
+            .iter()
+            .zip(from_args.iter())
+            .map(|(p, t)| (p.name.clone(), t.clone()))
+            .collect();
+
+        for interface in &class_info.interfaces {
+            let (name, args) = match interface {
+                Type::Generic(name, args) => (Self::generic_base_name(name), Some(args.as_slice())),
+                Type::Object(name) => (Self::generic_base_name(name), None),
+                _ => continue,
+            };
+            if name == to_base || self.is_same_class(name, to_base) {
+                let mapped: Vec<Type> = args
+                    .map(|args| {
+                        args.iter()
+                            .map(|a| substitute_type_params(a, &mapping))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                return Some(
+                    self.fill_default_type_args(to_base, &mapped)
+                        .unwrap_or(mapped),
+                );
+            }
+        }
+
+        let parent = class_info.parent.as_deref()?;
+        let parent_base = Self::generic_base_name(parent);
+        if parent_base == to_base || self.is_same_class(parent_base, to_base) {
+            return Some(Vec::new());
+        }
+        // 父类的类型参数绑定在当前 ClassInfo 中没有记录；父类若是非泛型，
+        // 空实参即可继续向上查找它实现的接口。
+        self.map_generic_supertype_args(parent_base, &[], to_base, visited)
     }
 
     /// 检查 subtype 是否是 supertype 的子类型
@@ -2303,6 +2485,21 @@ impl TypeRegistry {
                 false
             }
         }
+    }
+
+    /// 按实参类型从某个类的重载集合中选出实际调用的方法。
+    ///
+    /// 供 codegen 在应用 `@owns` 所有权转移时使用：必须与被调方实际选中的
+    /// 重载一致，不能只按参数个数取第一个。
+    pub fn find_method_for_argument_types<'a>(
+        &'a self,
+        class_name: &str,
+        method_name: &str,
+        arg_types: &[Type],
+    ) -> Option<&'a MethodInfo> {
+        let class_info = self.get_class(class_name)?;
+        let methods = class_info.methods.get(method_name)?;
+        self.find_matching_method_in_list(methods, arg_types)
     }
 
     fn find_matching_method<'a>(
@@ -2523,6 +2720,37 @@ impl TypeRegistry {
 
     fn generic_base_name(name: &str) -> &str {
         name.find('<').map(|pos| &name[..pos]).unwrap_or(name)
+    }
+
+    /// 把省略的泛型实参按类声明的默认值补齐。
+    ///
+    /// 例如源码写 `ArrayList<int>` 时类型实参只有一个，而类声明为
+    /// `ArrayList<T, A: Allocator = GlobalAlloc>`；补齐后为
+    /// `ArrayList<int, GlobalAlloc>`，才能与写成全的 `ArrayList<int, GlobalAlloc>`
+    /// 正确判定为同一类型，而与 `ArrayList<int, 其它分配器>` 判定为不同。
+    ///
+    /// 实参多于声明、类未注册、或某个类型参数没有默认值时返回 None，
+    /// 调用方据此保持宽松判定，避免在信息不足时误报。
+    fn fill_default_type_args(&self, base: &str, args: &[Type]) -> Option<Vec<Type>> {
+        // 泛型实参的默认值可能来自 class / interface / struct 任一登记表；
+        // 接口实参映射（Iterator<T>）必须能读到接口声明的默认值。
+        let type_params = if let Some(class_info) = self.get_class(base) {
+            class_info.type_params.as_slice()
+        } else if let Some(interface_info) = self.get_interface(base) {
+            interface_info.type_params.as_slice()
+        } else if let Some(struct_info) = self.get_struct(base) {
+            struct_info.type_params.as_slice()
+        } else {
+            return None;
+        };
+        if args.len() > type_params.len() {
+            return None;
+        }
+        let mut out = args.to_vec();
+        for tp in &type_params[args.len()..] {
+            out.push(tp.default_type.clone()?);
+        }
+        Some(out)
     }
 
     fn generic_arg_count_in_name(name: &str) -> Option<usize> {

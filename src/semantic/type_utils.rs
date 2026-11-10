@@ -464,11 +464,15 @@ impl SemanticAnalyzer {
             // 第四步：对所有已匹配的参数进行类型检查
             for (i, param) in params.iter().enumerate() {
                 if let Some(arg) = arg_for_param[i] {
-                    let arg_type = self.infer_expr_type_collect_errors(arg);
                     if param.is_varargs {
                         // 可变参数的检查已经在上面完成了，这里跳过
                         continue;
                     }
+                    // 同下方非命名参数路径：lambda 实参按期望签名推导，跳过结构比较
+                    if matches!(arg, Expr::Lambda(_)) {
+                        continue;
+                    }
+                    let arg_type = self.infer_expr_type_collect_errors(arg);
                     if !self.types_compatible(&arg_type, &param.param_type) {
                         return Err(format!(
                             "Argument {} type mismatch: expected {}, got {}",
@@ -547,6 +551,13 @@ impl SemanticAnalyzer {
             }
 
             for (i, (arg, param)) in args.iter().zip(params.iter()).enumerate() {
+                // lambda 实参的形参类型由**期望签名**推导（codegen 用
+                // pending_lambda_expected_fn 按其发射），不做结构比较：
+                // 否则 `mapErr<U>(fn(E) -> U f)` 传入未标注类型的 `(e) -> ...`
+                // 会被误判为类型不匹配。
+                if matches!(arg, Expr::Lambda(_)) {
+                    continue;
+                }
                 let arg_type = self.infer_expr_type_collect_errors(arg);
                 if !self.types_compatible(&arg_type, &param.param_type) {
                     return Err(format!(

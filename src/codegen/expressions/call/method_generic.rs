@@ -106,6 +106,7 @@ impl IRGenerator {
                         &class_mapping,
                     ),
                     is_varargs: p.is_varargs,
+                    is_owning: p.is_owning,
                 })
                 .collect();
 
@@ -186,6 +187,7 @@ impl IRGenerator {
                         &class_mapping,
                     ),
                     is_varargs: p.is_varargs,
+                    is_owning: p.is_owning,
                 })
                 .collect();
 
@@ -676,6 +678,7 @@ impl IRGenerator {
                 name: p.name.clone(),
                 param_type: crate::types::substitute_type_params(&p.param_type, full_mapping),
                 is_varargs: p.is_varargs,
+                is_owning: p.is_owning,
             })
             .collect();
 

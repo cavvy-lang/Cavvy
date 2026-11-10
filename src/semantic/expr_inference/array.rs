@@ -75,44 +75,143 @@ impl SemanticAnalyzer {
         Ok(Type::Array(Box::new(arr.element_type.clone())))
     }
 
-    /// 推断分配器-backed 数组分配表达式类型
-    /// __cay_alloc_array<T>(allocator, count) 返回 T[]
-    pub(crate) fn infer_alloc_array_type(
+    /// 推断带类型实参的编译器内建调用类型。
+    ///
+    /// 名单与类型实参个数由 `ast::BUILTIN_TYPE_CALLS` 统一维护，此处只负责
+    /// 各内建的参数类型检查与返回类型。
+    pub(crate) fn infer_builtin_type_call_type(
         &mut self,
-        alloc_array: &AllocArrayExpr,
+        builtin: &BuiltinTypeCallExpr,
     ) -> crate::miette_diagnostic::CayResult<Type> {
-        // 检查 allocator 表达式是否为对象/接口类型（Allocator 接口）
-        // 在泛型类体内，allocator 可能是类型参数 A，此时也允许，
-        // 具体类型在单态化后的 codegen 阶段解析。
-        let allocator_type = self.infer_expr_type_internal(&alloc_array.allocator)?;
-        match allocator_type {
-            Type::Object(_) | Type::Generic(_, _) | Type::GenericParam(_) => {
-                // 接受任何类/接口实例或类型参数作为分配器。
-            }
-            _ => {
-                return Err(semantic_error_at_loc(
-                    &alloc_array.loc,
-                    format!(
-                        "__cay_alloc_array allocator must be an object, got {}",
-                        allocator_type
-                    ),
-                ));
-            }
-        }
+        match builtin.name.as_str() {
+            // __cay_alloc_array<T>(allocator, count) 返回 T[]
+            "__cay_alloc_array" => {
+                // 检查 allocator 表达式是否为对象/接口类型（Allocator 接口）
+                // 在泛型类体内，allocator 可能是类型参数 A，此时也允许，
+                // 具体类型在单态化后的 codegen 阶段解析。
+                let allocator_type = self.infer_expr_type_internal(&builtin.args[0])?;
+                match allocator_type {
+                    Type::Object(_) | Type::Generic(_, _) | Type::GenericParam(_) => {
+                        // 接受任何类/接口实例或类型参数作为分配器。
+                    }
+                    _ => {
+                        return Err(semantic_error_at_loc(
+                            &builtin.loc,
+                            format!(
+                                "__cay_alloc_array allocator must be an object, got {}",
+                                allocator_type
+                            ),
+                        ));
+                    }
+                }
 
-        // 检查 count 是否为整数
-        let size_type = self.infer_expr_type_internal(&alloc_array.size)?;
-        if !size_type.is_integer() {
-            return Err(semantic_error_at_loc(
-                &alloc_array.loc,
-                format!(
-                    "__cay_alloc_array count must be integer, got {}",
-                    size_type
-                ),
-            ));
-        }
+                // 检查 count 是否为整数
+                let size_type = self.infer_expr_type_internal(&builtin.args[1])?;
+                if !size_type.is_integer() {
+                    return Err(semantic_error_at_loc(
+                        &builtin.loc,
+                        format!(
+                            "__cay_alloc_array count must be integer, got {}",
+                            size_type
+                        ),
+                    ));
+                }
 
-        Ok(Type::Array(Box::new(alloc_array.element_type.clone())))
+                Ok(Type::Array(Box::new(builtin.type_args[0].clone())))
+            }
+
+            // __cay_destroy<T>(value)：析构一个 T 值，无返回值。
+            // 是否真正需要析构（T 是否为带析构函数的类）在 codegen 阶段判定，
+            // 原始类型/struct 静默 no-op。
+            "__cay_destroy" => {
+                let value_type = self.infer_expr_type_internal(&builtin.args[0])?;
+                let expected = &builtin.type_args[0];
+                // 显式类型实参必须就是实参的类型：若允许把 Base 的析构函数
+                // 作用于 Derived 实例，或反之，就会调用错误的 `__dtor` 并破坏布局。
+                if !self.destroy_type_matches(&value_type, expected) {
+                    return Err(semantic_error_at_loc(
+                        &builtin.loc,
+                        format!(
+                            "__cay_destroy<{}> argument must have type {}, got {}",
+                            expected.display_name(),
+                            expected.display_name(),
+                            value_type.display_name()
+                        ),
+                    ));
+                }
+                Ok(Type::Void)
+            }
+
+            // __cay_destroy_array<T>(array, count)：析构密集数组的元素，无返回值。
+            "__cay_destroy_array" => {
+                let arr_type = self.infer_expr_type_internal(&builtin.args[0])?;
+                let expected_elem = &builtin.type_args[0];
+                match &arr_type {
+                    Type::Array(elem) => {
+                        if !self.destroy_type_matches(elem, expected_elem) {
+                            return Err(semantic_error_at_loc(
+                                &builtin.loc,
+                                format!(
+                                    "__cay_destroy_array<{}> requires {}[], got {}",
+                                    expected_elem.display_name(),
+                                    expected_elem.display_name(),
+                                    arr_type.display_name()
+                                ),
+                            ));
+                        }
+                    }
+                    Type::GenericParam(_) => {}
+                    _ => {
+                        return Err(semantic_error_at_loc(
+                            &builtin.loc,
+                            format!(
+                                "__cay_destroy_array first argument must be an array, got {}",
+                                arr_type
+                            ),
+                        ));
+                    }
+                }
+                let count_type = self.infer_expr_type_internal(&builtin.args[1])?;
+                if !count_type.is_integer() {
+                    return Err(semantic_error_at_loc(
+                        &builtin.loc,
+                        format!(
+                            "__cay_destroy_array count must be integer, got {}",
+                            count_type
+                        ),
+                    ));
+                }
+                Ok(Type::Void)
+            }
+
+            other => Err(semantic_error_at_loc(
+                &builtin.loc,
+                format!("unknown type-parameterized builtin '{}'", other),
+            )),
+        }
+    }
+
+    /// 析构内建的显式类型实参与值类型必须一致（类型参数在单态化前作为通配）。
+    fn destroy_type_matches(&self, actual: &Type, expected: &Type) -> bool {
+        if actual == expected
+            || matches!(actual, Type::GenericParam(_))
+            || matches!(expected, Type::GenericParam(_))
+        {
+            return true;
+        }
+        // `__cay_destroy<T>(addr)` 也接受以整数/指针保存的对象地址
+        // （SmartPtr 的析构体从 `long __owned` 取回地址后调用）。地址本身
+        // 没有类型信息，具体析构函数由显式类型实参 T 决定。
+        if matches!(
+            actual,
+            Type::Int64 | Type::UIntPtr | Type::IntPtr | Type::Pointer(_)
+        ) {
+            return true;
+        }
+        // 泛型参数在声明/单态化上下文中可能分别表示为 GenericParam 或
+        // Object("T")，结构比较会漏判；用双向兼容性确保两边是同一类型
+        //（双向排除把 Base 析构函数用于 Derived 之类的不安全放宽）。
+        self.types_compatible(actual, expected) && self.types_compatible(expected, actual)
     }
 
     /// 推断数组初始化表达式类型

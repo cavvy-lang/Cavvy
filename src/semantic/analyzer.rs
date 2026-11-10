@@ -244,6 +244,9 @@ impl SemanticAnalyzer {
         }
 
         for func in &program.top_level_functions {
+            // 顶层函数与方法/构造函数共用 @owns 适用性规则。
+            self.validate_owning_params(&func.params, "顶层函数", &func.name, &func.loc)?;
+
             // 检查函数名是否已存在（在当前作用域）
             if self.symbol_table.lookup_current(&func.name).is_some() {
                 return Err(crate::miette_diagnostic::semantic_error_with_file(
@@ -399,7 +402,7 @@ impl SemanticAnalyzer {
             Expr::MethodRef(e) => (e.loc.line, e.loc.column),
             Expr::Alloc(e) => (e.loc.line, e.loc.column),
             Expr::Dealloc(e) => (e.loc.line, e.loc.column),
-            Expr::AllocArray(e) => (e.loc.line, e.loc.column),
+            Expr::BuiltinTypeCall(e) => (e.loc.line, e.loc.column),
             Expr::NamedArg(e) => (e.loc.line, e.loc.column),
             Expr::Try(e) => (e.loc.line, e.loc.column),
             Expr::TypeOf(e) => (e.loc.line, e.loc.column),
@@ -432,7 +435,7 @@ impl SemanticAnalyzer {
             Expr::MethodRef(e) => e.loc.clone(),
             Expr::Alloc(e) => e.loc.clone(),
             Expr::Dealloc(e) => e.loc.clone(),
-            Expr::AllocArray(e) => e.loc.clone(),
+            Expr::BuiltinTypeCall(e) => e.loc.clone(),
             Expr::NamedArg(e) => e.loc.clone(),
             Expr::Try(e) => e.loc.clone(),
             Expr::TypeOf(e) => e.loc.clone(),

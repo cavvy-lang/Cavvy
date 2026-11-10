@@ -53,11 +53,11 @@ impl PlatformConfig {
 
         // Rc 循环引用检测运行时函数声明
         if self.detect_cycles {
+            // 仅 __cay_rc_set_detect 由编译器在 main 入口注入调用；
+            // unregister/check_cycle 由 caylibs/SmartPtr.cay 以 #ifdef
+            // CAY_DETECT_CYCLES 门控的 extern 声明提供（避免重复 declare），
+            // register/edge_add 无调用者、已删除。
             declarations.push_str("declare void @__cay_rc_set_detect(i32)\n");
-            declarations.push_str("declare void @__cay_rc_register(i8*, i8*)\n");
-            declarations.push_str("declare void @__cay_rc_unregister(i8*)\n");
-            declarations.push_str("declare void @__cay_rc_edge_add(i8*, i8*)\n");
-            declarations.push_str("declare void @__cay_rc_check_cycle(i8*)\n");
         }
 
         match self.target_os.as_str() {

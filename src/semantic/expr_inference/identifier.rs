@@ -195,7 +195,7 @@ impl SemanticAnalyzer {
             Expr::InstanceOf(instanceof) => self.infer_instanceof_type(instanceof),
             Expr::Alloc(_) => Ok(Type::Int64), // 0.5.0.0: alloc 返回 long (指针)
             Expr::Dealloc(_) => Ok(Type::Void), // 0.5.0.0: dealloc 返回 void
-            Expr::AllocArray(alloc_array) => self.infer_alloc_array_type(alloc_array), // 0.5.2.x
+            Expr::BuiltinTypeCall(builtin) => self.infer_builtin_type_call_type(builtin),
             Expr::NamedArg(named) => self.infer_expr_type_internal(&named.value), // 命名参数返回其值的类型
             Expr::TypeOf(type_of) => self.infer_expr_type_internal(&type_of.expr),
             Expr::SizeOf(size_of) => self.infer_sizeof_type(size_of),
@@ -622,6 +622,7 @@ impl SemanticAnalyzer {
                             name: "value".to_string(),
                             param_type: payload_type.clone(),
                             is_varargs: false,
+                            is_owning: false,
                         };
                         self.infer_type_args_from_arguments(
                             &[fake_param],

@@ -386,6 +386,10 @@ impl IRGenerator {
 
         let mut arg_values = Vec::new();
         for (idx, arg) in new_expr.args.iter().enumerate() {
+            // 构造函数的 `@owns` 形参：与普通方法调用同一语义 —— 被调方接管
+            // 实参生命周期，因此把实参局部变量从当前作用域的析构候选中摘除。
+            // 与 generate_and_pack_args 保持同一条规则（都只看形参声明）。
+            self.transfer_ownership_for_constructor_arg(arg, ctor_info_opt.as_ref(), idx)?;
             let arg_val = self.generate_expression(arg)?;
             let is_generic_param = ctor_info_opt
                 .as_ref()
@@ -484,9 +488,40 @@ impl IRGenerator {
         let param_types =
             self.get_constructor_param_types(struct_name, new_expr.args.len(), &fallback_types);
 
+        // struct 构造函数同样可能声明 `@owns` 形参，必须与 class 构造函数走
+        // 同一条所有权转移规则，否则实参局部变量仍会在调用方作用域析构。
+        let struct_ctor_info_opt = self
+            .type_registry
+            .as_ref()
+            .and_then(|registry| registry.get_struct(&base_name))
+            .and_then(|struct_info| {
+                let expected_sigs = self.get_constructor_param_signatures(
+                    &base_name,
+                    new_expr.args.len(),
+                    &fallback_types,
+                );
+                struct_info
+                    .constructors
+                    .iter()
+                    .find(|ctor| {
+                        let sigs: Vec<String> = ctor
+                            .params
+                            .iter()
+                            .map(|p| self.type_to_signature(&p.param_type))
+                            .collect();
+                        sigs == expected_sigs
+                    })
+                    .cloned()
+            });
+
         // 生成参数值
         let mut arg_values = Vec::new();
-        for arg in &new_expr.args {
+        for (idx, arg) in new_expr.args.iter().enumerate() {
+            self.transfer_ownership_for_constructor_arg(
+                arg,
+                struct_ctor_info_opt.as_ref(),
+                idx,
+            )?;
             let arg_val = self.generate_expression(arg)?;
             arg_values.push(arg_val);
         }
@@ -510,6 +545,62 @@ impl IRGenerator {
         Ok(format!("{}* {}", llvm_struct_type, alloca_temp))
     }
 
+    /// 应用构造函数 `@owns` 形参的所有权转移。
+    ///
+    /// class 与 struct 构造函数共用；规则与普通方法调用一致：局部变量
+    /// 从析构候选中摘除且不能重复转移，带析构宿主的字段拒绝隐式转移。
+    fn transfer_ownership_for_constructor_arg(
+        &mut self,
+        arg: &Expr,
+        ctor: Option<&crate::types::ConstructorInfo>,
+        idx: usize,
+    ) -> CayResult<()> {
+        let Some(param) = ctor.and_then(|ctor| ctor.params.get(idx)) else {
+            return Ok(());
+        };
+        if !param.is_owning {
+            return Ok(());
+        }
+        match arg {
+            Expr::Identifier(ident) => {
+                let var_name = &ident.name;
+                if let Some(var_type) = self.get_variable_type(var_name) {
+                    if self.type_has_destructor(&var_type).is_some() {
+                        if self.scope_manager.is_moved(var_name) {
+                            return Err(codegen_error_at(
+                                ErrorCodes::CODEGEN_INVALID_OPERATION,
+                                arg.location().clone(),
+                                format!(
+                                    "变量 '{}' 的所有权已经通过 @owns 转移，不能再次传给构造函数\n提示: 同一对象只能有一个所有者；共享所有权请使用 Rc<T>",
+                                    var_name
+                                ),
+                            ));
+                        }
+                        self.scope_manager.mark_moved(var_name);
+                        self.scope_manager
+                            .remove_dtor_candidate_by_var_name(var_name);
+                    }
+                }
+            }
+            Expr::MemberAccess(member) => {
+                if let Some(owner_type) = self.get_expression_type(&member.object) {
+                    if self.type_has_destructor(&owner_type).is_some() {
+                        return Err(codegen_error_at(
+                            ErrorCodes::CODEGEN_INVALID_OPERATION,
+                            arg.location().clone(),
+                            format!(
+                                "@owns 构造实参不能是带析构函数对象的字段 '{}'\n提示: 字段所有权仍属于宿主对象，请先显式转移该字段",
+                                member.member
+                            ),
+                        ));
+                    }
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
     /// 推断参数类型（返回类型签名）
     fn infer_argument_type(&self, expr: &Expr) -> String {
         match expr {
@@ -524,17 +615,22 @@ impl IRGenerator {
                 LiteralValue::Null => "o".to_string(),
             },
             Expr::Identifier(ident) => {
-                // 查找变量类型
+                // 查找变量类型。必须按当前单态化上下文解析类型参数：
+                // 泛型类体内 `this.<字段>` / 形参的静态类型可能是 GenericParam("A")，
+                // 直接取签名会退化成 "gA"，使重载打分把 A 类型实参判为不匹配，
+                // 最终静默选中 (int) 之类的错误重载（见 infer_argument_type 文档）。
                 if let Some(cay_type) = self.var_cay_types.get(&ident.name) {
-                    self.type_to_signature(cay_type)
+                    let resolved = self.resolve_type_arg_concrete(cay_type);
+                    self.type_to_signature(&resolved)
                 } else {
                     "i".to_string() // 默认int
                 }
             }
             Expr::MemberAccess(member) => {
-                // 尝试推断成员访问的类型
+                // 尝试推断成员访问的类型（同样按当前上下文解析类型参数）
                 if let Some(cay_type) = self.infer_member_access_type(member) {
-                    self.type_to_signature(&cay_type)
+                    let resolved = self.resolve_type_arg_concrete(&cay_type);
+                    self.type_to_signature(&resolved)
                 } else {
                     "i".to_string() // 默认int
                 }
@@ -546,9 +642,10 @@ impl IRGenerator {
             Expr::Unary(unary) => self.infer_argument_type(&unary.operand),
             Expr::Cast(cast) => self.type_to_signature(&cast.target_type),
             Expr::Call(call) => {
-                // 尝试推断函数调用的返回类型
+                // 尝试推断函数调用的返回类型（同样按当前上下文解析类型参数）
                 if let Some(cay_type) = self.infer_call_return_type(call) {
-                    self.type_to_signature(&cay_type)
+                    let resolved = self.resolve_type_arg_concrete(&cay_type);
+                    self.type_to_signature(&resolved)
                 } else {
                     "i".to_string() // 默认int
                 }
@@ -587,6 +684,21 @@ impl IRGenerator {
                 if let Some(class_info) = class_layout {
                     if let Some(field) = class_info.fields.get(&member.member) {
                         return Some(field.field_type.clone());
+                    }
+                }
+                // 回退：class_layouts 尚未为该类建立（泛型类的布局只在其特化时
+                // 按需生成）。此时改查类型注册表里的**声明**字段类型，其类型参数
+                // 由调用方的 resolve_type_arg_concrete 按当前单态化上下文解析。
+                // 缺少这条回退会让本函数返回 None，调用方 infer_argument_type
+                // 遂默认按 int 处理，进而在重载打分里静默选错构造函数。
+                if let Some(ref registry) = self.type_registry {
+                    let info = registry
+                        .get_class(&class_name)
+                        .or_else(|| registry.get_class(&qualified_name));
+                    if let Some(ci) = info {
+                        if let Some(field) = ci.fields.get(&member.member) {
+                            return Some(field.field_type.clone());
+                        }
                     }
                 }
                 // 然后查找静态方法（如 MathUtils.multiply）
@@ -634,13 +746,16 @@ impl IRGenerator {
 
         match expr {
             Expr::Identifier(ident) => {
-                // 首先检查是否是变量
-                if let Some(var_type) = self.var_cay_types.get(&ident.name) {
-                    return Some(var_type.clone());
-                }
-                // 特殊处理 "this"
+                // `this` 必须优先判定：var_cay_types 里 this 的登记类型可能是
+                // 指针/auto 之类的非 Object 类型，先命中的话就会返回一个下游
+                // 无法处理的类型，使成员类型推断失败（进而让重载打分退回按
+                // int 猜测，静默选错构造函数）。
                 if ident.name == "this" {
                     return Some(Type::Object(self.current_class.clone()));
+                }
+                // 其次检查是否是变量
+                if let Some(var_type) = self.var_cay_types.get(&ident.name) {
+                    return Some(var_type.clone());
                 }
                 // 检查是否是类名（静态方法调用如 MathUtils.multiply）
                 if let Some(ref registry) = self.type_registry {

@@ -1081,7 +1081,7 @@ fn expr_kind_name(expr: &cavvy::ast::Expr) -> &'static str {
         Expr::InstanceOf(_) => "instanceof",
         Expr::Alloc(_) => "__cay_alloc",
         Expr::Dealloc(_) => "__cay_free",
-        Expr::AllocArray(_) => "__cay_alloc_array",
+        Expr::BuiltinTypeCall(_) => "带类型实参的内建调用",
         Expr::NamedArg(_) => "命名参数",
         Expr::TypeOf(_) => "typeof",
         Expr::SizeOf(_) => "sizeof",

@@ -247,6 +247,7 @@ impl IRGenerator {
                                             name: "value".to_string(),
                                             param_type: payload_type.clone(),
                                             is_varargs: false,
+                                            is_owning: false,
                                         };
                                         if let Some(mut inferred) = self
                                             .infer_type_args_from_call_args_codegen(
@@ -782,9 +783,16 @@ impl IRGenerator {
             .last()
             .map(|v| v == &var.name)
             .unwrap_or(false);
+        // 初始化自 `@borrow` 方法的局部变量同样只是借用：返回值仍归被调方
+        // （容器/智能指针）所有，不能登记为析构候选。
+        let is_borrow_init = var
+            .initializer
+            .as_ref()
+            .map_or(false, |expr| self.expression_returns_borrow(expr));
         if is_foreach_borrow {
             self.foreach_element_vars.pop();
-        } else {
+        }
+        if !is_foreach_borrow && !is_borrow_init {
             self.register_dtor_candidate_if_applicable(&var.name, &llvm_name, &actual_type);
         }
 

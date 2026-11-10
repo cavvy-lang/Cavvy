@@ -568,10 +568,15 @@ impl SpecializationCollector {
             Expr::Dealloc(dealloc) => {
                 self.collect_from_expr(&dealloc.ptr);
             }
-            Expr::AllocArray(alloc_array) => {
-                self.collect_type(&alloc_array.element_type);
-                self.collect_from_expr(&alloc_array.allocator);
-                self.collect_from_expr(&alloc_array.size);
+            Expr::BuiltinTypeCall(builtin) => {
+                // 类型实参必须收集：`__cay_destroy<ArrayList<T, A>>(...)` 要能
+                // 触发 ArrayList 特化实例的注册，否则符号缺失。
+                for ty in &builtin.type_args {
+                    self.collect_type(ty);
+                }
+                for arg in &builtin.args {
+                    self.collect_from_expr(arg);
+                }
             }
             Expr::NamedArg(named_arg) => {
                 self.collect_from_expr(&named_arg.value);
@@ -1033,6 +1038,20 @@ impl SpecializationCollector {
                     self.collect_dependency_from_expr(arg, mapping, ns);
                 }
             }
+            Expr::BuiltinTypeCall(builtin) => {
+                // 泛型类体内可能出现 __cay_destroy<ArrayList<T, A>>(this.items)：
+                // 类型实参里的类必须按 mapping 替换后注册依赖特化，
+                // 否则嵌套特化实例不会生成、析构调用符号缺失。
+                for ty in &builtin.type_args {
+                    let substituted = substitute_type_in_type(ty, mapping);
+                    if let Some(name) = type_as_class_name(&substituted) {
+                        self.collect_generic_class_name_with_ns(&name, ns);
+                    }
+                }
+                for arg in &builtin.args {
+                    self.collect_dependency_from_expr(arg, mapping, ns);
+                }
+            }
             Expr::MemberAccess(member) => {
                 self.collect_dependency_from_expr(&member.object, mapping, ns);
                 // 处理静态泛型方法调用，如 `Optional<Rc<T>>.of(result)`：
@@ -1251,6 +1270,46 @@ pub(crate) fn substitute_type_args_in_class_name(
         .map(|arg| substitute_type_arg_str(arg, mapping))
         .collect();
     format!("{}<{}>", base, substituted.join(", "))
+}
+
+/// 在 `Type` 结构上递归替换类型参数。
+///
+/// 与字符串版 `substitute_type_args_in_class_name` 对应，但保留类型结构，
+/// 供 AST 上携带真实 `Type` 的类型实参使用（如 `BuiltinTypeCall.type_args`
+/// 里的 `ArrayList<T, A>`）。
+pub(crate) fn substitute_type_in_type(
+    ty: &Type,
+    mapping: &std::collections::HashMap<String, Type>,
+) -> Type {
+    match ty {
+        // 类型参数在 AST 里可能表示为 GenericParam("A")，也可能退化为
+        // Object("A")（与 resolve_type_arg_concrete 的处理保持一致）。
+        // mapping 的键只可能是类型参数名，因此按名查表不会误伤真实类名。
+        Type::GenericParam(name) | Type::Object(name) => {
+            match mapping.get(name) {
+                Some(actual) => substitute_type_in_type(actual, mapping),
+                None => ty.clone(),
+            }
+        }
+        Type::Array(inner) => Type::Array(Box::new(substitute_type_in_type(inner, mapping))),
+        Type::Pointer(inner) => Type::Pointer(Box::new(substitute_type_in_type(inner, mapping))),
+        Type::Generic(base, args) => Type::Generic(
+            base.clone(),
+            args.iter()
+                .map(|a| substitute_type_in_type(a, mapping))
+                .collect(),
+        ),
+        other => other.clone(),
+    }
+}
+
+/// 若类型是类/接口实例，返回用于特化注册的 `Base<Args>` 名称。
+pub(crate) fn type_as_class_name(ty: &Type) -> Option<String> {
+    match ty {
+        Type::Object(name) => Some(name.clone()),
+        Type::Generic(_, _) => Some(ty.display_name()),
+        _ => None,
+    }
 }
 
 /// 递归替换单个类型实参字符串中的类型参数。

@@ -37,14 +37,14 @@ public final class ArrayListIterator<T> implements Iterator<T>, MutableRandomAcc
         return this.index < this.size;
     }
 
-    public T next() {
+    public @borrow T next() {
         T value = this.data[this.index];
         this.index = this.index + 1;
         return value;
     }
 
     public int length() { return this.size; }
-    public T get(int index) { return this.data[index]; }
+    public @borrow T get(int index) { return this.data[index]; }
     public void set(int index, T value) { this.data[index] = value; }
 
 }
@@ -60,6 +60,11 @@ public final class ArrayList<T, A: Allocator = GlobalAlloc> implements Iterable<
     private int size;
     private A allocator;
     private long buffer;
+    /**
+     * 是否拥有元素的析构责任。普通列表为 true；`HashMap.keySet()/values()`
+     * 返回的借用视图为 false —— 元素仍归源容器所有，视图只借用引用。
+     */
+    private bool ownsElements;
 
     /**
      * 默认构造，使用 GlobalAlloc。内部预留 1 个槽位，避免空列表时
@@ -68,6 +73,7 @@ public final class ArrayList<T, A: Allocator = GlobalAlloc> implements Iterable<
     public ArrayList() {
         this.allocator = new A();
         this.buffer = 0;
+        this.ownsElements = true;
         this.allocate(1);
         this.size = 0;
     }
@@ -81,6 +87,7 @@ public final class ArrayList<T, A: Allocator = GlobalAlloc> implements Iterable<
         }
         this.allocator = new A();
         this.buffer = 0;
+        this.ownsElements = true;
         this.allocate(initialCapacity);
         this.size = 0;
     }
@@ -91,6 +98,7 @@ public final class ArrayList<T, A: Allocator = GlobalAlloc> implements Iterable<
     public ArrayList(A allocator) {
         this.allocator = allocator;
         this.buffer = 0;
+        this.ownsElements = true;
         this.allocate(1);
         this.size = 0;
     }
@@ -104,6 +112,23 @@ public final class ArrayList<T, A: Allocator = GlobalAlloc> implements Iterable<
         }
         this.allocator = allocator;
         this.buffer = 0;
+        this.ownsElements = true;
+        this.allocate(initialCapacity);
+        this.size = 0;
+    }
+
+    /**
+     * 内部/借用视图构造函数：`ownsElements == false` 时不析构元素，
+     * 元素生命周期仍由源容器管理。仅供 `HashMap.keySet()/values()` 等
+     * 只读视图使用；借用视图拒绝 `add`/`set` 等会改变元素所有权的操作。
+     */
+    public ArrayList(int initialCapacity, bool ownsElements) {
+        if (initialCapacity < 1) {
+            initialCapacity = 1;
+        }
+        this.allocator = new A();
+        this.buffer = 0;
+        this.ownsElements = ownsElements;
         this.allocate(initialCapacity);
         this.size = 0;
     }
@@ -134,6 +159,12 @@ public final class ArrayList<T, A: Allocator = GlobalAlloc> implements Iterable<
      */
     ~ArrayList() {
         if (this.buffer != 0) {
+            /* 先析构元素：data[0..size) 是密集存储，每个槽位都是有效元素；
+               T 为原始类型 / struct 时 __cay_destroy_array 编译期展开为空操作。
+               必须在释放 backing buffer 之前完成，否则会访问已释放内存。 */
+            if (this.ownsElements) {
+                __cay_destroy_array<T>(this.data, this.size);
+            }
             this.allocator.deallocate(this.buffer);
             this.buffer = 0;
         }
@@ -180,7 +211,13 @@ public final class ArrayList<T, A: Allocator = GlobalAlloc> implements Iterable<
     /**
      * 追加元素到末尾。
      */
-    public void add(T value) {
+    public void add(@owns T value) {
+        if (!this.ownsElements) {
+            /* 借用视图不接管元素所有权；仍然必须履行 @owns 的“失败即析构”
+               义务，避免调用方已摘除析构候选后对象泄漏。 */
+            __cay_destroy<T>(value);
+            return;
+        }
         this.ensureCapacity(this.size + 1);
         this.data[this.size] = value;
         this.size = this.size + 1;
@@ -188,9 +225,13 @@ public final class ArrayList<T, A: Allocator = GlobalAlloc> implements Iterable<
 
     /**
      * 在指定索引处插入元素。index 范围 [0, size]。
+     *
+     * 索引非法时本方法已经通过 `@owns` 取得 value 的所有权，因此必须就地
+     * 析构 value，否则调用方摘除析构候选后该对象会泄漏。
      */
-    public void add(int index, T value) {
-        if (index < 0 || index > this.size) {
+    public void add(int index, @owns T value) {
+        if (!this.ownsElements || index < 0 || index > this.size) {
+            __cay_destroy<T>(value);
             return;
         }
         this.ensureCapacity(this.size + 1);
@@ -198,6 +239,19 @@ public final class ArrayList<T, A: Allocator = GlobalAlloc> implements Iterable<
             this.data[i] = this.data[i - 1];
         }
         this.data[index] = value;
+        this.size = this.size + 1;
+    }
+
+    /**
+     * 仅供借用视图（`ownsElements == false`）登记元素引用。不取得所有权，
+     * 借用视图也不会析构它。对普通列表调用为空操作，防止同一对象出现两个所有者。
+     */
+    public void addBorrowed(T value) {
+        if (this.ownsElements) {
+            return;
+        }
+        this.ensureCapacity(this.size + 1);
+        this.data[this.size] = value;
         this.size = this.size + 1;
     }
 
@@ -244,7 +298,7 @@ public final class ArrayList<T, A: Allocator = GlobalAlloc> implements Iterable<
     /**
      * 获取指定位置元素。index 越界时返回 data[0]（预留槽位，值为零/空）。
      */
-    public T get(int index) {
+    public @borrow T get(int index) {
         if (index < 0 || index >= this.size) {
             return this.data[0];
         }
@@ -252,9 +306,26 @@ public final class ArrayList<T, A: Allocator = GlobalAlloc> implements Iterable<
     }
 
     /**
-     * 设置指定位置元素。index 越界时不执行任何操作。
+     * 替换指定位置元素。新值经 `@owns` 转移给列表，旧元素先被析构。
+     * index 越界或列表为借用视图时，value 已被本方法接管，必须就地析构。
      */
-    public void set(int index, T value) {
+    public void set(int index, @owns T value) {
+        if (!this.ownsElements || index < 0 || index >= this.size) {
+            __cay_destroy<T>(value);
+            return;
+        }
+        __cay_destroy<T>(this.data[index]);
+        this.data[index] = value;
+    }
+
+    /**
+     * 内部搬移：直接写入槽位，不析构旧值，也不取得新值的所有权。
+     *
+     * Queue/Deque 的死区置零、compact 搬移与 PriorityQueue 的 swap/pop
+     * 都要求“移动”而不是“替换+析构”，否则会把已经返回给调用方或
+     * 即将返回的元素提前析构。
+     */
+    public void moveAt(int index, T value) {
         if (index < 0 || index >= this.size) {
             return;
         }
@@ -286,6 +357,11 @@ public final class ArrayList<T, A: Allocator = GlobalAlloc> implements Iterable<
      * 清空列表。容量保持不变。
      */
     public void clear() {
+        if (this.ownsElements) {
+            /* 必须先析构元素再清零 size：析构函数只遍历 [0, size)，
+               先清零会让被清掉的元素永远无法回收。 */
+            __cay_destroy_array<T>(this.data, this.size);
+        }
         this.size = 0;
     }
 
@@ -314,7 +390,10 @@ public final class ArrayList<T, A: Allocator = GlobalAlloc> implements Iterable<
     public void removeValue(T value) {
         int index = this.indexOf(value);
         if (index >= 0) {
-            this.remove(index);
+            T removed = this.remove(index);
+            /* remove() 把元素所有权交还给调用方；removeValue 的语义是丢弃，
+               因此必须在这里析构，否则对象泄漏。 */
+            __cay_destroy<T>(removed);
         }
     }
 

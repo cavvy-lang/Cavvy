@@ -112,6 +112,13 @@ impl IRGenerator {
         // 通过桥处理内联IR
         let result = bridge.process_inline_ir(self, inline_ir)?;
 
+        // 内联 IR 里若调用了 @free（库源码管理裸内存的既有写法，例如
+        // Allocator.cay / StringBuilder.cay / SmartPtr.cay），必须保证
+        // `declare void @free(i8*)` 存在。不能依赖其它代码路径的副作用。
+        if result.llvm_ir_lines.iter().any(|l| l.contains("@free")) {
+            self.ensure_free_declared();
+        }
+
         // 将生成的LLVM IR文本输出到CodeGen
         // 添加注释标记内联IR块开始
         self.emit_line("  ; Inline IR block start");

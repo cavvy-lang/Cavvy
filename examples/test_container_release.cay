@@ -1,0 +1,253 @@
+/*
+ * 容器内存回收验证 —— 用计数分配器证明「局部容器离开作用域后释放了缓冲区」。
+ *
+ * 每个容器都用同一个 CountingAlloc 实例构造。分配器记录 allocate/deallocate
+ * 的调用次数与字节数；若容器的析构链完整（容器 -> 内部 ArrayList/HashMap ->
+ * allocator.deallocate），那么离开作用域后未回收字节数应回到 0。
+ *
+ * 同时验证元素析构：容器持有对象时，元素必须在容器析构时恰好析构一次。
+ */
+
+#include <std/arraylist.cay>
+#include <std/hashmap.cay>
+#include <std/hashset.cay>
+#include <std/stack.cay>
+#include <std/queue.cay>
+#include <std/deque.cay>
+#include <std/priorityqueue.cay>
+#include <c/stdio.cay>
+
+using std::ArrayList;
+using std::HashMap;
+using std::HashSet;
+using std::Stack;
+using std::Queue;
+using std::Deque;
+using std::PriorityQueue;
+using std::Allocator;
+
+/**
+ * 计数分配器：只统计，转发到 malloc/free。
+ *
+ * deallocate 同时统计次数与字节数，并真正 free —— 这样既能验证「被调用过」，
+ * 也能在重复释放时立刻暴露。
+ */
+public class CountingAlloc implements Allocator {
+    public long allocCount;
+    public long freeCount;
+
+    public CountingAlloc() {
+        this.allocCount = 0;
+        this.freeCount = 0;
+    }
+
+    /** 未回收的分配次数；容器析构链完整时应回到 0 */
+    public long live() {
+        return this.allocCount - this.freeCount;
+    }
+
+    public long allocate(long size) {
+        long p;
+        long sz = size;
+        __ir {
+            %sv = load i64, i64* %sz
+            %mp = call i8* @malloc(i64 %sv)
+            %mv = ptrtoint i8* %mp to i64
+            store i64 %mv, i64* %p
+        }
+        if (p != 0) {
+            this.allocCount = this.allocCount + 1;
+        }
+        return p;
+    }
+
+    /**
+     * 本测试分配器不支持对齐分配，直接委托 allocate。
+     * 若返回内部指针，deallocate 收到非 malloc 基址会触发 "free(): invalid pointer"
+     * —— 这正是 Allocator.cay 早期实现踩过的坑。
+     */
+    public long allocateAligned(long size, long alignBytes) {
+        return this.allocate(size);
+    }
+
+    public void deallocate(long ptr) {
+        if (ptr == 0) {
+            return;
+        }
+        this.freeCount = this.freeCount + 1;
+        long p = ptr;
+        __ir {
+            %pv = load i64, i64* %p
+            %fp = inttoptr i64 %pv to i8*
+            call void @free(i8* %fp)
+        }
+    }
+}
+
+/** 带析构计数的元素类型 */
+public class Element {
+    public static int dtors = 0;
+    public int v;
+
+    public Element(int v) { this.v = v; }
+
+    ~Element() { Element.dtors = Element.dtors + 1; }
+}
+
+public class Harness {
+    public static int failures = 0;
+
+    public static void check(String label, bool ok) {
+        if (!ok) {
+            println("FAIL " + label);
+            Harness.failures = Harness.failures + 1;
+        }
+    }
+
+    public static int main(String[] args) {
+        CountingAlloc alloc = new CountingAlloc();
+
+        /* ---- 1. ArrayList<int>：缓冲区与元素都不得泄漏 ---- */
+        scope {
+            ArrayList<int, CountingAlloc> list = new ArrayList<int, CountingAlloc>(alloc);
+            for (int i = 0; i < 200; i = i + 1) {
+                list.add(i);
+            }
+            Harness.check("arraylist allocated", alloc.allocCount > 0);
+            Harness.check("arraylist live before exit", alloc.live() > 0);
+        }
+        Harness.check("arraylist released", alloc.live() == 0);
+        println("step1 arraylist ok");
+
+        /* ---- 2. Stack<int>：包装容器的析构链 ---- */
+        scope {
+            Stack<int, CountingAlloc> st = new Stack<int, CountingAlloc>(alloc);
+            for (int i = 0; i < 200; i = i + 1) {
+                st.push(i);
+            }
+            Harness.check("stack live before exit", alloc.live() > 0);
+        }
+        Harness.check("stack released", alloc.live() == 0);
+        println("step2 stack ok");
+
+        /* ---- 3. Queue<int>：同上（含压缩路径） ---- */
+        scope {
+            Queue<int, CountingAlloc> q = new Queue<int, CountingAlloc>(alloc);
+            for (int i = 0; i < 200; i = i + 1) {
+                q.enqueue(i);
+            }
+            for (int i = 0; i < 100; i = i + 1) {
+                q.dequeue();
+            }
+            Harness.check("queue live before exit", alloc.live() > 0);
+        }
+        Harness.check("queue released", alloc.live() == 0);
+        println("step3 queue ok");
+
+        /* ---- 4. Deque<int> ---- */
+        scope {
+            Deque<int, CountingAlloc> dq = new Deque<int, CountingAlloc>(alloc);
+            for (int i = 0; i < 200; i = i + 1) {
+                dq.pushBack(i);
+            }
+            Harness.check("deque live before exit", alloc.live() > 0);
+        }
+        Harness.check("deque released", alloc.live() == 0);
+        println("step4 deque ok");
+
+        /* ---- 5. PriorityQueue<int> ---- */
+        scope {
+            PriorityQueue<int, CountingAlloc> pq = new PriorityQueue<int, CountingAlloc>(alloc);
+            for (int i = 0; i < 200; i = i + 1) {
+                pq.push(i, i * 2);
+            }
+            Harness.check("pq live before exit", alloc.live() > 0);
+        }
+        Harness.check("pq released", alloc.live() == 0);
+        println("step5 pq ok");
+
+        /* ---- 6. HashMap<String,int>：三个数组都要释放 ---- */
+        scope {
+            HashMap<String, int, CountingAlloc> map = new HashMap<String, int, CountingAlloc>(alloc);
+            for (int i = 0; i < 100; i = i + 1) {
+                map.put("k" + String.valueOf(i), i * 3);
+            }
+            map.remove("k5");
+            Harness.check("map live before exit", alloc.live() > 0);
+        }
+        Harness.check("map released", alloc.live() == 0);
+        println("step6 map ok");
+
+        /* ---- 7. HashSet<String>：通过 HashMap 转发 ---- */
+        scope {
+            HashSet<String, CountingAlloc> set = new HashSet<String, CountingAlloc>(alloc);
+            for (int i = 0; i < 100; i = i + 1) {
+                set.add("s" + String.valueOf(i));
+            }
+            Harness.check("set live before exit", alloc.live() > 0);
+        }
+        Harness.check("set released", alloc.live() == 0);
+        println("step7 set ok");
+
+        /* ---- 8. 元素析构：容器持有对象，恰好析构一次 ---- */
+        Element.dtors = 0;
+        scope {
+            ArrayList<Element, CountingAlloc> objs = new ArrayList<Element, CountingAlloc>(alloc);
+            for (int i = 0; i < 50; i = i + 1) {
+                Element e = new Element(i);
+                objs.add(e);
+            }
+            Harness.check("elements alive in scope", Element.dtors == 0);
+        }
+        Harness.check("elements destroyed exactly once", Element.dtors == 50);
+        Harness.check("element container released", alloc.live() == 0);
+        println("step8 elements ok");
+
+        /* ---- 9. 嵌套容器：Stack<ArrayList<int, A>, A> ----
+           验证嵌套实例的缓冲区归还与元素析构都完整（曾经因构造函数重载误选
+           而让内层容器拿到错误的分配器）。 */
+        Element.dtors = 0;
+        scope {
+            Stack<ArrayList<int, CountingAlloc>, CountingAlloc> nested
+                = new Stack<ArrayList<int, CountingAlloc>, CountingAlloc>(alloc);
+            for (int i = 0; i < 4; i = i + 1) {
+                ArrayList<int, CountingAlloc> row = new ArrayList<int, CountingAlloc>(alloc);
+                for (int j = 0; j < 5; j = j + 1) {
+                    row.add(j);
+                }
+                nested.push(row);
+            }
+            int total = 0;
+            for (ArrayList<int, CountingAlloc> row : nested) {
+                total = total + row.size();
+            }
+            Harness.check("nested iterate sum", total == 20);
+            Harness.check("nested live before exit", alloc.live() > 0);
+        }
+        Harness.check("nested containers released", alloc.live() == 0);
+
+        /* 元素递归析构（默认分配器的二维表） */
+        Element.dtors = 0;
+        scope {
+            ArrayList<ArrayList<Element>> grid = new ArrayList<ArrayList<Element>>();
+            for (int i = 0; i < 4; i = i + 1) {
+                ArrayList<Element> row = new ArrayList<Element>();
+                for (int j = 0; j < 5; j = j + 1) {
+                    row.add(new Element(i * 5 + j));
+                }
+                grid.add(row);
+            }
+            Harness.check("nested elements alive in scope", Element.dtors == 0);
+        }
+        Harness.check("nested elements destroyed exactly once", Element.dtors == 20);
+
+        /* ---- 汇总 ---- */
+        if (Harness.failures == 0) {
+            println("container release tests passed (alloc=" + String.valueOf(alloc.allocCount)
+                    + " free=" + String.valueOf(alloc.freeCount) + ")");
+        } else {
+            println("container release FAILURES = " + String.valueOf(Harness.failures));
+        }
+        return 0;
+    }
+}

@@ -88,13 +88,12 @@ impl IRGenerator {
                 }
                 _ => {}
             }
-            // ROADMAP 5.3.x: Rc 循环引用检测运行时函数声明
+            // ROADMAP 5.3.x: Rc 循环引用检测。仅 __cay_rc_set_detect 由编译器
+            // 在 main 入口注入调用；unregister/check_cycle 由 SmartPtr.cay 以
+            // `#ifdef CAY_DETECT_CYCLES` 门控的 extern 声明提供，此处不得重复
+            // declare（会触发 LLVM "invalid redefinition"）。
             if config.detect_cycles {
                 declarations.push_str("declare void @__cay_rc_set_detect(i32)\n");
-                declarations.push_str("declare void @__cay_rc_register(i8*, i8*)\n");
-                declarations.push_str("declare void @__cay_rc_unregister(i8*)\n");
-                declarations.push_str("declare void @__cay_rc_edge_add(i8*, i8*)\n");
-                declarations.push_str("declare void @__cay_rc_check_cycle(i8*)\n");
             }
             declarations
         } else if self.target_triple.contains("windows") || self.target_triple.contains("mingw32") {

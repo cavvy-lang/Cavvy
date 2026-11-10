@@ -2523,10 +2523,16 @@ impl<'a> ModelBuilder<'a> {
                 self.visit_expr(file, &dealloc.ptr, ctx);
                 Some(Type::Void)
             }
-            Expr::AllocArray(alloc) => {
-                self.visit_expr(file, &alloc.allocator, ctx);
-                self.visit_expr(file, &alloc.size, ctx);
-                Some(Type::Array(Box::new(alloc.element_type.clone())))
+            Expr::BuiltinTypeCall(builtin) => {
+                for arg in &builtin.args {
+                    self.visit_expr(file, arg, ctx);
+                }
+                match builtin.name.as_str() {
+                    "__cay_alloc_array" => Some(Type::Array(Box::new(
+                        builtin.type_args[0].clone(),
+                    ))),
+                    _ => Some(Type::Void),
+                }
             }
             Expr::NamedArg(named) => self.visit_expr(file, &named.value, ctx),
             Expr::TypeOf(type_of) => {

@@ -1,0 +1,214 @@
+#include <std/priorityqueue.cay>
+#include <std/arraylist.cay>
+#include <c/stdio.cay>
+
+using std::PriorityQueue;
+using std::ArrayList;
+using std::GlobalAlloc;
+
+public int main() {
+    /* ---------- 空容器行为 ---------- */
+    PriorityQueue<int> emptyQ = new PriorityQueue<int>();
+    println("empty size = " + String.valueOf(emptyQ.size()));
+    println("empty isEmpty = " + String.valueOf(emptyQ.isEmpty()));
+    println("empty peek = " + String.valueOf(emptyQ.peek()));
+    println("empty peekPriority = " + String.valueOf(emptyQ.peekPriority()));
+    println("empty pop = " + String.valueOf(emptyQ.pop()));
+    println("empty size after pop = " + String.valueOf(emptyQ.size()));
+
+    /* ---------- 大顶堆基本增删 ---------- */
+    PriorityQueue<int> maxQ = new PriorityQueue<int>();
+    maxQ.push(3, 30);
+    maxQ.push(1, 10);
+    maxQ.push(5, 50);
+    maxQ.push(4, 40);
+    maxQ.push(2, 20);
+    println("max size = " + String.valueOf(maxQ.size()));
+    println("max isEmpty = " + String.valueOf(maxQ.isEmpty()));
+    println("max peek = " + String.valueOf(maxQ.peek()));
+    println("max peekPriority = " + String.valueOf(maxQ.peekPriority()));
+    println("max pop1 = " + String.valueOf(maxQ.pop()));
+    println("max pop2 = " + String.valueOf(maxQ.pop()));
+    println("max pop3 = " + String.valueOf(maxQ.pop()));
+    println("max size after pops = " + String.valueOf(maxQ.size()));
+    println("max pop4 = " + String.valueOf(maxQ.pop()));
+    println("max pop5 = " + String.valueOf(maxQ.pop()));
+    println("max isEmpty after drain = " + String.valueOf(maxQ.isEmpty()));
+    println("max pop on empty = " + String.valueOf(maxQ.pop()));
+
+    /* ---------- 小顶堆 ---------- */
+    PriorityQueue<int> minQ = new PriorityQueue<int>(true);
+    minQ.push(3, 30);
+    minQ.push(1, 10);
+    minQ.push(5, 50);
+    minQ.push(4, 40);
+    minQ.push(2, 20);
+    println("min peek = " + String.valueOf(minQ.peek()));
+    println("min peekPriority = " + String.valueOf(minQ.peekPriority()));
+    println("min pop1 = " + String.valueOf(minQ.pop()));
+    println("min pop2 = " + String.valueOf(minQ.pop()));
+    println("min pop3 = " + String.valueOf(minQ.pop()));
+    println("min pop4 = " + String.valueOf(minQ.pop()));
+    println("min pop5 = " + String.valueOf(minQ.pop()));
+    println("min isEmpty after drain = " + String.valueOf(minQ.isEmpty()));
+
+    /* ---------- 同优先级 FIFO 稳定性 ---------- */
+    PriorityQueue<int> fifoQ = new PriorityQueue<int>();
+    fifoQ.push(7, 100);
+    fifoQ.push(7, 101);
+    fifoQ.push(7, 102);
+    fifoQ.push(7, 103);
+    fifoQ.push(7, 104);
+    println("fifo pop1 = " + String.valueOf(fifoQ.pop()));
+    println("fifo pop2 = " + String.valueOf(fifoQ.pop()));
+    println("fifo pop3 = " + String.valueOf(fifoQ.pop()));
+    println("fifo pop4 = " + String.valueOf(fifoQ.pop()));
+    println("fifo pop5 = " + String.valueOf(fifoQ.pop()));
+
+    /* 混合优先级：不同优先级按 priority 排，相同优先级保持插入顺序 */
+    PriorityQueue<int> mixedQ = new PriorityQueue<int>();
+    mixedQ.push(5, 500);
+    mixedQ.push(9, 900);
+    mixedQ.push(5, 501);
+    mixedQ.push(9, 901);
+    mixedQ.push(5, 502);
+    println("mixed pop1 = " + String.valueOf(mixedQ.pop()));
+    println("mixed pop2 = " + String.valueOf(mixedQ.pop()));
+    println("mixed pop3 = " + String.valueOf(mixedQ.pop()));
+    println("mixed pop4 = " + String.valueOf(mixedQ.pop()));
+    println("mixed pop5 = " + String.valueOf(mixedQ.pop()));
+
+    /* 小顶堆下同优先级同样 FIFO */
+    PriorityQueue<int> minFifoQ = new PriorityQueue<int>(true);
+    for (int i = 0; i < 6; i = i + 1) {
+        minFifoQ.push(1, 10 + i);
+    }
+    println("min fifo pop1 = " + String.valueOf(minFifoQ.pop()));
+    println("min fifo pop2 = " + String.valueOf(minFifoQ.pop()));
+    println("min fifo pop3 = " + String.valueOf(minFifoQ.pop()));
+
+    /* ---------- size / isEmpty / clear 与 clear 后复用 ---------- */
+    PriorityQueue<int> lifeQ = new PriorityQueue<int>();
+    lifeQ.push(1, 11);
+    lifeQ.push(2, 22);
+    lifeQ.push(3, 33);
+    println("life size before clear = " + String.valueOf(lifeQ.size()));
+    println("life isEmpty before clear = " + String.valueOf(lifeQ.isEmpty()));
+    lifeQ.clear();
+    println("life size after clear = " + String.valueOf(lifeQ.size()));
+    println("life isEmpty after clear = " + String.valueOf(lifeQ.isEmpty()));
+    println("life peek after clear = " + String.valueOf(lifeQ.peek()));
+    println("life peekPriority after clear = " + String.valueOf(lifeQ.peekPriority()));
+    lifeQ.push(8, 80);
+    lifeQ.push(4, 40);
+    lifeQ.push(6, 60);
+    println("life size after reuse = " + String.valueOf(lifeQ.size()));
+    println("life peek after reuse = " + String.valueOf(lifeQ.peek()));
+    println("life pop after reuse 1 = " + String.valueOf(lifeQ.pop()));
+    println("life pop after reuse 2 = " + String.valueOf(lifeQ.pop()));
+    println("life pop after reuse 3 = " + String.valueOf(lifeQ.pop()));
+
+    /* ---------- 指定分配器的构造函数 ---------- */
+    GlobalAlloc alloc = new GlobalAlloc();
+    PriorityQueue<int, GlobalAlloc> allocQ = new PriorityQueue<int, GlobalAlloc>(true, alloc);
+    allocQ.push(9, 90);
+    allocQ.push(2, 20);
+    allocQ.push(5, 50);
+    println("allocator ctor size = " + String.valueOf(allocQ.size()));
+    println("allocator ctor peek = " + String.valueOf(allocQ.peek()));
+    println("allocator ctor peekPriority = " + String.valueOf(allocQ.peekPriority()));
+
+    /* ---------- 迭代器 for-each 遍历出队序列 ---------- */
+    PriorityQueue<int> drainQ = new PriorityQueue<int>(true);
+    drainQ.push(30, 3);
+    drainQ.push(10, 1);
+    drainQ.push(20, 2);
+    drainQ.push(40, 4);
+
+    ArrayList<int> drained = new ArrayList<int>();
+    while (!drainQ.isEmpty()) {
+        drained.add(drainQ.pop());
+    }
+
+    int drainSum = 0;
+    bool drainAscending = true;
+    int prevValue = 0;
+    bool firstItem = true;
+    for (int x : drained) {
+        drainSum = drainSum + x;
+        if (!firstItem) {
+            if (x <= prevValue) {
+                drainAscending = false;
+            }
+        }
+        firstItem = false;
+        prevValue = x;
+    }
+    println("drained size = " + String.valueOf(drained.size()));
+    println("drained first = " + String.valueOf(drained.get(0)));
+    println("drained last = " + String.valueOf(drained.get(drained.size() - 1)));
+    println("drained sum = " + String.valueOf(drainSum));
+    println("drained ascending = " + String.valueOf(drainAscending));
+
+    /* ---------- 200 次连续 push / pop 后仍有序 ---------- */
+    PriorityQueue<int> stressQ = new PriorityQueue<int>(true);
+    for (int i = 0; i < 200; i = i + 1) {
+        stressQ.push(200 - i, i);
+    }
+    println("stress size after 200 pushes = " + String.valueOf(stressQ.size()));
+    println("stress isEmpty after 200 pushes = " + String.valueOf(stressQ.isEmpty()));
+
+    bool stressOrdered = true;
+    for (int i = 0; i < 200; i = i + 1) {
+        int value = stressQ.pop();
+        if (value != 199 - i) {
+            stressOrdered = false;
+        }
+    }
+    println("stress ordered = " + String.valueOf(stressOrdered));
+    println("stress size after 200 pops = " + String.valueOf(stressQ.size()));
+    println("stress isEmpty after 200 pops = " + String.valueOf(stressQ.isEmpty()));
+
+    /* 交错 push/pop 200 次：先灌 100 个，再交替 50 次出队+入队更高优先级 */
+    PriorityQueue<int> mixQ = new PriorityQueue<int>();
+    for (int i = 0; i < 100; i = i + 1) {
+        mixQ.push(i % 10, i);
+    }
+    for (int i = 0; i < 50; i = i + 1) {
+        mixQ.pop();
+        mixQ.push(100 + i, 1000 + i);
+    }
+    println("mix size = " + String.valueOf(mixQ.size()));
+    println("mix peek = " + String.valueOf(mixQ.peek()));
+    println("mix peekPriority = " + String.valueOf(mixQ.peekPriority()));
+
+    bool mixOrdered = true;
+    int prevPriority = 1000;
+    while (!mixQ.isEmpty()) {
+        int currentPriority = mixQ.peekPriority();
+        if (currentPriority > prevPriority) {
+            mixOrdered = false;
+        }
+        prevPriority = currentPriority;
+        mixQ.pop();
+    }
+    println("mix priority ordered = " + String.valueOf(mixOrdered));
+    println("mix isEmpty after drain = " + String.valueOf(mixQ.isEmpty()));
+
+    /* 50 个同优先级元素的稳定性压力测试 */
+    PriorityQueue<int> stableQ = new PriorityQueue<int>();
+    for (int i = 0; i < 50; i = i + 1) {
+        stableQ.push(42, i);
+    }
+    bool stableFifo = true;
+    for (int i = 0; i < 50; i = i + 1) {
+        if (stableQ.pop() != i) {
+            stableFifo = false;
+        }
+    }
+    println("stable fifo = " + String.valueOf(stableFifo));
+    println("stable isEmpty = " + String.valueOf(stableQ.isEmpty()));
+
+    println("std::PriorityQueue tests passed");
+    return 0;
+}

@@ -11,6 +11,13 @@
 #include <std/numeric.cay>
 #include <std/vector.cay>
 
+// CONTAINER ADAPTERS
+#include <std/deque.cay>
+#include <std/linkedlist.cay>
+#include <std/priorityqueue.cay>
+#include <std/queue.cay>
+#include <std/stack.cay>
+
 // GSTD
 #include <Allocator.cay>
 #include <Atomic.cay>

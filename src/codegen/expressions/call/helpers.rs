@@ -358,6 +358,105 @@ impl IRGenerator {
         None
     }
 
+    /// 按实参个数选择**重载后**的形参列表。
+    ///
+    /// `get_method_params` 固定返回第一个重载，用于 `@owns` 判定时会摘错实参
+    /// （例如 `ArrayList.add` 同时有 `(T)` 与 `(int, T)` 两个重载）。
+    pub fn get_method_params_for_arity(
+        &self,
+        class_name: &str,
+        method_name: &str,
+        arg_count: usize,
+    ) -> Option<Vec<crate::types::ParameterInfo>> {
+        let resolved = self.resolved_class_lookup_name(class_name);
+        let registry = self.type_registry.as_ref()?;
+        let mut current = resolved;
+        loop {
+            if let Some(class_info) = registry.get_class(&current) {
+                if let Some(methods) = class_info.methods.get(method_name) {
+                    return Self::pick_overload_by_arity(methods, arg_count);
+                }
+                if let Some(ref parent) = class_info.parent {
+                    current = parent.clone();
+                    continue;
+                }
+            }
+            break;
+        }
+        // 接口 / 枚举实现等回退到既有实现
+        self.get_method_params(class_name, method_name)
+    }
+
+    /// 按实际实参类型选出被调方真正使用的重载形参。
+    ///
+    /// `@owns` 转移必须跟随代码生成选中的重载：同参数个数但不同 `@owns`
+    /// 声明的重载不能靠“第一个匹配个数”猜测。顶层函数没有类名，直接查
+    /// `top_level_functions` 的形参声明。
+    pub fn get_method_params_for_call(
+        &self,
+        class_name: &str,
+        method_name: &str,
+        actual_args: &[crate::ast::Expr],
+    ) -> Option<Vec<crate::types::ParameterInfo>> {
+        if class_name.is_empty() {
+            return self
+                .find_top_level_function(method_name)
+                .map(|func| func.params.clone());
+        }
+
+        let registry = self.type_registry.as_ref()?;
+        let mut arg_types = Vec::with_capacity(actual_args.len());
+        for arg in actual_args {
+            let ty = self.get_expression_type(arg)?;
+            arg_types.push(self.resolve_type_arg_concrete(&ty));
+        }
+
+        let mut current = self.resolved_class_lookup_name(class_name);
+        let mut visited = std::collections::HashSet::new();
+        loop {
+            if !visited.insert(current.clone()) {
+                break;
+            }
+            if let Some(method) =
+                registry.find_method_for_argument_types(&current, method_name, &arg_types)
+            {
+                return Some(method.params.clone());
+            }
+            if let Some(parent) = registry
+                .get_class(&current)
+                .and_then(|class_info| class_info.parent.clone())
+            {
+                current = parent;
+                continue;
+            }
+            if let Some(implementor) =
+                registry.find_implementing_class_for_method(&current, method_name)
+            {
+                current = implementor.name.clone();
+                continue;
+            }
+            break;
+        }
+        None
+    }
+
+    /// 在重载集合中挑选与实参个数匹配的一个：精确匹配优先，其次可变形参。
+    fn pick_overload_by_arity(
+        methods: &[crate::types::MethodInfo],
+        arg_count: usize,
+    ) -> Option<Vec<crate::types::ParameterInfo>> {
+        if let Some(m) = methods.iter().find(|m| m.params.len() == arg_count) {
+            return Some(m.params.clone());
+        }
+        if let Some(m) = methods.iter().find(|m| {
+            m.params.iter().any(|p| p.is_varargs)
+                && m.params.iter().filter(|p| !p.is_varargs).count() <= arg_count
+        }) {
+            return Some(m.params.clone());
+        }
+        methods.first().map(|m| m.params.clone())
+    }
+
     /// 获取方法形参个数
     pub fn get_method_param_count(&self, class_name: &str, method_name: &str) -> usize {
         self.get_method_params(class_name, method_name)

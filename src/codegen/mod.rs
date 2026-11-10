@@ -11,7 +11,6 @@
 //!
 //! 通过 `bridge` 模块实现两者之间的安全协作。
 
-pub mod allocator;
 pub mod context;
 mod expressions;
 pub mod generator;
