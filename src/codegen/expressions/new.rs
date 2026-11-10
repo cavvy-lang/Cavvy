@@ -389,21 +389,7 @@ impl IRGenerator {
             // 构造函数的 `@owns` 形参：与普通方法调用同一语义 —— 被调方接管
             // 实参生命周期，因此把实参局部变量从当前作用域的析构候选中摘除。
             // 与 generate_and_pack_args 保持同一条规则（都只看形参声明）。
-            if ctor_info_opt
-                .as_ref()
-                .and_then(|ctor| ctor.params.get(idx))
-                .map_or(false, |p| p.is_owning)
-            {
-                if let Expr::Identifier(ident) = arg {
-                    let var_name = &ident.name;
-                    if let Some(var_type) = self.get_variable_type(var_name) {
-                        if self.type_has_destructor(&var_type).is_some() {
-                            self.scope_manager
-                                .remove_dtor_candidate_by_var_name(var_name);
-                        }
-                    }
-                }
-            }
+            self.transfer_ownership_for_constructor_arg(arg, ctor_info_opt.as_ref(), idx)?;
             let arg_val = self.generate_expression(arg)?;
             let is_generic_param = ctor_info_opt
                 .as_ref()
@@ -502,9 +488,40 @@ impl IRGenerator {
         let param_types =
             self.get_constructor_param_types(struct_name, new_expr.args.len(), &fallback_types);
 
+        // struct 构造函数同样可能声明 `@owns` 形参，必须与 class 构造函数走
+        // 同一条所有权转移规则，否则实参局部变量仍会在调用方作用域析构。
+        let struct_ctor_info_opt = self
+            .type_registry
+            .as_ref()
+            .and_then(|registry| registry.get_struct(&base_name))
+            .and_then(|struct_info| {
+                let expected_sigs = self.get_constructor_param_signatures(
+                    &base_name,
+                    new_expr.args.len(),
+                    &fallback_types,
+                );
+                struct_info
+                    .constructors
+                    .iter()
+                    .find(|ctor| {
+                        let sigs: Vec<String> = ctor
+                            .params
+                            .iter()
+                            .map(|p| self.type_to_signature(&p.param_type))
+                            .collect();
+                        sigs == expected_sigs
+                    })
+                    .cloned()
+            });
+
         // 生成参数值
         let mut arg_values = Vec::new();
-        for arg in &new_expr.args {
+        for (idx, arg) in new_expr.args.iter().enumerate() {
+            self.transfer_ownership_for_constructor_arg(
+                arg,
+                struct_ctor_info_opt.as_ref(),
+                idx,
+            )?;
             let arg_val = self.generate_expression(arg)?;
             arg_values.push(arg_val);
         }
@@ -526,6 +543,62 @@ impl IRGenerator {
 
         // 返回 struct 指针
         Ok(format!("{}* {}", llvm_struct_type, alloca_temp))
+    }
+
+    /// 应用构造函数 `@owns` 形参的所有权转移。
+    ///
+    /// class 与 struct 构造函数共用；规则与普通方法调用一致：局部变量
+    /// 从析构候选中摘除且不能重复转移，带析构宿主的字段拒绝隐式转移。
+    fn transfer_ownership_for_constructor_arg(
+        &mut self,
+        arg: &Expr,
+        ctor: Option<&crate::types::ConstructorInfo>,
+        idx: usize,
+    ) -> CayResult<()> {
+        let Some(param) = ctor.and_then(|ctor| ctor.params.get(idx)) else {
+            return Ok(());
+        };
+        if !param.is_owning {
+            return Ok(());
+        }
+        match arg {
+            Expr::Identifier(ident) => {
+                let var_name = &ident.name;
+                if let Some(var_type) = self.get_variable_type(var_name) {
+                    if self.type_has_destructor(&var_type).is_some() {
+                        if self.scope_manager.is_moved(var_name) {
+                            return Err(codegen_error_at(
+                                ErrorCodes::CODEGEN_INVALID_OPERATION,
+                                arg.location().clone(),
+                                format!(
+                                    "变量 '{}' 的所有权已经通过 @owns 转移，不能再次传给构造函数\n提示: 同一对象只能有一个所有者；共享所有权请使用 Rc<T>",
+                                    var_name
+                                ),
+                            ));
+                        }
+                        self.scope_manager.mark_moved(var_name);
+                        self.scope_manager
+                            .remove_dtor_candidate_by_var_name(var_name);
+                    }
+                }
+            }
+            Expr::MemberAccess(member) => {
+                if let Some(owner_type) = self.get_expression_type(&member.object) {
+                    if self.type_has_destructor(&owner_type).is_some() {
+                        return Err(codegen_error_at(
+                            ErrorCodes::CODEGEN_INVALID_OPERATION,
+                            arg.location().clone(),
+                            format!(
+                                "@owns 构造实参不能是带析构函数对象的字段 '{}'\n提示: 字段所有权仍属于宿主对象，请先显式转移该字段",
+                                member.member
+                            ),
+                        ));
+                    }
+                }
+            }
+            _ => {}
+        }
+        Ok(())
     }
 
     /// 推断参数类型（返回类型签名）

@@ -109,6 +109,11 @@ pub struct ScopeManager {
     /// 每层作用域的析构候选（与 scopes 索引对齐）。
     /// 仅局部 VarDecl 登记；参数与 this 不登记。
     dtor_candidates: Vec<Vec<DtorCandidate>>,
+    /// 已经被 `@owns` 实参移走的局部变量名。
+    ///
+    /// 同一局部变量被第二次传给 `@owns` 形参时必须报错：第一次调用后
+    /// 对象所有权已归被调方，第二次移交会让两个接收方都负责析构同一对象。
+    moved_vars: std::collections::HashSet<String>,
 }
 
 impl ScopeManager {
@@ -117,6 +122,7 @@ impl ScopeManager {
             scopes: vec![HashMap::new()], // 全局作用域
             scope_counter: 0,
             dtor_candidates: vec![Vec::new()],
+            moved_vars: std::collections::HashSet::new(),
         }
     }
 
@@ -189,6 +195,21 @@ impl ScopeManager {
         None
     }
 
+    /// 记录一次 `@owns` 所有权转移。返回 false 表示该变量此前已经被移走。
+    pub fn mark_moved(&mut self, var_name: &str) -> bool {
+        self.moved_vars.insert(var_name.to_string())
+    }
+
+    /// 变量是否已经被 `@owns` 实参移走。
+    pub fn is_moved(&self, var_name: &str) -> bool {
+        self.moved_vars.contains(var_name)
+    }
+
+    /// 变量被重新赋值/重新声明后，不再处于「已移走」状态。
+    pub fn clear_moved(&mut self, var_name: &str) {
+        self.moved_vars.remove(var_name);
+    }
+
     /// 当前作用域栈深度（用于记录 return/break/continue 时的边界）
     pub fn scope_depth(&self) -> usize {
         self.scopes.len()
@@ -221,6 +242,8 @@ impl ScopeManager {
             is_parameter,
         };
 
+        // 新声明遮蔽旧变量：旧变量的「已移走」状态不能沿用到新绑定上。
+        self.moved_vars.remove(name);
         if let Some(scope) = self.scopes.last_mut() {
             scope.insert(name.to_string(), var_scope);
         }
@@ -266,6 +289,7 @@ impl ScopeManager {
         self.scopes.push(HashMap::new());
         self.dtor_candidates.clear();
         self.dtor_candidates.push(Vec::new());
+        self.moved_vars.clear();
         self.scope_counter = 0;
     }
 
@@ -1351,6 +1375,71 @@ impl IRGenerator {
 
     /// 获取表达式的类型
     /// 用于在代码生成期间推断表达式类型
+    /// 判断表达式是否调用 `@borrow` 方法（返回值是借用，不是所有权转移）。
+    ///
+    /// 局部变量初始化若来自此类调用，不能登记为析构候选：对象仍归被调方
+    /// （容器/智能指针）所有，调用方作用域退出时再析构会双重释放。
+    pub fn expression_returns_borrow(&self, expr: &crate::ast::Expr) -> bool {
+        use crate::ast::{Expr, Modifier};
+        use crate::types::Type;
+
+        let Expr::Call(call) = expr else {
+            return false;
+        };
+        let Some(registry) = self.type_registry.as_ref() else {
+            return false;
+        };
+        match call.callee.as_ref() {
+            Expr::Identifier(name) => {
+                if let Some(func) = self.find_top_level_function(name.as_ref()) {
+                    return func.modifiers.contains(&Modifier::Borrow);
+                }
+                let class_name = self
+                    .current_class_specialized
+                    .as_deref()
+                    .unwrap_or(self.current_class.as_str());
+                registry.is_borrow_method(class_name, name.as_ref())
+            }
+            Expr::MemberAccess(member) => {
+                // 类名.静态方法：接收者标识符本身是类名
+                if let Expr::Identifier(obj) = member.object.as_ref() {
+                    let obj_name = obj.as_ref();
+                    let current_class = self
+                        .current_class_specialized
+                        .as_deref()
+                        .unwrap_or(self.current_class.as_str());
+                    if obj_name == "this" || obj_name == current_class {
+                        return registry.is_borrow_method(current_class, &member.member);
+                    }
+                    if obj_name == "super" {
+                        if let Some(parent) = registry
+                            .get_class(current_class)
+                            .and_then(|class_info| class_info.parent.as_deref())
+                        {
+                            return registry.is_borrow_method(parent, &member.member);
+                        }
+                    }
+                    if registry.get_class(obj_name).is_some()
+                        || registry.get_interface(obj_name).is_some()
+                    {
+                        return registry.is_borrow_method(obj_name, &member.member);
+                    }
+                }
+                let Some(obj_type) = self.get_expression_type(&member.object) else {
+                    return false;
+                };
+                let class_name = match obj_type {
+                    Type::Object(name) => name,
+                    Type::Generic(name, _) => name,
+                    Type::String => "String".to_string(),
+                    _ => return false,
+                };
+                registry.is_borrow_method(&class_name, &member.member)
+            }
+            _ => false,
+        }
+    }
+
     pub fn get_expression_type(&self, expr: &crate::ast::Expr) -> Option<crate::types::Type> {
         use crate::ast::*;
         use crate::types::Type;

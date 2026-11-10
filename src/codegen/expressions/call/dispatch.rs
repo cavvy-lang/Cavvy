@@ -256,12 +256,38 @@ impl IRGenerator {
                 Ok(Some(format!("i32 {}", temp)))
             }
             crate::types::Type::Float32 => {
-                self.emit_line(&format!("  {} = bitcast float {} to i32", temp, val));
+                // `+0.0` 与 `-0.0` 在 equals 下相等（fcmp oeq），但位模式不同。
+                // 哈希前把零规范化到 +0 的位模式，保证相等值落入同一桶。
+                let bits = self.new_temp();
+                self.emit_line(&format!("  {} = bitcast float {} to i32", bits, val));
+                let is_zero = self.new_temp();
+                self.emit_line(&format!(
+                    "  {} = fcmp oeq float {}, 0.0",
+                    is_zero, val
+                ));
+                self.emit_line(&format!(
+                    "  {} = select i1 {}, i32 0, i32 {}",
+                    temp, is_zero, bits
+                ));
                 Ok(Some(format!("i32 {}", temp)))
             }
             crate::types::Type::Float64 => {
+                // 同 Float32：先把 -0.0 规范化为 +0.0 的位模式，再混合高低位。
+                let raw_bits = self.new_temp();
+                self.emit_line(&format!(
+                    "  {} = bitcast double {} to i64",
+                    raw_bits, val
+                ));
+                let is_zero = self.new_temp();
+                self.emit_line(&format!(
+                    "  {} = fcmp oeq double {}, 0.0",
+                    is_zero, val
+                ));
                 let bits = self.new_temp();
-                self.emit_line(&format!("  {} = bitcast double {} to i64", bits, val));
+                self.emit_line(&format!(
+                    "  {} = select i1 {}, i64 0, i64 {}",
+                    bits, is_zero, raw_bits
+                ));
                 let lo = self.new_temp();
                 self.emit_line(&format!("  {} = trunc i64 {} to i32", lo, bits));
                 let hi64 = self.new_temp();

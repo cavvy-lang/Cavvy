@@ -45,7 +45,7 @@ public final class HashMapIterator<K, V> implements Iterator<K> {
         return false;
     }
 
-    public K next() {
+    public @borrow K next() {
         while (this.index < this.capacity) {
             if (this.states[this.index] == 1) {
                 K key = this.keys[this.index];
@@ -157,6 +157,12 @@ public class HashMap<K, V, A: Allocator = GlobalAlloc> {
 
     public void clear() {
         for (int i = 0; i < this.capacity; i = i + 1) {
+            if (this.states[i] == OCCUPIED) {
+                /* 槽位即将被抹掉，必须先析构它拥有的键和值；否则析构函数
+                   再也找不到这些对象。 */
+                __cay_destroy<K>(this.keys[i]);
+                __cay_destroy<V>(this.values[i]);
+            }
             this.states[i] = EMPTY;
         }
         this.size = 0;
@@ -174,7 +180,11 @@ public class HashMap<K, V, A: Allocator = GlobalAlloc> {
         }
 
         int index = this.findInsertIndex(key);
-        if (this.states[index] != OCCUPIED) {
+        if (this.states[index] == OCCUPIED) {
+            /* 覆盖已有键：旧键和旧值不再可达，先析构再写入新值。 */
+            __cay_destroy<K>(this.keys[index]);
+            __cay_destroy<V>(this.values[index]);
+        } else {
             this.size = this.size + 1;
         }
         this.keys[index] = key;
@@ -182,7 +192,7 @@ public class HashMap<K, V, A: Allocator = GlobalAlloc> {
         this.states[index] = OCCUPIED;
     }
 
-    public V get(K key) {
+    public @borrow V get(K key) {
         int index = this.findIndex(key);
         if (index < 0) {
             return this.values[0];
@@ -197,26 +207,31 @@ public class HashMap<K, V, A: Allocator = GlobalAlloc> {
     public void remove(K key) {
         int index = this.findIndex(key);
         if (index >= 0) {
+            /* DELETED 槽位对析构函数不可见，必须先析构键值。 */
+            __cay_destroy<K>(this.keys[index]);
+            __cay_destroy<V>(this.values[index]);
             this.states[index] = DELETED;
             this.size = this.size - 1;
         }
     }
 
     public ArrayList<K> keySet() {
-        ArrayList<K> list = new ArrayList<K>(this.size);
+        /* 借用视图：列表不拥有元素，不会与 map 重复析构同一个键。 */
+        ArrayList<K> list = new ArrayList<K>(this.size, false);
         for (int i = 0; i < this.capacity; i = i + 1) {
             if (this.states[i] == OCCUPIED) {
-                list.add(this.keys[i]);
+                list.addBorrowed(this.keys[i]);
             }
         }
         return list;
     }
 
     public ArrayList<V> values() {
-        ArrayList<V> list = new ArrayList<V>(this.size);
+        /* 借用视图：值仍归 map 所有。 */
+        ArrayList<V> list = new ArrayList<V>(this.size, false);
         for (int i = 0; i < this.capacity; i = i + 1) {
             if (this.states[i] == OCCUPIED) {
-                list.add(this.values[i]);
+                list.addBorrowed(this.values[i]);
             }
         }
         return list;

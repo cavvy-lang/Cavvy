@@ -44,3 +44,47 @@ fn test_hashmap_int_keys() {
         output
     );
 }
+
+/// `+0.0` 与 `-0.0` 在 equals 下相等，hashCode 必须规范化符号零，
+/// 否则相等键会落入不同桶，导致查询/覆盖失败。
+#[test]
+fn test_hashmap_signed_zero_keys() {
+    let code = r#"
+#include <std/hashmap.cay>
+#include <c/stdio.cay>
+
+using std::HashMap;
+
+public int main() {
+    HashMap<double, int> m = new HashMap<double, int>();
+    m.put(0.0, 1);
+    if (!m.containsKey(-0.0)) {
+        println("FAILED double contains -0.0");
+        return 1;
+    }
+    m.put(-0.0, 2);
+    if (m.size() != 1 || m.get(0.0) != 2) {
+        println("FAILED double overwrite");
+        return 1;
+    }
+
+    HashMap<float, int> f = new HashMap<float, int>();
+    f.put(0.0f, 3);
+    if (!f.containsKey(-0.0f)) {
+        println("FAILED float contains -0.0");
+        return 1;
+    }
+    println("signed zero hash passed");
+    return 0;
+}
+"#;
+    std::fs::write("examples/test_hashmap_signed_zero.cay", code).unwrap();
+    let output = compile_and_run_eol("examples/test_hashmap_signed_zero.cay")
+        .expect("符号零键测试应编译运行通过");
+    assert!(
+        output.contains("signed zero hash passed"),
+        "相等浮点零必须产生相同哈希: {}",
+        output
+    );
+    let _ = std::fs::remove_file("examples/test_hashmap_signed_zero.cay");
+}

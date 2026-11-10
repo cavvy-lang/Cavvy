@@ -16,7 +16,8 @@ namespace std {
  */
 public interface Iterator<T> {
     bool hasNext();
-    T next();
+    /* 迭代器返回内部元素的借用，不转移所有权。 */
+    @borrow T next();
 }
 
 /**
@@ -27,9 +28,9 @@ public interface Iterator<T> {
  */
 public interface MutableRandomAccessIterator<T> {
     bool hasNext();
-    T next();
+    @borrow T next();
     int length();
-    T get(int index);
+    @borrow T get(int index);
     void set(int index, T value);
 }
 

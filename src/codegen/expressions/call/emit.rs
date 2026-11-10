@@ -76,9 +76,14 @@ impl IRGenerator {
         // 语义：标了 `@owns` 的形参表示被调用方接管实参的生命周期，因此实参
         // 若是当前作用域中带析构函数的局部对象变量，就把它从析构候选中摘除，
         // 否则作用域退出时会析构一次、容器再析构一次（double-free / 悬垂引用）。
-        if let Some(params) =
-            self.get_method_params_for_arity(class_name, method_name, actual_args.len())
-        {
+        // 先按实参类型选出真正被调用的重载；顶层函数直接查其形参声明。
+        // 失败时才退回按个数选择（例如实参类型暂时无法推断）。
+        let params = self
+            .get_method_params_for_call(class_name, method_name, actual_args)
+            .or_else(|| {
+                self.get_method_params_for_arity(class_name, method_name, actual_args.len())
+            });
+        if let Some(params) = params {
             for (idx, arg) in actual_args.iter().enumerate() {
                 let owning = match params.get(idx) {
                     Some(p) => p.is_owning,
@@ -88,14 +93,49 @@ impl IRGenerator {
                 if !owning {
                     continue;
                 }
-                if let Expr::Identifier(ident) = arg {
-                    let var_name = &ident.name;
-                    if let Some(var_type) = self.get_variable_type(var_name) {
-                        if self.type_has_destructor(&var_type).is_some() {
-                            self.scope_manager
-                                .remove_dtor_candidate_by_var_name(var_name);
+                match arg {
+                    Expr::Identifier(ident) => {
+                        let var_name = &ident.name;
+                        if let Some(var_type) = self.get_variable_type(var_name) {
+                            if self.type_has_destructor(&var_type).is_some() {
+                                // 同一局部变量已经移走过一次：第一个接收方负责
+                                // 析构，再移交给第二个接收方会双重析构。
+                                if self.scope_manager.is_moved(var_name) {
+                                    return Err(codegen_error_at(
+                                        ErrorCodes::CODEGEN_INVALID_OPERATION,
+                                        arg.location().clone(),
+                                        format!(
+                                            "变量 '{}' 的所有权已经通过 @owns 转移，不能再次转移\n提示: 如需把同一对象交给多个所有者，请使用显式的共享所有权类型（如 Rc<T>）",
+                                            var_name
+                                        ),
+                                    ));
+                                }
+                                self.scope_manager.mark_moved(var_name);
+                                self.scope_manager
+                                    .remove_dtor_candidate_by_var_name(var_name);
+                            }
                         }
                     }
+                    Expr::MemberAccess(member) => {
+                        // 字段的所有权仍属于其宿主对象：宿主析构函数可能再次
+                        // 析构同一字段。要求调用方先把对象取到局部变量并明确
+                        // 解除原字段的所有权，而不是隐式把字段“移走”。
+                        if let Some(owner_type) = self.get_expression_type(&member.object) {
+                            if self.type_has_destructor(&owner_type).is_some() {
+                                return Err(codegen_error_at(
+                                    ErrorCodes::CODEGEN_INVALID_OPERATION,
+                                    arg.location().clone(),
+                                    format!(
+                                        "@owns 实参不能是带析构函数对象的字段 '{}'\n提示: 字段所有权仍属于宿主对象；请先在宿主类中显式清空该字段，或把对象保存到局部变量后再转移",
+                                        member.member
+                                    ),
+                                ));
+                            }
+                        }
+                    }
+                    // `new`/调用等右值没有调用方析构候选；数组元素不归数组
+                    // 的析构函数管理（数组没有元素析构语义），可由被调方接管。
+                    _ => {}
                 }
             }
         }

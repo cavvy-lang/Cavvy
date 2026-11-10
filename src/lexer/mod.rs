@@ -64,6 +64,9 @@ pub enum Token {
     // 参数级注解：声明该形参取得实参的所有权（调用方不再在作用域退出时析构）
     #[token("@owns")]
     AtOwns,
+    // 方法级注解：返回值是对被调方内部对象的借用，调用方不得接管其生命周期
+    #[token("@borrow")]
+    AtBorrow,
     #[token("@")]
     At,
     #[token("class")]
@@ -1138,6 +1141,7 @@ pub fn token_name(token: &Token) -> &'static str {
         Token::AtFreeFunction => "@FreeFunction",
         Token::AtStackOnly => "@stack_only",
         Token::AtOwns => "@owns",
+        Token::AtBorrow => "@borrow",
         Token::At => "@",
         Token::Class => "class",
         Token::Struct => "struct",

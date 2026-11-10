@@ -830,6 +830,10 @@ pub fn parse_modifiers(parser: &mut Parser) -> CayResult<Vec<Modifier>> {
                 modifiers.push(Modifier::StackOnly);
                 parser.advance();
             }
+            Token::AtBorrow => {
+                modifiers.push(Modifier::Borrow);
+                parser.advance();
+            }
             _ => break,
         }
     }

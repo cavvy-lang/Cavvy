@@ -169,9 +169,9 @@ public final class PriorityQueue<T, A: Allocator = GlobalAlloc> {
         }
 
         /* 堆尾补到堆顶，再删掉堆尾，最后自顶向下调整 */
-        this.values.set(0, this.values.get(last));
-        this.priorities.set(0, this.priorities.get(last));
-        this.seq.set(0, this.seq.get(last));
+        this.values.moveAt(0, this.values.get(last));
+        this.priorities.moveAt(0, this.priorities.get(last));
+        this.seq.moveAt(0, this.seq.get(last));
         this.values.removeLast();
         this.priorities.removeLast();
         this.seq.removeLast();
@@ -187,7 +187,7 @@ public final class PriorityQueue<T, A: Allocator = GlobalAlloc> {
      *
      * @return 堆顶元素的值；容器为空时返回 T 零值。
      */
-    public T peek() {
+    public @borrow T peek() {
         if (this.values.isEmpty()) {
             T zero = 0;
             return zero;
@@ -297,16 +297,16 @@ public final class PriorityQueue<T, A: Allocator = GlobalAlloc> {
         }
 
         T valueTmp = this.values.get(i);
-        this.values.set(i, this.values.get(j));
-        this.values.set(j, valueTmp);
+        this.values.moveAt(i, this.values.get(j));
+        this.values.moveAt(j, valueTmp);
 
         int priorityTmp = this.priorities.get(i);
-        this.priorities.set(i, this.priorities.get(j));
-        this.priorities.set(j, priorityTmp);
+        this.priorities.moveAt(i, this.priorities.get(j));
+        this.priorities.moveAt(j, priorityTmp);
 
         int seqTmp = this.seq.get(i);
-        this.seq.set(i, this.seq.get(j));
-        this.seq.set(j, seqTmp);
+        this.seq.moveAt(i, this.seq.get(j));
+        this.seq.moveAt(j, seqTmp);
     }
 
     /**

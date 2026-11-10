@@ -62,7 +62,7 @@ public final class DequeIterator<T, A: Allocator = GlobalAlloc> implements Itera
      *
      * @return 当前元素的副本；迭代器已耗尽时返回 T 的零值
      */
-    public T next() {
+    public @borrow T next() {
         if (this.index < 0 || this.index >= this.end) {
             T zero = 0;
             return zero;
@@ -174,7 +174,7 @@ public final class Deque<T, A: Allocator = GlobalAlloc> implements Iterable<T> {
         /* 让出的槽位置零：避免死区仍持有已交还调用方的对象引用
            （否则底层 ArrayList 注入的元素析构会二次析构该对象） */
         T cleared = 0;
-        this.items.set(this.head, cleared);
+        this.items.moveAt(this.head, cleared);
         this.head = this.head + 1;
         this.compactIfNeeded();
         return value;
@@ -200,7 +200,7 @@ public final class Deque<T, A: Allocator = GlobalAlloc> implements Iterable<T> {
      *
      * @return 队头元素，空队列时为 T 的零值
      */
-    public T peekFront() {
+    public @borrow T peekFront() {
         if (this.isEmpty()) {
             T zero = 0;
             return zero;
@@ -213,7 +213,7 @@ public final class Deque<T, A: Allocator = GlobalAlloc> implements Iterable<T> {
      *
      * @return 队尾元素，空队列时为 T 的零值
      */
-    public T peekBack() {
+    public @borrow T peekBack() {
         if (this.isEmpty()) {
             T zero = 0;
             return zero;
@@ -227,7 +227,7 @@ public final class Deque<T, A: Allocator = GlobalAlloc> implements Iterable<T> {
      * @param index 逻辑下标，合法范围 [0, size())
      * @return 对应元素；index 为负或越界时返回 T 的零值
      */
-    public T get(int index) {
+    public @borrow T get(int index) {
         if (index < 0 || index >= this.size()) {
             T zero = 0;
             return zero;
@@ -242,7 +242,7 @@ public final class Deque<T, A: Allocator = GlobalAlloc> implements Iterable<T> {
      *
      * @return 队头元素，空队列时为 T 的零值
      */
-    public T front() {
+    public @borrow T front() {
         return this.peekFront();
     }
 
@@ -256,7 +256,7 @@ public final class Deque<T, A: Allocator = GlobalAlloc> implements Iterable<T> {
      *
      * @return 队尾元素，空队列时为 T 的零值
      */
-    public T back() {
+    public @borrow T back() {
         return this.peekBack();
     }
 
@@ -330,7 +330,7 @@ public final class Deque<T, A: Allocator = GlobalAlloc> implements Iterable<T> {
         int remaining = this.items.size() - this.head;
         for (int i = 0; i < remaining; i = i + 1) {
             T moved = this.items.get(this.head + i);
-            this.items.set(i, moved);
+            this.items.moveAt(i, moved);
         }
         for (int i = 0; i < this.head; i = i + 1) {
             this.items.removeLast();

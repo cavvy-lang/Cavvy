@@ -124,15 +124,43 @@ impl SemanticAnalyzer {
             // 是否真正需要析构（T 是否为带析构函数的类）在 codegen 阶段判定，
             // 原始类型/struct 静默 no-op。
             "__cay_destroy" => {
-                self.infer_expr_type_internal(&builtin.args[0])?;
+                let value_type = self.infer_expr_type_internal(&builtin.args[0])?;
+                let expected = &builtin.type_args[0];
+                // 显式类型实参必须就是实参的类型：若允许把 Base 的析构函数
+                // 作用于 Derived 实例，或反之，就会调用错误的 `__dtor` 并破坏布局。
+                if !self.destroy_type_matches(&value_type, expected) {
+                    return Err(semantic_error_at_loc(
+                        &builtin.loc,
+                        format!(
+                            "__cay_destroy<{}> argument must have type {}, got {}",
+                            expected.display_name(),
+                            expected.display_name(),
+                            value_type.display_name()
+                        ),
+                    ));
+                }
                 Ok(Type::Void)
             }
 
             // __cay_destroy_array<T>(array, count)：析构密集数组的元素，无返回值。
             "__cay_destroy_array" => {
                 let arr_type = self.infer_expr_type_internal(&builtin.args[0])?;
-                match arr_type {
-                    Type::Array(_) | Type::GenericParam(_) => {}
+                let expected_elem = &builtin.type_args[0];
+                match &arr_type {
+                    Type::Array(elem) => {
+                        if !self.destroy_type_matches(elem, expected_elem) {
+                            return Err(semantic_error_at_loc(
+                                &builtin.loc,
+                                format!(
+                                    "__cay_destroy_array<{}> requires {}[], got {}",
+                                    expected_elem.display_name(),
+                                    expected_elem.display_name(),
+                                    arr_type.display_name()
+                                ),
+                            ));
+                        }
+                    }
+                    Type::GenericParam(_) => {}
                     _ => {
                         return Err(semantic_error_at_loc(
                             &builtin.loc,
@@ -161,6 +189,29 @@ impl SemanticAnalyzer {
                 format!("unknown type-parameterized builtin '{}'", other),
             )),
         }
+    }
+
+    /// 析构内建的显式类型实参与值类型必须一致（类型参数在单态化前作为通配）。
+    fn destroy_type_matches(&self, actual: &Type, expected: &Type) -> bool {
+        if actual == expected
+            || matches!(actual, Type::GenericParam(_))
+            || matches!(expected, Type::GenericParam(_))
+        {
+            return true;
+        }
+        // `__cay_destroy<T>(addr)` 也接受以整数/指针保存的对象地址
+        // （SmartPtr 的析构体从 `long __owned` 取回地址后调用）。地址本身
+        // 没有类型信息，具体析构函数由显式类型实参 T 决定。
+        if matches!(
+            actual,
+            Type::Int64 | Type::UIntPtr | Type::IntPtr | Type::Pointer(_)
+        ) {
+            return true;
+        }
+        // 泛型参数在声明/单态化上下文中可能分别表示为 GenericParam 或
+        // Object("T")，结构比较会漏判；用双向兼容性确保两边是同一类型
+        //（双向排除把 Base 析构函数用于 Derived 之类的不安全放宽）。
+        self.types_compatible(actual, expected) && self.types_compatible(expected, actual)
     }
 
     /// 推断数组初始化表达式类型

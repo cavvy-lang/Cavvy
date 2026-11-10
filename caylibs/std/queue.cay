@@ -74,7 +74,7 @@ public final class QueueIterator<T, A: Allocator = GlobalAlloc> implements Itera
      *
      * @return 当前索引处的元素；迭代器已耗尽时返回 T 的零值
      */
-    public T next() {
+    public @borrow T next() {
         if (this.index < 0 || this.index >= this.end) {
             T zero = 0;
             return zero;
@@ -175,7 +175,7 @@ public final class Queue<T, A: Allocator = GlobalAlloc> implements Iterable<T> {
         /* 让出的槽位置零：避免死区仍持有已交还调用方的对象引用
            （否则底层 ArrayList 注入的元素析构会二次析构该对象） */
         T cleared = 0;
-        this.items.set(this.head, cleared);
+        this.items.moveAt(this.head, cleared);
         this.head = this.head + 1;
         this.compact();
         return value;
@@ -199,7 +199,7 @@ public final class Queue<T, A: Allocator = GlobalAlloc> implements Iterable<T> {
      *
      * @return 当前队头元素；空队列时返回 T 的零值
      */
-    public T front() {
+    public @borrow T front() {
         if (this.isEmpty()) {
             T zero = 0;
             return zero;
@@ -214,7 +214,7 @@ public final class Queue<T, A: Allocator = GlobalAlloc> implements Iterable<T> {
      *
      * @return 当前队尾元素；空队列时返回 T 的零值
      */
-    public T back() {
+    public @borrow T back() {
         if (this.isEmpty()) {
             T zero = 0;
             return zero;
@@ -289,7 +289,7 @@ public final class Queue<T, A: Allocator = GlobalAlloc> implements Iterable<T> {
         if (this.head >= 32 && (long)this.head * 2L >= (long)this.items.size()) {
             int remaining = this.items.size() - this.head;
             for (int i = 0; i < remaining; i = i + 1) {
-                this.items.set(i, this.items.get(this.head + i));
+                this.items.moveAt(i, this.items.get(this.head + i));
             }
             for (int i = 0; i < this.head; i = i + 1) {
                 this.items.removeLast();

@@ -319,6 +319,10 @@ impl SemanticAnalyzer {
                     vtable_slot: None,
                     loc: method.loc.clone(),
                 };
+                if method.modifiers.contains(&Modifier::Borrow) {
+                    self.type_registry
+                        .mark_borrow_method(&interface.name, &method.name);
+                }
                 interface_info.add_method(method_info);
             }
 
@@ -405,6 +409,14 @@ impl SemanticAnalyzer {
                         // 将泛型参数替换为 GenericParam 类型
                         let params =
                             self.replace_params_type_params(&ctor.params, &class.type_params);
+                        // 构造函数的 @owns 与普通方法同义：被构造对象接管实参，
+                        // 因此同样只能标注可析构的对象类型形参。
+                        self.validate_owning_params(
+                            &params,
+                            "构造函数",
+                            &class.name,
+                            &ctor.loc,
+                        )?;
                         let ctor_info = crate::types::ConstructorInfo {
                             params: params.clone(),
                             is_public: ctor.modifiers.contains(&Modifier::Public),
@@ -612,6 +624,52 @@ impl SemanticAnalyzer {
         )
     }
 
+    /// 校验一组形参上的 `@owns` 用法。
+    ///
+    /// 方法、构造函数与顶层函数共用同一条规则；`owner_kind` / `owner_name`
+    /// 只用于诊断文本。
+    pub(crate) fn validate_owning_params(
+        &self,
+        params: &[ParameterInfo],
+        owner_kind: &str,
+        owner_name: &str,
+        loc: &crate::miette_diagnostic::SourceLocation,
+    ) -> CayResult<()> {
+        for p in params {
+            if !p.is_owning {
+                continue;
+            }
+            if p.is_varargs {
+                return Err(semantic_error_with_file(
+                    ErrorCodes::SEMANTIC_INVALID_OPERATION,
+                    loc.file.clone().or_else(|| self.current_file.clone()),
+                    loc.line,
+                    loc.column,
+                    format!(
+                        "{} '{}' 的可变参数 '{}' 不能标注 @owns\n提示: @owns 只能用于单个对象类型形参",
+                        owner_kind, owner_name, p.name
+                    ),
+                ));
+            }
+            if !Self::type_can_be_owned(&p.param_type) {
+                return Err(semantic_error_with_file(
+                    ErrorCodes::SEMANTIC_INVALID_OPERATION,
+                    loc.file.clone().or_else(|| self.current_file.clone()),
+                    loc.line,
+                    loc.column,
+                    format!(
+                        "{} '{}' 的形参 '{}'（类型 {}）不能标注 @owns\n提示: @owns 只适用于类类型或类型参数（原始类型/数组/struct 没有析构语义）",
+                        owner_kind,
+                        owner_name,
+                        p.name,
+                        p.param_type.display_name()
+                    ),
+                ));
+            }
+        }
+        Ok(())
+    }
+
     /// 获取类的限定查找名（包含命名空间路径）
     ///
     /// 使用限定名可避免 `using` 别名或全局非限定名注册导致类查找错位，
@@ -719,37 +777,12 @@ impl SemanticAnalyzer {
 
                     // 校验 @owns 用法：它声明「被调用方取得实参所有权」，
                     // 只对可被析构的对象类型有意义。
-                    for p in &params {
-                        if !p.is_owning {
-                            continue;
-                        }
-                        if p.is_varargs {
-                            return Err(semantic_error_with_file(
-                                ErrorCodes::SEMANTIC_INVALID_OPERATION,
-                                self.current_file.clone(),
-                                method.loc.line,
-                                method.loc.column,
-                                format!(
-                                    "方法 '{}' 的可变参数 '{}' 不能标注 @owns\n提示: @owns 只能用于单个对象类型形参",
-                                    method.name, p.name
-                                ),
-                            ));
-                        }
-                        if !Self::type_can_be_owned(&p.param_type) {
-                            return Err(semantic_error_with_file(
-                                ErrorCodes::SEMANTIC_INVALID_OPERATION,
-                                self.current_file.clone(),
-                                method.loc.line,
-                                method.loc.column,
-                                format!(
-                                    "方法 '{}' 的形参 '{}'（类型 {}）不能标注 @owns\n提示: @owns 只适用于类类型或类型参数（原始类型/数组/struct 没有析构语义）",
-                                    method.name,
-                                    p.name,
-                                    p.param_type.display_name()
-                                ),
-                            ));
-                        }
-                    }
+                    self.validate_owning_params(
+                        &params,
+                        "方法",
+                        &method.name,
+                        &method.loc,
+                    )?;
 
                     let method_info = MethodInfo {
                         name: method.name.clone(),
@@ -838,6 +871,11 @@ impl SemanticAnalyzer {
                                 .collect()
                         })
                         .unwrap_or_default();
+
+                    if method.modifiers.contains(&Modifier::Borrow) {
+                        self.type_registry
+                            .mark_borrow_method(&class_lookup_name, &method.name);
+                    }
 
                     if let Some(class_info) = self.type_registry.get_class_mut(&class_lookup_name) {
                         // 检查是否存在签名完全相同的方法（重复定义）。
@@ -1127,6 +1165,11 @@ impl SemanticAnalyzer {
                         let expected_param_types: Vec<Type> =
                             params.iter().map(|p| p.param_type.clone()).collect();
                         if self.types_match(&class_param_types, &expected_param_types)
+                            && method
+                                .params
+                                .iter()
+                                .zip(params.iter())
+                                .all(|(actual, expected)| actual.is_owning == expected.is_owning)
                             && self.method_return_matches(&method.return_type, return_type)
                         {
                             return true;
@@ -1193,6 +1236,7 @@ impl SemanticAnalyzer {
                             &interface_info.type_params,
                             &type_args,
                         ) == mp.param_type
+                            && ip.is_owning == mp.is_owning
                     });
             if params_match && substituted_return == method_info.return_type {
                 return true;
@@ -1300,6 +1344,11 @@ impl SemanticAnalyzer {
                         let parent_param_types: Vec<Type> =
                             method.params.iter().map(|p| p.param_type.clone()).collect();
                         if self.types_match(&parent_param_types, &param_types)
+                            && method
+                                .params
+                                .iter()
+                                .zip(params.iter())
+                                .all(|(parent, child)| parent.is_owning == child.is_owning)
                             && method.return_type == *return_type
                         {
                             return true;
@@ -1557,6 +1606,10 @@ impl SemanticAnalyzer {
                     vtable_slot: None,
                     loc: method.loc.clone(),
                 };
+                if method.modifiers.contains(&Modifier::Borrow) {
+                    self.type_registry
+                        .mark_borrow_method(&struct_decl.name, &method.name);
+                }
                 struct_info
                     .methods
                     .entry(method.name.clone())

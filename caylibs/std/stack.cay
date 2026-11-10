@@ -62,7 +62,7 @@ public final class StackIterator<T, A: Allocator = GlobalAlloc> implements Itera
      *
      * @return 当前索引处的元素；迭代器已耗尽时返回 T 的零值
      */
-    public T next() {
+    public @borrow T next() {
         if (this.index < 0) {
             T zero = 0;
             return zero;
@@ -154,7 +154,7 @@ public final class Stack<T, A: Allocator = GlobalAlloc> implements Iterable<T> {
      *
      * @return 当前栈顶元素；空栈时返回 T 的零值
      */
-    public T peek() {
+    public @borrow T peek() {
         if (this.items.isEmpty()) {
             T zero = 0;
             return zero;

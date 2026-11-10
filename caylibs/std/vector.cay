@@ -40,14 +40,14 @@ public final class VectorIterator<T> implements Iterator<T>, MutableRandomAccess
         return this.index < this.size;
     }
 
-    public T next() {
+    public @borrow T next() {
         T value = this.data[this.index];
         this.index = this.index + 1;
         return value;
     }
 
     public int length() { return this.size; }
-    public T get(int index) { return this.data[index]; }
+    public @borrow T get(int index) { return this.data[index]; }
     public void set(int index, T value) { this.data[index] = value; }
 
 }
@@ -175,7 +175,7 @@ public final class vector<T> implements Iterable<T> {
         }
     }
 
-    public T get(int index) {
+    public @borrow T get(int index) {
         return this.data[index];
     }
 
@@ -187,7 +187,7 @@ public final class vector<T> implements Iterable<T> {
         this.data[index] = val;
     }
 
-    public T front() {
+    public @borrow T front() {
         if (this.size <= 0) {
             T zero = 0;
             return zero;
@@ -195,7 +195,7 @@ public final class vector<T> implements Iterable<T> {
         return this.data[0];
     }
 
-    public T back() {
+    public @borrow T back() {
         if (this.size <= 0) {
             T zero = 0;
             return zero;

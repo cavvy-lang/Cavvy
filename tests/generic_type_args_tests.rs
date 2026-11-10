@@ -98,3 +98,65 @@ public class Main {
     assert!(output.contains("ok 1"), "应正常推入元素: {}", output);
     let _ = std::fs::remove_file("examples/test_generic_args_match.cay");
 }
+
+/// 跨类泛型子类型（实现接口）必须把类类型实参映射到接口实参后再比较，
+/// `Getter<String>` 不能赋给 `Getter<int>`。
+#[test]
+fn test_generic_subtype_args_mismatch_rejected() {
+    let code = r#"
+public interface Getter<T> {
+    @borrow T get();
+}
+
+public class Box<T> implements Getter<T> {
+    private T v;
+    public Box(T v) { this.v = v; }
+    public @borrow T get() { return this.v; }
+}
+
+public class Main {
+    public static void main() {
+        Getter<int> g = new Box<String>("x");
+    }
+}
+"#;
+    std::fs::write("examples/test_generic_subtype_args_bad.cay", code).unwrap();
+    let error = compile_eol_expect_error("examples/test_generic_subtype_args_bad.cay")
+        .expect("跨类泛型实参不匹配必须编译失败");
+    assert!(
+        error.contains("type mismatch") || error.contains("Cannot assign"),
+        "应报告类型不匹配: {}",
+        error
+    );
+    let _ = std::fs::remove_file("examples/test_generic_subtype_args_bad.cay");
+}
+
+/// 正例：跨类泛型子类型的实参映射一致时必须通过。
+#[test]
+fn test_generic_subtype_args_match_accepted() {
+    let code = r#"
+#include <c/stdio.cay>
+
+public interface Getter<T> {
+    @borrow T get();
+}
+
+public class Box<T> implements Getter<T> {
+    private T v;
+    public Box(T v) { this.v = v; }
+    public @borrow T get() { return this.v; }
+}
+
+public class Main {
+    public static void main() {
+        Getter<int> g = new Box<int>(7);
+        println("get=" + String.valueOf(g.get()));
+    }
+}
+"#;
+    std::fs::write("examples/test_generic_subtype_args_ok.cay", code).unwrap();
+    let output = compile_and_run_eol("examples/test_generic_subtype_args_ok.cay")
+        .expect("泛型子类型实参一致时应通过");
+    assert!(output.contains("get=7"), "应能经接口读回值: {}", output);
+    let _ = std::fs::remove_file("examples/test_generic_subtype_args_ok.cay");
+}

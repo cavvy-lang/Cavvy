@@ -70,7 +70,7 @@ public class UniquePtr<T> {
     /**
      * 获取托管对象引用（不转移所有权）。
      */
-    public T get() {
+    public @borrow T get() {
         long addr = this.__owned;
         T result = null;
         __ir {
@@ -172,7 +172,7 @@ public class ScopedPtr<T> {
     /**
      * 获取托管对象引用。
      */
-    public T get() {
+    public @borrow T get() {
         long addr = this.__owned;
         T result = null;
         __ir {
@@ -278,7 +278,7 @@ public class Rc<T> {
     /**
      * 获取托管对象引用。
      */
-    public T get() {
+    public @borrow T get() {
         long addr = this.__owned;
         T result = null;
         __ir {

@@ -768,9 +768,51 @@ public class Main {
 }
 ```
 
-`@owns` 可用于普通方法、自由函数与**构造函数**（`new Holder(b)` 同样按形参声明转移所有权）。它只对「实参是局部变量」生效；字段赋值、条件分支内的转移、同一对象重复转移不在其保障范围内。标准库的容器存储方法（`ArrayList.add`、`Stack.push`、`HashMap.put` 等）与取得托管对象的静态工厂（`Optional.of`、`UniquePtr.fromRaw` 等）都以该注解声明所有权转移。
+`@owns` 可用于普通方法、自由函数、**构造函数**（`new Holder(b)` 同样按形参声明转移所有权）以及 struct 构造函数。标准库的容器存储方法（`ArrayList.add`、`Stack.push`、`HashMap.put`、`LinkedList.addFirst` 等）与取得托管对象的静态工厂（`Optional.of`、`UniquePtr.fromRaw` 等）都以该注解声明所有权转移。
 
-校验：`@owns` 只能用于类类型或类型参数形参；标在原始类型、数组、struct 或可变参数上会报错（它们没有析构语义，标注只会静默抑制调用方的析构）。
+实参规则：
+
+- 实参是当前作用域中带析构函数的**局部变量**时，编译器把它从析构候选中摘除，改由被调方负责最终析构。
+- 同一个局部变量**只能转移一次**。第二次传给 `@owns` 形参（包括构造函数）会编译失败，因为两个接收方会重复析构同一对象；需要共享所有权时请使用 `Rc<T>` 等显式共享类型。
+- **带析构函数对象的字段**不能直接作为 `@owns` 实参（`holder.put(this.box)` 会报错）：字段所有权仍属于宿主对象。请先在宿主类中显式清空字段，或把对象保存到局部变量后再转移。
+- `new`/函数调用等右值本来就没有调用方析构候选；数组元素不归数组的析构函数管理，可以作为 `@owns` 实参。
+
+校验：`@owns` 只能用于类类型或类型参数形参；标在原始类型、数组、struct 或可变参数上会报错（它们没有析构语义，标注只会静默抑制调用方的析构）。构造函数与顶层函数使用同一套校验。
+
+### `@borrow` —— 只读借用的返回值
+
+标注在**方法**上，声明返回值是对被调方内部对象的借用，不转移所有权。典型场景是容器的只读访问：`ArrayList.get`、`Stack.peek`、`Queue.front/back`、`Deque.peekFront/peekBack`、`PriorityQueue.peek`、`HashMap.get`、`LinkedList.getFirst/getLast/get` 以及迭代器的 `next()`。
+
+```cay
+#include <std/stack.cay>
+
+using std::Stack;
+
+public class Box {
+    public int v;
+    public Box(int v) { this.v = v; }
+    ~Box() { println("~Box"); }
+}
+
+public class Main {
+    public static void main() {
+        Stack<Box> s = new Stack<Box>();
+        s.push(new Box(1));
+
+        /* peek 返回借用：box 离开作用域时不会析构栈内对象 */
+        Box box = s.peek();
+        println(String.valueOf(box.v));
+    }
+}
+```
+
+编译器看到局部变量的初始化表达式调用 `@borrow` 方法时，不会为该变量登记析构候选。借用对象仍由容器/智能指针负责析构，因此：
+
+- 不要把 `@borrow` 返回值保存到生命周期长于其所有者的地方；
+- 不要把它再传给 `@owns` 形参（那会试图把别人的对象交给第二个所有者）；
+- 需要独立所有权时，请显式复制/克隆，或使用共享所有权类型。
+
+`HashMap.keySet()` / `values()` 返回的 `ArrayList` 是**借用视图**：列表本身可正常释放缓冲区，但不析构其中的键/值；对借用视图调用 `add`/`set` 不会取得元素所有权。
 
 ---
 

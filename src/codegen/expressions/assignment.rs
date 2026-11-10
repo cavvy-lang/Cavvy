@@ -23,13 +23,17 @@ impl IRGenerator {
             Expr::MemberAccess(member) => {
                 self.generate_member_assignment(member, &value_type, &val, &value)
             }
-            Expr::Identifier(name) => self.generate_variable_assignment(
-                name.as_ref(),
-                &value_type,
-                &val,
-                &value,
-                &assign.loc,
-            ),
+            Expr::Identifier(name) => {
+                // 重新赋值会建立新的所有权状态，旧的「已移走」标记失效。
+                self.scope_manager.clear_moved(name.as_ref());
+                self.generate_variable_assignment(
+                    name.as_ref(),
+                    &value_type,
+                    &val,
+                    &value,
+                    &assign.loc,
+                )
+            }
             Expr::ArrayAccess(arr_access) => {
                 self.generate_array_assignment(arr_access, &value_type, &val, &value)
             }

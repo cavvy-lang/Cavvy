@@ -147,7 +147,7 @@ public final class LinkedListIterator<T> implements Iterator<T> {
      *
      * @return 当前节点的值
      */
-    public T next() {
+    public @borrow T next() {
         T value = this.current.getValue();
         this.current = this.current.getNext();
         return value;
@@ -234,9 +234,10 @@ public final class LinkedList<T> implements Iterable<T> {
             return zero;
         }
 
-        T value = this.head.getValue();
-        LNode<T> next = this.head.getNext();
-        this.head.setNext(null);
+        LNode<T> node = this.head;
+        T value = node.getValue();
+        LNode<T> next = node.getNext();
+        node.setNext(null);
         if (next == null) {
             this.head = null;
             this.tail = null;
@@ -245,6 +246,9 @@ public final class LinkedList<T> implements Iterable<T> {
             this.head = next;
         }
         this.count = this.count - 1;
+        /* 摘下的节点必须释放；value 的所有权随返回值交给调用方，
+           因此这里只 free 节点，不析构 value。 */
+        __freeNode(node);
         return value;
     }
 
@@ -262,9 +266,10 @@ public final class LinkedList<T> implements Iterable<T> {
             return zero;
         }
 
-        T value = this.tail.getValue();
-        LNode<T> prev = this.tail.getPrev();
-        this.tail.setPrev(null);
+        LNode<T> node = this.tail;
+        T value = node.getValue();
+        LNode<T> prev = node.getPrev();
+        node.setPrev(null);
         if (prev == null) {
             this.head = null;
             this.tail = null;
@@ -273,6 +278,7 @@ public final class LinkedList<T> implements Iterable<T> {
             this.tail = prev;
         }
         this.count = this.count - 1;
+        __freeNode(node);
         return value;
     }
 
@@ -281,7 +287,7 @@ public final class LinkedList<T> implements Iterable<T> {
      *
      * @return 头元素；链表为空时返回类型零值
      */
-    public T getFirst() {
+    public @borrow T getFirst() {
         if (this.head == null) {
             T zero = 0;
             return zero;
@@ -294,7 +300,7 @@ public final class LinkedList<T> implements Iterable<T> {
      *
      * @return 尾元素；链表为空时返回类型零值
      */
-    public T getLast() {
+    public @borrow T getLast() {
         if (this.tail == null) {
             T zero = 0;
             return zero;
@@ -308,7 +314,7 @@ public final class LinkedList<T> implements Iterable<T> {
      * @param index 目标下标，有效范围 [0, size)
      * @return 下标处的元素；index 越界（含负数）时返回类型零值
      */
-    public T get(int index) {
+    public @borrow T get(int index) {
         if (index < 0 || index >= this.count) {
             T zero = 0;
             return zero;
@@ -347,8 +353,11 @@ public final class LinkedList<T> implements Iterable<T> {
         LNode<T> cur = this.head;
         while (cur != null) {
             LNode<T> next = cur.getNext();
+            /* clear 丢弃所有元素：先析构值，再释放节点，避免节点/对象泄漏。 */
+            __cay_destroy<T>(cur.getValue());
             cur.setNext(null);
             cur.setPrev(null);
+            __freeNode(cur);
             cur = next;
         }
         this.head = null;

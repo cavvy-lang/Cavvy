@@ -81,7 +81,7 @@ public class Optional<T> implements Try<T, Object> {
      * 如果为空，行为未定义（release 模式跳过检查）
      * 时间复杂度: O(1)
      */
-    public T get() {
+    public @borrow T get() {
         return value;
     }
 
@@ -111,7 +111,7 @@ public class Optional<T> implements Try<T, Object> {
      * Try::getValue — 提取成功值（不检查状态；? 运算符在 isOk()==true 分支调用）。
      * 时间复杂度: O(1)
      */
-    public T getValue() {
+    public @borrow T getValue() {
         return this.value;
     }
 

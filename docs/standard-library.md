@@ -881,6 +881,8 @@ public int main() {
 
 6.3.0 起标准库新增 5 个泛型容器，均位于 `std` 命名空间下。其中 `Stack`、`Queue`、`Deque`、`LinkedList` 实现 `Iterable<T>`，支持增强 for 循环；`PriorityQueue` 的堆序对遍历没有意义，因此不实现 `Iterable`。所有容器在空容器上调用取值方法均不抛异常，返回 `T` 的类型零值。
 
+**所有权约定**：`push`/`add`/`put`/`enqueue` 等存储方法用 `@owns` 取得元素所有权；`peek`/`front`/`back`/`get`/迭代器 `next` 等只读方法用 `@borrow` 返回借用，元素仍由容器析构。详见后文「所有权转移」与「只读访问」。
+
 ### Stack<T, A: Allocator = GlobalAlloc>
 
 **文件**: `caylibs/std/stack.cay`
@@ -1230,14 +1232,41 @@ Box b = new Box(2);
 q.enqueue(b);            /* b 的所有权转移给队列，作用域退出时不再析构 b */
 ```
 
-**约束**：`@owns` 只对「实参是局部变量」生效。字段赋值（`obj.list = b`）、条件分支内的转移、同一对象重复转移、以及来自字段的实参都不在其保障范围内 —— 这些场景请显式管理生命周期。
+**约束**：
 
-### 容器的析构
+- `@owns` 只对「实参是当前作用域的局部变量」生效。字段赋值（`obj.list = b`）与条件分支内的转移不在其保障范围内 —— 请显式管理生命周期。
+- 同一个局部变量**只能转移一次**。第二次传给 `@owns` 形参或构造函数会编译失败，避免两个接收方重复析构；共享所有权请使用 `Rc<T>`。
+- **带析构函数对象的字段**不能直接作为 `@owns` 实参（如 `holder.put(this.box)`），因为字段仍归宿主对象所有；请先在宿主中清空字段，或先保存到局部变量再转移。
+- `@owns` 形参的实参若是局部变量，调用方析构候选会被摘除；被调方在拒绝操作（如 `ArrayList.add(index, value)` 的越界索引）时必须自行析构该值，标准库已按此实现。
+
+### 只读访问：`@borrow` 返回值
+
+容器/智能指针的只读访问方法返回的是**内部对象的借用**，不转移所有权：
+
+| 类 | 只读（借用）方法 |
+|---|---|
+| `ArrayList<T, A>` | `get(int)` |
+| `HashMap<K, V, A>` | `get(K)` |
+| `Stack<T, A>` | `peek()` |
+| `Queue<T, A>` | `front()`、`back()` |
+| `Deque<T, A>` | `peekFront()`、`peekBack()`、`front()`、`back()`、`get(int)` |
+| `PriorityQueue<T, A>` | `peek()` |
+| `LinkedList<T>` | `getFirst()`、`getLast()`、`get(int)` |
+| `Optional<T>` / `SmartPtr` | `get()`、`getValue()` |
+| 所有迭代器 | `next()` |
+
+这些方法在源码中标注了 `@borrow`。当局部变量的初始化表达式来自 `@borrow` 方法时，编译器不会把它登记为析构候选；对象仍由容器/智能指针析构。因此不要把借用结果保存到生命周期长于其所有者的位置，也不要再把它传给 `@owns` 形参。需要独立所有权时请显式复制/克隆或使用共享所有权类型。
+
+`HashMap.keySet()` / `values()` 返回的 `ArrayList` 是**借用视图**：它拥有自己的缓冲区，但不拥有其中键/值，析构时只释放缓冲区，不会与 `HashMap` 重复析构元素。借用视图是只读的，`add`/`set` 不会取得元素所有权。`HashSet.toList()` 复用同一语义。
+
+### 容器的析构与清空
 
 5 个容器都声明了析构函数：`Stack`/`Queue`/`Deque`/`PriorityQueue` 析构其内部 `ArrayList`，`HashSet` 析构其内部 `HashMap`，`LinkedList` 逐节析构并回收。因此局部容器离开作用域时会：
 
 1. 析构容器持有的元素（`T` 为原始类型或 struct 时为空操作）；
 2. 释放底层缓冲区。
+
+`clear()` 与析构使用同一套元素回收逻辑：`ArrayList`/`Stack`/`Queue`/`Deque`/`PriorityQueue` 在清零 `size` 前析构 `[0, size)` 内元素；`HashMap`/`HashSet` 按 `states` 只析构 `OCCUPIED` 槽位；`LinkedList` 在 `clear`/`removeFirst`/`removeLast` 中析构值并 `free` 节点。`HashMap.put` 覆盖已有键、`remove` 删除槽位时也会先析构旧键/旧值。
 
 `Queue`/`Deque` 出队时会把让出的槽位置零，因此不会二次析构已交还给调用方的元素。
 
